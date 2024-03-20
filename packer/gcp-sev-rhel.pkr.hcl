@@ -83,6 +83,7 @@ source "googlecompute" "redhat" {
   tags                    = var.tags
   use_os_login            = var.use_os_login
   wait_to_add_ssh_keys    = var.wait_to_add_ssh_keys
+  image_licenses          = var.image_licenses
 }
 
 build {
