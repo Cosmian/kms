@@ -8,17 +8,7 @@ use cosmian_kms_client::{
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
-use zeroize::Zeroizing;
-
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
     },
-    KmsRestClient,
-};
-use cosmian_kms_client::{
     import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
     KmsClient,
 };

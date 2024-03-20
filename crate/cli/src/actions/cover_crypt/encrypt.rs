@@ -6,16 +6,9 @@ use cosmian_kms_client::{
         crypto::generic::kmip_requests::build_encryption_request,
         kmip::kmip_types::CryptographicAlgorithm,
     },
-    KmsRestClient,
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_encrypted_data,
     write_single_encrypted_data, KmsClient,
 };
-
-use crate::{
-    actions::shared::utils::{
-        read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_encrypted_data,
-        write_single_encrypted_data,
-    },
 
 use crate::{
     cli_bail,

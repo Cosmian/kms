@@ -1,11 +1,8 @@
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm},
-    KmsRestClient,
+    KmsClient,
 };
-
-use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm};
-use cosmian_kms_client::KmsClient;
 
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::CliError;

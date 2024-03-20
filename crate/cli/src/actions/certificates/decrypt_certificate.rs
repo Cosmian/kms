@@ -3,9 +3,8 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{kmip_operations::Decrypt, kmip_types::UniqueIdentifier},
-    KmsRestClient,
+    read_bytes_from_file, KmsClient,
 };
-use cosmian_kms_client::{read_bytes_from_file, KmsClient};
 
 use crate::{
     cli_bail,

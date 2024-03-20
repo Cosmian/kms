@@ -4,9 +4,8 @@ use cosmian_kms_client::{
         crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
         kmip::kmip_types::RecommendedCurve,
     },
-    KmsRestClient,
+    KmsClient,
 };
-use cosmian_kms_client::KmsClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 

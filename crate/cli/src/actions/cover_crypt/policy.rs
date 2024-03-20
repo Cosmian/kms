@@ -16,9 +16,6 @@ use cosmian_kms_client::{
             ttlv::{deserializer::from_ttlv, TTLV},
         },
     },
-    KmsRestClient,
-};
-use cosmian_kms_client::{
     export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file, KmsClient,
 };
 

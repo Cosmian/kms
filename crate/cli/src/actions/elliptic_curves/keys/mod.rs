@@ -1,4 +1,5 @@
 use clap::Subcommand;
+use cosmian_kms_client::KmsClient;
 
 use self::{
     create_key_pair::CreateKeyPairAction, destroy_key::DestroyKeyAction,
@@ -6,19 +7,8 @@ use self::{
 };
 #[cfg(feature = "openssl")]
 use crate::actions::shared::{UnwrapKeyAction, WrapKeyAction};
-use cosmian_kms_client::KmsClient;
-
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction},
-    error::CliError,
-};
-
-use self::{
-    create_key_pair::CreateKeyPairAction, destroy_key::DestroyKeyAction,
-    revoke_key::RevokeKeyAction,
-};
-use crate::{
-    actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
     error::CliError,
 };
 

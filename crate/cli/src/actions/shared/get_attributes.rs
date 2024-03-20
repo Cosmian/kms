@@ -9,9 +9,8 @@ use cosmian_kms_client::{
             AttributeReference, LinkType, Tag, UniqueIdentifier, VendorAttributeReference,
         },
     },
-    KmsRestClient,
+    write_bytes_to_file, KmsClient,
 };
-use cosmian_kms_client::{write_bytes_to_file, KmsClient};
 use serde_json::Value;
 use tracing::debug;
 

@@ -1,19 +1,10 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-
-use cosmian_kms_client::{export_object, KmsRestClient};
 use cosmian_kms_client::{
-    cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper},
-    KmsRestClient,
-    der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, KmsClient,
+    cosmian_kmip::kmip::kmip_types::KeyFormatType, der_to_pem, export_object, write_bytes_to_file,
+    write_kmip_object_to_file, ClientResultHelper, KmsClient,
 };
-
-use crate::{
-    actions::shared::utils::{write_bytes_to_file, write_kmip_object_to_file},
-    cli_bail,
-    error::CliError,
-
 
 use crate::{cli_bail, error::CliError};
 

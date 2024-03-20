@@ -3,10 +3,8 @@ use std::path::PathBuf;
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request,
-    KmsRestClient,
+    KmsClient,
 };
-
-use cosmian_kms_client::KmsClient;
 
 use crate::{
     actions::cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},

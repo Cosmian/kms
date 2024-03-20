@@ -5,9 +5,8 @@ use cosmian_kms_client::{
         crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
         kmip::kmip_types::CryptographicAlgorithm,
     },
-    KmsRestClient,
+    import_object, KmsClient,
 };
-use cosmian_kms_client::{import_object, KmsClient};
 
 use crate::{
     cli_bail,

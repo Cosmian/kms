@@ -2,9 +2,8 @@ use clap::Parser;
 use cloudproof::reexport::cover_crypt::abe_policy::AccessPolicy;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_user_decryption_private_key_request,
-    KmsRestClient,
+    KmsClient,
 };
-use cosmian_kms_client::KmsClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 

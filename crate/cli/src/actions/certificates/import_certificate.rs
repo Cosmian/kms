@@ -9,10 +9,6 @@ use cosmian_kms_client::{
             Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    KmsRestClient,
-};
-// use cloudproof::reexport::crypto_core::reexport::x509_cert;
-use cosmian_kms_client::{
     import_object, read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
 };
 use der::{Decode, DecodePem, Encode};

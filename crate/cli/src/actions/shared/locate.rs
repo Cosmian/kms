@@ -10,17 +10,9 @@ use cosmian_kms_client::{
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
-use strum::IntoEnumIterator;
-
-use cosmian_kmip::kmip::{
-    kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
     },
-    KmsRestClient,
+    KmsClient,
 };
-use strum::IntoEnumIterator;
-use cosmian_kms_client::KmsClient;
 use strum::IntoEnumIterator;
 
 use crate::error::CliError;

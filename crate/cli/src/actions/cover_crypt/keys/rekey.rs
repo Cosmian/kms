@@ -3,9 +3,8 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::{
         attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
     },
-    KmsRestClient,
+    KmsClient,
 };
-use cosmian_kms_client::KmsClient;
 
 use crate::{
     cli_bail,

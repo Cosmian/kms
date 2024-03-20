@@ -2,9 +2,9 @@ use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::generic::kmip_requests::build_decryption_request, KmsRestClient,
+    cosmian_kmip::crypto::generic::kmip_requests::build_decryption_request, read_bytes_from_file,
+    KmsClient,
 };
-use cosmian_kms_client::{read_bytes_from_file, KmsClient};
 
 use crate::{
     actions::rsa::{EncryptionAlgorithm, HashFn},

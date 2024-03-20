@@ -4,20 +4,11 @@ use std::{array::TryFromSliceError, str::Utf8Error};
 use assert_cmd::cargo::CargoError;
 use cosmian_kms_client::{
     cosmian_kmip::{
-        error::KmipError,
         kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+        KmipError,
     },
-    RestClientError,
+    ClientError,
 };
-use pem::PemError;
-use thiserror::Error;
-use cosmian_kms_client::RestClientError;
-
-use cosmian_kmip::{
-    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-    KmipError,
-};
-use cosmian_kms_client::ClientError;
 use pem::PemError;
 use thiserror::Error;
 
