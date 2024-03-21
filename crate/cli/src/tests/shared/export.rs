@@ -3,14 +3,17 @@ use std::path::Path;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_client::kmip::{
-    kmip_data_structures::KeyMaterial,
-    kmip_types::{CryptographicAlgorithm, RecommendedCurve},
-};
 use cosmian_kms_client::{
-    kmip::kmip_types::KeyFormatType, pad_be_bytes, read_bytes_from_file,
-    read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    kmip::kmip_types::KeyFormatType, read_bytes_from_file, read_object_from_json_ttlv_file,
+    KMS_CLI_CONF_ENV,
+};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_client::{
+    kmip::{
+        kmip_data_structures::KeyMaterial,
+        kmip_types::{CryptographicAlgorithm, RecommendedCurve},
+    },
+    pad_be_bytes,
 };
 #[cfg(not(feature = "fips"))]
 use kms_test_server::TestsContext;
