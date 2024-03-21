@@ -67,14 +67,17 @@ directory.
 
 ## Building the KMS
 
-The KMS must be built against a local installation of OpenSSL 3. This is required to support FIPS
-mode.
+To avoid the *additive feature* issues, the main artifacts - the CLI, the KMS server and the
+PKCS11 provider - should directly be built using `cargo build --release`within their own crate, not
+from the project root.
+
+In addition, the KMS server must be built against a local installation of OpenSSL 3. Other
+artifacts do not have this requirement.
 
 #### Linux
 
 Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
-be
-sufficient and the builder should find it automatically.
+be sufficient and the builder should find it automatically.
 
 #### MacOS
 
@@ -89,45 +92,12 @@ to the OpenSSL installation directory.
 
 #### Windows
 
-Install Visual Studio Community with the C++ workload and clang support.
+1. Install Visual Studio Community with the C++ workload and clang support.
+2. Install Strawberry Perl.
+3. Install `vcpkg` following
+   [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 
-Install `vcpkg` following
-[these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
-
-Then install OpenSSL 3:
-
-```powershell
-vcpkg.exe install openssl[fips]
-vcpkg.exe integrate install
-set VCPKGRS_DYNAMIC=1
-$env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
-```
-
-where `<vcpkg>` is the path to the vcpkg installation directory,
-and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
-
-### Cargo build
-
-### MacOS
-
-Install OpenSSL 3 with Homebrew:
-
-```sh
-brew install openssl@3
-```
-
-The builder should find it automatically; if not, you can set the `OPENSSL_DIR` environment variable
-to the OpenSSL installation directory.
-
-### Windows
-
-Install Visual Studio Community with the C++ workload and clang support.
-Install perl from [Strawberry Perl](http://strawberryperl.com/).
-
-Install `vcpkg` following
-[these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
-
-Then install OpenSSL 3:
+4. Then install OpenSSL 3:
 
 ```powershell
 vcpkg.exe install openssl[fips]
@@ -139,13 +109,8 @@ $env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
 where `<vcpkg>` is the path to the vcpkg installation directory,
 and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
-Then add `<vcpkg>\installed\<archi>\bin` to the `PATH` environment variable if you want to run the
-KMS server from the command line.
-
-```sh
-cargo build --no-default-features
-cargo test --no-default-features
-```
+To run the server from the command line, add `<vcpkg>\installed\<archi>\bin` to the `PATH`
+environment variable.
 
 ### Build the Docker container
 
