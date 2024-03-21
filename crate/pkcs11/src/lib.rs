@@ -20,6 +20,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     native_pkcs11_traits::register_backend(Box::new(
         backend::CkmsBackend::instantiate().expect("Failed to instantiate backend."),
     ));
+    FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
     unsafe { *pp_function_list = addr_of_mut!(FUNC_LIST) };
     CKR_OK
 }
