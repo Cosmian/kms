@@ -5,13 +5,16 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
-use cosmian_kms_client::cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
-};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{error::ClientError, ClientResultHelper};
+use crate::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object,
+        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+    },
+    error::ClientError,
+    ClientResultHelper,
+};
 
 /// Read all bytes from a file
 pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, ClientError> {

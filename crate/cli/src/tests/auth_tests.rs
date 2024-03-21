@@ -26,22 +26,22 @@ pub async fn test_all_authentications() -> Result<(), CliError> {
     // plaintext no auth
     let ctx = start_test_server_with_options(PORT, false, false, false).await?;
     run_cli_command(&ctx.owner_client_conf_path);
-    ctx.stop_server().await;
+    ctx.stop_server().await?;
 
     // plaintext token auth
     let ctx = start_test_server_with_options(PORT, true, false, false).await?;
     run_cli_command(&ctx.owner_client_conf_path);
-    ctx.stop_server().await;
+    ctx.stop_server().await?;
 
     // tls token auth
     let ctx = start_test_server_with_options(PORT, true, true, false).await?;
     run_cli_command(&ctx.owner_client_conf_path);
-    ctx.stop_server().await;
+    ctx.stop_server().await?;
 
     // tls client cert auth
     let ctx = start_test_server_with_options(PORT, false, true, true).await?;
     run_cli_command(&ctx.owner_client_conf_path);
-    ctx.stop_server().await;
+    ctx.stop_server().await?;
 
     Ok(())
 }

@@ -95,7 +95,7 @@ pub struct ClientConf {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) oauth2_conf: Option<Oauth2Conf>,
+    pub oauth2_conf: Option<Oauth2Conf>,
 }
 
 impl Default for ClientConf {

@@ -3,11 +3,8 @@ use std::{collections::HashMap, path::PathBuf};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::{GetAttributes, GetAttributesResponse},
-        kmip_types::{
-            AttributeReference, LinkType, Tag, UniqueIdentifier, VendorAttributeReference,
-        },
+        kmip_types::{AttributeReference, LinkType, Tag, UniqueIdentifier},
     },
     write_bytes_to_file, KmsClient,
 };

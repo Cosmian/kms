@@ -3,7 +3,7 @@
 #![feature(min_specialization)]
 
 pub use config::{ClientConf, KMS_CLI_CONF_ENV};
-pub use cosmian_kmip::kmip;
+pub use cosmian_kmip::{self, kmip, pad_be_bytes};
 pub use encodings::{der_to_pem, objects_from_pem};
 pub use error::ClientError;
 pub use export_utils::{batch_export_objects, export_object};
@@ -28,8 +28,3 @@ mod file_utils;
 mod import_utils;
 mod kms_rest_client;
 mod result;
-
-pub use cosmian_kmip;
-pub use error::RestClientError;
-pub use kms_rest_client::KmsRestClient;
-pub use result::{RestClientResult, RestClientResultHelper};

@@ -1,4 +1,11 @@
-use cosmian_kms_client::{
+use cosmian_kmip::kmip::{
+    kmip_operations::{GetAttributes, Operation},
+    kmip_types::AttributeReference,
+};
+
+use crate::{
+    batch_utils::batch_operations,
+    client_bail,
     cosmian_kmip::kmip::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
@@ -7,11 +14,7 @@ use cosmian_kms_client::{
             Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
         },
     },
-    KmsRestClient,
-};
-
-use crate::{
-    batch_utils::batch_operations, client_bail, ClientError, ClientResultHelper, KmsClient,
+    ClientError, ClientResultHelper, KmsClient,
 };
 
 fn export_request(

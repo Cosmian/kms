@@ -25,14 +25,8 @@ use crate::{
             RecommendedCurve,
         },
     },
-    kmip_bail,
+    kmip_bail, pad_be_bytes,
 };
-
-pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
-    while bytes.len() != size {
-        bytes.insert(0, 0);
-    }
-}
 
 /// Convert a KMIP Private key to openssl `PKey<Private>`
 ///

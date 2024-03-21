@@ -102,8 +102,9 @@ vcpkg.exe integrate install
 set VCPKGRS_DYNAMIC=1
 $env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
 ```
+
 where `<vcpkg>` is the path to the vcpkg installation directory,
-and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc.. 
+and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
 ### Cargo build
 

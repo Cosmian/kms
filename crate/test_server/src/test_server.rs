@@ -6,16 +6,11 @@ use std::{
 };
 
 use actix_server::ServerHandle;
-use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_kms_client::cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
-use base64::{Engine as _, engine::general_purpose::STANDARD as b64};
-use tokio::sync::OnceCell;
-use tracing::trace;
-
-use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_kms_client::{
-    client_bail, client_error, write_json_object_to_file, ClientConf, ClientError, KmsClient,
+    client_bail, client_error,
+    cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
+    write_json_object_to_file, ClientConf, ClientError, KmsClient,
 };
 use cosmian_kms_server::{
     config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
@@ -25,17 +20,12 @@ use cosmian_kms_server::{
 use tokio::sync::OnceCell;
 use tracing::trace;
 
-use crate::{
-    actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
-};
+use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 
-use super::extract_uids::extract_database_secret;
-
-// Test auth0 Config
-const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com/";
-const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVVU1FrSVlULW9QMWZrcjQtNnRrciJ9.eyJuaWNrbmFtZSI6InRlY2giLCJuYW1lIjoidGVjaEBjb3NtaWFuLmNvbSIsInBpY3R1cmUiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci81MmZiMzFjOGNjYWQzNDU4MTIzZDRmYWQxNDA4NTRjZj9zPTQ4MCZyPXBnJmQ9aHR0cHMlM0ElMkYlMkZjZG4uYXV0aDAuY29tJTJGYXZhdGFycyUyRnRlLnBuZyIsInVwZGF0ZWRfYXQiOiIyMDIzLTA1LTMwVDA5OjMxOjExLjM4NloiLCJlbWFpbCI6InRlY2hAY29zbWlhbi5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOi8va21zLWNvc21pYW4uZXUuYXV0aDAuY29tLyIsImF1ZCI6IkszaXhldXhuVDVrM0Roa0tocWhiMXpYbjlFNjJGRXdJIiwiaWF0IjoxNjg1NDM5MDc0LCJleHAiOjE2ODU0NzUwNzQsInN1YiI6ImF1dGgwfDYzZDNkM2VhOTNmZjE2NDJjNzdkZjkyOCIsInNpZCI6ImJnVUNuTTNBRjVxMlpaVHFxMTZwclBCMi11Z0NNaUNPIiwibm9uY2UiOiJVRUZWTlZWeVluWTVUbHBwWjJScGNqSmtVMEZ4TmxkUFEwc3dTVGMwWHpaV2RVVmtkVnBEVGxSMldnPT0ifQ.HmU9fFwZ-JjJVlSy_PTei3ys0upeWQbWWiESmKBtRSClGnAXJNCpwuP4Jw7fgKn-8IBf-PYmP1_54u2Rw3RcJFVl7EblVoGMghYxVq5hViGpd00st3VwZmyCwOUz2CE5RBnBAoES4C8xA3zWg6oau0xjFQbC3jNU20eyFYMDewXA8UXCHQrEiQ56ylqSbyqlBbQIWbmOO4m5w2WDkx0bVyyJ893JfIJr_NANEQMJITYo8Mp_iHCyKp7llsfgCt07xN8ZqnsrMsJ15zC1n50bHGrTQisxURS1dpuFXF1hfrxhzogxYMX8CEISjsFgROjPY84GRMmvpYZfyaJbDDql3A";
-
-use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN, JWE_PRIVATE_KEY_JSON};
+// use super::extract_uids::extract_database_secret;
+// use crate::{
+//     actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
+// };
 
 /// In order to run most tests in parallel,
 /// we use that to avoid to try to start N KMS servers (one per test)
@@ -63,7 +53,7 @@ impl TestsContext {
 
 /// Start a test KMS server in a thread with the default options:
 /// JWT authentication and encrypted database, no TLS
-pub async fn start_default_test_kms_server() -> TestsContext {
+pub async fn start_default_test_kms_server() -> Result<TestsContext, ClientError> {
     start_test_server_with_options(9990, false, true, true).await
 }
 
@@ -73,10 +63,9 @@ pub async fn start_test_server_with_options(
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
-) -> TestsContext {
-    let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)
-        .await
-        .unwrap();
+) -> Result<TestsContext, ClientError> {
+    let server_params =
+        generate_server_params(port, use_jwt_token, use_https, use_client_cert).await?;
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
@@ -172,8 +161,10 @@ async fn generate_server_params(
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
-) -> Result<ServerParams, CliError> {
-    // Configure the serveur
+) -> Result<ServerParams, ClientError> {
+    // This create root dir
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Configure the server
     let clap_config = ClapConfig {
         auth: if use_jwt_token {
             get_auth0_jwt_config()
