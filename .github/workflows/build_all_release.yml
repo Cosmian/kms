@@ -152,6 +152,7 @@ jobs:
       - rhel9
     uses: ./.github/workflows/build_and_test_cosmian_vm.yml
     strategy:
+      fail-fast: false
       matrix:
         distrib: [ubuntu, rhel]
     name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
