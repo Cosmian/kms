@@ -25,20 +25,20 @@ fips = ["cosmian_kms_client/fips"]
 actix-web = { workspace = true, features = ["macros", "rustls"] }
 base64 = { workspace = true }
 clap = { workspace = true, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
+    "help",
+    "env",
+    "std",
+    "usage",
+    "error-context",
+    "derive",
+    "cargo",
 ] }
 cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
 der = { version = "0.7", features = ["pem"] }
 env_logger = { workspace = true }
 oauth2 = "4.4"
-pem = { workspace = true }
+pem = "3.0"
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

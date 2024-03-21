@@ -19,6 +19,7 @@ use cosmian_kms_cli::{
     },
     error::CliError,
 };
+use cosmian_kms_client::ClientConf;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

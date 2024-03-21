@@ -38,6 +38,21 @@ pub enum ClientError {
     #[error(transparent)]
     PemError(#[from] pem::PemError),
 
+    #[error("Ratls Error: {0}")]
+    RatlsError(String),
+
+    #[error("REST Request Failed: {0}")]
+    RequestFailed(String),
+
+    #[error("REST Response Conversion Failed: {0}")]
+    ResponseFailed(String),
+
+    #[error("TTLV Error: {0}")]
+    TtlvError(String),
+
+    #[error("Unexpected Error: {0}")]
+    UnexpectedError(String),
+
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
 }
