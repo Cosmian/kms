@@ -127,7 +127,7 @@ jobs:
 
       - name: Remove large files before saving cache
         run: |
-          find target/ -type f -size +40M -delete
+          find target/ -type f -size ++100M -delete
 
       - name: Upload KMS for RHEL 9
         if: inputs.artifacts != ''

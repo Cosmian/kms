@@ -2,11 +2,13 @@ use std::{array::TryFromSliceError, str::Utf8Error};
 
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        error::KmipError,
+        kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    },
+    RestClientError,
 };
-use cosmian_kms_client::RestClientError;
 use pem::PemError;
 use thiserror::Error;
 

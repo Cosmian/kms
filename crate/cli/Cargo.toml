@@ -18,38 +18,45 @@ doctest = false
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
-fips = ["cosmian_kmip/fips"]
+fips = ["cosmian_kms_client/fips"]
 
 [dependencies]
-actix-web = { workspace = true }
+## Avoid pulling openssl
+actix-web = { workspace = true, features = ["macros", "rustls"] }
 base64 = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
-cosmian_logger = { path = "../logger" }
-der = { workspace = true }
+der = { version = "0.7", features = ["pem"] }
+env_logger = { workspace = true }
 oauth2 = "4.4"
 pem = "3.0"
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-strum = { workspace = true }
+strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-x509-cert = { workspace = true }
+x509-cert = { version = "0.2", features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-rt = { workspace = true }
 actix-server = { version = "2.3", default-features = false }
 assert_cmd = "2.0"
-const-oid = { workspace = true }
-cosmian_kms_client = { path = "../client", default-features = false }
+const-oid = { version = "0.9", features = ["db"] }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], default-features = false }
@@ -57,4 +64,4 @@ openssl = { workspace = true }
 predicates = "3.0"
 regex = { version = "1.10", default-features = false }
 tempfile = "3.8"
-x509-parser = { workspace = true }
+x509-parser = { workspace = true, features = ["verify"] }

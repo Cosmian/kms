@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_operations::Certify,
-    kmip_types::{
-        Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::ObjectType,
+        kmip_operations::Certify,
+        kmip_types::{
+            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
+        },
     },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 

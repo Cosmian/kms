@@ -16,7 +16,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -32,7 +37,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: rhel9
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -48,7 +58,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7
       commands: |
-        cargo build --release --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --release --features fips
+        cd ../server
+        cargo build --release --features fips
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -66,7 +81,12 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ubuntu_20_04
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -83,7 +103,12 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
       commands: |
-        cargo build --release --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --release --features fips
+        cd ../server
+        cargo build --release --features fips
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -101,7 +126,13 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        ldd ../../target/release/ckms | grep ssl && exit 1
+        cd ../server
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -120,11 +151,17 @@ jobs:
         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
         rustup target add x86_64-pc-windows-gnu
 
+        # build only `ckms`
+        cd crate/cli
+        cargo build --release --target x86_64-pc-windows-gnu
+        cd ../..
+
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --release --bins --target x86_64-pc-windows-gnu
+        cd crate/server
+        cargo build --release --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
@@ -136,8 +173,16 @@ jobs:
       distribution: macos-12
       archive-name: macos
       commands: |
+        set -ex
+
         rustup target add x86_64-apple-darwin
-        cargo build --release --bins --target x86_64-apple-darwin
+
+        cd crate/cli
+        cargo build --release --target x86_64-apple-darwin
+        otool -L ../../target/x86_64-apple-darwin/release/ckms | grep openssl && exit 1
+        cd ../server
+        cargo build --release --target x86_64-apple-darwin
+        cd ../..
 
         # Check binaries
         target/x86_64-apple-darwin/release/ckms -h

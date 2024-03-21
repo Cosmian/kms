@@ -110,7 +110,7 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig,
+        ClapConfig, DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -142,9 +142,6 @@ mod tests {
             },
             default_username: "[default username]".to_string(),
             force_default_username: false,
-            jwe: JWEConfig {
-                jwk_private_key: None,
-            },
             google_cse_kacls_url: Some("[google cse kacls url]".to_string()),
             ms_dke_service_url: Some("[ms dke service url]".to_string()),
         };
@@ -178,8 +175,6 @@ jwt_audience = "[jwt audience]"
 [workspace]
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
-
-[jwe]
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

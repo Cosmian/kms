@@ -9,13 +9,11 @@ use cosmian_kmip::kmip::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use josekit::jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, deserialize_compact};
 use tracing::info;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, operations::dispatch, KMS},
     database::KMSServer,
-    error::KmsError,
     result::KResult,
 };
 
@@ -26,32 +24,7 @@ pub async fn kmip(
     body: String,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<TTLV>> {
-    let ttlv = match serde_json::from_str::<TTLV>(&body) {
-        Ok(ttlv) => ttlv,
-        Err(_) => {
-            let key = kms
-                .params
-                .jwe_config
-                .jwk_private_key
-                .as_ref()
-                .ok_or_else(|| {
-                    KmsError::NotSupported("this server doesn't support JWE encryption".to_string())
-                })?;
-
-            let decrypter = EcdhEsJweAlgorithm::EcdhEs
-                .decrypter_from_jwk(key)
-                .map_err(|err| {
-                    KmsError::ServerError(format!(
-                        "Fail to create decrypter from JWE private key ({err})."
-                    ))
-                })?;
-            let payload = deserialize_compact(&body, &decrypter).map_err(|err| {
-                KmsError::InvalidRequest(format!("Fail to decrypt with JWE private key ({err})."))
-            })?;
-
-            serde_json::from_slice::<TTLV>(&payload.0)?
-        }
-    };
+    let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;

@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        },
     },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use zeroize::Zeroizing;
 
 use super::utils::objects_from_pem;

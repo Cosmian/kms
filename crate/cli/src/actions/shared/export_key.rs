@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper};
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper},
+    KmsRestClient,
+};
 
 use crate::{
     actions::shared::utils::{

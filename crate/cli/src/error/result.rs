@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use cosmian_kmip::kmip::kmip_operations::ErrorReason;
+use cosmian_kms_client::cosmian_kmip::kmip::kmip_operations::ErrorReason;
 
 use super::CliError;
 

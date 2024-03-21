@@ -1,12 +1,12 @@
 [workspace]
 default-members = ["crate/cli", "crate/server"]
 members = [
-  "crate/cli",
-  "crate/client",
-  "crate/kmip",
-  "crate/server",
-  "crate/pyo3",
-  "crate/logger",
+    "crate/cli",
+    "crate/client",
+    "crate/kmip",
+    "crate/server",
+    "crate/pyo3",
+    "crate/logger",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -31,74 +31,30 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
-actix-web = { version = "4.4", features = ["openssl"] }
 actix-rt = "2.9"
-async-trait = "0.1"
+actix-web = { version = "4.5", default-features = false }
 base64 = "0.21"
-bitflags = "2.4"
 chrono = "0.4"
-clap = { version = "4.4", default-features = false, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
-] }
+clap = { version = "4.4", default-features = false }
 cloudproof = "3.0"
-cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
-const-oid = { version = "0.9", features = ["db"] }
-der = { version = "0.7", features = ["pem"] }
-env_logger = "0.10"
+env_logger = "0.11"
 hex = "0.4"
 http = "0.2"
-josekit = "0.8.3"
 native-tls = "0.2"
-num-bigint-dig = { version = "0.8", default-features = false, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
-] }
-openssl = { version = "0.10" }
-ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
-redis = { version = "0.23", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
-] }
-# Important: align the rustls version with reqwest rustls dependency
-# When using client certificate authentication, reqwest will use the
-# native-tls crate to create an Identity; this will be different backend
-# implementations depending on the operating system. On linux, it will
-# use a vendored version of openssl
-reqwest = { version = "0.11.22", features = [
-  "json",
-  "multipart",
-  "native-tls",
-  "rustls-tls",
-  "stream",
-  "blocking",
-] }
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-serde = { version = "1.0", features = ["derive"] }
+num-bigint-dig = { version = "0.8", default-features = false }
+openssl = { version = "0.10", default-features = false }
+reqwest = { version = "0.11", default-features = false }
+rustls = "0.21"
+serde = "1.0"
 serde_json = "1.0"
-strum = { version = "0.25", features = ["std", "derive", "strum_macros"] }
-tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+strum = { version = "0.25", default-features = false }
 thiserror = "1.0"
 time = "0.3"
 # It is important to keep this version in sync with that of actix-web
 # use `cargo tree -i tokio` to check there is no other version of tokio
-tokio = { version = "1.34", features = ["full"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio = "1.34"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2.4"
-uuid = { version = "1.6", features = ["v4"] }
-webpki-roots = "0.22"
-x509-cert = { version = "0.2", features = ["pem"] }
-x509-parser = { version = "0.15.1", features = ["verify"] }
-zeroize = { version = "1.7", features = ["zeroize_derive", "serde"] }
+uuid = "1.6"
+x509-parser = "0.16"
+zeroize = "1.7"

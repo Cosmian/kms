@@ -1,8 +1,10 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::{kmip_operations::Encrypt, kmip_types::UniqueIdentifier};
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{kmip_operations::Encrypt, kmip_types::UniqueIdentifier},
+    KmsRestClient,
+};
 use zeroize::Zeroizing;
 
 use crate::{

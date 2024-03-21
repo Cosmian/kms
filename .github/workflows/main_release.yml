@@ -5,10 +5,10 @@ on:
   push:
     # any tags, including tags with / like v1.0/alpha
     tags:
-      - '**'
+      - "**"
   schedule:
     # every day at 3 AM
-    - cron: '00 3 * * *'
+    - cron: "00 3 * * *"
 
 jobs:
   cargo-audit:

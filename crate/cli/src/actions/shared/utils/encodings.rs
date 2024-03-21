@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kms_client::cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_types::{CertificateType, KeyFormatType},

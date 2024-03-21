@@ -10,11 +10,9 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_client::cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_kms_server::{
-    config::{
-        ClapConfig, DBConfig, HttpConfig, HttpParams, JWEConfig, Jwk, JwtAuthConfig, ServerParams,
-    },
+    config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
     core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
@@ -33,10 +31,6 @@ use crate::{
 // Test auth0 Config
 const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com/";
 const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVVU1FrSVlULW9QMWZrcjQtNnRrciJ9.eyJuaWNrbmFtZSI6InRlY2giLCJuYW1lIjoidGVjaEBjb3NtaWFuLmNvbSIsInBpY3R1cmUiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci81MmZiMzFjOGNjYWQzNDU4MTIzZDRmYWQxNDA4NTRjZj9zPTQ4MCZyPXBnJmQ9aHR0cHMlM0ElMkYlMkZjZG4uYXV0aDAuY29tJTJGYXZhdGFycyUyRnRlLnBuZyIsInVwZGF0ZWRfYXQiOiIyMDIzLTA1LTMwVDA5OjMxOjExLjM4NloiLCJlbWFpbCI6InRlY2hAY29zbWlhbi5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOi8va21zLWNvc21pYW4uZXUuYXV0aDAuY29tLyIsImF1ZCI6IkszaXhldXhuVDVrM0Roa0tocWhiMXpYbjlFNjJGRXdJIiwiaWF0IjoxNjg1NDM5MDc0LCJleHAiOjE2ODU0NzUwNzQsInN1YiI6ImF1dGgwfDYzZDNkM2VhOTNmZjE2NDJjNzdkZjkyOCIsInNpZCI6ImJnVUNuTTNBRjVxMlpaVHFxMTZwclBCMi11Z0NNaUNPIiwibm9uY2UiOiJVRUZWTlZWeVluWTVUbHBwWjJScGNqSmtVMEZ4TmxkUFEwc3dTVGMwWHpaV2RVVmtkVnBEVGxSMldnPT0ifQ.HmU9fFwZ-JjJVlSy_PTei3ys0upeWQbWWiESmKBtRSClGnAXJNCpwuP4Jw7fgKn-8IBf-PYmP1_54u2Rw3RcJFVl7EblVoGMghYxVq5hViGpd00st3VwZmyCwOUz2CE5RBnBAoES4C8xA3zWg6oau0xjFQbC3jNU20eyFYMDewXA8UXCHQrEiQ56ylqSbyqlBbQIWbmOO4m5w2WDkx0bVyyJ893JfIJr_NANEQMJITYo8Mp_iHCyKp7llsfgCt07xN8ZqnsrMsJ15zC1n50bHGrTQisxURS1dpuFXF1hfrxhzogxYMX8CEISjsFgROjPY84GRMmvpYZfyaJbDDql3A";
-const JWE_PRIVATE_KEY_JSON: &str =
-    "{\"kty\": \"OKP\",\"d\": \"MPEVJwdRqGM_qhJOUb5hR0Xr9EvwMLZGnkf-eDj5fU8\",\"use\": \
-     \"enc\",\"crv\": \"X25519\",\"kid\": \"DX3GC+Fx3etxfRJValQNbqaB0gs=\",\"x\": \
-     \"gdF-1TtAjsFqNWr9nwhGUlFG38qrDUqYgcILgtYrpTY\",\"alg\": \"ECDH-ES\"}";
 
 pub fn get_auth0_jwt_config() -> JwtAuthConfig {
     JwtAuthConfig {
@@ -88,7 +82,7 @@ impl TestsContext {
 /// Start a test KMS server in a thread with the default options:
 /// JWT authentication and encrypted database, no TLS
 pub async fn start_default_test_kms_server() -> TestsContext {
-    start_test_server_with_options(9990, false, true, true, false).await
+    start_test_server_with_options(9990, false, true, true).await
 }
 
 /// Start a KMS server in a thread with the given options
@@ -97,17 +91,10 @@ pub async fn start_test_server_with_options(
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
-    use_jwe_encryption: bool,
 ) -> TestsContext {
-    let server_params = generate_server_params(
-        port,
-        use_jwt_token,
-        use_https,
-        use_client_cert,
-        use_jwe_encryption,
-    )
-    .await
-    .unwrap();
+    let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)
+        .await
+        .unwrap();
 
     // Create a (object owner) conf
     let (owner_cli_conf_path, mut owner_cli_conf) = generate_owner_conf(&server_params).unwrap();
@@ -236,14 +223,7 @@ async fn generate_server_params(
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
-    use_jwe_encryption: bool,
 ) -> Result<ServerParams, CliError> {
-    let jwk_private_key: Option<Jwk> = if use_jwe_encryption {
-        Some(JWE_PRIVATE_KEY_JSON.parse().expect("Wrong JWK private key"))
-    } else {
-        None
-    };
-
     // Configure the serveur
     let clap_config = ClapConfig {
         auth: if use_jwt_token {
@@ -283,9 +263,6 @@ async fn generate_server_params(
                 ..Default::default()
             }
         },
-        jwe: JWEConfig {
-            jwk_private_key: jwk_private_key.clone(),
-        },
         ..Default::default()
     };
     ServerParams::try_from(&clap_config)
@@ -322,11 +299,6 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
         },
         ssl_client_pkcs12_password: if server_params.client_cert.is_some() {
             Some("password".to_string())
-        } else {
-            None
-        },
-        jwe_public_key: if server_params.jwe_config.jwk_private_key.is_some() {
-            Some(JWE_PRIVATE_KEY_JSON.to_string())
         } else {
             None
         },

@@ -2,11 +2,15 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cloudproof::reexport::crypto_core::reexport::x509_cert;
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object,
+        kmip_types::{
+            Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        },
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
 use x509_cert::Certificate;

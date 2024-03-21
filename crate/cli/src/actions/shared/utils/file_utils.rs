@@ -5,7 +5,7 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
-use cosmian_kmip::kmip::{
+use cosmian_kms_client::cosmian_kmip::kmip::{
     kmip_objects::Object,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };

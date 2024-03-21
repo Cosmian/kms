@@ -23,22 +23,22 @@ pub async fn test_all_authentications() -> Result<(), CliError> {
     // let us not make other test cases fail
     const PORT: u16 = 9999;
     // plaintext no auth
-    let ctx = start_test_server_with_options(PORT, false, false, false, false).await;
+    let ctx = start_test_server_with_options(PORT, false, false, false).await;
     run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // plaintext token auth
-    let ctx = start_test_server_with_options(PORT, true, false, false, false).await;
+    let ctx = start_test_server_with_options(PORT, true, false, false).await;
     run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // tls token auth
-    let ctx = start_test_server_with_options(PORT, true, true, false, false).await;
+    let ctx = start_test_server_with_options(PORT, true, true, false).await;
     run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // tls client cert auth
-    let ctx = start_test_server_with_options(PORT, false, true, true, false).await;
+    let ctx = start_test_server_with_options(PORT, false, true, true).await;
     run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
