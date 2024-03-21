@@ -7,10 +7,8 @@ use cosmian_kms_client::{
         crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
         kmip::kmip_types::CryptographicAlgorithm,
     },
-    KmsRestClient,
-};
-use cosmian_kms_client::{
     export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+    KmsRestClient,
 };
 
 use crate::{

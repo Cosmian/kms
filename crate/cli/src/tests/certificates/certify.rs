@@ -1,12 +1,14 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, LinkType},
-    ttlv::{deserializer::from_ttlv, TTLV},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object,
+        kmip_types::{Attributes, LinkType},
+        ttlv::{deserializer::from_ttlv, TTLV},
+    },
+    read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
-use cosmian_kms_client::{read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
 use kms_test_server::{start_default_test_kms_server, ONCE};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;

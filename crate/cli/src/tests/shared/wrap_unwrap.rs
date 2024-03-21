@@ -9,11 +9,11 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
-use tempfile::TempDir;
-
 use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
-use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod},
+    read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+};
 use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
 use tempfile::TempDir;
 
