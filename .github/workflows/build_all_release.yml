@@ -129,6 +129,7 @@ jobs:
         set -ex
         cd crate/cli
         cargo build --release
+        ldd ../../target/release/ckms | grep ssl && exit 1
         cd ../server
         cargo build --release
         cd ../..
@@ -160,7 +161,7 @@ jobs:
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
         cd crate/server
-        cargo build --release -p cosmian_kms_server --target x86_64-pc-windows-gnu
+        cargo build --release --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
@@ -172,10 +173,13 @@ jobs:
       distribution: macos-12
       archive-name: macos
       commands: |
-        rustup target add x86_64-apple-darwin
         set -ex
+
+        rustup target add x86_64-apple-darwin
+
         cd crate/cli
         cargo build --release --target x86_64-apple-darwin
+        otool -L ../../target/x86_64-apple-darwin/release/ckms | grep openssl && exit 1
         cd ../server
         cargo build --release --target x86_64-apple-darwin
         cd ../..

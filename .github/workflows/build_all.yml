@@ -23,6 +23,10 @@ jobs:
         cargo build
         cd ../..
 
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
+
         cargo test --workspace -- --nocapture
       artifacts: |
         target/debug/ckms
@@ -42,6 +46,10 @@ jobs:
         cargo build
         cd ../..
 
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
+
         cargo test --workspace -- --nocapture
       artifacts: |
         target/debug/ckms
@@ -60,6 +68,11 @@ jobs:
         cd ../server
         cargo build --features fips
         cd ../..
+
+
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
 
         cargo test --workspace --features fips -- --nocapture
       artifacts: |
@@ -82,6 +95,10 @@ jobs:
         cargo build
         cd ../..
 
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
+
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/debug/ckms
@@ -101,6 +118,10 @@ jobs:
         cd ../server
         cargo build --features fips
         cd ../..
+
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
 
         cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
@@ -123,6 +144,10 @@ jobs:
         cd ../server
         cargo build
         cd ../..
+
+        # Check binaries
+        target/debug/ckms -h
+        target/debug/cosmian_kms_server -h
 
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
