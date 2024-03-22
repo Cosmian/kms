@@ -172,10 +172,9 @@ jobs:
         # build only `ckms`
         cd crate/cli
         cargo build --release --target x86_64-pc-windows-gnu
-        cd ../..
 
         # build pkcs11 provider
-        cd crate/pkcs11
+        cd ../pkcs11
         cargo build --release --target x86_64-pc-windows-gnu
         cd ../..
 
