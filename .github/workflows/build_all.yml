@@ -186,8 +186,8 @@ jobs:
         cargo build --target x86_64-pc-windows-gnu
 
         # build pkcs11 provider
-        cd ../pkcs11
-        cargo build --target x86_64-pc-windows-gnu
+        # cd ../pkcs11
+        # cargo build --target x86_64-pc-windows-gnu
         cd ../..
 
         sudo mkdir -p /usr/local/openssl
