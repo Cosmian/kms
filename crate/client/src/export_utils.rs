@@ -47,7 +47,7 @@ fn get_request(
     )
 }
 
-/// Determine the KeyWrappingSpecification
+/// Determine the `KeyWrappingSpecification`
 fn key_wrapping_specification(
     unwrap: bool,
     wrapping_key_id: Option<&str>,

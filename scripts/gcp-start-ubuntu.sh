@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apt-get update && apt-get install --no-install-recommends -y redis 
+apt-get update && apt-get install --no-install-recommends -y redis
 
 supervisorctl start cosmian_vm_agent
 

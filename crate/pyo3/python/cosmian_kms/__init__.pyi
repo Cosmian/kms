@@ -173,7 +173,7 @@ class KmsClient:
         Removes old keys associated to the access policy from the master keys.
         This will automatically refresh the corresponding user keys.
         This will permanently remove access to old ciphertexts.
-    
+
         Args:
             - `access_policy` (str): describe the keys to renew
             - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
@@ -189,7 +189,7 @@ class KmsClient:
         """
         Remove a specific attribute from a keypair's policy.
         Permanently removes the ability to use this attribute in both encryptions and decryptions.
-        
+
         Note that messages whose encryption policy does not contain any other attributes
         belonging to the dimension of the deleted attribute will be lost.
 

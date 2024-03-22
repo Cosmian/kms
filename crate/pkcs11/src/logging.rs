@@ -8,15 +8,15 @@ use tracing_subscriber::{
 
 static TRACING_INIT: Once = Once::new();
 
-pub fn inititalize_logging(
+pub fn initialize_logging(
     log_name: &str,
     log_home: Option<String>,
     level_filter: Option<LevelFilter>,
 ) {
     TRACING_INIT.call_once(|| {
         init(log_name, log_home, level_filter).unwrap_or_else(|e| {
-            eprintln!("Failed to initialize logging: {}", e);
-        })
+            eprintln!("Failed to initialize logging: {e}");
+        });
     });
 }
 

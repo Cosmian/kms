@@ -14,7 +14,7 @@ pub struct CkmsBackend {
 }
 
 impl CkmsBackend {
-    /// Instantiate a new CkmsBackend using the
+    /// Instantiate a new `CkmsBackend` using the
     pub fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
         Ok(CkmsBackend { kms_client })
     }

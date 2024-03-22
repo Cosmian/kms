@@ -4,8 +4,6 @@ version = "4.13.5"
 edition = "2021"
 
 [lib]
-name = "kms_test_server"
-crate-type = ["rlib", "dylib"]
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib
 doctest = false

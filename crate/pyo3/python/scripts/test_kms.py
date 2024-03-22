@@ -282,7 +282,9 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
 
         # Adding attribute to ordered dimension is not supported
         with self.assertRaises(Exception):
-            await self.client.add_cover_crypt_attribute('Security Level::New', False, self.priv_key_uid)
+            await self.client.add_cover_crypt_attribute(
+                'Security Level::New', False, self.priv_key_uid
+            )
 
         # Encrypt for new and renamed attribute
         message = b'My secret data part 2'
@@ -311,7 +313,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
             rd_user_key_uid,
         )
         self.assertEqual(bytes(plaintext), message)
-        
+
         # Disable attribute "Confidential"
         (
             new_pub_key_uid,
@@ -361,7 +363,10 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
 
         # Removing attribute from ordered dimension is not supported
         with self.assertRaises(Exception):
-            await self.client.remove_cover_crypt_attribute('Security Level::Confidential', self.priv_key_uid)
+            await self.client.remove_cover_crypt_attribute(
+                'Security Level::Confidential', self.priv_key_uid
+            )
+
 
 class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:

@@ -42,7 +42,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     // Add the tags.
     common_attributes.set_tags(tags)?;
 
-    // Differenciating private key and public key attributes to differenciate
+    // Differentiating private key and public key attributes to differentiate
     // public key and private key usage masks on key creation.
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),

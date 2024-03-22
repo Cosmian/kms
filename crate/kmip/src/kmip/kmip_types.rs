@@ -1208,6 +1208,7 @@ pub enum AttributeReference {
 }
 
 impl AttributeReference {
+    #[must_use]
     pub fn tags_reference() -> Self {
         AttributeReference::Vendor(VendorAttributeReference {
             vendor_identification: VENDOR_ID_COSMIAN.to_string(),
