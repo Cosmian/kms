@@ -1,5 +1,5 @@
 [ v3_ca ]
 basicConstraints=CA:TRUE,pathlen:0
-keyUsage=keyCertSign,digitalSignature,cRLSign
+keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
