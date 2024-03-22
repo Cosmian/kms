@@ -21,7 +21,8 @@ Management System** that presents some unique features, such as
   of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 - [Veracrypt](https://veracrypt.fr/en/Home.html) disk encryption support
 
-The KMS has an extensive online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
+The KMS has an extensive
+online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
 Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
@@ -32,10 +33,10 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 - [Quick start](#quick-start)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
-  * [Linux](#linux)
-  * [MacOS](#macos)
-  * [Windows](#windows)
-  * [Build the Docker container](#build-the-docker-container)
+    * [Linux](#linux)
+    * [MacOS](#macos)
+    * [Windows](#windows)
+    * [Build the Docker container](#build-the-docker-container)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
@@ -92,7 +93,16 @@ artifacts do not have this requirement.
 ### Linux
 
 Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
-be sufficient and the builder should find it automatically.
+be sufficient.
+
+You need to have the development packages of openssl installed. On Ubuntu, you can install them
+with:
+
+```sh
+sudo apt install libssl-dev
+```
+
+You may also need to install the `pkg-config` package (on Ubuntu server typically).
 
 ### MacOS
 
