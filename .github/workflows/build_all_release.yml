@@ -21,6 +21,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11        
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -42,6 +44,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11        
+        cargo build --release        
         cd ../..
 
         # Check binaries
@@ -63,6 +67,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
+        cd ../pkcs11                
+        cargo build --release        
         cd ../..
 
         # Check binaries
@@ -86,6 +92,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11        
+        cargo build --release        
         cd ../..
 
         # Check binaries
@@ -108,6 +116,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
+        cd ../pkcs11        
+        cargo build --release        
         cd ../..
 
         # Check binaries
@@ -132,6 +142,8 @@ jobs:
         ldd ../../target/release/ckms | grep ssl && exit 1
         cd ../server
         cargo build --release
+        cd ../pkcs11        
+        cargo build --release        
         cd ../..
 
         # Check binaries
@@ -199,7 +211,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distrib: [ubuntu, rhel]
+        distrib: [ ubuntu, rhel ]
     name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
     secrets: inherit
     with:
