@@ -1,6 +1,6 @@
 [package]
 name = "ckms_pkcs11"
-version = "4.13.4"
+version = "4.13.5"
 edition = "2021"
 
 [lib]
@@ -12,7 +12,9 @@ cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_logger = { path = "../logger" }
 etcetera = "0.8.0"
-native-pkcs11 = { git = "https://github.com/Cosmian/native-pkcs11.git", rev = "402000cef7763e72c82231f069a8dc8bad847ab8", features = ["custom-function-list"] }
+native-pkcs11 = { git = "https://github.com/Cosmian/native-pkcs11.git", rev = "402000cef7763e72c82231f069a8dc8bad847ab8", features = [
+  "custom-function-list",
+] }
 native-pkcs11-traits = { git = "https://github.com/Cosmian/native-pkcs11.git", rev = "402000cef7763e72c82231f069a8dc8bad847ab8" }
 serde_json = { workspace = true }
 sha3 = "0.10.8"

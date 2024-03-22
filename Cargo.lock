@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "ckms_pkcs11"
-version = "4.13.4"
+version = "4.13.5"
 dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
@@ -2220,23 +2220,16 @@ dependencies = [
 
 [[package]]
 name = "kms_test_server"
-version = "4.13.4"
+version = "4.13.5"
 dependencies = [
  "actix-server",
- "assert_cmd",
  "base64 0.21.7",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "etcetera",
- "regex",
  "serde_json",
- "thiserror",
  "tokio",
  "tracing",
- "tracing-error",
- "tracing-subscriber",
- "zeroize",
 ]
 
 [[package]]
