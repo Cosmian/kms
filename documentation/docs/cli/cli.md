@@ -42,7 +42,7 @@ configuration of the KMS.
 - `verified_cert` contains the verified PEM TLS certificate used for certificate
   pinning
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
-  when connecting to a KMS using a client-side sencrypted database
+  when connecting to a KMS using a client-side encrypted database
 
 Here is an example configuration with TLS authentication and a client-side encrypted
 database:

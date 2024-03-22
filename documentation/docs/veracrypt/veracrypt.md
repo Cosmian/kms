@@ -12,23 +12,21 @@ encrypt and decrypt volumes.
 
 Go to Veracrypt `Settings > Security Tokens` and use the `Select Library...`
 button to select the Cosmian KMS PKCS#11 library for your operating system.
-Then cliek `OK`
+Then click `OK`.
 
 ![Veracrypt PKCS#11 library](images/Veracrypt-library-loading.png)
 
 ## Configuring access to the KMS
 
-The PKCS##11 provider library uses the same configuration file as the
-[CLI](../cli/cli.md#configuration).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md#configuration).
 
-Authentication of the machine to the KMS is likely to be done using a PKCS#12
-file. The path to the PKCS#12 file and its password should be set in the
-configuration file.
+Authentication of the machine to the KMS is likely to be done using a PKCS#12 file.
+The path to the PKCS#12 file and its password should be set in the configuration file.
+
 The `Common Name` of the certificate in the PKCS#12 file will be used as the
 username to authenticate the machine to the KMS and fetch the corresponding key.
 
-See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to
-learn how to configure the KMS to use certificate authentication (please note that the KMS cans
+See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to learn how to configure the KMS to use certificate authentication (please note that the KMS can
 also manage the machines certificates).
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
@@ -100,7 +98,7 @@ ckms access-rights revoke <MACHINE_CN> <KEY_ID> get
 ckms sym keys revoke <KEY_ID>
 ```
 
-*Note*: a revoked key can never be re-used.
+_Note_: a revoked key can never be re-used.
 
 ## Rotating a key
 
