@@ -21,7 +21,7 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
-        cd ../pkcs11        
+        cd ../pkcs11
         cargo build --release
         cd ../..
 
@@ -45,8 +45,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
-        cd ../pkcs11        
-        cargo build --release        
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -69,8 +69,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
-        cd ../pkcs11                
-        cargo build --release        
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -95,8 +95,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
-        cd ../pkcs11        
-        cargo build --release        
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -120,8 +120,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
-        cd ../pkcs11        
-        cargo build --release        
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -147,8 +147,8 @@ jobs:
         ldd ../../target/release/ckms | grep ssl && exit 1
         cd ../server
         cargo build --release
-        cd ../pkcs11        
-        cargo build --release        
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -173,7 +173,7 @@ jobs:
         cd crate/cli
         cargo build --release --target x86_64-pc-windows-gnu
         cd ../..
-        
+
         # build pkcs11 provider
         cd crate/pkcs11
         cargo build --release --target x86_64-pc-windows-gnu
@@ -226,7 +226,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distrib: [ ubuntu, rhel ]
+        distrib: [ubuntu, rhel]
     name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
     secrets: inherit
     with:
