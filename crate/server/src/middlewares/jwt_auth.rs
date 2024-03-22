@@ -18,16 +18,16 @@ use futures::{
 };
 use tracing::{debug, error, trace};
 
-use crate::middlewares::jwt::JwtConfig;
+use crate::{error::KmsError, middlewares::jwt::JwtConfig};
 
 #[derive(Clone)]
 pub struct JwtAuth {
-    jwt_config: Option<Arc<JwtConfig>>,
+    jwt_config: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(jwt_config: Option<Arc<JwtConfig>>) -> Self {
+    pub fn new(jwt_config: Option<Arc<Vec<JwtConfig>>>) -> Self {
         Self { jwt_config }
     }
 }
@@ -54,7 +54,7 @@ where
 
 pub struct JwtAuthMiddleware<S> {
     service: Rc<S>,
-    jwt_config: Option<Arc<JwtConfig>>,
+    jwt_config: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
@@ -102,10 +102,20 @@ where
             .unwrap_or_default();
         trace!("Checking JWT identity: {identity:?}");
 
-        // decode the JWT
-        let private_claim = jwt_config
-            .decode_bearer_header(&identity)
-            .map(|claim| claim.email);
+        // try to decode the JWT until it's working for one of the configured identity providers
+        let mut private_claim: Result<Option<String>, KmsError> = Ok(None);
+        for idp_config in jwt_config.iter() {
+            match idp_config.decode_bearer_header(&identity) {
+                Ok(claim) => {
+                    private_claim = Ok(claim.email);
+                    break;
+                }
+                Err(error) => {
+                    private_claim = Err(error);
+                    continue;
+                }
+            }
+        }
 
         let srv = Rc::<S>::clone(&self.service);
         let jwt_config = jwt_config.clone();
@@ -130,11 +140,21 @@ where
 
         match private_claim {
             Err(_) => Box::pin(async move {
-                jwt_config.jwks.refresh().await?;
+                // Refresh jwks
+                jwt_config[0].jwks.refresh().await?;
 
-                let private_claim = jwt_config
-                    .decode_bearer_header(&identity)
-                    .map(|claim| claim.email);
+                for idp_config in jwt_config.iter() {
+                    match idp_config.decode_bearer_header(&identity) {
+                        Ok(claim) => {
+                            private_claim = Ok(claim.email);
+                            break;
+                        }
+                        Err(error) => {
+                            private_claim = Err(error);
+                            continue;
+                        }
+                    }
+                }
 
                 match private_claim {
                     Err(e) => {
