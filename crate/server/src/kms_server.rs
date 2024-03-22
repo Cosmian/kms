@@ -185,33 +185,38 @@ pub async fn prepare_kms_server(
     let google_cse_jwks = enable_google_cse.then_some(google_cse::list_jwks_uri());
 
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config, jwks_manager) = if let Some(jwt_issuer_uri) =
-        &kms_server.params.jwt_issuer_uri
-    {
-        // Prepare all the needed URIs
-        let jwks_uri = JwtAuthConfig::uri(jwt_issuer_uri, kms_server.params.jwks_uri.as_deref());
-        let uris = google_cse_jwks.map_or_else(
-            || vec![jwks_uri.clone()],
-            |mut google_uris| {
-                google_uris.push(jwks_uri.clone());
-                google_uris
-            },
-        );
+    let (use_jwt_auth, jwt_config, jwks_manager) =
+        if let Some(jwt_config) = &kms_server.params.jwt_config {
+            // Prepare all the needed URIs from all the configured Identity Providers
+            let mut all_jwks_uris = Vec::new();
+            for idp_config in jwt_config {
+                let idp_jwks_uri =
+                    JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, Some(&idp_config.jwks_uri));
+                all_jwks_uris.push(idp_jwks_uri)
+            }
+            // Add the one from google is cse is enabled
+            if enable_google_cse {
+                if let Some(google_cse_jwks) = google_cse_jwks {
+                    all_jwks_uris.extend(google_cse_jwks)
+                }
+            }
 
-        let jwks_manager = Arc::new(JwksManager::new(uris).await?);
+            let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
 
-        (
-            true,
-            Some(Arc::new(JwtConfig {
-                jwt_issuer_uri: jwt_issuer_uri.clone(),
-                jwks: jwks_manager.clone(),
-                jwt_audience: kms_server.params.jwt_audience.clone(),
-            })),
-            Some(jwks_manager),
-        )
-    } else {
-        (false, None, None)
-    };
+            let mut jwt_configs = Vec::new();
+            for idp_config in jwt_config {
+                let jwt_config = JwtConfig {
+                    jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
+                    jwks: jwks_manager.clone(),
+                    jwt_audience: Some(idp_config.jwt_audience.clone()),
+                };
+                jwt_configs.push(jwt_config)
+            }
+
+            (true, Some(Arc::new(jwt_configs)), Some(jwks_manager))
+        } else {
+            (false, None, None)
+        };
 
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.client_cert.is_some();
