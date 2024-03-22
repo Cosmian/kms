@@ -1,1 +1,1 @@
-This crate provides usefull utilities to test the clients.
+This crate provides useful utilities to test the clients.

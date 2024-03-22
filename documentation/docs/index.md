@@ -20,34 +20,34 @@ and an application-level encrypted database indexed with Findex.
     ```sh
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
     ```
-    
+
     Check the Cosmian KMS server version
-    
+
     ```sh
     curl http://localhost:9998/version
     ```
 
     Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.13.5/).
 
-<!-- TOC -->
+<!-- toc -->
 
-* [Business source](#business-source)
-* [KMIP 2.1 API](#kmip-21-api)
-* [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
-* [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-* [FIPS Mode](#fips-mode)
-* [PKCS11 provider support for Veracrypt](#pkcs11-provider-support-for-veracrypt)
-* [State-of-the-art authentication](#state-of-the-art-authentication)
-* [High-availability and databases](#high-availability-and-databases)
-* [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
-* [Support for object tagging](#support-for-object-tagging)
-* [Command line interface client](#command-line-interface-client)
-* [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-* [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-* [Comprehensive inline help](#comprehensive-inline-help)
-* [Using a TOML configuration file](#using-a-toml-configuration-file)
+- [Public Source Code](#public-source-code)
+- [KMIP 2.1 API](#kmip-21-api)
+- [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
+- [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
+- [FIPS Mode](#fips-mode)
+- [PKCS11 provider support for Veracrypt](#pkcs11-provider-support-for-veracrypt)
+- [State-of-the-art authentication](#state-of-the-art-authentication)
+- [High-availability and databases](#high-availability-and-databases)
+- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+- [Support for object tagging](#support-for-object-tagging)
+- [Command line interface client](#command-line-interface-client)
+- [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+- [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
+- [Comprehensive inline help](#comprehensive-inline-help)
+- [TOML configuration file](#toml-configuration-file)
 
-<!-- TOC -->
+<!-- tocstop -->
 
 #### Public Source Code
 

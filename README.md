@@ -1,4 +1,4 @@
-<h1>Cosmian KMS</h1>
+# Cosmian KMS
 
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg?branch=main)
 
@@ -21,35 +21,33 @@ Management System** that presents some unique features, such as
   of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 - [Veracrypt](https://veracrypt.fr/en/Home.html) disk encryption support
 
-The KMS has an extensive online [documentation](https://docs.cosmian.
-com/cosmian_key_management_system/)
+The KMS has an extensive online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
 Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
 Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
-<!-- TOC -->
+<!-- toc -->
 
-* [Quick start](#quick-start)
-* [Repository content](#repository-content)
-* [Building the KMS](#building-the-kms)
-    * [Linux](#linux)
-    * [MacOS](#macos)
-    * [Windows](#windows)
-    * [Build the Docker container](#build-the-docker-container)
-* [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
-* [Server parameters](#server-parameters)
-* [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-* [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
-* [GCP Images Correspondence](#gcp-images-correspondence)
-* [Releases](#releases)
+- [Quick start](#quick-start)
+- [Repository content](#repository-content)
+- [Building the KMS](#building-the-kms)
+  * [Linux](#linux)
+  * [MacOS](#macos)
+  * [Windows](#windows)
+  * [Build the Docker container](#build-the-docker-container)
+- [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
+- [Server parameters](#server-parameters)
+- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+- [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+- [GCP Images Correspondence](#gcp-images-correspondence)
+- [Releases](#releases)
 
-<!-- TOC -->
+<!-- tocstop -->
 
 ## Quick start
 
-Pre-built
-binaries [are available](https://package.cosmian.com/kms/https://package.cosmian.com/kms/4.13.5/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.13.5/)
 for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -91,12 +89,12 @@ from the project root.
 In addition, the KMS server must be built against a local installation of OpenSSL 3. Other
 artifacts do not have this requirement.
 
-#### Linux
+### Linux
 
 Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
 be sufficient and the builder should find it automatically.
 
-#### MacOS
+### MacOS
 
 Install OpenSSL 3 with Homebrew:
 
@@ -107,7 +105,7 @@ brew install openssl@3
 The builder should find it automatically; if not, you can set the `OPENSSL_DIR` environment variable
 to the OpenSSL installation directory.
 
-#### Windows
+### Windows
 
 1. Install Visual Studio Community with the C++ workload and clang support.
 2. Install Strawberry Perl.
