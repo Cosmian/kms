@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::Locate,
     kmip_types::{Attributes, KeyFormatType},
 };
-use cosmian_kms_client::{batch_export_objects, export_object, ClientConf, KmsClient};
+use cosmian_kms_client::{batch_export_objects, ClientConf, KmsClient};
 use native_pkcs11_traits::DataObject;
 use sha3::Digest;
 use zeroize::{Zeroize, Zeroizing};
@@ -39,7 +39,9 @@ impl DataObject for Pkcs11DataObject {
     }
 
     fn data_hash(&self) -> Vec<u8> {
-        // create a SHA3-256 object
+        // This is a hash of key material which may be leaked by the application
+        // We need pre-image and collision resistance.
+        // => use a cryptographic SHA3-256 hash
         let mut hasher = sha3::Sha3_256::new();
         hasher.update(
             self.value
@@ -115,39 +117,39 @@ pub(crate) async fn get_pkcs11_keys_async(
     Ok(results)
 }
 
-async fn export_key(
-    kms_client: &KmsClient,
-    tags: &[String],
-) -> Result<Pkcs11DataObject, Pkcs11Error> {
-    let id = serde_json::to_string(&tags)?;
-    let unwrap = true;
-    let wrapping_key_id = None;
-    let allow_revoked = false;
-    let (object, attributes) = export_object(
-        kms_client,
-        &id,
-        unwrap,
-        wrapping_key_id,
-        allow_revoked,
-        Some(KeyFormatType::Raw),
-    )
-    .await?;
-
-    let key_bytes = object.key_block()?.key_bytes()?;
-
-    let other_tags = attributes
-        .unwrap_or_default()
-        .get_tags()
-        .into_iter()
-        .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
-        .collect::<Vec<String>>()
-        .join(",");
-
-    Ok(Pkcs11DataObject {
-        value: RwLock::from(key_bytes),
-        label: other_tags,
-    })
-}
+// async fn export_key(
+//     kms_client: &KmsClient,
+//     tags: &[String],
+// ) -> Result<Pkcs11DataObject, Pkcs11Error> {
+//     let id = serde_json::to_string(&tags)?;
+//     let unwrap = true;
+//     let wrapping_key_id = None;
+//     let allow_revoked = false;
+//     let (object, attributes) = export_object(
+//         kms_client,
+//         &id,
+//         unwrap,
+//         wrapping_key_id,
+//         allow_revoked,
+//         Some(KeyFormatType::Raw),
+//     )
+//     .await?;
+//
+//     let key_bytes = object.key_block()?.key_bytes()?;
+//
+//     let other_tags = attributes
+//         .unwrap_or_default()
+//         .get_tags()
+//         .into_iter()
+//         .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
+//         .collect::<Vec<String>>()
+//         .join(",");
+//
+//     Ok(Pkcs11DataObject {
+//         value: RwLock::from(key_bytes),
+//         label: other_tags,
+//     })
+// }
 
 async fn locate_keys(kms_client: &KmsClient, tags: &[String]) -> Result<Vec<String>, Pkcs11Error> {
     let mut attributes = Attributes::default();

@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg?branch=main)
 
-Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key
+Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
 Management System** that presents some unique features, such as
 
 - the ability to run in a public cloud - or any zero-trust environment - using application-level
@@ -21,30 +21,47 @@ Management System** that presents some unique features, such as
   of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 - [Veracrypt](https://veracrypt.fr/en/Home.html) disk encryption support
 
-The KMS has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
-and is also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you
-started quickly.
+The KMS has an extensive online [documentation](https://docs.cosmian.
+com/cosmian_key_management_system/)
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
 Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
-Keys can be wrapped and unwrapped using ECIES or RFC5649.
+Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 <!-- TOC -->
 
+* [Quick start](#quick-start)
 * [Repository content](#repository-content)
 * [Building the KMS](#building-the-kms)
     * [Linux](#linux)
     * [MacOS](#macos)
     * [Windows](#windows)
-    * [Cargo build](#cargo-build)
     * [Build the Docker container](#build-the-docker-container)
-* [Releases](#releases)
 * [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 * [Server parameters](#server-parameters)
 * [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
 * [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+* [GCP Images Correspondence](#gcp-images-correspondence)
+* [Releases](#releases)
 
 <!-- TOC -->
+
+## Quick start
+
+Pre-built
+binaries [are available](https://package.cosmian.com/kms/https://package.cosmian.com/kms/4.13.5/)
+for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
+available in your path (see "building the KMS" below for details); other binaries do not have this
+requirement.
+
+Using Docker, to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
+inside the container, simply run the following command:
+
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
+```
+
+See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 
 ## Repository content
 

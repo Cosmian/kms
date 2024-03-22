@@ -101,12 +101,11 @@ impl EncryptAction {
             .context("The encrypted data are empty")?;
 
         // Write the encrypted data
-        Ok(
-            if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-                write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?
-            } else {
-                write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?
-            },
-        )
+        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
+            write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?
+        } else {
+            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?
+        }
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ use cosmian_kms_client::{import_object, KmsClient};
 use kms_test_server::{start_default_test_kms_server, ONCE};
 use native_pkcs11_traits::Backend;
 
-use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_client::get_pkcs11_keys_async};
+use crate::{backend::CkmsBackend, error::Pkcs11Error, pkcs_11_data_object::get_pkcs11_keys_async};
 
 #[tokio::test]
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
@@ -43,7 +43,7 @@ fn test_backend() -> Result<(), Pkcs11Error> {
         ctx.owner_client_conf.clone()
     });
 
-    let backend = CkmsBackend::instantiate_from_client_conf(owner_client_conf)?;
+    let backend = CkmsBackend::instantiate(owner_client_conf.initialize_kms_client()?)?;
     let data_objects = backend.find_all_data_objects()?;
     assert_eq!(data_objects.len(), 2);
     let mut labels = data_objects

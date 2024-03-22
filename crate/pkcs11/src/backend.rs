@@ -1,36 +1,22 @@
 use std::sync::Arc;
 
-use cosmian_kms_client::{ClientConf, KmsClient};
+use cosmian_kms_client::KmsClient;
 use native_pkcs11_traits::{
     Backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, SearchOptions,
     SignatureAlgorithm,
 };
 use tracing::trace;
-use zeroize::Zeroizing;
 
-use crate::{
-    error::Pkcs11Error,
-    kms_client::{get_kms_client, get_pkcs11_keys},
-};
+use crate::{error::Pkcs11Error, pkcs_11_data_object::get_pkcs11_keys};
 
 pub struct CkmsBackend {
     kms_client: KmsClient,
 }
 
 impl CkmsBackend {
-    /// Instantiate a new CkmsBackend using the `kms.json` file in the local default directory.
-    pub fn instantiate() -> Result<Self, Pkcs11Error> {
-        Ok(CkmsBackend {
-            kms_client: get_kms_client()?,
-        })
-    }
-
-    /// Instantiate a new CkmsBackend using the provided `ClientConf`.
-    #[allow(dead_code)]
-    pub fn instantiate_from_client_conf(client_conf: ClientConf) -> Result<Self, Pkcs11Error> {
-        Ok(CkmsBackend {
-            kms_client: client_conf.initialize_kms_client()?,
-        })
+    /// Instantiate a new CkmsBackend using the
+    pub fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
+        Ok(CkmsBackend { kms_client })
     }
 }
 
@@ -104,13 +90,13 @@ impl Backend for CkmsBackend {
         label: Option<&str>,
     ) -> native_pkcs11_traits::Result<Arc<dyn PrivateKey>> {
         trace!("generate_key: {:?}, {:?}", algorithm, label);
-        Ok(Arc::new(PrivateKeyImpl {}))
+        Ok(Arc::new(EmptyPrivateKeyImpl {}))
     }
 }
 
-struct PrivateKeyImpl {}
+struct EmptyPrivateKeyImpl;
 
-impl PrivateKey for PrivateKeyImpl {
+impl PrivateKey for EmptyPrivateKeyImpl {
     fn public_key_hash(&self) -> Vec<u8> {
         vec![]
     }
@@ -132,48 +118,4 @@ impl PrivateKey for PrivateKeyImpl {
     fn algorithm(&self) -> KeyAlgorithm {
         KeyAlgorithm::Rsa
     }
-}
-
-struct TestDataObjectVol1 {}
-
-impl DataObject for TestDataObjectVol1 {
-    fn value(&self) -> Zeroizing<Vec<u8>> {
-        Zeroizing::new(vec![1, 2, 3, 4])
-    }
-
-    fn application(&self) -> std::ffi::CString {
-        std::ffi::CString::new("TestApp").unwrap()
-    }
-
-    fn data_hash(&self) -> Vec<u8> {
-        vec![5, 6, 7, 8]
-    }
-
-    fn label(&self) -> String {
-        "vol1".to_string()
-    }
-
-    fn delete(&self) {}
-}
-
-struct TestDataObjectVol2 {}
-
-impl DataObject for TestDataObjectVol2 {
-    fn value(&self) -> Zeroizing<Vec<u8>> {
-        Zeroizing::new(vec![4, 5, 6, 7])
-    }
-
-    fn application(&self) -> std::ffi::CString {
-        std::ffi::CString::new("TestApp").unwrap()
-    }
-
-    fn data_hash(&self) -> Vec<u8> {
-        vec![7, 8, 9, 0]
-    }
-
-    fn label(&self) -> String {
-        "vol2".to_string()
-    }
-
-    fn delete(&self) {}
 }

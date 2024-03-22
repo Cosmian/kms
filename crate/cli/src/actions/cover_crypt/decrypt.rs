@@ -99,20 +99,19 @@ impl DecryptAction {
             .try_into()?;
 
         // Write the decrypted files
-        Ok(
-            if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-                write_bulk_decrypted_data(
-                    &metadata_and_cleartext.plaintext,
-                    &self.input_files,
-                    self.output_file.as_ref(),
-                )?
-            } else {
-                write_single_decrypted_data(
-                    &metadata_and_cleartext.plaintext,
-                    &self.input_files[0],
-                    self.output_file.as_ref(),
-                )?
-            },
-        )
+        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
+            write_bulk_decrypted_data(
+                &metadata_and_cleartext.plaintext,
+                &self.input_files,
+                self.output_file.as_ref(),
+            )?
+        } else {
+            write_single_decrypted_data(
+                &metadata_and_cleartext.plaintext,
+                &self.input_files[0],
+                self.output_file.as_ref(),
+            )?
+        }
+        Ok(())
     }
 }

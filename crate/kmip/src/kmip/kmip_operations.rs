@@ -634,29 +634,19 @@ impl Export {
 impl From<String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Self::new(
-            UniqueIdentifier::TextString(uid.to_string()),
-            false,
-            None,
-            None,
-        )
+        Self::new(UniqueIdentifier::TextString(uid), false, None, None)
     }
 }
 impl From<&String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::new(UniqueIdentifier::TextString(uid.clone()), false, None, None)
+        Self::from(uid.to_string())
     }
 }
 impl From<&str> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::new(
-            UniqueIdentifier::TextString(uid.to_string()),
-            false,
-            None,
-            None,
-        )
+        Self::from(uid.to_string())
     }
 }
 
