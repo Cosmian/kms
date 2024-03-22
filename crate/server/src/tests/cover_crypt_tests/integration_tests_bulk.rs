@@ -15,7 +15,7 @@ use crate::{result::KResult, tests::test_utils};
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_utils::log_init("trace,hyper=info,reqwest=info");
 
-    let app = test_utils::test_app().await;
+    let app = test_utils::test_app(None).await;
 
     let mut policy = Policy::new();
     policy.add_dimension(DimensionBuilder::new(

@@ -265,7 +265,8 @@ pub async fn prepare_kms_server(
                 .wrap(Cors::permissive())
                 .service(google_cse::get_status)
                 .service(google_cse::wrap)
-                .service(google_cse::unwrap);
+                .service(google_cse::unwrap)
+                .service(google_cse::private_key_sign);
             app = app.service(google_cse_scope);
         }
 

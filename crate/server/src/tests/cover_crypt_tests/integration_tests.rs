@@ -31,7 +31,7 @@ use crate::{
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // log_init("cosmian_kms_server=info");
-    let app = test_utils::test_app().await;
+    let app = test_utils::test_app(None).await;
 
     let mut policy = Policy::new();
     policy.add_dimension(DimensionBuilder::new(

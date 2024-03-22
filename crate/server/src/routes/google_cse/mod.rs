@@ -11,7 +11,7 @@ use tracing::{debug, info, trace};
 use crate::{error::KmsError, result::KResult, KMSServer};
 
 mod jwt;
-mod operations;
+pub mod operations;
 
 pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
@@ -99,6 +99,33 @@ pub async fn unwrap(
     let cse_config = cse_config.into_inner();
 
     match operations::unwrap(req_http, unwrap_request, &cse_config, &kms)
+        .await
+        .map(Json)
+    {
+        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+        Err(e) => CseErrorReply::from(e).into(),
+    }
+}
+
+/// Unwraps a wrapped private key and then signs the digest provided by the client.
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/private-key-sign)
+#[post("/privatekeysign")]
+pub async fn private_key_sign(
+    req_http: HttpRequest,
+    unwrap_request: Json<operations::PrivateKeySignRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
+) -> HttpResponse {
+    info!("POST /google_cse/privatekeysign");
+
+    // unwrap all calls parameters
+    let private_key_sign_request = unwrap_request.into_inner();
+    trace!("private_key_sign_request: {private_key_sign_request:?}");
+    let kms = kms.into_inner();
+    let cse_config = cse_config.into_inner();
+
+    match operations::private_key_sign(req_http, private_key_sign_request, &cse_config, &kms)
         .await
         .map(Json)
     {

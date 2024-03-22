@@ -52,7 +52,7 @@ const ENCRYPTED_DATA: &str = r#"{
 async fn decrypt_data_test() -> KResult<()> {
     // log_init("cosmian_kms_server=info");
 
-    let app = test_utils::test_app().await;
+    let app = test_utils::test_app(None).await;
 
     let pem = pem::parse(RSA_PRIVATE_KEY.as_bytes())
         .map_err(|e| kms_error!(format!("cannot parse RSA private key: {}", e)))?;
