@@ -80,7 +80,7 @@ Select the key to use to mount the volume and click `OK`
 ## Mounting a Veracrypt volume using the CLI
 
 When mounting a Veracrypt volume using the CLI, use the `-k` option followed by
-`token::/slot/1/file/vol1` where `vol1` is the other tag chosen to identify the key in the KMS.
+`token://slot/1/file/vol1` where `vol1` is the other tag chosen to identify the key in the KMS.
 
 ## Revoking the access to a key
 
