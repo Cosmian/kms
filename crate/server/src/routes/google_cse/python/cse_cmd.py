@@ -16,6 +16,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12, pkcs7
 from cryptography import x509
 
+# eco
+import google.auth
+from google.auth.transport.requests import Request
+
 CSE_CMD = 'cse'
 WRAP_EXT = 'wrap'
 
@@ -29,7 +33,7 @@ class CseCmd:
         self.cmd_mapping = {}
         self.add_keypair_cmds(self.subparsers)
         self.add_identity_cmds(self.subparsers)
-        self.add_composite_cmds(self.subparsers)
+        # self.add_composite_cmds(self.subparsers)
         return
 
     def add_keypair_cmds(self, parser):
@@ -226,7 +230,7 @@ class CseCmd:
         )
 
         delete_identity_parser = sub_sub_parsers.add_parser(
-            'delete_identity', help='delete cse identity for email/alias'
+            'delete_identity', help='delete cse keypair for email/alias'
         )
         self._add_common_args(delete_identity_parser)
         delete_identity_parser.add_argument(
@@ -344,6 +348,7 @@ class CseCmd:
                 .list(userId=user_id)
                 .execute()
             )
+            print(f'results: {results}')
 
             keypairs = results.get('cseKeyPairs', [])
             pp = pprint.PrettyPrinter(indent=4)
@@ -389,12 +394,14 @@ class CseCmd:
 
         email_kpid_dict = {}
 
+        print(f'wrapped_key_files: {wrapped_key_files}')
+        print(f'p7_cert_files: {p7_cert_files}')
         for email, key_file in email_key_file_map.items():
             if not email in email_cert_file_map:
                 print(f'skipping {email}, missing cert file')
                 continue
 
-            print(f'Processing user:{email}')
+            print(f'Processing user: {email}')
 
             try:
                 with open(key_file, 'r') as kf, open(
@@ -418,8 +425,16 @@ class CseCmd:
                         ],
                     }
 
-                    # print(key_pair_info)
+                    print(f'key_pair_info: {key_pair_info}')
+                    # print(f"Creating keypair for KACLS: {kacls_url}")
                     service = self._setup_service(args.creds, email)
+                    print('gmail service OK')
+
+                    # print("test")
+                    # keypairs = service.users().settings().cse().keypairs().create(
+                    #     userId=email, body=key_pair_info).execute()
+                    # print(f"keypairs: {keypairs}")
+                    # print("test")
                     results = (
                         service.users()
                         .settings()
@@ -430,6 +445,7 @@ class CseCmd:
                     )
 
                     print(results)
+                    print(f'Keypair created for {email}')
 
                     email_kpid_dict[email] = results['keyPairId']
             except Exception as exc:
@@ -463,6 +479,8 @@ class CseCmd:
         identity = {'primaryKeyPairId': kp_id, 'emailAddress': kp_email}
 
         try:
+            print(f'Creating identity for user: {email}')
+
             service = self._setup_service(args.creds, email)
             results = (
                 service.users()
@@ -474,6 +492,7 @@ class CseCmd:
             )
 
             print(results)
+            print(f'Identity created for {email}')
         except Exception as exc:
             print(exc)
 
@@ -527,7 +546,7 @@ class CseCmd:
                        Ex: user1@example.com
           args.kpemail: the email alias for which identity will be deleted.
                         Currently, it has to be same as the userid (until we have
-                        sendas support).
+                        send as support).
 
         Returns:
           Prints the deleted identity info to screen
@@ -762,18 +781,53 @@ class CseCmd:
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    argument_parser = argparse.ArgumentParser(
         sys.argv[0], formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     if len(sys.argv) == 1:
-        parser.print_help(sys.stderr)
+        argument_parser.print_help(sys.stderr)
         sys.exit(1)
 
-    cse_cmd = CseCmd(parser)
-    args = parser.parse_args()
+    cse_cmd = CseCmd(argument_parser)
+    args = argument_parser.parse_args()
     cse_cmd.process_cmd(args)
 
 
+def ecse_gen_token():
+    # Path to your service account key file
+    service_account_key_file = (
+        '/home/manu/Downloads/bright-arc-384008-d1e0804504ed.json'
+    )
+    service_account_key_file = (
+        '/home/manu/Downloads/google-idp-for-cse-service-account.json'
+    )
+
+    # Scopes required for the JWT token
+    scopes = [
+        'https://www.googleapis.com/auth/gmail.settings.basic',
+        'https://www.googleapis.com/auth/gmail.settings.sharing',
+        'https://www.googleapis.com/auth/gmail.readonly',
+    ]
+
+    # Generate JWT token
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_key_file, scopes=scopes
+    )
+
+    jwt_token = credentials._make_authorization_grant_assertion()
+    print(jwt_token)
+
+    # Obtain access token
+    request = Request()
+    credentials.refresh(request)
+
+    # Access token
+    access_token = credentials.token
+
+    print('Access Token:', access_token)
+
+
 if __name__ == '__main__':
+    # ecse_gen_token()
     main()

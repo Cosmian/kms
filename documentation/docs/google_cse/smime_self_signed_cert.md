@@ -74,6 +74,11 @@ openssl req -new -key blue.key -out blue.csr
 openssl x509 -req -in blue.csr -CA int.crt -CAkey int.key -CAcreateserial -out blue.crt -days 3650
 ```
 
+### CA root custom imported
+
+Run generate.sh
+insert fullchain.pem (not reversed_fullchain.pem)
+
 ### Import wrapped private key
 
 ### blue@cosmian.com
@@ -91,11 +96,15 @@ The key d3ff9f5b-df76-4ef9-b5a7-dba6928dae38 of type SymmetricKey was exported t
 base64 -w 0 wrapped_key
 QO5OMoSUlP2jp08zh2W1oQqldnFg6faCp+1i4EA2G5mu/Dwz0EI+9cj+mxF+LxJ2Tl2W1jhT8eitz2X5U0T2j4GorqGCUBTHGslLkTK7k/ZazxZLh7DXXxomL6pVCMIhb24p30TUZjlWR2LwDzy3SrCOVkYi25E1rUBNTZd96GEnEHx76bU9hS4HpasRfeCGSEyXtkJpNrlBCDfiXFG2lkdSxEIbqysdeLrfBw4OscQSlR5ycVqnLWg4uk0vn5OgnEqLGxR/CzZGeL+zn8Os+JkJmD4Dr6kDeyF7TQFB1ElQkFfPGYg0KdrIQzGpOnLQIqwbAPXV5J0aTvP7QzOybEiYt5NqbQUR848WHvsc6/0zz9Dr6Scdq6xNWyxIIErZxjQ/uxm4KmdddqYO+hxzfigcXAm44dRrSXEIilkmG8ZlQGEWJzflBetFDlhjnKFPD1Zbh8tBkLN8y55AFRZQghuGaNNrwIiUknjfwIww8Sn504631ltivph2wx6BEhynFEEqynqy6j0nvXGmzLQUzVmvuQLCZiRLaKr3hngzeiiX4DibpGLXXGNxsfkVQZlHHEmT85fGncCvcoOlef41Zdg5grKquhq15/cDlSODHR7yqmd8skScbyK21gKsC59lxq/+6hJDE34eEdNTq6cEsK/OXhjxhXGaYnAENvDYmBaaV3PF3zaFvQpyxNdwMXhCWAsxhMyk4C7YEZ1d94Uo1ZfdzytQrbCbG7HOh1H6VeQ6Y5ypUDjeqYBHvWg8bLPrsWrg6Ocv6I7EZbPHA/G9W90iXy9Oju07aqXEGeOjfGkcS30hgFDHxPo+mrbCGFTIejbDpd+LLdCcDIpbl3t12f/ESs3brk3u4JM0ApxwCewZ31p+q1qYnE4oDyWNeCZQhejc7q62d1STUSDbwoFBOaDZ6Hx1HBic
 
+python cse_cmd.py insert_keypair --creds ~/Downloads/bright-arc-384008-d1e0804504ed.json --inkeydir wrapped_key_blue --incertdir ../../../../../cli/test_data/certificates/csr
+
+python cse_cmd.py delete_identity --creds ~/Downloads/google-idp-for-cse-service-account.json --userid blue@cosmian.com --kpemail blue@cosmian.com
+
+python cse_cmd.py insert_identity --creds ~/Downloads/google-idp-for-cse-service-account.json --userid blue@cosmian.com --kpid "ANe1BmjphQl56zGNU2EOYGPXcyCfjX-yQ_RJqYfC0aBIluHVpLb4cW0" --kpemail blue@cosmian.com
+
 ### red@cosmian.com
 
 ./ckms certificates import -f pem -t "google_cse_red" ../../crate/cli/test_data/certificates/csr/red.pem
 The certificate in the PEM file was imported with id: d177a57a-60a9-40ec-9923-7a3a07ba42c3
 Tags:
     - google_cse_red
-
-    

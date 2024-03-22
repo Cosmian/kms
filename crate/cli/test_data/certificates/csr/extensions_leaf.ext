@@ -5,7 +5,4 @@ x509_extensions = v3_req
 [ v3_req ]
 keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
 extendedKeyUsage=emailProtection
-subjectAltName = @alt_names
-
-[alt_names]
-email = blue@cosmian.com
+crlDistributionPoints=URI:http://cse.example.com/crl.pem
