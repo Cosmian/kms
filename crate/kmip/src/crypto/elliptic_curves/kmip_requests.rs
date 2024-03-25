@@ -79,7 +79,7 @@ fn build_mask_from_curve(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 ///
-/// TODO - Discrimine between EC, ECDH and ECDSA.
+/// TODO - Discriminate between EC, ECDH and ECDSA.
 fn build_algorithm_from_curve(
     curve: RecommendedCurve,
 ) -> Result<CryptographicAlgorithm, KmipError> {
@@ -135,7 +135,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
 
-    // Differenciating private key and public key attributes to differenciate
+    // Differentiating private key and public key attributes to differentiate
     // public key and private key usage masks on key creation.
     let public_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),

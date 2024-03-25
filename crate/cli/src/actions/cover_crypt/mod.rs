@@ -1,10 +1,5 @@
-pub(crate) mod decrypt;
-pub(crate) mod encrypt;
-pub(crate) mod keys;
-pub(crate) mod policy;
-
 use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use crate::{
     actions::cover_crypt::{
@@ -12,6 +7,11 @@ use crate::{
     },
     error::CliError,
 };
+
+pub(crate) mod decrypt;
+pub(crate) mod encrypt;
+pub(crate) mod keys;
+pub(crate) mod policy;
 
 /// Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]
@@ -25,7 +25,7 @@ pub enum CovercryptCommands {
 }
 
 impl CovercryptCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Policy(command) => command.process(kms_rest_client).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,

@@ -488,7 +488,7 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use crate::kmip::kmip_data_structures::KeyMaterial;
     #[cfg(not(feature = "fips"))]
-    use crate::openssl::pad_be_bytes;
+    use crate::pad_be_bytes;
     use crate::{
         kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve},
         openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},

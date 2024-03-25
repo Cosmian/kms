@@ -24,6 +24,7 @@ repos:
         exclude_types:
           - yaml
           - markdown
+        exclude: documentation/theme_overrides/assets
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.32.2
@@ -37,6 +38,7 @@ repos:
             --disable=MD029,
             --disable=MD041,
             --disable=MD046,
+            --fix,
           ]
         exclude: documentation/docs
 
@@ -65,6 +67,7 @@ repos:
     rev: v1.13.1
     hooks:
       - id: typos
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.3.1

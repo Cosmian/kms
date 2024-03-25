@@ -3,11 +3,10 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{kmip_operations::Decrypt, kmip_types::UniqueIdentifier},
-    KmsRestClient,
+    read_bytes_from_file, KmsClient,
 };
 
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -41,7 +40,7 @@ pub struct DecryptCertificateAction {
 }
 
 impl DecryptCertificateAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         // Read the file to decrypt
         let ciphertext = read_bytes_from_file(&self.input_file)?;
 

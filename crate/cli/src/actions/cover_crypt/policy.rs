@@ -16,13 +16,10 @@ use cosmian_kms_client::{
             ttlv::{deserializer::from_ttlv, TTLV},
         },
     },
-    KmsRestClient,
+    export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file, KmsClient,
 };
 
 use crate::{
-    actions::shared::utils::{
-        export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
-    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -61,7 +58,7 @@ pub enum PolicyCommands {
 }
 
 impl PolicyCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::View(action) => action.run(kms_rest_client).await?,
             Self::Specs(action) => action.run(kms_rest_client).await?,
@@ -148,7 +145,7 @@ async fn recover_policy(
     key_id: Option<&str>,
     key_file: Option<&PathBuf>,
     unwrap: bool,
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
 ) -> Result<Policy, CliError> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
@@ -191,7 +188,7 @@ pub struct SpecsAction {
     policy_specs_file: PathBuf,
 }
 impl SpecsAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -202,7 +199,7 @@ impl SpecsAction {
         .await?;
         let specs: HashMap<String, Vec<String>> = policy.try_into()?;
         // save the policy to the specifications file
-        write_json_object_to_file(&specs, &self.policy_specs_file)
+        Ok(write_json_object_to_file(&specs, &self.policy_specs_file)?)
     }
 }
 
@@ -231,7 +228,7 @@ pub struct BinaryAction {
     policy_binary_file: PathBuf,
 }
 impl BinaryAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -241,7 +238,10 @@ impl BinaryAction {
         )
         .await?;
         // save the policy to the binary file
-        write_json_object_to_file(&policy, &self.policy_binary_file)
+        Ok(write_json_object_to_file(
+            &policy,
+            &self.policy_binary_file,
+        )?)
     }
 }
 
@@ -270,7 +270,7 @@ pub struct ViewAction {
     detailed: bool,
 }
 impl ViewAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -315,7 +315,7 @@ pub struct AddAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl AddAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -375,7 +375,7 @@ pub struct RenameAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RenameAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -427,7 +427,7 @@ pub struct DisableAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl DisableAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -480,7 +480,7 @@ pub struct RemoveAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RemoveAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

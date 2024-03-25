@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request,
-    KmsRestClient,
+    KmsClient,
 };
 
 use crate::{
@@ -64,7 +64,7 @@ pub struct CreateMasterKeyPairAction {
 }
 
 impl CreateMasterKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Parse the json policy file
         let policy = if let Some(specs_file) = &self.policy_specifications_file {
             policy_from_json_file(specs_file)?

@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg?branch=main)
 
-Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key
+Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
 Management System** that presents some unique features, such as
 
 - the ability to run in a public cloud - or any zero-trust environment - using application-level
@@ -10,36 +10,33 @@ Management System** that presents some unique features, such as
   see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
 - a JSON KMIP 2.1 compliant interface
 - support for object tagging to easily manage keys and secrets
-- a full-featured command line
+- a full-featured command line and graphical
   interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
 - Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
 - FIPS 140-2 mode gated behind the feature `fips`
-- support of Google Client Side Encryption (CSE)
-- support of Microsoft Double Key Encryption (DKE)
+- out of the box support of
+  [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
+- out of the box support
+  of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
+- [Veracrypt](https://veracrypt.fr/en/Home.html) disk encryption support
 
-It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is
-also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started
-quickly.
+The KMS has an extensive
+online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
 Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
-Keys can be wrapped and unwrapped using ECIES or RFC5649.
-
-## Table of contents
-
-<!-- the TOC is automatically refreshed by the pre-commit hook `markdown-toc` -->
-<!-- unless required, do not edit labels `toc` and `tocstop` -->
+Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 <!-- toc -->
 
+- [Quick start](#quick-start)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
-  * [Linux](#linux)
-  * [MacOS](#macos)
-  * [Windows](#windows)
-  * [Cargo build](#cargo-build)
-  * [Build the Docker container](#build-the-docker-container)
+    * [Linux](#linux)
+    * [MacOS](#macos)
+    * [Windows](#windows)
+    * [Build the Docker container](#build-the-docker-container)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
@@ -48,6 +45,22 @@ Keys can be wrapped and unwrapped using ECIES or RFC5649.
 - [Releases](#releases)
 
 <!-- tocstop -->
+
+## Quick start
+
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.13.5/)
+for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
+available in your path (see "building the KMS" below for details); other binaries do not have this
+requirement.
+
+Using Docker, to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
+inside the container, simply run the following command:
+
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
+```
+
+See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 
 ## Repository content
 
@@ -70,14 +83,26 @@ directory.
 
 ## Building the KMS
 
-The KMS must be built against a local installation of OpenSSL 3. This is required to support FIPS
-mode.
+To avoid the *additive feature* issues, the main artifacts - the CLI, the KMS server and the
+PKCS11 provider - should directly be built using `cargo build --release`within their own crate, not
+from the project root.
+
+In addition, the KMS server must be built against a local installation of OpenSSL 3. Other
+artifacts do not have this requirement.
 
 ### Linux
 
 Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
-be
-sufficient and the builder should find it automatically.
+be sufficient.
+
+You need to have the development packages of openssl installed. On Ubuntu, you can install them
+with:
+
+```sh
+sudo apt install libssl-dev
+```
+
+You may also need to install the `pkg-config` package (on Ubuntu server typically).
 
 ### MacOS
 
@@ -92,13 +117,12 @@ to the OpenSSL installation directory.
 
 ### Windows
 
-Install Visual Studio Community with the C++ workload and clang support.
-Install perl from [Strawberry Perl](http://strawberryperl.com/).
+1. Install Visual Studio Community with the C++ workload and clang support.
+2. Install Strawberry Perl.
+3. Install `vcpkg` following
+   [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 
-Install `vcpkg` following
-[these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
-
-Then install OpenSSL 3:
+4. Then install OpenSSL 3:
 
 ```powershell
 vcpkg.exe install openssl[fips]
@@ -110,15 +134,8 @@ $env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
 where `<vcpkg>` is the path to the vcpkg installation directory,
 and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
-Then add `<vcpkg>\installed\<archi>\bin` to the `PATH` environment variable if you want to run the
-KMS server from the command line.
-
-### Cargo build
-
-```sh
-cargo build --no-default-features
-cargo test --no-default-features
-```
+To run the server from the command line, add `<vcpkg>\installed\<archi>\bin` to the `PATH`
+environment variable.
 
 ### Build the Docker container
 

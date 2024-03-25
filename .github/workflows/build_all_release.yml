@@ -21,6 +21,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -29,6 +31,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   rhel9:
     uses: ./.github/workflows/build_rhel9.yml
@@ -42,6 +45,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -50,6 +55,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   fips-centos7:
     uses: ./.github/workflows/build_centos7.yml
@@ -63,6 +69,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -72,6 +80,7 @@ jobs:
         /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -86,6 +95,8 @@ jobs:
         cargo build --release
         cd ../server
         cargo build --release
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -94,6 +105,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -108,6 +120,8 @@ jobs:
         cargo build --release --features fips
         cd ../server
         cargo build --release --features fips
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -117,6 +131,7 @@ jobs:
         /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   ubuntu-22:
     uses: ./.github/workflows/build_generic.yml
@@ -132,6 +147,8 @@ jobs:
         ldd ../../target/release/ckms | grep ssl && exit 1
         cd ../server
         cargo build --release
+        cd ../pkcs11
+        cargo build --release
         cd ../..
 
         # Check binaries
@@ -140,6 +157,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   windows:
     uses: ./.github/workflows/build_generic.yml
@@ -154,6 +172,10 @@ jobs:
         # build only `ckms`
         cd crate/cli
         cargo build --release --target x86_64-pc-windows-gnu
+
+        # build pkcs11 provider
+        cd ../pkcs11
+        cargo build --release --target x86_64-pc-windows-gnu
         cd ../..
 
         sudo mkdir -p /usr/local/openssl
@@ -165,6 +187,7 @@ jobs:
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
+        target/x86_64-pc-windows-gnu/release/ckms_pkcs11.dll
 
   mac:
     uses: ./.github/workflows/build_generic.yml
@@ -180,6 +203,8 @@ jobs:
         cd crate/cli
         cargo build --release --target x86_64-apple-darwin
         otool -L ../../target/x86_64-apple-darwin/release/ckms | grep openssl && exit 1
+        cd ../pkcs11
+        cargo build --release --target x86_64-apple-darwin
         cd ../server
         cargo build --release --target x86_64-apple-darwin
         cd ../..
@@ -190,6 +215,7 @@ jobs:
       artifacts: |
         target/x86_64-apple-darwin/release/ckms
         target/x86_64-apple-darwin/release/cosmian_kms_server
+        target/x86_64-apple-darwin/release/libckms_pkcs11.dylib
 
   cosmian_vm:
     needs:

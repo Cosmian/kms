@@ -4,10 +4,10 @@ use std::{array::TryFromSliceError, str::Utf8Error};
 use assert_cmd::cargo::CargoError;
 use cosmian_kms_client::{
     cosmian_kmip::{
-        error::KmipError,
         kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+        KmipError,
     },
-    RestClientError,
+    ClientError,
 };
 use pem::PemError;
 use thiserror::Error;
@@ -84,12 +84,6 @@ impl CliError {
     }
 }
 
-impl From<&KmipError> for CliError {
-    fn from(e: &KmipError) -> Self {
-        Self::KmipError(ErrorReason::Invalid_Attribute, e.to_string())
-    }
-}
-
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
@@ -102,15 +96,15 @@ impl From<der::Error> for CliError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
-    fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
-        Self::Cryptographic(e.to_string())
-    }
-}
-
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
         Self::Conversion(e.to_string())
+    }
+}
+
+impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
+    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
+        Self::InvalidRequest(e.to_string())
     }
 }
 
@@ -129,12 +123,6 @@ impl From<std::io::Error> for CliError {
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
         Self::Conversion(e.to_string())
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::InvalidRequest(e.to_string())
     }
 }
 
@@ -188,8 +176,8 @@ impl From<base64::DecodeError> for CliError {
     }
 }
 
-impl From<RestClientError> for CliError {
-    fn from(e: RestClientError) -> Self {
+impl From<ClientError> for CliError {
+    fn from(e: ClientError) -> Self {
         Self::KmsClientError(e.to_string())
     }
 }

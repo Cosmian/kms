@@ -16,7 +16,7 @@ use crate::{
         },
         secret::SafeBigUint,
     },
-    error::KmipError,
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -25,15 +25,8 @@ use crate::{
             RecommendedCurve,
         },
     },
-    kmip_bail,
-    result::KmipResultHelper,
+    kmip_bail, pad_be_bytes,
 };
-
-pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
-    while bytes.len() != size {
-        bytes.insert(0, 0);
-    }
-}
 
 /// Convert a KMIP Private key to openssl `PKey<Private>`
 ///

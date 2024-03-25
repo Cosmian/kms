@@ -2,7 +2,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     access::{Access, ObjectOperationType},
     cosmian_kmip::kmip::kmip_types::UniqueIdentifier,
-    KmsRestClient,
+    KmsClient,
 };
 
 use crate::error::{result::CliResultHelper, CliError};
@@ -18,7 +18,7 @@ pub enum AccessAction {
 }
 
 impl AccessAction {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Grant(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,
@@ -55,7 +55,7 @@ pub struct GrantAccess {
 }
 
 impl GrantAccess {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
@@ -100,7 +100,7 @@ pub struct RevokeAccess {
 }
 
 impl RevokeAccess {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
@@ -133,7 +133,7 @@ pub struct ListAccessesGranted {
 }
 
 impl ListAccessesGranted {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let accesses = kms_rest_client
             .list_access(&self.object_uid)
             .await
@@ -158,7 +158,7 @@ impl ListAccessesGranted {
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let objects = kms_rest_client
             .list_owned_objects()
             .await
@@ -180,7 +180,7 @@ impl ListOwnedObjects {
 pub struct ListAccessRightsObtained;
 
 impl ListAccessRightsObtained {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let objects = kms_rest_client
             .list_access_rights_obtained()
             .await

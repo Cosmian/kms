@@ -1,15 +1,16 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use super::SUB_COMMAND;
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
-            recover_cmd_logs, start_default_test_kms_server, ONCE,
+            recover_cmd_logs,
         },
         PROG_NAME,
     },
@@ -56,16 +57,16 @@ pub fn create_cc_master_key_pair(
 #[tokio::test]
 pub async fn test_create_master_key_pair() -> Result<(), CliError> {
     // from specs
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     //from binary
     create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-binary",
         "test_data/policy.bin",
         &[],
@@ -75,10 +76,10 @@ pub async fn test_create_master_key_pair() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let err = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/notfound.json",
         &[],
@@ -88,7 +89,7 @@ pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
     assert!(err.to_string().contains("ERROR: could not open the file"));
 
     let err = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-binary",
         "test_data/policy.bad",
         &[],

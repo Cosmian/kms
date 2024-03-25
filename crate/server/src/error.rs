@@ -4,8 +4,8 @@ use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_kmip::{
-    error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    KmipError,
 };
 use redis::ErrorKind;
 use thiserror::Error;

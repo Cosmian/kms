@@ -3,7 +3,7 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::{
         attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
     },
-    KmsRestClient,
+    KmsClient,
 };
 
 use crate::{
@@ -38,7 +38,7 @@ pub struct RekeyAction {
 }
 
 impl RekeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -97,7 +97,7 @@ pub struct PruneAction {
 }
 
 impl PruneAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

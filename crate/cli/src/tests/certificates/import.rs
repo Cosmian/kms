@@ -1,16 +1,14 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use crate::{
     actions::certificates::CertificateInputFormat,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{
-            extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
-            ONCE,
-        },
+        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -87,11 +85,11 @@ pub fn import_certificate(
 #[tokio::test]
 pub async fn test_certificate_import_different_format() -> Result<(), CliError> {
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // import as TTLV JSON
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/exported_certificate_ttlv.json",
         CertificateInputFormat::JsonTtlv,
@@ -106,7 +104,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
 
     // import as PEM
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/ca.crt",
         CertificateInputFormat::Pem,
@@ -121,7 +119,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
 
     // import a chain
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/mozilla_IncludedRootsPEM.txt",
         CertificateInputFormat::Chain,
@@ -136,7 +134,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
 
     // import a PKCS12
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/p12/output.p12",
         CertificateInputFormat::Pkcs12,

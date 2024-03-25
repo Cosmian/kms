@@ -21,6 +21,8 @@ jobs:
         cargo build
         cd ../server
         cargo build
+        cd ../pkcs11
+        cargo build
         cd ../..
 
         # Check binaries
@@ -31,6 +33,7 @@ jobs:
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   rhel9-tests:
     uses: ./.github/workflows/build_rhel9.yml
@@ -44,6 +47,8 @@ jobs:
         cargo build
         cd ../server
         cargo build
+        cd ../pkcs11
+        cargo build
         cd ../..
 
         # Check binaries
@@ -54,6 +59,7 @@ jobs:
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   fips-centos7-test:
     uses: ./.github/workflows/build_centos7.yml
@@ -67,8 +73,9 @@ jobs:
         cargo build --features fips
         cd ../server
         cargo build --features fips
+        cd ../pkcs11
+        cargo build
         cd ../..
-
 
         # Check binaries
         target/debug/ckms -h
@@ -79,6 +86,7 @@ jobs:
         /usr/local/openssl
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   ubuntu-20-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -93,6 +101,8 @@ jobs:
         cargo build
         cd ../server
         cargo build
+        cd ../pkcs11
+        cargo build
         cd ../..
 
         # Check binaries
@@ -103,6 +113,7 @@ jobs:
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   fips-ubuntu-20-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -117,6 +128,8 @@ jobs:
         cargo build --features fips
         cd ../server
         cargo build --features fips
+        cd ../pkcs11
+        cargo build
         cd ../..
 
         # Check binaries
@@ -128,6 +141,7 @@ jobs:
         /usr/local/openssl
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   ubuntu-22-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -143,6 +157,8 @@ jobs:
         ldd ../../target/debug/ckms | grep ssl && exit 1
         cd ../server
         cargo build
+        cd ../pkcs11
+        cargo build
         cd ../..
 
         # Check binaries
@@ -153,6 +169,7 @@ jobs:
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
+        target/debug/libckms_pkcs11.so
 
   windows-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -167,6 +184,12 @@ jobs:
         # build only `ckms`
         cd crate/cli
         cargo build --target x86_64-pc-windows-gnu
+
+        # The `pkcs11` crate build FAILS on debug with:
+        # /usr/bin/x86_64-w64-mingw32-ld: error: export ordinal too large: 85394
+        # build pkcs11 provider
+        # cd ../pkcs11
+        # cargo build --target x86_64-pc-windows-gnu
         cd ../..
 
         sudo mkdir -p /usr/local/openssl
@@ -178,6 +201,7 @@ jobs:
       artifacts: |
         target/x86_64-pc-windows-gnu/debug/ckms.exe
         target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
+        # target/x86_64-pc-windows-gnu/debug/ckms_pkcs11.dll
 
   mac-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -193,6 +217,8 @@ jobs:
         cd crate/cli
         cargo build --target x86_64-apple-darwin
         otool -L ../../target/x86_64-apple-darwin/debug/ckms | grep openssl && exit 1
+        cd ../pkcs11
+        cargo build --target x86_64-apple-darwin
         cd ../server
         cargo build --target x86_64-apple-darwin
         cd ../..
@@ -203,3 +229,4 @@ jobs:
       artifacts: |
         target/x86_64-apple-darwin/debug/ckms
         target/x86_64-apple-darwin/debug/cosmian_kms_server
+        target/x86_64-apple-darwin/debug/libckms_pkcs11.dylib

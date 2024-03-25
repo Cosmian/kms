@@ -37,13 +37,13 @@ pub enum ObjectOperationType {
     Rekey,
 }
 
-impl std::fmt::Debug for ObjectOperationType {
+impl fmt::Debug for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl std::fmt::Display for ObjectOperationType {
+impl fmt::Display for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             Self::Create => "create",
@@ -76,6 +76,7 @@ impl FromStr for ObjectOperationType {
             "decrypt" => Ok(Self::Decrypt),
             "destroy" => Ok(Self::Destroy),
             "encrypt" => Ok(Self::Encrypt),
+            "get_attributes" => Ok(Self::GetAttributes),
             "export" => Ok(Self::Export),
             "get" => Ok(Self::Get),
             "import" => Ok(Self::Import),

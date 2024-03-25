@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -28,18 +29,18 @@ use crate::{
         UserAccessResponse,
     },
     certificate_verifier::{LeafCertificateVerifier, NoVerifier},
-    error::RestClientError,
+    error::ClientError,
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
 /// <https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip>
 #[derive(Clone)]
-pub struct KmsRestClient {
+pub struct KmsClient {
     pub server_url: String,
     client: Client,
 }
 
-impl KmsRestClient {
+impl KmsClient {
     /// This request is used to generate a Certificate object for a public key. This
     /// request supports the certification of a new public key, as well as the
     /// certification of a public key that has already been certified (i.e.,
@@ -67,7 +68,7 @@ impl KmsRestClient {
     /// into the ID Placeholder variable. If the information in the Certificate
     /// Request conflicts with the attributes specified in the Attributes, then the
     /// information in the Certificate Request takes precedence.
-    pub async fn certify(&self, request: Certify) -> Result<CertifyResponse, RestClientError> {
+    pub async fn certify(&self, request: Certify) -> Result<CertifyResponse, ClientError> {
         self.post_ttlv::<Certify, CertifyResponse>(&request).await
     }
 
@@ -81,7 +82,7 @@ impl KmsRestClient {
     /// The server SHALL
     /// copy the Unique Identifier returned by this operation into the ID
     /// Placeholder variable.
-    pub async fn create(&self, request: Create) -> Result<CreateResponse, RestClientError> {
+    pub async fn create(&self, request: Create) -> Result<CreateResponse, ClientError> {
         self.post_ttlv::<Create, CreateResponse>(&request).await
     }
 
@@ -103,7 +104,7 @@ impl KmsRestClient {
     pub async fn create_key_pair(
         &self,
         request: CreateKeyPair,
-    ) -> Result<CreateKeyPairResponse, RestClientError> {
+    ) -> Result<CreateKeyPairResponse, ClientError> {
         self.post_ttlv::<CreateKeyPair, CreateKeyPairResponse>(&request)
             .await
     }
@@ -126,7 +127,7 @@ impl KmsRestClient {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub async fn decrypt(&self, request: Decrypt) -> Result<DecryptResponse, RestClientError> {
+    pub async fn decrypt(&self, request: Decrypt) -> Result<DecryptResponse, ClientError> {
         self.post_ttlv::<Decrypt, DecryptResponse>(&request).await
     }
 
@@ -135,7 +136,7 @@ impl KmsRestClient {
     /// inaccessible. The meta-data for the key material SHALL be retained by
     /// the server.  Objects SHALL only be destroyed if they are in either
     /// Pre-Active or Deactivated state.
-    pub async fn destroy(&self, request: Destroy) -> Result<DestroyResponse, RestClientError> {
+    pub async fn destroy(&self, request: Destroy) -> Result<DestroyResponse, ClientError> {
         self.post_ttlv::<Destroy, DestroyResponse>(&request).await
     }
 
@@ -161,7 +162,7 @@ impl KmsRestClient {
     /// Object used as the key and the result of the encryption operation.
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub async fn encrypt(&self, request: Encrypt) -> Result<EncryptResponse, RestClientError> {
+    pub async fn encrypt(&self, request: Encrypt) -> Result<EncryptResponse, ClientError> {
         self.post_ttlv::<Encrypt, EncryptResponse>(&request).await
     }
 
@@ -173,7 +174,7 @@ impl KmsRestClient {
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations
     /// into the ID Placeholder variable.
-    pub async fn export(&self, request: Export) -> Result<ExportResponse, RestClientError> {
+    pub async fn export(&self, request: Export) -> Result<ExportResponse, ClientError> {
         self.post_ttlv::<Export, ExportResponse>(&request).await
     }
 
@@ -198,7 +199,7 @@ impl KmsRestClient {
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
     /// then using each certificate's Ce
-    pub async fn get(&self, request: Get) -> Result<GetResponse, RestClientError> {
+    pub async fn get(&self, request: Get) -> Result<GetResponse, ClientError> {
         self.post_ttlv::<Get, GetResponse>(&request).await
     }
 
@@ -215,7 +216,7 @@ impl KmsRestClient {
     pub async fn get_attributes(
         &self,
         request: GetAttributes,
-    ) -> Result<GetAttributesResponse, RestClientError> {
+    ) -> Result<GetAttributesResponse, ClientError> {
         self.post_ttlv::<GetAttributes, GetAttributesResponse>(&request)
             .await
     }
@@ -229,7 +230,7 @@ impl KmsRestClient {
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operations into the ID Placeholder variable.
-    pub async fn import(&self, request: Import) -> Result<ImportResponse, RestClientError> {
+    pub async fn import(&self, request: Import) -> Result<ImportResponse, ClientError> {
         self.post_ttlv::<Import, ImportResponse>(&request).await
     }
 
@@ -323,7 +324,7 @@ impl KmsRestClient {
     /// server SHALL NOT return unique identifiers for objects that are archived
     /// unless the Storage Status Mask field includes the Archived Storage
     /// indicator.
-    pub async fn locate(&self, request: Locate) -> Result<LocateResponse, RestClientError> {
+    pub async fn locate(&self, request: Locate) -> Result<LocateResponse, ClientError> {
         self.post_ttlv::<Locate, LocateResponse>(&request).await
     }
 
@@ -355,7 +356,7 @@ impl KmsRestClient {
     pub async fn rekey_keypair(
         &self,
         request: ReKeyKeyPair,
-    ) -> Result<ReKeyKeyPairResponse, RestClientError> {
+    ) -> Result<ReKeyKeyPairResponse, ClientError> {
         self.post_ttlv::<ReKeyKeyPair, ReKeyKeyPairResponse>(&request)
             .await
     }
@@ -372,13 +373,26 @@ impl KmsRestClient {
     /// object. If the revocation reason is neither "key compromise" nor "CA
     /// compromise", the object is placed into the "deactivated" state, and the
     /// Deactivation Date is set to the current date and time.
-    pub async fn revoke(&self, request: Revoke) -> Result<RevokeResponse, RestClientError> {
+    pub async fn revoke(&self, request: Revoke) -> Result<RevokeResponse, ClientError> {
         self.post_ttlv::<Revoke, RevokeResponse>(&request).await
+    }
+
+    /// This operation requests the server to send a message, which is a list of operations,
+    /// to the server.
+    ///The messages in the protocol consist of a message header, one or more batch items
+    /// (which contain OPTIONAL message payloads), and OPTIONAL message extensions.
+    /// The message headers contain fields whose presence is determined
+    /// by the protocol features used (e.g., asynchronous responses).
+    /// The field contents are also determined by whether the message is a request or a response.
+    /// The message payload is determined by the specific operation being requested
+    /// or to which is being replied.
+    pub async fn message(&self, request: Message) -> Result<MessageResponse, ClientError> {
+        self.post_ttlv::<Message, MessageResponse>(&request).await
     }
 
     /// This operation requests the server to create a new database.
     /// The returned secrets could be shared between several users.
-    pub async fn new_database(&self) -> Result<String, RestClientError> {
+    pub async fn new_database(&self) -> Result<String, ClientError> {
         self.post_no_ttlv("/new_database", None::<&()>).await
     }
 
@@ -387,7 +401,7 @@ impl KmsRestClient {
     /// The object uid must be known from the database.
     /// If the user already has access, nothing is done. No error is returned.
     /// The user (owner) can't grant access to himself/herself.
-    pub async fn grant_access(&self, access: Access) -> Result<SuccessResponse, RestClientError> {
+    pub async fn grant_access(&self, access: Access) -> Result<SuccessResponse, ClientError> {
         self.post_no_ttlv("/access/grant", Some(&access)).await
     }
 
@@ -395,19 +409,19 @@ impl KmsRestClient {
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
     /// If the user already has no access, nothing is done. No error is returned.
-    pub async fn revoke_access(&self, access: Access) -> Result<SuccessResponse, RestClientError> {
+    pub async fn revoke_access(&self, access: Access) -> Result<SuccessResponse, ClientError> {
         self.post_no_ttlv("/access/revoke", Some(&access)).await
     }
 
     /// This operation requests the server to list all the granted access on a object
-    pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, RestClientError> {
+    pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, ClientError> {
         self.get_no_ttlv(&format!("/access/list/{uid}"), None::<&()>)
             .await
     }
 
     /// This operation requests the server to list all the objects owned by the current user.
     /// i.e. the objects for which the user has full access
-    pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, RestClientError> {
+    pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, ClientError> {
         self.get_no_ttlv("/access/owned", None::<&()>).await
     }
 
@@ -415,12 +429,12 @@ impl KmsRestClient {
     /// which access rights have been obtained for the current user.
     pub async fn list_access_rights_obtained(
         &self,
-    ) -> Result<Vec<AccessRightsObtainedResponse>, RestClientError> {
+    ) -> Result<Vec<AccessRightsObtainedResponse>, ClientError> {
         self.get_no_ttlv("/access/obtained", None::<&()>).await
     }
 
     /// This operation requests the version of the server
-    pub async fn version(&self) -> Result<String, RestClientError> {
+    pub async fn version(&self) -> Result<String, ClientError> {
         self.get_no_ttlv("/version", None::<&()>).await
     }
 
@@ -435,7 +449,7 @@ impl KmsRestClient {
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
         allowed_tee_tls_cert: Option<Certificate>,
-    ) -> Result<Self, RestClientError> {
+    ) -> Result<Self, ClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
             None => server_url.to_string(),
@@ -497,7 +511,7 @@ impl KmsRestClient {
         &self,
         endpoint: &str,
         data: Option<&O>,
-    ) -> Result<R, RestClientError>
+    ) -> Result<R, ClientError>
     where
         R: serde::de::DeserializeOwned + Sized + 'static,
         O: Serialize,
@@ -515,10 +529,10 @@ impl KmsRestClient {
 
         // process error
         let p = handle_error(endpoint, response).await?;
-        Err(RestClientError::RequestFailed(p))
+        Err(ClientError::RequestFailed(p))
     }
 
-    pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, RestClientError>
+    pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, ClientError>
     where
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
@@ -533,14 +547,14 @@ impl KmsRestClient {
 
         // process error
         let p = handle_error(endpoint, response).await?;
-        Err(RestClientError::RequestFailed(p))
+        Err(ClientError::RequestFailed(p))
     }
 
     pub async fn post_no_ttlv<O, R>(
         &self,
         endpoint: &str,
         data: Option<&O>,
-    ) -> Result<R, RestClientError>
+    ) -> Result<R, ClientError>
     where
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + Serialize + 'static,
@@ -569,10 +583,10 @@ impl KmsRestClient {
 
         // process error
         let p = handle_error(endpoint, response).await?;
-        Err(RestClientError::RequestFailed(p))
+        Err(ClientError::RequestFailed(p))
     }
 
-    pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, RestClientError>
+    pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, ClientError>
     where
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
@@ -597,12 +611,12 @@ impl KmsRestClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
             );
-            return from_ttlv(&ttlv).map_err(|e| RestClientError::ResponseFailed(e.to_string()))
+            return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
         }
 
         // process error
         let p = handle_error(endpoint, response).await?;
-        Err(RestClientError::RequestFailed(p))
+        Err(ClientError::RequestFailed(p))
     }
 }
 
@@ -614,7 +628,7 @@ pub struct ErrorPayload {
 
 /// Some errors are returned by the Middleware without going through our own error manager.
 /// In that case, we make the error clearer here for the client.
-async fn handle_error(endpoint: &str, response: Response) -> Result<String, RestClientError> {
+async fn handle_error(endpoint: &str, response: Response) -> Result<String, ClientError> {
     let status = response.status();
     let text = response.text().await?;
 
@@ -639,7 +653,7 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Rest
 pub fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,
-) -> Result<ClientBuilder, RestClientError> {
+) -> Result<ClientBuilder, ClientError> {
     let mut root_cert_store = rustls::RootCertStore::empty();
 
     let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {

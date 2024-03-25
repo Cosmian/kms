@@ -3,7 +3,7 @@ name = "cosmian_kms_server"
 version = "4.13.5"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 description = "Cosmian Key Management Service"
 
 [[bin]]
@@ -45,13 +45,13 @@ async-trait = "0.1"
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
 cloudproof = { workspace = true }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
@@ -64,19 +64,19 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 lazy_static = "1.4"
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
 ] }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
@@ -85,20 +85,20 @@ redis = { version = "0.23", features = [
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
 reqwest = { workspace = true, features = [
-    "json",
-    "multipart",
-    "native-tls",
-    "stream",
-    "blocking",
+  "json",
+  "multipart",
+  "native-tls",
+  "stream",
+  "blocking",
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.3", default-features = false, features = [
-    "json",
-    "runtime-tokio-native-tls",
-    "mysql",
-    "postgres",
-    "sqlite",
+  "json",
+  "runtime-tokio-native-tls",
+  "mysql",
+  "postgres",
+  "sqlite",
 ] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -117,4 +117,5 @@ actix-http = "3.4"
 pem = "3.0.3"
 
 [build-dependencies]
+actix-http = "3.4"
 time = { workspace = true, features = ["local-offset", "formatting"] }

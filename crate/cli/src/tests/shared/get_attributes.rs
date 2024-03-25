@@ -1,11 +1,11 @@
 use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use serde_json::Value;
 
 use crate::{
     actions::shared::AttributeTag,
-    config::KMS_CLI_CONF_ENV,
     error::{result::CliResultHelper, CliError},
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };

@@ -3,7 +3,7 @@ use cosmian_kms_client::{
         crypto::generic::kmip_requests::build_revoke_key_request,
         kmip::kmip_types::RevocationReason,
     },
-    KmsRestClient,
+    KmsClient,
 };
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub async fn revoke(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {

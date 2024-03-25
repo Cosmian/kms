@@ -15,7 +15,7 @@ use crate::{
         symmetric::rfc5649::rfc5649_unwrap,
         wrap::common::rsa_parameters,
     },
-    error::KmipError,
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
@@ -25,7 +25,6 @@ use crate::{
     },
     kmip_bail,
     openssl::kmip_private_key_to_openssl,
-    result::KmipResultHelper,
 };
 
 /// Unwrap a key using a password

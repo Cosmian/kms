@@ -10,10 +10,10 @@ use cosmian_kms_client::{
             LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
-    KmsRestClient,
+    read_bytes_from_file, KmsClient,
 };
 
-use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
+use crate::error::CliError;
 
 /// Certify a Certificate Signing Request or a Public key to create a X509 certificate.
 ///
@@ -77,7 +77,7 @@ pub struct CertifyAction {
 }
 
 impl CertifyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
             return Err(CliError::Default(
                 "Either a certificate signing request or a public key to certify must be provided"

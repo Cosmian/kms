@@ -14,5 +14,5 @@ crate/cli/*.sqlite
 .idea/
 rustc-ice*.txt
 
-crate/cli/cosmian-kms/sqlite-data
-cosmian-kms/sqlite-data
+# this directory may contain sqlite data when the KMS is launched locally
+**/cosmian-kms/sqlite-data

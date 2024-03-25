@@ -37,6 +37,10 @@ where
 }
 
 impl<T> CliResultHelper<T> for Option<T> {
+    fn reason(self, reason: ErrorReason) -> CliResult<T> {
+        self.ok_or_else(|| CliError::Default(reason.to_string()))
+    }
+
     fn context(self, context: &str) -> CliResult<T> {
         self.ok_or_else(|| CliError::Default(context.to_string()))
     }
@@ -47,9 +51,5 @@ impl<T> CliResultHelper<T> for Option<T> {
         O: FnOnce() -> D,
     {
         self.ok_or_else(|| CliError::Default(format!("{}", op())))
-    }
-
-    fn reason(self, reason: ErrorReason) -> CliResult<T> {
-        self.ok_or_else(|| CliError::Default(reason.to_string()))
     }
 }

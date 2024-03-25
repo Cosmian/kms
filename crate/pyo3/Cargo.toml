@@ -3,7 +3,7 @@ name = "cosmian_kms_python"
 version = "4.13.5"
 authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 
 [lib]
 crate-type = ["cdylib"]

@@ -3,6 +3,8 @@ use thiserror::Error;
 
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
 
+pub mod result;
+
 #[derive(Error, Debug)]
 pub enum KmipError {
     #[error("Invalid KMIP value: {0}: {1}")]

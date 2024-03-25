@@ -1,8 +1,15 @@
-The single server mode uses an embedded SQLite database stored on a filesystem and therefore does not require access to an external database.
+The single server mode uses an embedded SQLite database stored on a filesystem and therefore does
+not require access to an external database.
 
-Although it does not provide high availability through redundancy, this configuration is suitable for production and serving millions of cryptographic objects.  The server will concurrently serve requests on as many threads as available cores to the docker container.
+Although it does not provide high availability through redundancy, this configuration is suitable
+for production and serving millions of cryptographic objects. The server will concurrently serve
+requests on as many threads as available cores to the docker container.
 
-This configuration also supports user encrypted databases, a secure way to store cryptographic objects since database keys are provisioned on every request, and no database key is stored server side. To offer a fully secure solution suitable for deployment in a zero-trust environment such as the cloud, TLS must be enabled on the server, and the memory of the KMS server must also be protected during operation by running the server inside an enclave. Ask Cosmian for details.
+This configuration also supports user encrypted databases, a secure way to store cryptographic
+objects since database keys are provisioned on every request, and no database key is stored server
+side. To offer a fully secure solution suitable for deployment in a zero-trust environment such as
+the cloud, TLS must be enabled on the server, and the memory of the KMS server must also be
+protected during operation by running the server inside an enclave. Ask Cosmian for details.
 
 ### Quick start
 
@@ -12,11 +19,13 @@ To run in single server mode, using the defaults, run the container as follows:
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
 ```
 
-The KMS will be available on `http://localhost:9998`, and the server will store its data inside the container in the `/root/cosmian-kms/sqlite-data` directory.
+The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
+container in the `/root/cosmian-kms/sqlite-data` directory.
 
 ### Persisting data between restarts
 
-To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
+directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
 
 ```sh
 docker run --rm -p 9998:9998 \
@@ -24,9 +33,10 @@ docker run --rm -p 9998:9998 \
   --name kms ghcr.io/cosmian/kms:4.13.5
 ```
 
-### Using user encrypted databases
+### Using client-side encrypted databases
 
-To start the KMS server with user encrypted SQLite databases, pass the `--database-type=sqlite-enc` on start, e.g.
+To start the KMS server with a client-side encrypted SQLite databases, pass the
+`--database-type=sqlite-enc` on start, e.g.
 
 ```sh
 docker run --rm -p 9998:9998 \
@@ -36,7 +46,9 @@ docker run --rm -p 9998:9998 \
 ```
 
 !!! important "Important: encrypted databases must be created first"
-    Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint. The call will return a secret
+
+    Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
+    The call will return a secret
 
     === "ckms"
 
@@ -56,8 +68,10 @@ docker run --rm -p 9998:9998 \
 
     :warning: Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
 
-Once an encrypted database is created, the secret must be passed in every subsequent query to the KMS server.
-Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted databases can be used concurrently on the same KMS server.
+Once an encrypted database is created, the secret must be passed in every subsequent query to the
+KMS server.
+Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
+databases can be used concurrently on the same KMS server.
 
 === "ckms"
 

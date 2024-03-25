@@ -1,5 +1,5 @@
 use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -19,7 +19,7 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct NewDatabaseAction;
 
 impl NewDatabaseAction {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Query the KMS to get a new database
         let token = kms_rest_client
             .new_database()

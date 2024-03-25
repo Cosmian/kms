@@ -11,7 +11,7 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    KmsRestClient,
+    KmsClient,
 };
 use strum::IntoEnumIterator;
 
@@ -76,7 +76,7 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {

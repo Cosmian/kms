@@ -6,12 +6,11 @@ use openssl::{
 use uuid::Uuid;
 
 use crate::{
-    error::KmipError,
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_objects::Object::{self, Certificate},
         kmip_types::{CertificateAttributes, CertificateType},
     },
-    result::KmipResultHelper,
 };
 
 /// Generate a KMIP certificate from an OpenSSL certificate and a unique ID

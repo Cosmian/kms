@@ -12,7 +12,7 @@ use cloudproof_findex::{
 use cosmian_kmip::{
     crypto::symmetric::create_symmetric_key_kmip_object,
     kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration},
-    result::KmipResultHelper,
+    KmipResultHelper,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use redis::aio::ConnectionManager;

@@ -1033,7 +1033,7 @@ Get the KMIP object attributes and tags.
 ### Usage
 `ckms get-attributes [options]`
 ### Arguments
-`--id [-i] <ID>` The key unique identifier of the cryptographic object. If not specified, tags should be specified
+`--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 

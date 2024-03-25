@@ -9,17 +9,12 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    KmsRestClient,
+    import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
+    KmsClient,
 };
 use zeroize::Zeroizing;
 
-use super::utils::objects_from_pem;
-use crate::{
-    actions::shared::utils::{
-        import_object, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    },
-    error::CliError,
-};
+use crate::error::CliError;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum ImportKeyFormat {
@@ -108,7 +103,7 @@ pub struct ImportKeyAction {
 }
 
 impl ImportKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // read the key file
         let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
         let object = match &self.key_format {

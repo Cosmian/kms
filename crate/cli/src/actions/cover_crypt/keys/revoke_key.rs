@@ -1,5 +1,5 @@
 use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use crate::{actions::shared::utils::revoke, cli_bail, error::CliError};
 
@@ -34,7 +34,7 @@ pub struct RevokeKeyAction {
 }
 
 impl RevokeKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

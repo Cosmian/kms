@@ -10,9 +10,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
-    error::KmipError,
+    error::{result::KmipResultHelper, KmipError},
     kmip_bail,
-    result::KmipResultHelper,
 };
 
 /// Derive an initialization vector from recipient public key `Q` and

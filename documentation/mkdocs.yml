@@ -50,7 +50,7 @@ nav:
   - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating users to the server: authentication.md
   - Authorizing users with access rights: authorization.md
-  - The `ckms` command line interface:
+  - The ckms and ckms_gui clients:
       - Getting Started: cli/cli.md
       - User manual: cli/main_commands.md
   - Calling the KMS API: api.md
@@ -81,4 +81,5 @@ nav:
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
   - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
+  - Veracrypt Disk Encryption: veracrypt/veracrypt.md
   - Zeroization: zeroization.md

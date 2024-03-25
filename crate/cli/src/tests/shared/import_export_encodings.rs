@@ -1,18 +1,18 @@
 use std::path::PathBuf;
 
+use cosmian_kms_client::read_bytes_from_file;
+use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
+
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, utils::read_bytes_from_file, ExportKeyFormat},
+    actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     error::CliError,
-    tests::{
-        shared::{export_key, import_key},
-        utils::{start_default_test_kms_server, TestsContext, ONCE},
-    },
+    tests::shared::{export_key, import_key},
 };
 
 #[tokio::test]
 async fn test_import_export_encodings() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     test_pems(
         &ctx,
@@ -60,7 +60,7 @@ fn test_pems(
 ) -> Result<(), CliError> {
     // import the  key
     let key_uid = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         key_file_path,
         Some(ImportKeyFormat::Pem),
@@ -74,7 +74,7 @@ fn test_pems(
     // export the key
     let export_key_file = tempfile::NamedTempFile::new()?;
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &key_uid,
         export_key_file.path().to_str().unwrap(),
@@ -88,7 +88,7 @@ fn test_pems(
     // Get the key
     let get_key_file = tempfile::NamedTempFile::new()?;
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &key_uid,
         get_key_file.path().to_str().unwrap(),

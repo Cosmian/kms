@@ -1,5 +1,5 @@
 use clap::Subcommand;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use self::{
     create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
@@ -30,7 +30,7 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Create(action) => action.run(kms_rest_client).await?,
             Self::Export(action) => action.run(kms_rest_client).await?,

@@ -1,5 +1,5 @@
 use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use crate::{actions::shared::utils::revoke, cli_bail, error::CliError};
 
@@ -30,7 +30,7 @@ pub struct RevokeCertificateAction {
 }
 
 impl RevokeCertificateAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(certificate_id) = &self.certificate_id {
             certificate_id.clone()
         } else if let Some(tags) = &self.tags {
