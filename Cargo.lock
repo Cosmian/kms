@@ -2870,6 +2870,7 @@ dependencies = [
  "once_cell",
  "p256",
  "pkcs1",
+ "pkcs11_module",
  "pkcs11_sys",
  "rand",
  "serde",
