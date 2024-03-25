@@ -32,3 +32,31 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
 
 #[cfg(test)]
 mod tests;
+
+// // Default tracing using syslog or stderr
+// #[cfg(any(not(feature = "custom-function-list"), feature = "local_tests"))]
+// fn enable_tracing() {
+//     let env_filter = EnvFilter::builder()
+//         .with_default_directive(LevelFilter::WARN.into())
+//         .from_env_lossy();
+//     let force_stderr = std::env::var("NATIVE_PKCS11_LOG_STDERR").is_ok();
+//     if !force_stderr {
+//         if let Ok(journald_layer) = tracing_journald::layer() {
+//             _ = Registry::default()
+//                 .with(journald_layer.with_syslog_identifier("native-pkcs11".into()))
+//                 .with(env_filter)
+//                 .with(ErrorLayer::default())
+//                 .try_init();
+//             return;
+//         }
+//     }
+//     _ = Registry::default()
+//         .with(
+//             tracing_subscriber::fmt::layer()
+//                 .with_writer(std::io::stderr)
+//                 .with_span_events(FmtSpan::ENTER),
+//         )
+//         .with(env_filter)
+//         .with(ErrorLayer::default())
+//         .try_init();
+// }
