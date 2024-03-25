@@ -3,7 +3,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::{import_object, KmsClient};
 use kms_test_server::{start_default_test_kms_server, ONCE};
-use native_pkcs11_traits::Backend;
+use pkcs11_module::traits::Backend;
 
 use crate::{backend::CkmsBackend, error::Pkcs11Error, pkcs_11_data_object::get_pkcs11_keys_async};
 

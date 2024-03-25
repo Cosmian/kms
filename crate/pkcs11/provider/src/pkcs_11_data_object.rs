@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, KeyFormatType},
 };
 use cosmian_kms_client::{batch_export_objects, ClientConf, KmsClient};
-use native_pkcs11_traits::DataObject;
+use pkcs11_module::traits::DataObject;
 use sha3::Digest;
 use zeroize::{Zeroize, Zeroizing};
 

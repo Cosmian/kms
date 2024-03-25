@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use cosmian_kms_client::KmsClient;
-use native_pkcs11_traits::{
+use pkcs11_module::traits::{
     Backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, SearchOptions,
-    SignatureAlgorithm,
+    SignatureAlgorithm, Version,
 };
 use tracing::trace;
 
@@ -21,20 +21,47 @@ impl CkmsBackend {
 }
 
 impl Backend for CkmsBackend {
-    fn name(&self) -> String {
-        trace!("name");
-        "Cosmian KMS".to_string()
+    fn token_label(&self) -> [u8; 32] {
+        *b"Cosmian-KMS                     "
+    }
+
+    fn token_manufacturer_id(&self) -> [u8; 32] {
+        *b"Cosmian                         "
+    }
+
+    fn token_model(&self) -> [u8; 16] {
+        *b"software        "
+    }
+
+    fn token_serial_number(&self) -> [u8; 16] {
+        let version = env!("CARGO_PKG_VERSION").as_bytes();
+        let len = version.len().min(16);
+        let mut sn = [0_u8; 16];
+        sn[0..len].copy_from_slice(&version[..len]);
+        sn
+    }
+
+    fn library_description(&self) -> [u8; 32] {
+        *b"Cosmian KMS PKCS#11 provider    "
+    }
+
+    fn library_version(&self) -> Version {
+        let version = env!("CARGO_PKG_VERSION");
+        let mut split = version.split('.');
+        let major = split.next().unwrap_or("0").parse::<u8>().unwrap_or(0);
+        let minor = split.next().unwrap_or("0").parse::<u8>().unwrap_or(0);
+        Version { major, minor }
     }
 
     fn find_certificate(
         &self,
         _query: SearchOptions,
-    ) -> native_pkcs11_traits::Result<Option<Arc<dyn Certificate>>> {
+    ) -> pkcs11_module::traits::Result<Option<Arc<dyn Certificate>>> {
         trace!("find_all_certificates");
         Ok(None)
     }
 
-    fn find_all_certificates(&self) -> native_pkcs11_traits::Result<Vec<Box<dyn Certificate>>> {
+    fn find_all_certificates(&self) -> pkcs11_module::traits::Result<Vec<Box<dyn Certificate>>> {
         trace!("find_all_certificates");
         Ok(vec![])
     }
@@ -42,7 +69,7 @@ impl Backend for CkmsBackend {
     fn find_private_key(
         &self,
         _query: SearchOptions,
-    ) -> native_pkcs11_traits::Result<Option<Arc<dyn PrivateKey>>> {
+    ) -> pkcs11_module::traits::Result<Option<Arc<dyn PrivateKey>>> {
         trace!("find_private_key: {:?}", _query);
         Ok(None)
     }
@@ -50,17 +77,17 @@ impl Backend for CkmsBackend {
     fn find_public_key(
         &self,
         query: SearchOptions,
-    ) -> native_pkcs11_traits::Result<Option<Arc<dyn PublicKey>>> {
+    ) -> pkcs11_module::traits::Result<Option<Arc<dyn PublicKey>>> {
         trace!("find_public_key: {:?}", query);
         Ok(None)
     }
 
-    fn find_all_private_keys(&self) -> native_pkcs11_traits::Result<Vec<Arc<dyn PrivateKey>>> {
+    fn find_all_private_keys(&self) -> pkcs11_module::traits::Result<Vec<Arc<dyn PrivateKey>>> {
         trace!("find_all_private_keys");
         Ok(vec![])
     }
 
-    fn find_all_public_keys(&self) -> native_pkcs11_traits::Result<Vec<Arc<dyn PublicKey>>> {
+    fn find_all_public_keys(&self) -> pkcs11_module::traits::Result<Vec<Arc<dyn PublicKey>>> {
         trace!("find_all_public_keys");
         Ok(vec![])
     }
@@ -68,12 +95,12 @@ impl Backend for CkmsBackend {
     fn find_data_object(
         &self,
         query: SearchOptions,
-    ) -> native_pkcs11_traits::Result<Option<Arc<dyn DataObject>>> {
+    ) -> pkcs11_module::traits::Result<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
         Ok(None)
     }
 
-    fn find_all_data_objects(&self) -> native_pkcs11_traits::Result<Vec<Arc<dyn DataObject>>> {
+    fn find_all_data_objects(&self) -> pkcs11_module::traits::Result<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or("disk-encryption".to_string());
@@ -88,7 +115,7 @@ impl Backend for CkmsBackend {
         &self,
         algorithm: KeyAlgorithm,
         label: Option<&str>,
-    ) -> native_pkcs11_traits::Result<Arc<dyn PrivateKey>> {
+    ) -> pkcs11_module::traits::Result<Arc<dyn PrivateKey>> {
         trace!("generate_key: {:?}, {:?}", algorithm, label);
         Ok(Arc::new(EmptyPrivateKeyImpl {}))
     }
@@ -109,7 +136,7 @@ impl PrivateKey for EmptyPrivateKeyImpl {
         &self,
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
-    ) -> native_pkcs11_traits::Result<Vec<u8>> {
+    ) -> pkcs11_module::traits::Result<Vec<u8>> {
         Ok(vec![])
     }
 
