@@ -185,6 +185,8 @@ jobs:
         cd crate/cli
         cargo build --target x86_64-pc-windows-gnu
 
+        # The `pkcs11` crate build FAILS on debug with:
+        # /usr/bin/x86_64-w64-mingw32-ld: error: export ordinal too large: 85394
         # build pkcs11 provider
         # cd ../pkcs11
         # cargo build --target x86_64-pc-windows-gnu
@@ -199,7 +201,7 @@ jobs:
       artifacts: |
         target/x86_64-pc-windows-gnu/debug/ckms.exe
         target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
-        target/x86_64-pc-windows-gnu/debug/ckms_pkcs11.dll
+        # target/x86_64-pc-windows-gnu/debug/ckms_pkcs11.dll
 
   mac-tests:
     uses: ./.github/workflows/build_generic.yml
