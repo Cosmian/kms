@@ -1,3 +1,8 @@
+// Copyright 2024 Cosmian Tech SAS
+// Changes made to the original code are
+// licensed under the Business Source License version 1.1.
+//
+//Original code:
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
