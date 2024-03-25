@@ -61,7 +61,7 @@ jobs:
             kms_path: .
             os: macos-12
           - archive_name: windows_tests
-            kms_path: .
+            kms_path: debug
             os: windows-2019
 
     steps:

@@ -5,9 +5,11 @@
 Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
 Management System** that presents some unique features, such as
 
-- the ability to run in a public cloud - or any zero-trust environment - using application-level
-  encryption (
-  see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
+- the ability to confidentially run in a public cloud - or any zero-trust environment -
+  using
+  Cosmian VM (see [Cosmian VM](https://docs.cosmian.com/compute/cosmian_vm/overview/))
+  and application-level encryption
+  (see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
 - a JSON KMIP 2.1 compliant interface
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line and graphical
@@ -19,7 +21,8 @@ Management System** that presents some unique features, such as
   [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
 - out of the box support
   of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
-- [Veracrypt](https://veracrypt.fr/en/Home.html) disk encryption support
+- [Veracrypt](https://veracrypt.fr/en/Home.html)
+  and [LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) disk encryption support
 
 The KMS has an extensive
 online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)

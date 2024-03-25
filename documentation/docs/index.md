@@ -36,7 +36,7 @@ and an application-level encrypted database indexed with Findex.
 - [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
 - [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
 - [FIPS Mode](#fips-mode)
-- [PKCS11 provider support for Veracrypt](#pkcs11-provider-support-for-veracrypt)
+- [Veracrypt and LUKS disk encryption support](#veracrypt-and-luks-disk-encryption-support)
 - [State-of-the-art authentication](#state-of-the-art-authentication)
 - [High-availability and databases](#high-availability-and-databases)
 - [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
@@ -86,11 +86,11 @@ In this mode, the server is only built with FIPS 140-2 validated cryptographic l
 cryptographic
 operations are performed in a FIPS 140-2 validated mode.
 
-#### PKCS11 provider support for Veracrypt
+#### Veracrypt and LUKS disk encryption support
 
-The KMS server can be used as a PKCS#11 provider for Veracrypt and provide keys on the fly to mount
-encrypted volumes.
-Check the [Veracrypt Disk Encryption](./veracrypt/veracrypt.md) page for details.
+The KMS server can provide keys on the fly to mount LUKS and Veracrypt encrypted volumes using
+its PKCS#11 module. With LUKS, the decryption key never leaves the KMS server.
+Check the [Veracrypt](./pkcs11/veracrypt.md) and [LUKS](./pkcs11/luks.md) pages for details.
 
 #### State-of-the-art authentication
 

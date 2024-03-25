@@ -34,7 +34,7 @@ brew install --cask homebrew/cask-fonts/font-noto-mono
 cd documentation
 python3 -m venv venv
 
-source venv/bin/activate 
+source venv/bin/activate
 
 pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
 mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-material mkdocs-mermaid2-plugin \
@@ -50,7 +50,7 @@ cd documentation/
 
 # Run the server on all interfaces
 source venv/bin/activate
-./venv/bin/mkdocs serve
+mkdocs serve -a 0.0.0.0:8003
 ```
 
 Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`

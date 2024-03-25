@@ -13,6 +13,10 @@ pub enum Pkcs11Error {
     #[error("Conversion error: {0}")]
     Conversion(String),
 
+    // PKCS11 Module errors
+    #[error("PKCS#11 error: {0}")]
+    Pkcs11(String),
+
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
@@ -51,6 +55,18 @@ impl From<KmipError> for Pkcs11Error {
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
         }
+    }
+}
+
+impl From<cosmian_pkcs11_module::MError> for Pkcs11Error {
+    fn from(e: cosmian_pkcs11_module::MError) -> Self {
+        Self::Pkcs11(e.to_string())
+    }
+}
+
+impl From<Pkcs11Error> for cosmian_pkcs11_module::MError {
+    fn from(e: Pkcs11Error) -> Self {
+        Self::Backend(Box::new(e))
     }
 }
 
@@ -99,6 +115,12 @@ impl From<std::fmt::Error> for Pkcs11Error {
 impl From<Box<dyn std::error::Error>> for Pkcs11Error {
     fn from(e: Box<dyn std::error::Error>) -> Self {
         Self::Default(e.to_string())
+    }
+}
+
+impl From<x509_cert::der::Error> for Pkcs11Error {
+    fn from(e: x509_cert::der::Error) -> Self {
+        Self::Conversion(e.to_string())
     }
 }
 

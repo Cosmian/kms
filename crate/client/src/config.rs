@@ -6,10 +6,14 @@ use std::{
 };
 
 use der::{DecodePem, Encode};
+#[cfg(target_os = "linux")]
+use log::info;
 use rustls::Certificate;
 use serde::{Deserialize, Serialize};
 use x509_cert::Certificate as X509Certificate;
 
+#[cfg(target_os = "linux")]
+use crate::client_bail;
 use crate::{
     error::{result::RestClientResultHelper, ClientError},
     KmsClient,
@@ -43,7 +47,7 @@ fn get_home_folder() -> Option<PathBuf> {
 }
 
 /// Returns the default configuration path
-///  or an error if the home folder cannot be determined
+///  or an error if the path cannot be determined
 fn get_default_conf_path() -> Result<PathBuf, ClientError> {
     get_home_folder()
         .ok_or_else(|| ClientError::NotSupported("unable to determine the home folder".to_owned()))
@@ -171,13 +175,47 @@ impl ClientConf {
             // Error if the specified file does not exist
             if !conf_path.exists() {
                 return Err(ClientError::NotSupported(format!(
-                    "Configuration file {conf_path:?} from env var does not exist"
+                    "Configuration file {conf_path:?} specified in {KMS_CLI_CONF_ENV} environment \
+                     variable does not exist"
                 )))
             }
             return Ok(conf_path)
         }
 
-        get_default_conf_path()
+        let user_conf_path = get_default_conf_path();
+
+        #[cfg(not(target_os = "linux"))]
+        return user_conf_path;
+
+        #[cfg(target_os = "linux")]
+        match user_conf_path {
+            Err(_) => {
+                // no user home, this may be the system attempting a load
+                let p = PathBuf::from("/etc/cosmian/kms.json");
+                if p.exists() {
+                    info!("No active user, using configuration at {p:?}");
+                    return Ok(p)
+                }
+                client_bail!("no configuration found at {p:?}, and no current user, bailing out");
+            }
+            Ok(p) => {
+                // the user home exists, if there is no conf file, check /etc/cosmian/kms.json
+                if !p.exists() {
+                    let sp = PathBuf::from("/etc/cosmian/kms.json");
+                    if sp.exists() {
+                        info!(
+                            "Linux user conf path is at: {p:?} but is empty, using {sp:?} instead"
+                        );
+                        return Ok(sp)
+                    }
+                    info!(
+                        "Linux user conf path is at: {p:?} and will be initialized with a default \
+                         value"
+                    );
+                }
+                Ok(p)
+            }
+        }
     }
 
     pub fn save(&self, conf_path: &PathBuf) -> Result<(), ClientError> {

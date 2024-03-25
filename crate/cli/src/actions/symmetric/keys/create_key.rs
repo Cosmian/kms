@@ -117,7 +117,6 @@ impl CreateKeyAction {
                     .with_context(|| "failed creating the key")?
                     .unique_identifier
                     .to_string()
-                    .context("The server did not return the key uid as a string")?
             }
         };
 

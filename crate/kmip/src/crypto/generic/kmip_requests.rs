@@ -8,8 +8,7 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
-            KeyWrapType, RevocationReason, UniqueIdentifier,
+            Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
         },
     },
 };
@@ -40,8 +39,7 @@ pub fn build_encryption_request(
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_algorithm: Option<CryptographicAlgorithm>,
-    hashing_algorithm: Option<HashingAlgorithm>,
+    cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = Zeroizing::from(if encryption_policy.is_some() {
         DataToEncrypt {
@@ -53,12 +51,6 @@ pub fn build_encryption_request(
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?
     } else {
         plaintext
-    });
-
-    let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
-        cryptographic_algorithm: Some(ca),
-        hashing_algorithm,
-        ..Default::default()
     });
 
     Ok(Encrypt {
@@ -86,15 +78,8 @@ pub fn build_decryption_request(
     ciphertext: Vec<u8>,
     authenticated_tag: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_algorithm: Option<CryptographicAlgorithm>,
-    hashing_algorithm: Option<HashingAlgorithm>,
+    cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Decrypt {
-    let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
-        cryptographic_algorithm: Some(ca),
-        hashing_algorithm,
-        ..Default::default()
-    });
-
     Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             key_unique_identifier.to_owned(),

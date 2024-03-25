@@ -162,7 +162,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // convert the certificate to a KMIP object
     let (unique_id, object) = openssl_certificate_to_kmip(&certificate)?;
-    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+    let uid = match request.unique_identifier.to_string() {
         uid if uid.is_empty() => unique_id,
         uid => uid,
     };
@@ -319,7 +319,7 @@ async fn process_private_key(
                 .get_or_insert(Box::default()),
         );
 
-        let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        let uid = match request.unique_identifier.to_string() {
             uid if uid.is_empty() => Uuid::new_v4().to_string(),
             uid => uid,
         };

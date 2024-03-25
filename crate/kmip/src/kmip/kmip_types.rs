@@ -1969,15 +1969,6 @@ impl UniqueIdentifier {
             _ => None,
         }
     }
-
-    /// Returns the value as a string if it is a `TextString`
-    #[must_use]
-    pub fn to_string(&self) -> Option<String> {
-        match self {
-            UniqueIdentifier::TextString(s) => Some(s.clone()),
-            _ => None,
-        }
-    }
 }
 
 /// This field contains the version number of the protocol, ensuring that

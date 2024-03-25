@@ -87,5 +87,7 @@ nav:
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
   - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
-  - Veracrypt Disk Encryption: veracrypt/veracrypt.md
+  - Disk Encryption:
+      - Veracrypt: pkcs11/veracrypt.md
+      - LUKS: pkcs11/luks.md
   - Zeroization: zeroization.md
