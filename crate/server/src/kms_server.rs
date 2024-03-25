@@ -208,7 +208,7 @@ pub async fn prepare_kms_server(
                 let jwt_config = JwtConfig {
                     jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                     jwks: jwks_manager.clone(),
-                    jwt_audience: Some(idp_config.jwt_audience.clone()),
+                    jwt_audience: idp_config.jwt_audience.clone(),
                 };
                 jwt_configs.push(jwt_config)
             }

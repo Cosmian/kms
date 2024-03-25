@@ -9,7 +9,7 @@ use crate::{config::ClapConfig, kms_bail, result::KResult};
 pub struct IdpConfig {
     pub jwt_issuer_uri: String,
     pub jwks_uri: String,
-    pub jwt_audience: String,
+    pub jwt_audience: Option<String>,
 }
 
 /// This structure is the context used by the server
@@ -96,7 +96,20 @@ impl ServerParams {
                     let idp_config = IdpConfig {
                         jwt_issuer_uri: jwt_issuer_uri[index].clone(),
                         jwks_uri: jwks_uri[index].clone(),
-                        jwt_audience: jwt_audience[index].clone(),
+                        jwt_audience: Some(jwt_audience[index].clone()),
+                    };
+                    idp_configs.push(idp_config)
+                }
+                Some(idp_configs)
+            }
+            (Some(jwt_issuer_uri), Some(jwks_uri), None) => {
+                let min_length = jwt_issuer_uri.len().min(jwks_uri.len());
+                let mut idp_configs = Vec::with_capacity(min_length);
+                for index in 0..min_length {
+                    let idp_config = IdpConfig {
+                        jwt_issuer_uri: jwt_issuer_uri[index].clone(),
+                        jwks_uri: jwks_uri[index].clone(),
+                        jwt_audience: None,
                     };
                     idp_configs.push(idp_config)
                 }
