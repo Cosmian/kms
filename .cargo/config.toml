@@ -33,3 +33,5 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 # see https://github.com/rust-lang/rust/issues/53014#issuecomment-646149774
 [target.aarch64-pc-windows-msvc]
 rustflags = "-Zshare-generics=off"
+[target.x86_64-pc-windows-msvc]
+rustflags = "-Zshare-generics=off"
