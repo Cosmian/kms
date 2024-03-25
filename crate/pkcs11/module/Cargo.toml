@@ -11,9 +11,6 @@ version.workspace = true
 [lib]
 doctest = false
 
-[features]
-local_tests = []
-custom-function-list = []
 
 [dependencies]
 bincode = "1.3.3"
@@ -45,7 +42,4 @@ tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
     "env-filter",
 ] }
-# workaround to run tests from root and avoid additive features
-# see https://github.com/rust-lang/cargo/issues/2911#issuecomment-749580481
-pkcs11_module = { path = ".", features = ["local_tests"] }
 
