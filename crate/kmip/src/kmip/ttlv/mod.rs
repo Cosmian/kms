@@ -469,14 +469,17 @@ pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
     // In this case, using this to convert a BigUint to a Vec<u32> will not lose
     // leading null bytes information which might be the case when an EC private
     // key is legally generated with leading null bytes.
-    big_int
-        .to_bytes_be()
+    let mut bytes_be = big_int.to_bytes_be();
+    bytes_be.reverse();
+
+    bytes_be
         .chunks(4)
         .map(|group_of_4_bytes| {
-            group_of_4_bytes
-                .iter()
-                .rev()
-                .fold(0, |acc, byte| (acc << 8) + u32::from(*byte))
+            let mut acc = 0;
+            for (k, elt) in group_of_4_bytes.iter().enumerate() {
+                acc += *elt as u32 * 2_u32.pow(k as u32 * 8);
+            }
+            acc
         })
         .collect::<Vec<_>>()
 }

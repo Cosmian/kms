@@ -193,7 +193,7 @@ fn decrypt_with_private_key(
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
             let ciphertext = request.data.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Encrypt: data to decrypt must be provided".to_owned())
+                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
             })?;
             trace!(
                 "get_decryption_system: matching on key format type: {:?}",

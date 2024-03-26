@@ -449,7 +449,7 @@ pub fn create_approved_ecc_key_pair(
     let public_key = to_ec_public_key(
         &ec_private_key
             .public_key()
-            .to_bytes(&group, PointConversionForm::HYBRID, &mut ctx)?,
+            .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?,
         ec_private_key.private_key().num_bits() as u32,
         private_key_uid,
         curve,

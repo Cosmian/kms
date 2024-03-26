@@ -193,7 +193,7 @@ fn ec_private_key_from_scalar(
 
     let mut scalar_vec = scalar.to_bytes_be();
     pad_be_bytes(&mut scalar_vec, privkey_size);
-    let scalar = BigNum::from_slice(scalar.to_bytes_be().as_slice())?;
+    let scalar = BigNum::from_slice(&scalar_vec)?;
 
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
