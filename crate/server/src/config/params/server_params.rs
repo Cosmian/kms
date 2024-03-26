@@ -86,30 +86,17 @@ impl ServerParams {
             &conf.auth.jwks_uri,
             &conf.auth.jwt_audience,
         ) {
-            (Some(jwt_issuer_uri), Some(jwks_uri), Some(jwt_audience)) => {
-                let min_length = jwt_issuer_uri
-                    .len()
-                    .min(jwks_uri.len())
-                    .min(jwt_audience.len());
-                let mut idp_configs = Vec::with_capacity(min_length);
-                for index in 0..min_length {
-                    let idp_config = IdpConfig {
-                        jwt_issuer_uri: jwt_issuer_uri[index].clone(),
-                        jwks_uri: jwks_uri[index].clone(),
-                        jwt_audience: Some(jwt_audience[index].clone()),
-                    };
-                    idp_configs.push(idp_config)
-                }
-                Some(idp_configs)
-            }
-            (Some(jwt_issuer_uri), Some(jwks_uri), None) => {
+            (Some(jwt_issuer_uri), Some(jwks_uri), jwt_audience) => {
                 let min_length = jwt_issuer_uri.len().min(jwks_uri.len());
                 let mut idp_configs = Vec::with_capacity(min_length);
                 for index in 0..min_length {
+                    let jwt_audience = jwt_audience
+                        .as_ref()
+                        .and_then(|audience| audience.get(index));
                     let idp_config = IdpConfig {
                         jwt_issuer_uri: jwt_issuer_uri[index].clone(),
                         jwks_uri: jwks_uri[index].clone(),
-                        jwt_audience: None,
+                        jwt_audience: jwt_audience.cloned(),
                     };
                     idp_configs.push(idp_config)
                 }

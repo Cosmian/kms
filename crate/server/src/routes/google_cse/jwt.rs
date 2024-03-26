@@ -159,16 +159,10 @@ pub async fn validate_tokens(
     // validate authentication token
     let mut decrypted_token = None;
     for idp_config in cse_config.authentication.iter() {
-        match idp_config.decode_authentication_token(authentication_token) {
-            Ok(token) => {
-                // store the decoded claim and break the loop if decoding succeeds
-                decrypted_token = Some(token);
-                break;
-            }
-            Err(_) => {
-                // continue to the next idp configuration if decoding fails
-                continue;
-            }
+        if let Ok(token) = idp_config.decode_authentication_token(authentication_token) {
+            // store the decoded claim and break the loop if decoding succeeds
+            decrypted_token = Some(token);
+            break;
         }
     }
     let authentication_token = decrypted_token.ok_or_else(|| {

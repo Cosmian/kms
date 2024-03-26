@@ -9,6 +9,14 @@ use serde::{Deserialize, Serialize};
 pub struct JwtAuthConfig {
     /// The issuer URI of the JWT token
     ///
+    /// To handle multiple identity managers, add different parameters under each argument
+    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// the same order :
+    ///
+    /// --jwt_issuer_uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2>
+    /// --jwks_uri <JWKS_URI_1> <JWKS_URI_2>
+    /// --jwt_audience <JWT_AUDIENCE_1> <JWT_AUDIENCE_2>
+    ///
     /// For Auth0, this is the delegated authority domain configured on Auth0, for instance
     /// `https://<your-tenant>.<region>.auth0.com/`
     ///
@@ -17,6 +25,10 @@ pub struct JwtAuthConfig {
     pub jwt_issuer_uri: Option<Vec<String>>,
 
     /// The JWKS (Json Web Key Set) URI of the JWT token
+    ///
+    /// To handle multiple identity managers, add different parameters under each argument
+    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// the same order
     ///
     /// For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
     ///

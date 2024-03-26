@@ -188,30 +188,27 @@ pub async fn prepare_kms_server(
     let (use_jwt_auth, jwt_config, jwks_manager) =
         if let Some(jwt_config) = &kms_server.params.jwt_config {
             // Prepare all the needed URIs from all the configured Identity Providers
-            let mut all_jwks_uris = Vec::new();
-            for idp_config in jwt_config {
-                let idp_jwks_uri =
-                    JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, Some(&idp_config.jwks_uri));
-                all_jwks_uris.push(idp_jwks_uri)
-            }
+            let mut all_jwks_uris: Vec<_> = jwt_config
+                .iter()
+                .map(|idp_config| {
+                    JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, Some(&idp_config.jwks_uri))
+                })
+                .collect();
             // Add the one from google is cse is enabled
-            if enable_google_cse {
-                if let Some(google_cse_jwks) = google_cse_jwks {
-                    all_jwks_uris.extend(google_cse_jwks)
-                }
+            if let Some(google_cse_jwks) = google_cse_jwks {
+                all_jwks_uris.extend(google_cse_jwks)
             }
 
             let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
 
-            let mut jwt_configs = Vec::new();
-            for idp_config in jwt_config {
-                let jwt_config = JwtConfig {
+            let jwt_configs = jwt_config
+                .iter()
+                .map(|idp_config| JwtConfig {
                     jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                     jwks: jwks_manager.clone(),
                     jwt_audience: idp_config.jwt_audience.clone(),
-                };
-                jwt_configs.push(jwt_config)
-            }
+                })
+                .collect::<Vec<_>>();
 
             (true, Some(Arc::new(jwt_configs)), Some(jwks_manager))
         } else {
