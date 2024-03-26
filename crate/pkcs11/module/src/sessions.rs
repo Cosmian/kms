@@ -23,28 +23,34 @@ use std::{
 };
 
 use once_cell::sync::Lazy;
-use pkcs11_sys::{CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG_PTR};
+use pkcs11_sys::{CK_BYTE_PTR, CK_FLAGS, CK_SESSION_HANDLE, CK_ULONG_PTR};
+use tracing::debug;
 
 use crate::{
-    object_store::ObjectStore,
+    core::{attribute::Attributes, object::Object},
+    traits::{backend, SearchOptions},
+};
+use crate::{
+    // object_store::ObjectStore,
     traits::{PrivateKey, SignatureAlgorithm},
-    Error, Result,
+    Error,
+    Result,
 };
 
 // "Valid session handles in Cryptoki always have nonzero values."
 #[cfg(not(target_os = "windows"))]
-static NEXT_SESSION_HANDLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static NEXT_SESSION_HANDLE: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::new(1);
 #[cfg(target_os = "windows")]
-static NEXT_SESSION_HANDLE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+static NEXT_SESSION_HANDLE: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::new(1);
 
 type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
 
 static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
-pub static OBJECT_STORE: Lazy<sync::Mutex<ObjectStore>> = Lazy::new(Default::default);
+// pub static OBJECT_STORE: Lazy<sync::Mutex<ObjectStore>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
 pub struct FindContext {
-    pub objects: Vec<CK_OBJECT_HANDLE>,
+    pub objects: Vec<Object>,
 }
 
 #[derive(Debug)]
@@ -62,7 +68,7 @@ impl Session {
         data: Option<&[u8]>,
         pSignature: CK_BYTE_PTR,
         pulSignatureLen: CK_ULONG_PTR,
-    ) -> Result {
+    ) -> Result<()> {
         let sign_ctx = match self.sign_ctx.as_mut() {
             Some(sign_ctx) => sign_ctx,
             None => return Err(Error::OperationNotInitialized),
@@ -101,6 +107,51 @@ pub struct Session {
     pub sign_ctx: Option<SignContext>,
 }
 
+impl Session {
+    pub fn load_find_context(&mut self, template: Attributes) -> Result<()> {
+        let search_class = template.get_class()?;
+        let search_options = SearchOptions::try_from(&template)?;
+        debug!(
+            "find: searching with class: {:?} and options: {:?}",
+            search_class, search_options
+        );
+        match search_options {
+            SearchOptions::All => match search_class {
+                pkcs11_sys::CKO_CERTIFICATE => {
+                    template.ensure_X509_or_none()?;
+                    let certificates = backend().find_all_certificates()?;
+                    self.find_ctx = Some(FindContext {
+                        objects: certificates.into_iter().map(Object::Certificate).collect(),
+                    });
+                }
+                pkcs11_sys::CKO_PUBLIC_KEY => {
+                    let public_keys = backend().find_all_public_keys()?;
+                    self.find_ctx = Some(FindContext {
+                        objects: public_keys.into_iter().map(Object::PublicKey).collect(),
+                    });
+                }
+                pkcs11_sys::CKO_PRIVATE_KEY => {
+                    let private_keys = backend().find_all_private_keys()?;
+                    self.find_ctx = Some(FindContext {
+                        objects: private_keys.into_iter().map(Object::PrivateKey).collect(),
+                    });
+                }
+                pkcs11_sys::CKO_DATA => {
+                    let data_objects = backend().find_all_data_objects()?;
+                    self.find_ctx = Some(FindContext {
+                        objects: data_objects.into_iter().map(Object::DataObject).collect(),
+                    });
+                }
+                o => return Err(Error::Todo(format!("Object not supported: {o}"))),
+            },
+            SearchOptions::Label(_) => {}
+            SearchOptions::Hash(_) => {}
+        }
+
+        Ok(())
+    }
+}
+
 pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
     SESSIONS.lock().unwrap().insert(
@@ -121,9 +172,9 @@ pub fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
     SESSIONS.lock().unwrap().get(&handle).unwrap().flags
 }
 
-pub fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> crate::Result
+pub fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> Result<()>
 where
-    F: FnOnce(&mut Session) -> crate::Result,
+    F: FnOnce(&mut Session) -> Result<()>,
 {
     let mut session_map = SESSIONS.lock().unwrap();
     let session = &mut session_map.get_mut(&h).unwrap();

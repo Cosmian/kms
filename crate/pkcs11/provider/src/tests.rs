@@ -5,7 +5,7 @@ use cosmian_kms_client::{import_object, KmsClient};
 use kms_test_server::{start_default_test_kms_server, ONCE};
 use pkcs11_module::traits::Backend;
 
-use crate::{backend::CkmsBackend, error::Pkcs11Error, pkcs_11_data_object::get_pkcs11_keys_async};
+use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_objects_async};
 
 #[tokio::test]
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
@@ -17,11 +17,11 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let kms_client = ctx.owner_client_conf.initialize_kms_client()?;
     create_keys(&kms_client).await?;
 
-    let keys = get_pkcs11_keys_async(&kms_client, &["disk-encryption".to_string()]).await?;
+    let keys = get_kms_objects_async(&kms_client, &["disk-encryption".to_string()]).await?;
     assert_eq!(keys.len(), 2);
     let mut labels = keys
         .iter()
-        .map(|k| k.label.clone())
+        .flat_map(|k| k.other_tags.clone())
         .collect::<Vec<String>>();
     labels.sort();
     assert_eq!(labels, vec!["vol1".to_string(), "vol2".to_string()]);

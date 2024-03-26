@@ -13,6 +13,10 @@ pub enum Pkcs11Error {
     #[error("Conversion error: {0}")]
     Conversion(String),
 
+    // PKCS11 Module errors
+    #[error("PKCS#11 error: {0}")]
+    Pkcs11(String),
+
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
@@ -51,6 +55,18 @@ impl From<KmipError> for Pkcs11Error {
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
         }
+    }
+}
+
+impl From<pkcs11_module::Error> for Pkcs11Error {
+    fn from(e: pkcs11_module::Error) -> Self {
+        Self::Pkcs11(e.to_string())
+    }
+}
+
+impl From<Pkcs11Error> for pkcs11_module::Error {
+    fn from(e: Pkcs11Error) -> Self {
+        Self::Backend(Box::new(e))
     }
 }
 

@@ -19,7 +19,7 @@
 
 use bincode::Options;
 
-use crate::core::Result;
+use crate::Result;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id {

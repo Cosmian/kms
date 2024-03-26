@@ -21,11 +21,10 @@
 #![allow(clippy::missing_safety_doc)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-pub use core::Error;
 use core::{
     attribute::{Attribute, Attributes},
     mechanism::{parse_mechanism, SUPPORTED_SIGNATURE_MECHANISMS},
-    object::{self, Object},
+    object::Object,
 };
 use std::{
     cmp, slice,
@@ -33,15 +32,12 @@ use std::{
 };
 
 use pkcs11_sys::*;
-pub use pkcs11_sys::{CKR_OK, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_RV};
+pub use pkcs11_sys::{CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV};
 
-use crate::{
-    sessions::{FindContext, SignContext},
-    traits::backend,
-};
-
+use crate::{sessions::SignContext, traits::backend};
 pub mod core;
-mod object_store;
+mod error;
+pub use error::{Error, Result};
 mod sessions;
 pub mod traits;
 
@@ -51,11 +47,9 @@ const SLOT_ID: CK_SLOT_ID = 1;
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-type Result = std::result::Result<(), Error>;
-
 fn result_to_rv<F>(f: F) -> CK_RV
 where
-    F: FnOnce() -> Result,
+    F: FnOnce() -> Result<()>,
 {
     match f() {
         Ok(()) => CKR_OK,
@@ -543,9 +537,13 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         not_null!(pTemplate);
-        sessions::session(hSession, |_session| -> Result {
-            let object_store = sessions::OBJECT_STORE.lock().unwrap();
-            let object = match object_store.get(&hObject) {
+        sessions::session(hSession, |session| -> Result<()> {
+            let object_store = &session
+                .find_ctx
+                .as_ref()
+                .ok_or_else(|| Error::OperationNotInitialized)?
+                .objects;
+            let object = match object_store.get(hObject as usize) {
                 Some(object) => object,
                 None => {
                     return Err(Error::ObjectHandleInvalid(hObject));
@@ -603,14 +601,11 @@ cryptoki_fn!(
         let template: Attributes = unsafe { slice::from_raw_parts(pTemplate, ulCount as usize) }
             .iter()
             .map(|attr| (*attr).try_into())
-            .collect::<crate::core::Result<Vec<Attribute>>>()?
+            .collect::<Result<Vec<Attribute>>>()?
             .into();
 
-        sessions::session(hSession, |session| -> Result {
-            session.find_ctx = Some(FindContext {
-                objects: sessions::OBJECT_STORE.lock().unwrap().find(template)?,
-            });
-            Ok(())
+        sessions::session(hSession, |session| -> Result<()> {
+            session.load_find_context(template)
         })
     }
 );
@@ -626,7 +621,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(phObject);
         not_null!(pulObjectCount);
-        sessions::session(hSession, |session| -> Result {
+        sessions::session(hSession, |session| -> Result<()> {
             let find_ctx = match &mut session.find_ctx {
                 Some(find_ctx) => find_ctx,
                 None => {
@@ -643,7 +638,10 @@ cryptoki_fn!(
             output.copy_from_slice(
                 &find_ctx
                     .objects
-                    .drain(0..max_objects)
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| i as u64)
+                    .take(max_objects)
                     .collect::<Vec<CK_OBJECT_HANDLE>>(),
             );
             unsafe { *pulObjectCount = max_objects as CK_ULONG };
@@ -656,7 +654,7 @@ cryptoki_fn!(
     fn C_FindObjectsFinal(hSession: CK_SESSION_HANDLE) {
         initialized!();
         valid_session!(hSession);
-        sessions::session(hSession, |session| -> Result {
+        sessions::session(hSession, |session| -> Result<()> {
             if session.find_ctx.is_none() {
                 return Err(Error::OperationNotInitialized);
             }
@@ -774,9 +772,13 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         not_null!(pMechanism);
-        sessions::session(hSession, |session| -> Result {
-            let object_store = sessions::OBJECT_STORE.lock().unwrap();
-            let private_key = match object_store.get(&hKey) {
+        sessions::session(hSession, |session| -> Result<()> {
+            let object_store = &session
+                .find_ctx
+                .as_ref()
+                .ok_or(Error::OperationNotInitialized)?
+                .objects;
+            let private_key = match object_store.get(hKey as usize) {
                 Some(Object::PrivateKey(private_key)) => private_key,
                 Some(_) | None => return Err(Error::KeyHandleInvalid(hKey)),
             };
@@ -803,7 +805,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pData);
         not_null!(pulSignatureLen);
-        sessions::session(hSession, |session| -> Result {
+        sessions::session(hSession, |session| -> Result<()> {
             let data = unsafe { slice::from_raw_parts(pData, ulDataLen as usize) };
             unsafe { session.sign(Some(data), pSignature, pulSignatureLen) }?;
             Ok(())
@@ -816,7 +818,7 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         not_null!(pPart);
-        sessions::session(hSession, |session| -> Result {
+        sessions::session(hSession, |session| -> Result<()> {
             let sign_ctx = match session.sign_ctx.as_mut() {
                 None => return Err(Error::OperationNotInitialized),
                 Some(sign_ctx) => sign_ctx,
@@ -840,7 +842,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pSignature);
         not_null!(pulSignatureLen);
-        sessions::session(hSession, |session| -> Result {
+        sessions::session(hSession, |session| -> Result<()> {
             unsafe { session.sign(None, pSignature, pulSignatureLen) }?;
             Ok(())
         })

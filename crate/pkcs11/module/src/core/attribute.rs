@@ -24,7 +24,7 @@ use pkcs11_sys::*;
 use strum_macros::Display;
 use tracing::{debug, trace};
 
-use crate::core::{Error, Result};
+use crate::{Error, Result};
 
 #[derive(Debug, Display, PartialEq, Eq)]
 pub enum AttributeType {
@@ -362,6 +362,39 @@ pub struct Attributes(Vec<Attribute>);
 impl Attributes {
     pub fn get(&self, type_: AttributeType) -> Option<&Attribute> {
         self.0.iter().find(|&attr| attr.attribute_type() == type_)
+    }
+
+    pub fn get_class(&self) -> Result<CK_OBJECT_CLASS> {
+        match self.get(AttributeType::Class) {
+            Some(Attribute::Class(class)) => Ok(*class),
+            None => {
+                return Err(Error::Todo("find: no class attribute".to_string()));
+            }
+            other => {
+                return Err(Error::Todo(format!(
+                    "find: unexpected attribute value: {:?}, on class attribute type",
+                    other
+                )));
+            }
+        }
+    }
+
+    /// Ensure that the attributes contain a CKC_X_509 certificate request or None.
+    pub fn ensure_X509_or_none(&self) -> Result<()> {
+        match self.get(AttributeType::CertificateType) {
+            Some(Attribute::CertificateType(cert_type)) => match *cert_type {
+                CKC_X_509 => Ok(()),
+                _ => Err(Error::Todo(format!(
+                    "find: support for certificate type: {} is not implemented",
+                    cert_type
+                ))),
+            },
+            Some(other_type) => Err(Error::Todo(format!(
+                "find: unexpected attribute value: {:?}, on class attribute type",
+                other_type
+            ))),
+            None => Ok(()),
+        }
     }
 }
 

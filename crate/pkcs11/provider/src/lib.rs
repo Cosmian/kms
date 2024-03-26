@@ -2,12 +2,12 @@ use std::ptr::addr_of_mut;
 
 use pkcs11_module::{CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV, FUNC_LIST};
 
-use crate::{logging::initialize_logging, pkcs_11_data_object::get_kms_client};
+use crate::{kms_object::get_kms_client, logging::initialize_logging};
 
 mod backend;
 mod error;
 mod logging;
-mod pkcs_11_data_object;
+mod pkcs11_data_object;
 
 /// # Safety
 /// This function is the first one called by the PKCS#11 library client
@@ -30,6 +30,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     CKR_OK
 }
 
+mod kms_object;
 #[cfg(test)]
 mod tests;
 

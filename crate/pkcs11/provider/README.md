@@ -8,17 +8,10 @@ The Cosmian KMS is a cloud-based cryptographic service that provides a secure an
 The PKCS#11 2.40 standard is available at
 <https://docs.oasis-open.org/pkcs11/pkcs11-base/v2.40/os/pkcs11-base-v2.40-os.html>
 
-The primary goal is to support the Cosmian KMS as a Veracrypt keyfiles provider,
+The primary goal is to support the Cosmian KMS as
+
+- a Veracrypt keyfiles provider,
+- a LUKS keys provider,
+
 but it can be used with any application that supports PKCS#11.
 
-## Building the project
-
-The project uses a submodule `natice-pkcs11` which is a fork of the Google project with the same name.
-
-To update the submodule, use the following command:
-
-```sh
-git submodule update --init --recursive
- ```
-
-Please use the `data_objects` branch of the submodule which adds support for the required CKO_DATA object type.

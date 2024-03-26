@@ -17,35 +17,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod data_object;
+use std::{any::Any, hash::Hash, sync::Arc};
 
-use std::{
-    any::Any,
-    hash::Hash,
-    sync::{Arc, RwLock},
-};
-
+pub use backend::{backend, register_backend, Backend};
+// The Data object Trait
+pub use data_object::DataObject;
 pub use once_cell;
-use once_cell::sync::Lazy;
+pub use private_key::PrivateKey;
 use x509_cert::der::Decode;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use crate::{
+    core::{
+        attribute::{Attribute, AttributeType, Attributes},
+        compoundid,
+    },
+    Error, Result,
+};
+
+mod backend;
+mod data_object;
+mod private_key;
+
 pub type Digest = [u8; 20];
-
-//  The Backend is first staged so it can be stored in a Box<dyn Backend>. This
-//  allows the Backend to be reference with `&'static`.
-static STAGED_BACKEND: RwLock<Option<Box<dyn Backend>>> = RwLock::new(None);
-static BACKEND: Lazy<Box<dyn Backend>> =
-    Lazy::new(|| STAGED_BACKEND.write().unwrap().take().unwrap());
-
-/// Stores a backend to later be returned by all calls `crate::backend()`.
-pub fn register_backend(backend: Box<dyn Backend>) {
-    *STAGED_BACKEND.write().unwrap() = Some(backend);
-}
-
-pub fn backend() -> &'static dyn Backend {
-    BACKEND.as_ref()
-}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DigestType {
@@ -82,42 +75,6 @@ pub enum SignatureAlgorithm {
         mask_generation_function: DigestType,
         salt_length: u64,
     },
-}
-
-pub trait PrivateKey: Send + Sync {
-    fn public_key_hash(&self) -> Vec<u8>;
-    fn label(&self) -> String;
-    fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> Result<Vec<u8>>;
-    fn delete(&self);
-    fn algorithm(&self) -> KeyAlgorithm;
-    fn find_public_key(&self, backend: &dyn Backend) -> Result<Option<Arc<dyn PublicKey>>> {
-        let pubkey_hash: Digest = self.public_key_hash().as_slice().try_into()?;
-        backend.find_public_key(SearchOptions::Hash(pubkey_hash))
-    }
-}
-
-impl std::fmt::Debug for dyn PrivateKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PrivateKey")
-            .field("label", &self.label())
-            .finish_non_exhaustive()
-    }
-}
-
-impl PartialEq for dyn PrivateKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.public_key_hash() == other.public_key_hash() && self.label() == other.label()
-    }
-}
-
-impl Eq for dyn PrivateKey {}
-
-impl Hash for dyn PrivateKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.public_key_hash().hash(state);
-        self.label().hash(state);
-    }
 }
 
 pub trait PublicKey: Send + Sync + std::fmt::Debug {
@@ -193,15 +150,29 @@ pub trait CertificateExt: Certificate {
 
 impl<T: Certificate + ?Sized> CertificateExt for T {}
 
-// The Data object Trait
-pub use data_object::DataObject;
-
 #[derive(Debug)]
 pub enum SearchOptions {
-    //  TODO(kcking): search keys by _both_ label and public key hash as that is how
-    //  they are de-duped and referenced.
+    All,
     Label(String),
     Hash(Digest),
+}
+
+impl TryFrom<&Attributes> for SearchOptions {
+    type Error = Error;
+
+    fn try_from(attributes: &Attributes) -> std::result::Result<Self, Self::Error> {
+        if attributes.is_empty() {
+            return Ok(SearchOptions::All);
+        }
+        if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
+            let id = compoundid::decode(id)?;
+            Ok(SearchOptions::Hash(id.hash.as_slice().try_into()?))
+        } else if let Some(Attribute::Label(label)) = attributes.get(AttributeType::Label) {
+            Ok(SearchOptions::Label(label.into()))
+        } else {
+            Ok(SearchOptions::All)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,37 +184,6 @@ pub enum KeyAlgorithm {
 pub struct Version {
     pub major: u8,
     pub minor: u8,
-}
-
-pub trait Backend: Send + Sync {
-    /// The token label
-    /// e.g.
-    /// `*b"Foo software token              "`
-    fn token_label(&self) -> [u8; 32];
-    /// The id of the manufacturer of the token
-    fn token_manufacturer_id(&self) -> [u8; 32];
-    /// The model of the token
-    fn token_model(&self) -> [u8; 16];
-    /// The serial number of the token
-    fn token_serial_number(&self) -> [u8; 16];
-    /// The description of this library
-    fn library_description(&self) -> [u8; 32];
-    /// The version of this library
-    fn library_version(&self) -> Version;
-
-    fn find_certificate(&self, query: SearchOptions) -> Result<Option<Arc<dyn Certificate>>>;
-    fn find_all_certificates(&self) -> Result<Vec<Box<dyn Certificate>>>;
-    fn find_private_key(&self, query: SearchOptions) -> Result<Option<Arc<dyn PrivateKey>>>;
-    fn find_public_key(&self, query: SearchOptions) -> Result<Option<Arc<dyn PublicKey>>>;
-    fn find_all_private_keys(&self) -> Result<Vec<Arc<dyn PrivateKey>>>;
-    fn find_all_public_keys(&self) -> Result<Vec<Arc<dyn PublicKey>>>;
-    fn find_data_object(&self, query: SearchOptions) -> Result<Option<Arc<dyn DataObject>>>;
-    fn find_all_data_objects(&self) -> Result<Vec<Arc<dyn DataObject>>>;
-    fn generate_key(
-        &self,
-        algorithm: KeyAlgorithm,
-        label: Option<&str>,
-    ) -> Result<Arc<dyn PrivateKey>>;
 }
 
 pub fn random_label() -> String {

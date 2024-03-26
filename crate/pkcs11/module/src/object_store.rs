@@ -66,7 +66,18 @@ impl ObjectStore {
     ///  evaluate server trust.
     /// The cache is refreshed if it has been more than 3 seconds since the last
     /// refresh.
-    fn refresh_cache(&mut self) -> Result<()> {
+    fn refresh_cache(&mut self, template: &Attributes) -> Result<()> {
+        let class = template.get_class()?;
+        match class {
+            CKO_CERTIFICATE => {
+                template.ensure_X509_or_none()?;
+                self.refresh_certificates_cache()?;
+            },
+            CKO_PUBLIC_KEY => (),
+            CKO_PRIVATE_KEY => (),
+            _ => return Ok(()),
+        }
+
         let should_reload = match self.last_loaded_certs {
             Some(last) => last.elapsed() >= std::time::Duration::from_secs(3),
             None => true,
@@ -100,20 +111,31 @@ impl ObjectStore {
         Ok(())
     }
 
+    fn refresh_certificates_cache(&mut self) -> Result<()> {
+        let should_reload = match self.last_loaded_certs {
+            Some(last) => last.elapsed() >= std::time::Duration::from_secs(3),
+            None => true,
+        };
+        if !should_reload {
+            return Ok(());
+        }
+        for cert in backend().find_all_certificates()? {
+            let private_key = backend().find_private_key(SearchOptions::Hash(
+                cert.public_key().public_key_hash().as_slice().try_into()?,
+            ))?;
+            //  Check if certificate has an associated PrivateKey.
+            match private_key {
+                Some(key) => key,
+                None => continue,
+            };
+            self.insert(Object::Certificate(cert.into()));
+        }
+        Ok(())
+    }
+
     #[instrument(skip(self))]
     pub fn find(&mut self, template: Attributes) -> Result<Vec<CK_OBJECT_HANDLE>> {
-        let class = match template.get(AttributeType::Class) {
-            Some(Attribute::Class(class)) => class,
-            None => {
-                return Err(Error::Todo("find: no class attribute".to_string()));
-            }
-            other => {
-                return Err(Error::Todo(format!(
-                    "find: unexpected attribute value: {:?}, on class attribute type",
-                    other
-                )));
-            }
-        };
+        self.refresh_cache(&template)?;
 
         let search_options = search_options_from_attributes(&template)?;
         debug!(
@@ -126,39 +148,7 @@ impl ObjectStore {
             // find all objects
             None => {
                 return match *class {
-                    CKO_CERTIFICATE => match template.get(AttributeType::CertificateType) {
-                        Some(Attribute::CertificateType(cert_type)) => match *cert_type {
-                            pkcs11_sys::CKC_X_509 => {
-                                self.refresh_cache()?;
-                                for handle in self.objects.keys() {
-                                    if let Object::Certificate(_) =
-                                        self.objects.get(handle).unwrap()
-                                    {
-                                        output.push(*handle);
-                                    }
-                                }
-                                Ok(output)
-                            }
-                            _ => Err(Error::Todo(format!(
-                                "find: find all objects not yet implemented for certificate type: \
-                                 {}",
-                                cert_type
-                            ))),
-                        },
-                        Some(other_type) => Err(Error::Todo(format!(
-                            "find: certificate search for attribute {:?}, is not implemented",
-                            other_type
-                        ))),
-                        None => {
-                            // assume it is a X509 certificate
-                            self.refresh_cache()?;
-                            for handle in self.objects.keys() {
-                                if let Object::Certificate(_) = self.objects.get(handle).unwrap() {
-                                    output.push(*handle);
-                                }
-                            }
-                            Ok(output)
-                        }
+                    CKO_CERTIFICATE =>
                     },
                     CKO_PUBLIC_KEY | CKO_PRIVATE_KEY => {
                         self.refresh_cache()?;

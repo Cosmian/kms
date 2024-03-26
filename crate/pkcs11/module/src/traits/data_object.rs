@@ -7,16 +7,15 @@
 
 use std::{any::Any, ffi::CString, hash::Hash};
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
-pub trait DataObject: Send + Sync {
+pub trait DataObject: Zeroize + Send + Sync {
     /// The value of the object which may be a secret
     fn value(&self) -> Zeroizing<Vec<u8>>;
     /// The application that manages the object
     fn application(&self) -> CString;
     fn data_hash(&self) -> Vec<u8>;
     fn label(&self) -> String;
-    fn delete(&self);
 }
 
 impl std::fmt::Debug for dyn DataObject {
