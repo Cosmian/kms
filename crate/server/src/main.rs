@@ -168,9 +168,9 @@ https_p12_password = "[https p12 password]"
 authority_cert_file = "[authority cert file]"
 
 [auth]
-jwt_issuer_uri = "[jwt issuer uri]"
-jwks_uri = "[jwks uri]"
-jwt_audience = "[jwt audience]"
+jwt_issuer_uri = ["[jwt issuer uri]"]
+jwks_uri = ["[jwks uri]"]
+jwt_audience = ["[jwt audience]"]
 
 [workspace]
 root_data_path = "[root data path]"
