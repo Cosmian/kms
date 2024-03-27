@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.14.0] - 2024-03-27
+
+### Bug Fixes
+
+- Fixed double quotes problem in cosmian vm test (CI)
+- Fixed trailing null byte bug for biguint/bytes conversions ([#224](https://github.com/Cosmian/kms/pull/224))
+- Make the CLI compile on Windows and MacOS (without openssl installed) ([#209](https://github.com/Cosmian/kms/pull/209))
+
+### Features
+
+- Support Veracrypt PKCS11 provider library ([#208](https://github.com/Cosmian/kms/pull/208))
+
+### Testing
+
+- Update `test_kms.py` to use covercrypt `14.0.0` ([#217](https://github.com/Cosmian/kms/pull/217))
+
 ## [4.13.5] - 2024-03-20
 
 ### Bug Fixes
