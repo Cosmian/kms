@@ -35,6 +35,7 @@ pub struct StatusResponse {
     pub operations_supported: Vec<String>,
 }
 
+#[must_use]
 pub fn get_status() -> StatusResponse {
     StatusResponse {
         server_type: "KACLS".to_string(),
@@ -262,7 +263,10 @@ pub async fn private_key_sign(
     )
     .await?;
 
-    tracing::debug!("unwrap private key");
+    tracing::debug!(
+        "private_key_sign_request.wrapped_private_key: {:?}",
+        private_key_sign_request.wrapped_private_key
+    );
     // Unwrap private key which has been previously wrapped using AES
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
@@ -277,16 +281,16 @@ pub async fn private_key_sign(
         KeyWrappingData {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
+                unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
                 cryptographic_parameters: None,
             }),
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
             ..Default::default()
         }
         .into(),
     );
 
-    tracing::debug!("unwrap");
+    tracing::debug!("unwrap private key");
     unwrap_key(
         wrapped_dek.key_block_mut()?,
         kms,

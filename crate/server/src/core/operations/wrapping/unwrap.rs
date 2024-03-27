@@ -3,6 +3,7 @@ use cosmian_kmip::{
     kmip::{kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType},
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use tracing::debug;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},
@@ -38,6 +39,9 @@ pub async fn unwrap_key(
         },
         None => kms_bail!("unwrap_key: unable to unwrap key: key wrapping data is missing"),
     };
+
+    debug!("unwrapping_key_uid: {unwrapping_key_uid}");
+    debug!("user: {user}");
 
     // fetch the unwrapping key
     let unwrapping_key = retrieve_object_for_operation(
