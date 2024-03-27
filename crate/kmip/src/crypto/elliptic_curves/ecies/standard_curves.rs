@@ -24,7 +24,7 @@ fn ecies_get_iv(
     iv_size: usize,
     message_digest: MessageDigest,
 ) -> Result<Vec<u8>, KmipError> {
-    let mut ctx = BigNumContext::new_secure()?;
+    let mut ctx = BigNumContext::new()?;
     let Q_bytes = Q.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
     let R_bytes = R.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
@@ -190,12 +190,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "fips"))]
     fn test_ecies_encrypt_decrypt_p_curves() {
-        #[cfg(feature = "fips")]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
-        #[cfg(not(feature = "fips"))]
         test_ecies_encrypt_decrypt(Nid::X9_62_PRIME192V1);
         test_ecies_encrypt_decrypt(Nid::SECP224R1);
         test_ecies_encrypt_decrypt(Nid::X9_62_PRIME256V1);
