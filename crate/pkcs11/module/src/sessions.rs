@@ -23,7 +23,7 @@ use std::{
 };
 
 use once_cell::sync::Lazy;
-use pkcs11_sys::{CK_BYTE_PTR, CK_FLAGS, CK_SESSION_HANDLE, CK_ULONG_PTR};
+use pkcs11_sys::{CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG_PTR};
 use tracing::debug;
 
 use crate::{
@@ -50,7 +50,10 @@ static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
 pub struct FindContext {
+    /// The PKCS#11 objects manipulated by this context.
     pub objects: Vec<Object>,
+    /// The indexes that have not yet been read by C_FindObjects
+    pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
 }
 
 #[derive(Debug)]
@@ -100,7 +103,7 @@ impl Session {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Session {
     flags: CK_FLAGS,
     pub find_ctx: Option<FindContext>,
@@ -116,34 +119,43 @@ impl Session {
             search_class, search_options
         );
         match search_options {
-            SearchOptions::All => match search_class {
-                pkcs11_sys::CKO_CERTIFICATE => {
-                    template.ensure_X509_or_none()?;
-                    let certificates = backend().find_all_certificates()?;
-                    self.find_ctx = Some(FindContext {
-                        objects: certificates.into_iter().map(Object::Certificate).collect(),
-                    });
-                }
-                pkcs11_sys::CKO_PUBLIC_KEY => {
-                    let public_keys = backend().find_all_public_keys()?;
-                    self.find_ctx = Some(FindContext {
-                        objects: public_keys.into_iter().map(Object::PublicKey).collect(),
-                    });
-                }
-                pkcs11_sys::CKO_PRIVATE_KEY => {
-                    let private_keys = backend().find_all_private_keys()?;
-                    self.find_ctx = Some(FindContext {
-                        objects: private_keys.into_iter().map(Object::PrivateKey).collect(),
-                    });
-                }
-                pkcs11_sys::CKO_DATA => {
-                    let data_objects = backend().find_all_data_objects()?;
-                    self.find_ctx = Some(FindContext {
-                        objects: data_objects.into_iter().map(Object::DataObject).collect(),
-                    });
-                }
-                o => return Err(Error::Todo(format!("Object not supported: {o}"))),
-            },
+            SearchOptions::All => {
+                let objects: Vec<Object> = match search_class {
+                    pkcs11_sys::CKO_CERTIFICATE => {
+                        template.ensure_X509_or_none()?;
+                        backend()
+                            .find_all_certificates()?
+                            .into_iter()
+                            .map(Object::Certificate)
+                            .collect()
+                    }
+                    pkcs11_sys::CKO_PUBLIC_KEY => backend()
+                        .find_all_public_keys()?
+                        .into_iter()
+                        .map(Object::PublicKey)
+                        .collect(),
+                    pkcs11_sys::CKO_PRIVATE_KEY => backend()
+                        .find_all_private_keys()?
+                        .into_iter()
+                        .map(Object::PrivateKey)
+                        .collect(),
+                    pkcs11_sys::CKO_DATA => backend()
+                        .find_all_data_objects()?
+                        .into_iter()
+                        .map(Object::DataObject)
+                        .collect(),
+                    o => return Err(Error::Todo(format!("Object not supported: {o}"))),
+                };
+                let indexes = objects
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| i as CK_OBJECT_HANDLE)
+                    .collect();
+                self.find_ctx = Some(FindContext {
+                    objects,
+                    unread_indexes: indexes,
+                });
+            }
             SearchOptions::Label(_) => {}
             SearchOptions::Hash(_) => {}
         }

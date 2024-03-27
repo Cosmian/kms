@@ -31,6 +31,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use log::debug;
 use pkcs11_sys::*;
 pub use pkcs11_sys::{CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV};
 
@@ -538,6 +539,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pTemplate);
         sessions::session(hSession, |session| -> Result<()> {
+            debug!("C_GetAttributeValue: session: {:?}", session);
             let object_store = &session
                 .find_ctx
                 .as_ref()
@@ -629,21 +631,19 @@ cryptoki_fn!(
                     return Err(Error::OperationNotInitialized);
                 }
             };
-            if find_ctx.objects.is_empty() {
+            debug!("find: objects still unread: {:?}", find_ctx.unread_indexes);
+            if find_ctx.unread_indexes.is_empty() {
                 unsafe { *pulObjectCount = 0 };
                 return Ok(());
             }
             let max_objects = cmp::min(find_ctx.objects.len(), ulMaxObjectCount as usize);
+            let handles = find_ctx
+                .unread_indexes
+                .drain(0..max_objects)
+                .collect::<Vec<_>>();
+            debug!("find: returning objects: {:?}", handles);
             let output = unsafe { slice::from_raw_parts_mut(phObject, max_objects) };
-            output.copy_from_slice(
-                &find_ctx
-                    .objects
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| i as CK_OBJECT_HANDLE)
-                    .take(max_objects)
-                    .collect::<Vec<CK_OBJECT_HANDLE>>(),
-            );
+            output.copy_from_slice(handles.as_slice());
             unsafe { *pulObjectCount = max_objects as CK_ULONG };
             Ok(())
         })
@@ -655,10 +655,17 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         sessions::session(hSession, |session| -> Result<()> {
-            if session.find_ctx.is_none() {
-                return Err(Error::OperationNotInitialized);
-            }
-            session.find_ctx = None;
+            // re-initialize the find context unread indexes
+            let find_ctx = session
+                .find_ctx
+                .as_mut()
+                .ok_or(Error::OperationNotInitialized)?;
+            find_ctx.unread_indexes = find_ctx
+                .objects
+                .iter()
+                .enumerate()
+                .map(|(i, _)| i as CK_OBJECT_HANDLE)
+                .collect();
             Ok(())
         })
     }
