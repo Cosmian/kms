@@ -255,7 +255,7 @@ impl LoginState {
                         .into_inner()
                         .send(auth_params.into_inner())
                         .unwrap();
-                    HttpResponse::Ok().body("Authentication Success! You can close this window.")
+                    HttpResponse::Ok().body("You can now close this window.")
                 }
 
                 HttpServer::new(move || {
@@ -273,13 +273,20 @@ impl LoginState {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ExpiresIn {
+    StringTimestamp(String),
+    UnsignedTimestamp(u64),
+}
+
 #[derive(Deserialize, Debug)]
 pub struct OAuthResponse {
     pub access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_in: Option<u64>,
+    pub expires_in: Option<ExpiresIn>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

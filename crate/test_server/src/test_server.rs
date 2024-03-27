@@ -226,7 +226,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
             format!("http://0.0.0.0:{}", server_params.port)
         },
         accept_invalid_certs: true,
-        kms_access_token: if server_params.jwt_issuer_uri.is_some() {
+        kms_access_token: if server_params.jwt_config.is_some() {
             Some(AUTH0_TOKEN.to_string())
         } else {
             None

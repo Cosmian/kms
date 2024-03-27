@@ -6,7 +6,7 @@ pub const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVVU
 
 pub fn get_auth0_jwt_config() -> JwtAuthConfig {
     JwtAuthConfig {
-        jwt_issuer_uri: Some(AUTH0_JWT_ISSUER_URI.to_owned()),
+        jwt_issuer_uri: Some(vec![AUTH0_JWT_ISSUER_URI.to_owned()]),
         jwks_uri: None,
         jwt_audience: None,
     }

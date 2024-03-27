@@ -132,9 +132,9 @@ mod tests {
                 authority_cert_file: Some(PathBuf::from("[authority cert file]")),
             },
             auth: JwtAuthConfig {
-                jwt_issuer_uri: Some("[jwt issuer uri]".to_string()),
-                jwks_uri: Some("[jwks uri]".to_string()),
-                jwt_audience: Some("[jwt audience]".to_string()),
+                jwt_issuer_uri: Some(vec!["[jwt issuer uri]".to_string()]),
+                jwks_uri: Some(vec!["[jwks uri]".to_string()]),
+                jwt_audience: Some(vec!["[jwt audience]".to_string()]),
             },
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -168,9 +168,9 @@ https_p12_password = "[https p12 password]"
 authority_cert_file = "[authority cert file]"
 
 [auth]
-jwt_issuer_uri = "[jwt issuer uri]"
-jwks_uri = "[jwks uri]"
-jwt_audience = "[jwt audience]"
+jwt_issuer_uri = ["[jwt issuer uri]"]
+jwks_uri = ["[jwks uri]"]
+jwt_audience = ["[jwt audience]"]
 
 [workspace]
 root_data_path = "[root data path]"

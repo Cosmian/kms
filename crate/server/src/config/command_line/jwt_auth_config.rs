@@ -9,28 +9,36 @@ use serde::{Deserialize, Serialize};
 pub struct JwtAuthConfig {
     /// The issuer URI of the JWT token
     ///
+    /// To handle multiple identity managers, add different parameters under each argument
+    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// the same order
+    ///
     /// For Auth0, this is the delegated authority domain configured on Auth0, for instance
     /// `https://<your-tenant>.<region>.auth0.com/`
     ///
     /// For Google, this would be `https://accounts.google.com`
-    #[clap(long, env = "KMS_JWT_ISSUER_URI")]
-    pub jwt_issuer_uri: Option<String>,
+    #[clap(long, env = "KMS_JWT_ISSUER_URI", num_args = 1..)]
+    pub jwt_issuer_uri: Option<Vec<String>>,
 
     /// The JWKS (Json Web Key Set) URI of the JWT token
+    ///
+    /// To handle multiple identity managers, add different parameters under each argument
+    /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+    /// the same order
     ///
     /// For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
     ///
     /// For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
     ///
     /// Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
-    #[clap(long, env = "KMS_JWKS_URI")]
-    pub jwks_uri: Option<String>,
+    #[clap(long, env = "KMS_JWKS_URI", num_args = 1..)]
+    pub jwks_uri: Option<Vec<String>>,
 
     /// The audience of the JWT token
     ///
     /// Optional: the server will validate the JWT `aud` claim against this value if set
-    #[clap(long, env = "KMS_JST_AUDIENCE")]
-    pub jwt_audience: Option<String>,
+    #[clap(long, env = "KMS_JST_AUDIENCE", num_args = 1..)]
+    pub jwt_audience: Option<Vec<String>>,
 }
 
 impl JwtAuthConfig {
