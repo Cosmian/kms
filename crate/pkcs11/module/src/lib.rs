@@ -640,7 +640,7 @@ cryptoki_fn!(
                     .objects
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| i as u64)
+                    .map(|(i, _)| i as CK_OBJECT_HANDLE)
                     .take(max_objects)
                     .collect::<Vec<CK_OBJECT_HANDLE>>(),
             );
