@@ -33,10 +33,10 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 - [Quick start](#quick-start)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
-    * [Linux](#linux)
-    * [MacOS](#macos)
-    * [Windows](#windows)
-    * [Build the Docker container](#build-the-docker-container)
+  * [Linux](#linux)
+  * [MacOS](#macos)
+  * [Windows](#windows)
+  * [Build the Docker container](#build-the-docker-container)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
@@ -48,7 +48,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.13.5/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.14.0/)
 for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -57,7 +57,7 @@ Using Docker, to quick-start a Cosmian KMS server on `http://localhost:9998` tha
 inside the container, simply run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.14.0
 ```
 
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
@@ -83,7 +83,7 @@ directory.
 
 ## Building the KMS
 
-To avoid the *additive feature* issues, the main artifacts - the CLI, the KMS server and the
+To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the
 PKCS11 provider - should directly be built using `cargo build --release`within their own crate, not
 from the project root.
 
@@ -298,10 +298,10 @@ The GCP KMS images are based on GCP Cosmian VM images.
 
 This table shows the minimum version correspondence between the various components.
 
-| `Cosmian VM` | KMS    |
-|--------------|--------|
-| 1.1.0-rc1    | 4.13.3 |
-| 1.1.0-rc2    | 4.13.5 |
+| `Cosmian VM` | KMS            |
+| ------------ | -------------- |
+| 1.1.0-rc1    | 4.13.3         |
+| 1.1.0-rc2    | 4.13.5, 4.14.0 |
 
 ## Releases
 
