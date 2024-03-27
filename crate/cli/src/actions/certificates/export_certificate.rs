@@ -1,19 +1,14 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
+use cosmian_kms_client::{
+    export_object,
+    kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
+    write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use tracing::trace;
 
-use crate::{
-    actions::shared::utils::{
-        export_object, write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
-    },
-    cli_bail,
-    error::CliError,
-};
+use crate::{cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
@@ -83,7 +78,7 @@ pub struct ExportCertificateAction {
 
 impl ExportCertificateAction {
     /// Export a certificate from the KMS
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         trace!("Export certificate: {:?}", self);
 
         let object_id: String = if let Some(object_id) = &self.unique_id {

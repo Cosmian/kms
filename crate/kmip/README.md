@@ -5,7 +5,7 @@ It also implements the TTLV serialization format.
 
 Using feature `openssl` it provides conversions from KMIP objects to OpenSSL objects.
 
-For specific Cosmian crypto-systems, you can use the [cosmian_kms_utils](https://github.com/Cosmian/kms/tree/main/crate/utils) to generate KMIP data with an abstraction level.
+For specific Cosmian crypto-systems, you can use the [cosmian_kmip](https://github.com/Cosmian/kms/tree/main/crate/kmip) to generate KMIP data with an abstraction level.
 
 ## Supported KMIP Objects
 

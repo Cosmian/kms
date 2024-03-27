@@ -1,10 +1,13 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
-
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
+    KMS_CLI_CONF_ENV,
+};
 #[cfg(not(feature = "fips"))]
-use crate::tests::utils::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
+
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -12,8 +15,7 @@ use crate::tests::{
     symmetric::create_key::create_symmetric_key,
 };
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
-    config::KMS_CLI_CONF_ENV,
+    actions::shared::import_key::ImportKeyFormat,
     error::CliError,
     tests::{
         shared::export::export_key,
@@ -82,10 +84,10 @@ pub fn import_key(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let uid: String = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         None,
@@ -99,7 +101,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     // reimporting the same key  with the same id should fail
     assert!(
         import_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "cc",
             "test_data/ttlv_public_key.json",
             None,
@@ -113,7 +115,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
     //...unless we force it with replace_existing
     let uid_: String = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         None,
@@ -131,17 +133,17 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     export_import_test(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         &private_key_id,
         CryptographicAlgorithm::CoverCrypt,
@@ -149,18 +151,18 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
 
     // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
     export_import_test(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         CryptographicAlgorithm::ECDH,
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     export_import_test(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         CryptographicAlgorithm::AES,

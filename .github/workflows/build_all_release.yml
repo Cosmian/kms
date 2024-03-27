@@ -16,7 +16,14 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -24,6 +31,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   rhel9:
     uses: ./.github/workflows/build_rhel9.yml
@@ -32,7 +40,14 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: rhel9
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -40,6 +55,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   fips-centos7:
     uses: ./.github/workflows/build_centos7.yml
@@ -48,7 +64,14 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7
       commands: |
-        cargo build --release --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --release --features fips
+        cd ../server
+        cargo build --release --features fips
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -57,6 +80,7 @@ jobs:
         /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -66,7 +90,14 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ubuntu_20_04
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        cd ../server
+        cargo build --release
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -74,6 +105,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -83,7 +115,14 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
       commands: |
-        cargo build --release --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --release --features fips
+        cd ../server
+        cargo build --release --features fips
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -92,6 +131,7 @@ jobs:
         /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   ubuntu-22:
     uses: ./.github/workflows/build_generic.yml
@@ -101,7 +141,15 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04
       commands: |
-        cargo build --release --bins
+        set -ex
+        cd crate/cli
+        cargo build --release
+        ldd ../../target/release/ckms | grep ssl && exit 1
+        cd ../server
+        cargo build --release
+        cd ../pkcs11
+        cargo build --release
+        cd ../..
 
         # Check binaries
         target/release/ckms -h
@@ -109,6 +157,7 @@ jobs:
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
+        target/release/libckms_pkcs11.so
 
   windows:
     uses: ./.github/workflows/build_generic.yml
@@ -120,14 +169,25 @@ jobs:
         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
         rustup target add x86_64-pc-windows-gnu
 
+        # build only `ckms`
+        cd crate/cli
+        cargo build --release --target x86_64-pc-windows-gnu
+
+        # build pkcs11 provider
+        cd ../pkcs11
+        cargo build --release --target x86_64-pc-windows-gnu
+        cd ../..
+
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --release --bins --target x86_64-pc-windows-gnu
+        cd crate/server
+        cargo build --release --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
+        target/x86_64-pc-windows-gnu/release/ckms_pkcs11.dll
 
   mac:
     uses: ./.github/workflows/build_generic.yml
@@ -136,8 +196,18 @@ jobs:
       distribution: macos-12
       archive-name: macos
       commands: |
+        set -ex
+
         rustup target add x86_64-apple-darwin
-        cargo build --release --bins --target x86_64-apple-darwin
+
+        cd crate/cli
+        cargo build --release --target x86_64-apple-darwin
+        otool -L ../../target/x86_64-apple-darwin/release/ckms | grep openssl && exit 1
+        cd ../pkcs11
+        cargo build --release --target x86_64-apple-darwin
+        cd ../server
+        cargo build --release --target x86_64-apple-darwin
+        cd ../..
 
         # Check binaries
         target/x86_64-apple-darwin/release/ckms -h
@@ -145,6 +215,7 @@ jobs:
       artifacts: |
         target/x86_64-apple-darwin/release/ckms
         target/x86_64-apple-darwin/release/cosmian_kms_server
+        target/x86_64-apple-darwin/release/libckms_pkcs11.dylib
 
   cosmian_vm:
     needs:
@@ -152,6 +223,7 @@ jobs:
       - rhel9
     uses: ./.github/workflows/build_and_test_cosmian_vm.yml
     strategy:
+      fail-fast: false
       matrix:
         distrib: [ubuntu, rhel]
     name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image

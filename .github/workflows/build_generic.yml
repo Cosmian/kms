@@ -88,7 +88,7 @@ jobs:
 
       - name: Remove large files before saving cache
         run: |
-          find target/ -type f -size +40M -delete
+          find target/ -type f -size +100M -delete
 
       - name: Upload KMS for ${{ inputs.distribution }}
         if: steps.cargo_cache.outputs.cache-hit != 'true' && inputs.artifacts != ''

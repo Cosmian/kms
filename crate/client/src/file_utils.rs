@@ -5,16 +5,19 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
-};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object,
+        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+    },
+    error::ClientError,
+    ClientResultHelper,
+};
 
 /// Read all bytes from a file
-pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, CliError> {
+pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, ClientError> {
     let mut buffer = Vec::new();
     File::open(file)
         .with_context(|| format!("could not open the file {}", file.as_ref().display()))?
@@ -25,7 +28,7 @@ pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, CliError
 }
 
 /// Read an object T from a JSON file
-pub fn read_from_json_file<T>(file: &impl AsRef<Path>) -> Result<T, CliError>
+pub fn read_from_json_file<T>(file: &impl AsRef<Path>) -> Result<T, ClientError>
 where
     T: DeserializeOwned,
 {
@@ -35,7 +38,7 @@ where
 }
 
 /// Read an object from KMIP JSON TTLV bytes slice
-pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError> {
+pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, ClientError> {
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file")?;
@@ -45,13 +48,13 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError
 }
 
 /// Read an  object from a KMIP JSON TTLV file
-pub fn read_object_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, CliError> {
+pub fn read_object_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, ClientError> {
     let bytes = read_bytes_from_file(object_file)?;
     read_object_from_json_ttlv_bytes(&bytes)
 }
 
 /// Write all bytes to a file
-pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), CliError> {
+pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), ClientError> {
     fs::write(file, bytes).with_context(|| {
         format!(
             "failed writing {} bytes to {:?}",
@@ -65,7 +68,7 @@ pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), 
 pub fn write_json_object_to_file<T>(
     json_object: &T,
     file: &impl AsRef<Path>,
-) -> Result<(), CliError>
+) -> Result<(), ClientError>
 where
     T: Serialize,
 {
@@ -78,7 +81,7 @@ where
 pub fn write_kmip_object_to_file(
     kmip_object: &Object,
     object_file: &impl AsRef<Path>,
-) -> Result<(), CliError> {
+) -> Result<(), ClientError> {
     // serialize the returned object to JSON TTLV
     let mut ttlv = to_ttlv(kmip_object)?;
     // set the top tag to the object type
@@ -115,7 +118,7 @@ pub fn write_single_decrypted_data(
     plaintext: &[u8],
     input_file: &Path,
     output_file: Option<&PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<(), ClientError> {
     let output_file = output_file.map_or_else(
         || input_file.with_extension("plain"),
         std::clone::Clone::clone,
@@ -136,7 +139,7 @@ pub fn write_single_encrypted_data(
     encrypted_data: &[u8],
     input_file: &Path,
     output_file: Option<&PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<(), ClientError> {
     // Write the encrypted file
     let output_file = output_file.map_or_else(
         || input_file.with_extension("enc"),
@@ -152,12 +155,12 @@ pub fn write_single_encrypted_data(
 
 /// Read all bytes from multiple files and serialize them
 /// into a unique vector using LEB128 serialization (bulk mode)
-pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>, CliError> {
+pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>, ClientError> {
     let mut ser = Serializer::new();
 
     // number of files to decrypt
     let nb_input_files = u64::try_from(input_files.len()).map_err(|_| {
-        CliError::Conversion(format!(
+        ClientError::Conversion(format!(
             "number of input files is too big for architecture: {} bytes",
             input_files.len()
         ))
@@ -167,7 +170,7 @@ pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>,
     input_files.iter().try_for_each(|input_file| {
         let content = read_bytes_from_file(input_file)?;
         ser.write_vec(&content)?;
-        Ok::<_, CliError>(())
+        Ok::<_, ClientError>(())
     })?;
 
     Ok(ser.finalize().to_vec())
@@ -183,14 +186,14 @@ pub fn write_bulk_decrypted_data(
     plaintext: &[u8],
     input_files: &[PathBuf],
     output_file: Option<&PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<(), ClientError> {
     let mut de = Deserializer::new(plaintext);
 
     // number of decrypted chunks
     let nb_chunks = {
         let len = de.read_leb128_u64()?;
         usize::try_from(len).map_err(|_| {
-            CliError::Conversion(format!(
+            ClientError::Conversion(format!(
                 "size of vector is too big for architecture: {len} bytes",
             ))
         })?
@@ -206,7 +209,7 @@ pub fn write_bulk_decrypted_data(
         let output_file = match output_file {
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
-                    CliError::Conversion(format!(
+                    ClientError::Conversion(format!(
                         "cannot get file name from input file {input_file:?}",
                     ))
                 })?;
@@ -237,14 +240,14 @@ pub fn write_bulk_encrypted_data(
     plaintext: &[u8],
     input_files: &[PathBuf],
     output_file: Option<&PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<(), ClientError> {
     let mut de = Deserializer::new(plaintext);
 
     // number of encrypted chunks
     let nb_chunks = {
         let len = de.read_leb128_u64()?;
         usize::try_from(len).map_err(|_| {
-            CliError::Conversion(format!(
+            ClientError::Conversion(format!(
                 "size of vector is too big for architecture: {len} bytes",
             ))
         })?
@@ -260,7 +263,7 @@ pub fn write_bulk_encrypted_data(
         let output_file = match output_file {
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
-                    CliError::Conversion(format!(
+                    ClientError::Conversion(format!(
                         "cannot get file name from input file {input_file:?}",
                     ))
                 })?;

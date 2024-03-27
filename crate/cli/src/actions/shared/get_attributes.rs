@@ -1,16 +1,17 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
-    kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{AttributeReference, LinkType, Tag, UniqueIdentifier, VendorAttributeReference},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_operations::{GetAttributes, GetAttributesResponse},
+        kmip_types::{AttributeReference, LinkType, Tag, UniqueIdentifier},
+    },
+    write_bytes_to_file, KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{actions::shared::utils::write_bytes_to_file, cli_bail, error::CliError};
+use crate::{cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeTag {
@@ -50,7 +51,7 @@ const ALL_ATTRIBUTE_TAGS: [AttributeTag; 12] = [
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct GetAttributesAction {
-    /// The key unique identifier of the cryptographic object.
+    /// The unique identifier of the cryptographic object.
     /// If not specified, tags should be specified
     #[clap(long = "id", short = 'i', group = "id-tags")]
     id: Option<String>,
@@ -77,13 +78,13 @@ pub struct GetAttributesAction {
 }
 
 impl GetAttributesAction {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either --id or one or more --tag must be specified")
         };
 
         let mut references: Vec<AttributeReference> = Vec::with_capacity(self.attribute_tags.len());
@@ -123,10 +124,7 @@ impl GetAttributesAction {
                     references.push(AttributeReference::Standard(Tag::Certificate));
                 }
                 AttributeTag::Tags => {
-                    references.push(AttributeReference::Vendor(VendorAttributeReference {
-                        vendor_identification: VENDOR_ID_COSMIAN.to_string(),
-                        attribute_name: VENDOR_ATTR_TAG.to_string(),
-                    }));
+                    references.push(AttributeReference::tags_reference());
                 }
             }
         }
@@ -240,14 +238,11 @@ impl GetAttributesAction {
                     }
                 }
                 AttributeTag::Tags => {
-                    if let Some(v) =
-                        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-                    {
-                        results.insert(
-                            "tags".to_string(),
-                            serde_json::from_slice::<Value>(v).unwrap_or_default(),
-                        );
-                    }
+                    let tags = attributes.get_tags();
+                    results.insert(
+                        "tags".to_string(),
+                        serde_json::to_value(tags).unwrap_or_default(),
+                    );
                 }
             }
         }

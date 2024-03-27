@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 #[cfg(feature = "openssl")]
-use crate::openssl::pad_be_bytes;
+use crate::pad_be_bytes;
 use crate::{
     crypto::secret::SafeBigUint,
     error::KmipError,

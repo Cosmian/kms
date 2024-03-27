@@ -11,7 +11,6 @@ use cosmian_kmip::{
         symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
         EncryptionSystem,
     },
-    error::KmipError,
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
@@ -21,6 +20,7 @@ use cosmian_kmip::{
         },
     },
     openssl::kmip_public_key_to_openssl,
+    KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{

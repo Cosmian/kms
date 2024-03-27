@@ -2,16 +2,16 @@ use std::path::PathBuf;
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
-    kmip::kmip_types::CryptographicAlgorithm,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
+        kmip::kmip_types::CryptographicAlgorithm,
+    },
+    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
-    actions::shared::utils::{
-        export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file,
-    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -68,7 +68,7 @@ pub struct UnwrapKeyAction {
 
 impl UnwrapKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 

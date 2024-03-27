@@ -17,10 +17,9 @@ use cosmian_kms_cli::{
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
-    config::CliConf,
     error::CliError,
 };
-use cosmian_logger::log_utils::log_init;
+use cosmian_kms_client::ClientConf;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -70,7 +69,18 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
-    log_init("");
+    // Set up environment variables and logging options
+    if std::env::var("RUST_BACKTRACE").is_err() {
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var(
+            "RUST_LOG",
+            "info,cosmian=info,cosmian_kms_cli=info, actix_web=info,sqlx::query=error,mysql=info",
+        );
+    }
+
+    env_logger::init();
 
     let opts = Cli::parse();
 
@@ -80,13 +90,13 @@ async fn main_() -> Result<(), CliError> {
         return Ok(())
     }
 
-    let conf_path = CliConf::location(opts.conf)?;
+    let conf_path = ClientConf::location(opts.conf)?;
 
     match opts.command {
         CliCommands::Login(action) => action.process(&conf_path).await?,
         CliCommands::Logout(action) => action.process(&conf_path).await?,
         command => {
-            let conf = CliConf::load(&conf_path)?;
+            let conf = ClientConf::load(&conf_path)?;
             let kms_rest_client = conf.initialize_kms_client()?;
 
             match command {

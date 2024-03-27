@@ -1,17 +1,19 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_operations::Certify,
-    kmip_types::{
-        Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::ObjectType,
+        kmip_operations::Certify,
+        kmip_types::{
+            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
+        },
     },
+    read_bytes_from_file, KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
-use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
+use crate::error::CliError;
 
 /// Certify a Certificate Signing Request or a Public key to create a X509 certificate.
 ///
@@ -75,7 +77,7 @@ pub struct CertifyAction {
 }
 
 impl CertifyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
             return Err(CliError::Default(
                 "Either a certificate signing request or a public key to certify must be provided"

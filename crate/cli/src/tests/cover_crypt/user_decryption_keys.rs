@@ -1,16 +1,15 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use super::SUB_COMMAND;
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        utils::{
-            extract_uids::extract_user_key, recover_cmd_logs, start_default_test_kms_server, ONCE,
-        },
+        utils::{extract_uids::extract_user_key, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -52,11 +51,11 @@ pub fn create_user_decryption_key(
 
 #[tokio::test]
 pub async fn test_user_decryption_key() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
@@ -64,7 +63,7 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
 
     // and a user key
     let user_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
@@ -76,11 +75,11 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
@@ -88,7 +87,7 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
 
     // bad attributes
     let err = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],
@@ -102,7 +101,7 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
 
     // bad master private key
     let err = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "BAD_KEY",
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],

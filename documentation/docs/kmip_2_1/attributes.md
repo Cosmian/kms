@@ -45,7 +45,7 @@ All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of
 
 Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian` - and a tuple `Attribute Name`, `Attribute Value`.
 
-Covercrypt uses a few vendor attributes which names can be seen in the code [attributes.rs](https://github.com/Cosmian/kms/blob/main/crate/utils/src/crypto/cover_crypt/attributes.rs) file.
+Covercrypt uses a few vendor attributes which names can be seen in the code [attributes.rs](https://github.com/Cosmian/kms/blob/main/crate/kmip/src/crypto/cover_crypt/attributes.rs) file.
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 

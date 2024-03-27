@@ -4,8 +4,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
-            StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType, StateEnumeration,
+            UniqueIdentifier,
         },
     },
     openssl::{
@@ -60,7 +60,7 @@ pub async fn export_get(
     let export = operation_type == ObjectOperationType::Export;
 
     // export based on the Object type
-    let export_attributes = match object_type {
+    match object_type {
         ObjectType::PrivateKey => {
             // determine if the user wants a PKCS#12
             let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
@@ -105,9 +105,6 @@ pub async fn export_get(
                 )
                 .await?;
             }
-            owm.object
-                .attributes()
-                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -133,9 +130,6 @@ pub async fn export_get(
                 )
                 .await?;
             }
-            owm.object
-                .attributes()
-                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::SymmetricKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -161,9 +155,6 @@ pub async fn export_get(
                 )
                 .await?;
             }
-            owm.object
-                .attributes()
-                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
@@ -174,7 +165,6 @@ pub async fn export_get(
                     )
                 }
             }
-            owm.attributes
         }
         _ => {
             kms_bail!(
@@ -187,7 +177,7 @@ pub async fn export_get(
     Ok(ExportResponse {
         object_type: owm.object.object_type(),
         unique_identifier: UniqueIdentifier::TextString(owm.id),
-        attributes: export_attributes,
+        attributes: owm.attributes,
         object: owm.object,
     })
 }

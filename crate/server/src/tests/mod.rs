@@ -6,4 +6,4 @@ mod kmip_messages;
 #[cfg(not(feature = "fips"))]
 mod kmip_server_tests;
 mod ms_dke;
-pub mod test_utils;
+mod test_utils;

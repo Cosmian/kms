@@ -1,8 +1,8 @@
 [package]
 name = "cosmian_kmip"
-version = "4.13.5"
+version = "4.14.0"
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 
 [lib]
 # doc test linking as a separate binary is extremely slow
@@ -14,31 +14,36 @@ default = ["dep:sha3"]
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = []
+fips = ["openssl"]
 
 [dependencies]
 argon2 = "0.5"
 base58 = "0.2"
-bitflags = { workspace = true }
+bitflags = "2.4"
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-num-bigint-dig = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
+] }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
-rust-ini = "0.20"
+rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha3 = { version = "0.10", optional = true }
-strum = { workspace = true }
+strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-uuid = { version = "1.6.1", features = ["v4"] }
-zeroize = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]
 
 [dev-dependencies]
-x509-parser = "0.15"
+x509-parser = { workspace = true }

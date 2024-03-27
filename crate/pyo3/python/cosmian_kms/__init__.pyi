@@ -81,7 +81,6 @@ class KmsClient:
         database_secret: Optional[str] = None,
         insecure_mode: bool = False,
         allowed_tee_tls_cert: Optional[bytes] = None,
-        jwe_public_key: Optional[str] = None,
     ) -> None:
         """Instantiate a KMS Client
 
@@ -93,7 +92,6 @@ class KmsClient:
             database_secret (str, optional): to authenticate to the KMS database
             insecure_mode (bool, optional): accept self signed ssl cert. Defaults to False.
             allowed_tee_tls_cert (Optional[bytes])  : PEM certificate of a tee.
-            jwe_public_key (Optional[str]): public key for JWE
         """
     def create_cover_crypt_master_key_pair(
         self, policy: Union[Policy, bytes]
@@ -175,7 +173,7 @@ class KmsClient:
         Removes old keys associated to the access policy from the master keys.
         This will automatically refresh the corresponding user keys.
         This will permanently remove access to old ciphertexts.
-    
+
         Args:
             - `access_policy` (str): describe the keys to renew
             - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
@@ -191,7 +189,7 @@ class KmsClient:
         """
         Remove a specific attribute from a keypair's policy.
         Permanently removes the ability to use this attribute in both encryptions and decryptions.
-        
+
         Note that messages whose encryption policy does not contain any other attributes
         belonging to the dimension of the deleted attribute will be lost.
 

@@ -1,6 +1,7 @@
 use clap::Parser;
-use cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsClient,
+};
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -31,8 +32,7 @@ pub struct CreateKeyPairAction {
 }
 
 impl CreateKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        println!("run: starting");
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let create_key_pair_request = create_rsa_key_pair_request(&self.tags, self.key_size)?;
 
         // Query the KMS with your kmip data and get the key pair ids

@@ -1,11 +1,12 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::crypto::generic::kmip_requests::build_encryption_request;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::crypto::generic::kmip_requests::build_encryption_request, read_bytes_from_file,
+    KmsClient,
+};
 
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -40,7 +41,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Read the file to encrypt
         let mut data = read_bytes_from_file(&self.input_file)
             .with_context(|| "Cannot read bytes from the file to encrypt")?;

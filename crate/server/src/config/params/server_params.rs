@@ -3,11 +3,7 @@ use std::{fmt, fs::File, io::Read, path::PathBuf};
 use openssl::x509::X509;
 
 use super::{DbParams, HttpParams};
-use crate::{
-    config::{command_line::JWEConfig, ClapConfig},
-    kms_bail,
-    result::KResult,
-};
+use crate::{config::ClapConfig, kms_bail, result::KResult};
 
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
@@ -18,8 +14,6 @@ pub struct ServerParams {
 
     // The JWKS URI if Auth is enabled
     pub jwks_uri: Option<String>,
-
-    pub jwe_config: JWEConfig,
 
     /// The JWT audience if Auth is enabled
     pub jwt_audience: Option<String>,
@@ -89,7 +83,6 @@ impl ServerParams {
         let server_conf = Self {
             jwks_uri: conf.auth.jwks_uri.clone(),
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
-            jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
             db_params: conf.db.init(&workspace)?,
             clear_db_on_start: conf.db.clear_database,
@@ -170,7 +163,6 @@ impl Clone for ServerParams {
         Self {
             jwt_issuer_uri: self.jwt_issuer_uri.clone(),
             jwks_uri: self.jwks_uri.clone(),
-            jwe_config: self.jwe_config.clone(),
             jwt_audience: self.jwt_audience.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,

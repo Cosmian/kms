@@ -10,7 +10,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    error::KmipError,
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -20,7 +20,6 @@ use crate::{
         },
     },
     kmip_bail, kmip_error,
-    result::KmipResultHelper,
 };
 
 /// Convert a KMIP Public key to openssl `PKey<Public>`
@@ -435,7 +434,6 @@ pub fn openssl_public_key_to_kmip(
 
 #[cfg(test)]
 mod tests {
-
     use openssl::{
         bn::{BigNum, BigNumContext},
         ec::{EcGroup, EcKey, EcPoint},

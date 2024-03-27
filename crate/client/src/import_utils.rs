@@ -1,26 +1,27 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::Import,
-    kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
-};
-use cosmian_kms_client::KmsRestClient;
 use tracing::trace;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    cosmian_kmip::kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::Import,
+        kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
+    },
+    ClientError, ClientResultHelper, KmsClient,
+};
 
 /// Import an Object into the KMS
 ///
 /// If the `import_attributes` are not specified,
 /// the attributes of the object are used, if any.
 pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     object_id: Option<String>,
     object: Object,
     import_attributes: Option<Attributes>,
     unwrap: bool,
     replace_existing: bool,
     tags: T,
-) -> Result<String, CliError> {
+) -> Result<String, ClientError> {
     trace!("Entering import_object");
     // an empty uid will have the server generate if for us
     let unique_identifier = object_id.clone().unwrap_or_default();

@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
 
-use crate::{cli_bail, error::CliError};
+use crate::{client_bail, ClientError};
 
 /// Build KMIP Objects from a PEM file.
 /// The PEM file can contain multiple objects.
@@ -23,7 +23,7 @@ use crate::{cli_bail, error::CliError};
 ///
 /// # Returns
 /// * `Ok(Vec<Object>)` - The KMIP objects
-/// * `Err(CliError)` - The error
+/// * `Err(RestClientError)` - The error
 ///
 /// # PEM Tags
 ///
@@ -42,7 +42,7 @@ use crate::{cli_bail, error::CliError};
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
 ///
-pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
+pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
@@ -69,7 +69,7 @@ pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
                 key_block: key_block(KeyFormatType::ECPrivateKey, pem.into_contents()),
             }),
             "EC PUBLIC KEY" => {
-                return Err(CliError::KmsClientError(
+                return Err(ClientError::NotSupported(
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
                      EC private keys only"
                         .to_string(),
@@ -80,22 +80,22 @@ pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
                 certificate_value: pem.into_contents(),
             }),
             "X509 CRL" => {
-                return Err(CliError::KmsClientError(
+                return Err(ClientError::NotSupported(
                     "X509 CRL not supported on this server".to_string(),
                 ))
             }
             "NEW CERTIFICATE REQUEST" => {
-                return Err(CliError::KmsClientError(
+                return Err(ClientError::NotSupported(
                     "NEW CERTIFICATE REQUEST not supported on this server".to_string(),
                 ))
             }
             "CERTIFICATE REQUEST" => {
-                return Err(CliError::KmsClientError(
+                return Err(ClientError::NotSupported(
                     "CERTIFICATE REQUEST not supported on this server".to_string(),
                 ))
             }
             x => {
-                return Err(CliError::KmsClientError(format!(
+                return Err(ClientError::NotSupported(format!(
                     "PEM tag {x} not supported"
                 )))
             }
@@ -116,7 +116,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
         },
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.
-        // Also it should not be specified if the cryptographic length is not specified.
+        // Also, it should not be specified if the cryptographic length is not specified.
         cryptographic_algorithm: None,
         // See comment above
         cryptographic_length: None,
@@ -125,18 +125,18 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
 }
 
 /// Converts DER bytes to PEM bytes for keys
-pub(crate) fn der_to_pem(
+pub fn der_to_pem(
     bytes: &[u8],
     key_format_type: KeyFormatType,
     object_type: ObjectType,
-) -> Result<Zeroizing<Vec<u8>>, CliError> {
+) -> Result<Zeroizing<Vec<u8>>, ClientError> {
     let pem = match key_format_type {
         KeyFormatType::PKCS1 => {
             let tag = match object_type {
                 ObjectType::PrivateKey => "RSA PRIVATE KEY",
                 ObjectType::PublicKey => "RSA PUBLIC KEY",
                 x => {
-                    cli_bail!(
+                    client_bail!(
                         "Object type {x:?} not supported for PKCS1. Must be a private key or \
                          public key"
                     )
@@ -149,7 +149,7 @@ pub(crate) fn der_to_pem(
                 ObjectType::PrivateKey => "PRIVATE KEY",
                 ObjectType::PublicKey => "PUBLIC KEY",
                 x => {
-                    cli_bail!(
+                    client_bail!(
                         "Object type {x:?} not supported for PKCS#8 / SPKI. Must be a private key \
                          (PKCS#8) or public key (SPKI)"
                     )
@@ -161,13 +161,13 @@ pub(crate) fn der_to_pem(
             let tag = match object_type {
                 ObjectType::PrivateKey => "EC PRIVATE KEY",
                 x => {
-                    cli_bail!("Object type {x:?} not supported for SEC1. Must be a private key.")
+                    client_bail!("Object type {x:?} not supported for SEC1. Must be a private key.")
                 }
             };
             pem::Pem::new(tag, bytes)
         }
         _ => {
-            cli_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
+            client_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
         }
     };
     Ok(Zeroizing::new(

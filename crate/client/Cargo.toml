@@ -1,25 +1,41 @@
 [package]
 name = "cosmian_kms_client"
-version = "4.13.5"
+version = "4.14.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 
 [lib]
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_kmip/fips"]
+openssl = ["cosmian_kmip/openssl"]
+
 [dependencies]
 base64 = { workspace = true }
-cosmian_kmip = { path = "../kmip", features = ["openssl"] }
+cloudproof = { workspace = true }
+## use the non-openssl version
+cosmian_kmip = { path = "../kmip", default-features = true }
+der = "0.7.8"
 http = { workspace = true }
-josekit = { workspace = true }
 log = "0.4"
-reqwest = { workspace = true }
-rustls = { workspace = true }
+pem = "3.0.3"
+reqwest = { workspace = true, features = [
+  "json",
+  "multipart",
+  "native-tls",
+  "stream",
+  "blocking",
+] }
+rustls = { workspace = true, features = ["dangerous_configuration"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tracing = "0.1"
 url = { workspace = true }
-webpki-roots = { workspace = true }
+webpki-roots = "0.22"
+x509-cert = "0.2.5"
+zeroize = "1.7.0"

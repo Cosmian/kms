@@ -1,7 +1,10 @@
-use cosmian_kmip::{
-    crypto::generic::kmip_requests::build_revoke_key_request, kmip::kmip_types::RevocationReason,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::generic::kmip_requests::build_revoke_key_request,
+        kmip::kmip_types::RevocationReason,
+    },
+    KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     cli_bail,
@@ -9,7 +12,7 @@ use crate::{
 };
 
 pub async fn revoke(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {

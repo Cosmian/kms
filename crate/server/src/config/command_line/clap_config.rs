@@ -3,7 +3,7 @@ use std::fmt::{self};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig};
+use super::{DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig};
 
 const DEFAULT_USERNAME: &str = "admin";
 
@@ -16,7 +16,6 @@ impl Default for ClapConfig {
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
-            jwe: JWEConfig::default(),
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
         }
@@ -47,9 +46,6 @@ pub struct ClapConfig {
     /// but always use the default username instead of the one provided by the authentication method
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
     pub force_default_username: bool,
-
-    #[clap(flatten)]
-    pub jwe: JWEConfig,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///

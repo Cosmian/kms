@@ -6,13 +6,14 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use super::SUB_COMMAND;
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
+        utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -65,17 +66,17 @@ pub fn create_symmetric_key(
 
 #[tokio::test]
 pub async fn test_create_symmetric_key() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0u8; 32];
 
     // AES
     {
         // AES 256 bit key
-        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
         // AES 128 bit key
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(128),
             None,
             None,
@@ -85,7 +86,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             None,
             Some(&key_b64),
             None,
@@ -97,7 +98,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
     {
         // ChaCha20 256 bit key
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             None,
             None,
             Some("chacha20"),
@@ -105,7 +106,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         )?;
         // ChaCha20 128 bit key
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(128),
             None,
             Some("chacha20"),
@@ -117,7 +118,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             None,
             Some(&key_b64),
             Some("chacha20"),
@@ -129,7 +130,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
     {
         // ChaCha20 256 bit salt
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             None,
             None,
             Some("sha3"),
@@ -137,28 +138,28 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         )?;
         // ChaCha20 salts
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(224),
             None,
             Some("sha3"),
             &[] as &[&str],
         )?;
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(256),
             None,
             Some("sha3"),
             &[] as &[&str],
         )?;
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(384),
             None,
             Some("sha3"),
             &[] as &[&str],
         )?;
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             Some(512),
             None,
             Some("sha3"),
@@ -170,7 +171,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         rng.fill_bytes(&mut salt);
         let key_b64 = general_purpose::STANDARD.encode(&salt);
         create_symmetric_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             None,
             Some(&key_b64),
             Some("sha3"),

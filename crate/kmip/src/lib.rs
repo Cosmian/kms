@@ -4,12 +4,18 @@
 // To parse a slice
 #![feature(slice_take)]
 
-pub mod error;
-mod id;
+pub use error::{result::KmipResultHelper, KmipError};
 pub use id::id;
-pub mod crypto;
-pub mod kmip;
-pub mod result;
 
+pub mod crypto;
+mod error;
+mod id;
+pub mod kmip;
 #[cfg(feature = "openssl")]
 pub mod openssl;
+
+pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
+    while bytes.len() != size {
+        bytes.insert(0, 0);
+    }
+}

@@ -4,13 +4,15 @@ use clap::{
     error::{ContextKind, ContextValue, ErrorKind},
     Parser,
 };
-use cosmian_kmip::kmip::{
-    kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_operations::Locate,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        },
     },
+    KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use strum::IntoEnumIterator;
 
 use crate::error::CliError;
@@ -74,7 +76,7 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {

@@ -5,12 +5,15 @@ use std::{
     path::PathBuf,
 };
 
-use cosmian_kms_client::KmsRestClient;
 use der::{DecodePem, Encode};
 use rustls::Certificate;
 use serde::{Deserialize, Serialize};
+use x509_cert::Certificate as X509Certificate;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    error::{result::RestClientResultHelper, ClientError},
+    KmsClient,
+};
 
 /// Returns the path to the current user's home folder.
 ///
@@ -41,9 +44,9 @@ fn get_home_folder() -> Option<PathBuf> {
 
 /// Returns the default configuration path
 ///  or an error if the home folder cannot be determined
-fn get_default_conf_path() -> Result<PathBuf, CliError> {
+fn get_default_conf_path() -> Result<PathBuf, ClientError> {
     get_home_folder()
-        .ok_or_else(|| CliError::NotSupported("unable to determine the home folder".to_owned()))
+        .ok_or_else(|| ClientError::NotSupported("unable to determine the home folder".to_owned()))
         .map(|home| home.join(".cosmian/kms.json"))
 }
 
@@ -58,46 +61,44 @@ fn not(b: &bool) -> bool {
 pub struct Oauth2Conf {
     /// The client ID of the OAuth2 application.
     /// This is obtained from the OAuth2 provider.
-    pub(crate) client_id: String,
+    pub client_id: String,
     /// The client secret of the OAuth2 application.
     /// This is obtained from the OAuth2 provider.
-    pub(crate) client_secret: String,
+    pub client_secret: String,
     /// The URL of the OAuth2 provider's authorization endpoint.
     /// For example, for Google, this is `https://accounts.google.com/o/oauth2/v2/auth`.
-    pub(crate) authorize_url: String,
+    pub authorize_url: String,
     /// The URL of the OAuth2 provider's token endpoint.
     /// For example, for Google, this is `https://oauth2.googleapis.com/token`.
-    pub(crate) token_url: String,
+    pub token_url: String,
     /// The scopes to request.
     /// For example, for Google, this is `["openid", "profile"]`.
-    pub(crate) scopes: Vec<String>,
+    pub scopes: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
-pub struct CliConf {
+pub struct ClientConf {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
     // running an invalid or unsecure SSL certificate
     #[serde(default)]
     #[serde(skip_serializing_if = "not")]
-    pub(crate) accept_invalid_certs: bool,
-    pub(crate) kms_server_url: String,
+    pub accept_invalid_certs: bool,
+    pub kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) verified_cert: Option<String>,
+    pub verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) kms_access_token: Option<String>,
+    pub kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) ssl_client_pkcs12_path: Option<String>,
+    pub ssl_client_pkcs12_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) ssl_client_pkcs12_password: Option<String>,
+    pub ssl_client_pkcs12_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) kms_database_secret: Option<String>,
+    pub kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) jwe_public_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) oauth2_conf: Option<Oauth2Conf>,
+    pub oauth2_conf: Option<Oauth2Conf>,
 }
 
-impl Default for CliConf {
+impl Default for ClientConf {
     fn default() -> Self {
         Self {
             accept_invalid_certs: false,
@@ -107,7 +108,6 @@ impl Default for CliConf {
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
             ssl_client_pkcs12_password: None,
-            jwe_public_key: None,
             oauth2_conf: None,
         }
     }
@@ -134,15 +134,15 @@ impl Default for CliConf {
 /// This function returns a KMS client configured according to the settings specified in the configuration file.
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
-impl CliConf {
-    pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, CliError> {
+impl ClientConf {
+    pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, ClientError> {
         // Obtain the configuration file path from:
         // - the `--conf` arg
         // - the environment variable corresponding to `KMS_CLI_CONF_ENV`
         // - default to a pre-determined path
         if let Some(conf_path) = conf {
             if !conf_path.exists() {
-                return Err(CliError::NotSupported(format!(
+                return Err(ClientError::NotSupported(format!(
                     "Configuration file {conf_path:?} from CLI arg does not exist"
                 )))
             }
@@ -150,7 +150,7 @@ impl CliConf {
         } else if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
             if !conf_path.exists() {
-                return Err(CliError::NotSupported(format!(
+                return Err(ClientError::NotSupported(format!(
                     "Configuration file {conf_path:?} from env var does not exist"
                 )))
             }
@@ -160,7 +160,7 @@ impl CliConf {
         get_default_conf_path()
     }
 
-    pub fn save(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub fn save(&self, conf_path: &PathBuf) -> Result<(), ClientError> {
         fs::write(
             conf_path,
             serde_json::to_string_pretty(&self)
@@ -173,7 +173,7 @@ impl CliConf {
         Ok(())
     }
 
-    pub fn load(conf_path: &PathBuf) -> Result<Self, CliError> {
+    pub fn load(conf_path: &PathBuf) -> Result<Self, ClientError> {
         // Deserialize the configuration from the file, or create a default configuration if none exists
         let conf = if conf_path.exists() {
             // Configuration file exists, read and deserialize it
@@ -198,9 +198,9 @@ impl CliConf {
         Ok(conf)
     }
 
-    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, CliError> {
+    pub fn initialize_kms_client(&self) -> Result<KmsClient, ClientError> {
         // Instantiate a KMS server REST client with the given configuration
-        let kms_rest_client = KmsRestClient::instantiate(
+        let kms_rest_client = KmsClient::instantiate(
             &self.kms_server_url,
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
@@ -209,12 +209,11 @@ impl CliConf {
             self.accept_invalid_certs,
             if let Some(certificate) = &self.verified_cert {
                 Some(Certificate(
-                    x509_cert::Certificate::from_pem(certificate.as_bytes())?.to_der()?,
+                    X509Certificate::from_pem(certificate.as_bytes())?.to_der()?,
                 ))
             } else {
                 None
             },
-            self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
             format!(
@@ -231,37 +230,37 @@ impl CliConf {
 mod tests {
     use std::{env, fs, path::PathBuf};
 
-    use super::{get_default_conf_path, CliConf, KMS_CLI_CONF_ENV};
+    use super::{get_default_conf_path, ClientConf, KMS_CLI_CONF_ENV};
 
     #[test]
     pub fn test_load() {
         // valid conf
         env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
-        let conf_path = CliConf::location(None).unwrap();
-        assert!(CliConf::load(&conf_path).is_ok());
+        let conf_path = ClientConf::location(None).unwrap();
+        assert!(ClientConf::load(&conf_path).is_ok());
 
         // another valid conf
         env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
-        let conf_path = CliConf::location(None).unwrap();
-        assert!(CliConf::load(&conf_path).is_ok());
+        let conf_path = ClientConf::location(None).unwrap();
+        assert!(ClientConf::load(&conf_path).is_ok());
 
         // Default conf file
         env::remove_var(KMS_CLI_CONF_ENV);
         let _ = fs::remove_file(get_default_conf_path().unwrap());
-        let conf_path = CliConf::location(None).unwrap();
-        assert!(CliConf::load(&conf_path).is_ok());
+        let conf_path = ClientConf::location(None).unwrap();
+        assert!(ClientConf::load(&conf_path).is_ok());
         assert!(get_default_conf_path().unwrap().exists());
 
         // invalid conf
         env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
-        let conf_path = CliConf::location(None).unwrap();
-        let e = CliConf::load(&conf_path).err().unwrap().to_string();
+        let conf_path = ClientConf::location(None).unwrap();
+        let e = ClientConf::load(&conf_path).err().unwrap().to_string();
         assert!(e.contains("missing field `kms_server_url`"));
 
         // with a file
         env::remove_var(KMS_CLI_CONF_ENV);
         let conf_path =
-            CliConf::location(Some(PathBuf::from("test_data/configs/kms.json"))).unwrap();
-        assert!(CliConf::load(&conf_path).is_ok());
+            ClientConf::location(Some(PathBuf::from("test_data/configs/kms.json"))).unwrap();
+        assert!(ClientConf::load(&conf_path).is_ok());
     }
 }

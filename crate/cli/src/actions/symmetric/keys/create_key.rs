@@ -1,13 +1,14 @@
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
-    kmip::kmip_types::CryptographicAlgorithm,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
+        kmip::kmip_types::CryptographicAlgorithm,
+    },
+    import_object, KmsClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
-    actions::shared::utils::import_object,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -61,7 +62,7 @@ pub struct CreateKeyAction {
 }
 
 impl CreateKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
             let bytes = general_purpose::STANDARD

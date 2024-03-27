@@ -1,11 +1,15 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, LinkType},
-    ttlv::{deserializer::from_ttlv, TTLV},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object,
+        kmip_types::{Attributes, LinkType},
+        ttlv::{deserializer::from_ttlv, TTLV},
+    },
+    read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
+use kms_test_server::{start_default_test_kms_server, ONCE};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -14,15 +18,11 @@ use x509_parser::{der_parser::oid, prelude::*};
 #[cfg(not(feature = "fips"))]
 use crate::tests::{elliptic_curve::create_key_pair::create_ec_key_pair, shared::export_key};
 use crate::{
-    actions::{
-        certificates::{CertificateExportFormat, CertificateInputFormat},
-        shared::utils::{read_from_json_file, read_object_from_json_ttlv_file},
-    },
-    config::KMS_CLI_CONF_ENV,
+    actions::certificates::{CertificateExportFormat, CertificateInputFormat},
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
-        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
+        utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -106,11 +106,11 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     let tmp_path = tmp_dir.path();
     // log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // import Root CA
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/ca.crt",
         CertificateInputFormat::Pem,
@@ -125,7 +125,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
 
     // import Intermediate p12
     let issuer_private_key_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
         CertificateInputFormat::Pkcs12,
@@ -140,7 +140,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
 
     // Certify the CSR with the intermediate CA
     let certificate_id = certify(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some("test_data/certificates/csr/leaf.csr".to_owned()),
         None,
         None,
@@ -155,7 +155,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     // export the certificate
     let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_id,
         exported_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
@@ -192,7 +192,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     // export the intermediate certificate
     let exported_intermediate_cert_file = tmp_path.join("exported_intermediate_cert.json");
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_link,
         exported_intermediate_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
@@ -214,11 +214,11 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     let tmp_path = tmp_dir.path();
     // log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // import Root CA
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/ca.crt",
         CertificateInputFormat::Pem,
@@ -233,7 +233,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 
     // import Intermediate p12
     let issuer_private_key_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
         CertificateInputFormat::Pkcs12,
@@ -248,7 +248,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 
     // Certify the CSR with the intermediate CA
     let certificate_id = certify(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some("test_data/certificates/csr/leaf.csr".to_owned()),
         None,
         None,
@@ -263,7 +263,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     // export the certificate
     let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_id,
         exported_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
@@ -375,11 +375,11 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 async fn certify_a_public_key_test() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // import Root CA
     import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/ca.crt",
         CertificateInputFormat::Pem,
@@ -394,7 +394,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
 
     // import Intermediate p12
     let issuer_private_key_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
         CertificateInputFormat::Pkcs12,
@@ -409,11 +409,11 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
 
     // create a Ed25519 Key Pair
     let (_private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "ed25519", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "ed25519", &[])?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         None,
         Some(public_key_id),
         Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string()),
@@ -433,7 +433,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
 
     // export the certificate
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_id,
         tmp_exported.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
@@ -472,7 +472,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         .unwrap();
     // export the intermediate certificate
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_link,
         tmp_exported_intermediate.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
@@ -485,7 +485,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         .get_link(LinkType::PublicKeyLink)
         .unwrap();
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &public_key_link,
         tmp_exported_pubkey.to_str().unwrap(),
