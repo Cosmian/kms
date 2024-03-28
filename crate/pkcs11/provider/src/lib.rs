@@ -14,7 +14,7 @@ mod pkcs11_data_object;
 /// to get the PKCS#11 functions list.
 #[no_mangle]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
-    initialize_logging("ckms-pkcs11.log", None, None);
+    initialize_logging("ckms-pkcs11", None, None);
     // Instantiate a backend with a kms client using the `kms.json` file in the local default directory.
     pkcs11_module::traits::register_backend(Box::new(
         backend::CkmsBackend::instantiate(

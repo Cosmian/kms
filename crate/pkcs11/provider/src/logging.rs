@@ -38,7 +38,7 @@ fn init(
     // Use `create_dir_all` to create the directory and all its parent directories
     // if they do not exist.
     fs::create_dir_all(&log_home)?;
-    let log_path = log_home.join(log_name);
+    let log_path = log_home.join(format!("{log_name}.log"));
     // Open the file in append mode, or create it if it doesn't exist.
     let file = OpenOptions::new()
         .append(true)
@@ -67,7 +67,7 @@ fn init(
     level_filter: Option<LevelFilter>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let env_filter = EnvFilter::builder()
-        .with_default_directive(level_filter.unwrap_or(LevelFilter::TRACE).into())
+        .with_default_directive(level_filter.unwrap_or(LevelFilter::DEBUG).into())
         .from_env_lossy();
     Registry::default()
         .with(tracing_journald::layer()?.with_syslog_identifier(log_name.into()))
