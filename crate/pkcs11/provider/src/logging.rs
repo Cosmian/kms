@@ -5,7 +5,7 @@ use std::{fs, fs::OpenOptions, path::PathBuf};
 use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
 #[cfg(not(target_os = "linux"))]
-use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{fmt::format::FmtSpan, Layer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 static TRACING_INIT: Once = Once::new();
@@ -59,17 +59,18 @@ fn init(
     Ok(())
 }
 
+// Default tracing using syslog
 #[cfg(target_os = "linux")]
-// Default tracing using syslog or stderr
-#[cfg(any(not(feature = "custom-function-list"), feature = "local_tests"))]
 fn init(
     log_name: &str,
     _log_home: Option<String>,
     _level_filter: Option<LevelFilter>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let env_filter = EnvFilter::builder().with_default_directive(LevelFilter::TRACE.into());
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::TRACE.into())
+        .from_env_lossy();
     let journald_layer = tracing_journald::layer()?;
-    _ = Registry::default()
+    Registry::default()
         .with(journald_layer.with_syslog_identifier(log_name.into()))
         .with(env_filter)
         .with(ErrorLayer::default())
