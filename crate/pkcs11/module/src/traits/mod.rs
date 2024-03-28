@@ -20,11 +20,10 @@
 use std::{any::Any, hash::Hash, sync::Arc};
 
 pub use backend::{backend, register_backend, Backend};
-// The Data object Trait
+pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use once_cell;
 pub use private_key::PrivateKey;
-use x509_cert::der::Decode;
 
 use crate::{
     core::{
@@ -35,6 +34,7 @@ use crate::{
 };
 
 mod backend;
+mod certificate;
 mod data_object;
 mod private_key;
 
@@ -101,54 +101,6 @@ impl Hash for dyn PublicKey {
         self.label().hash(state);
     }
 }
-
-pub trait Certificate: Send + Sync + std::fmt::Debug {
-    fn label(&self) -> String;
-    fn to_der(&self) -> Vec<u8>;
-    fn public_key(&self) -> &dyn PublicKey;
-    fn delete(self: Box<Self>);
-    fn algorithm(&self) -> KeyAlgorithm {
-        self.public_key().algorithm()
-    }
-}
-
-impl PartialEq for dyn Certificate {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_der() == other.to_der() && self.label() == other.label()
-    }
-}
-
-impl Eq for dyn Certificate {}
-
-impl Hash for dyn Certificate {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.to_der().hash(state);
-        self.label().hash(state);
-    }
-}
-
-pub trait CertificateExt: Certificate {
-    fn issuer(&self) -> Vec<u8> {
-        let der = self.to_der();
-        let c = x509_cert::Certificate::from_der(&der).unwrap();
-        x509_cert::der::Encode::to_der(&c.tbs_certificate.issuer).unwrap()
-    }
-
-    fn serial_number(&self) -> Vec<u8> {
-        let der = self.to_der();
-        let c = x509_cert::Certificate::from_der(&der).unwrap();
-        x509_cert::der::Encode::to_der(&c.tbs_certificate.serial_number).unwrap()
-    }
-
-    fn subject(&self) -> Vec<u8> {
-        let der = self.to_der();
-        let c = x509_cert::Certificate::from_der(&der).unwrap();
-        x509_cert::der::Encode::to_der(&c.tbs_certificate.subject).unwrap()
-    }
-}
-
-impl<T: Certificate + ?Sized> CertificateExt for T {}
 
 #[derive(Debug)]
 pub enum SearchOptions {

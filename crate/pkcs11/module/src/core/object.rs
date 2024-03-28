@@ -32,9 +32,7 @@ use tracing::debug;
 
 use crate::{
     core::attribute::{Attribute, AttributeType, Attributes},
-    traits::{
-        backend, Certificate, CertificateExt, DataObject, KeyAlgorithm, PrivateKey, PublicKey,
-    },
+    traits::{backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey},
 };
 
 // TODO(bweeks): resolve by improving the ObjectStore implementation.
@@ -87,13 +85,15 @@ impl Object {
                     })
                     .ok()?,
                 )),
-                AttributeType::Issuer => Some(Attribute::Issuer(cert.issuer())),
+                AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label(cert.label())),
                 AttributeType::Token => Some(Attribute::Token(true)),
                 AttributeType::Trusted => Some(Attribute::Trusted(false)),
-                AttributeType::SerialNumber => Some(Attribute::SerialNumber(cert.serial_number())),
-                AttributeType::Subject => Some(Attribute::Subject(cert.subject())),
-                AttributeType::Value => Some(Attribute::Value(cert.to_der())),
+                AttributeType::SerialNumber => {
+                    cert.serial_number().map(Attribute::SerialNumber).ok()
+                }
+                AttributeType::Subject => cert.subject().map(Attribute::Subject).ok(),
+                AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
                 _ => {
                     debug!("certificate: type_ unimplemented: {:?}", type_);
                     None

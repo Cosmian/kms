@@ -118,6 +118,12 @@ impl From<Box<dyn std::error::Error>> for Pkcs11Error {
     }
 }
 
+impl From<x509_cert::der::Error> for Pkcs11Error {
+    fn from(e: x509_cert::der::Error) -> Self {
+        Self::Conversion(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.

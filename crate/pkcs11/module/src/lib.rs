@@ -63,7 +63,7 @@ where
 
 macro_rules! cryptoki_fn {
     (fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
-        #[tracing::instrument]
+        #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub extern "C" fn $name($($arg: $type),*) -> CK_RV {
             // TODO(bweeks): should this be `expr` instead of `block`?
@@ -71,7 +71,7 @@ macro_rules! cryptoki_fn {
         }
     };
     (unsafe fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
-        #[tracing::instrument]
+        #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub unsafe extern "C" fn $name($($arg: $type),*) -> CK_RV {
             // TODO(bweeks): should this be `expr` instead of `block`?

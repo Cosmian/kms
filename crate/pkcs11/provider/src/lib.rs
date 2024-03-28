@@ -31,5 +31,6 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
 }
 
 mod kms_object;
+mod pkcs11_certificate;
 #[cfg(test)]
 mod tests;

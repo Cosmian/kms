@@ -8,8 +8,11 @@ use pkcs11_module::traits::{
 use tracing::trace;
 
 use crate::{
-    error::Pkcs11Error, kms_object::get_kms_objects, pkcs11_data_object::Pkcs11DataObject,
+    error::Pkcs11Error, kms_object::get_kms_objects, pkcs11_certificate::Pkcs11Certificate,
+    pkcs11_data_object::Pkcs11DataObject,
 };
+
+const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 pub struct CkmsBackend {
     kms_client: KmsClient,
@@ -65,7 +68,18 @@ impl Backend for CkmsBackend {
 
     fn find_all_certificates(&self) -> pkcs11_module::Result<Vec<Arc<dyn Certificate>>> {
         trace!("find_all_certificates");
-        Ok(vec![])
+        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
+            .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
+        let kms_objects = get_kms_objects(
+            &self.kms_client,
+            &[disk_encryption_tag, "_cert".to_string()],
+        )?;
+        let mut result = Vec::with_capacity(kms_objects.len());
+        for dao in kms_objects {
+            let data_object: Arc<dyn Certificate> = Arc::new(Pkcs11Certificate::try_from(dao)?);
+            result.push(data_object);
+        }
+        Ok(result)
     }
 
     fn find_private_key(
@@ -105,8 +119,9 @@ impl Backend for CkmsBackend {
     fn find_all_data_objects(&self) -> pkcs11_module::Result<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or("disk-encryption".to_string());
-        let kms_objects = get_kms_objects(&self.kms_client, &[disk_encryption_tag])?;
+            .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
+        let kms_objects =
+            get_kms_objects(&self.kms_client, &[disk_encryption_tag, "_kk".to_string()])?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
             let data_object: Arc<dyn DataObject> = Arc::new(Pkcs11DataObject::try_from(dao)?);

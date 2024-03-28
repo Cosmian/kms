@@ -65,40 +65,6 @@ pub(crate) async fn get_kms_objects_async(
     Ok(results)
 }
 
-// async fn export_key(
-//     kms_client: &KmsClient,
-//     tags: &[String],
-// ) -> Result<Pkcs11DataObject, Pkcs11Error> {
-//     let id = serde_json::to_string(&tags)?;
-//     let unwrap = true;
-//     let wrapping_key_id = None;
-//     let allow_revoked = false;
-//     let (object, attributes) = export_object(
-//         kms_client,
-//         &id,
-//         unwrap,
-//         wrapping_key_id,
-//         allow_revoked,
-//         Some(KeyFormatType::Raw),
-//     )
-//     .await?;
-//
-//     let key_bytes = object.key_block()?.key_bytes()?;
-//
-//     let other_tags = attributes
-//         .unwrap_or_default()
-//         .get_tags()
-//         .into_iter()
-//         .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
-//         .collect::<Vec<String>>()
-//         .join(",");
-//
-//     Ok(Pkcs11DataObject {
-//         value: RwLock::from(key_bytes),
-//         label: other_tags,
-//     })
-// }
-
 async fn locate_objects(
     kms_client: &KmsClient,
     tags: &[String],

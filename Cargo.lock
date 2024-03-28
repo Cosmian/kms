@@ -814,6 +814,7 @@ dependencies = [
  "tracing-error",
  "tracing-journald",
  "tracing-subscriber",
+ "x509-cert",
  "zeroize",
 ]
 
