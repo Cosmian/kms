@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use num_bigint_dig::BigUint;
 use serde::{
     ser::{self, Error, SerializeSeq},
@@ -475,7 +473,7 @@ impl<'a> ser::SerializeSeq for &'a mut TTLVSerializer {
             .last_mut()
             .ok_or_else(|| TtlvError::custom("'no parent for the element !".to_string()))?;
         // give the same tag as tag of the parent
-        self.current.tag = parent.tag.clone();
+        self.current.tag.clone_from(&parent.tag);
 
         // update the parent
         match &mut parent.value {
@@ -660,7 +658,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
             }
         }
 
-        self.current.tag = key.to_owned();
+        key.clone_into(&mut self.current.tag);
         trace!(
             "Before serialize field {:?} #### {:?}",
             self.parents,

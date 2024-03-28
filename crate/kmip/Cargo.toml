@@ -19,7 +19,7 @@ fips = ["openssl"]
 [dependencies]
 argon2 = "0.5"
 base58 = "0.2"
-bitflags = "2.4"
+bitflags = "2.5"
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }

@@ -37,10 +37,10 @@ actix-cors = "0.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
-actix-tls = "3.1"
+actix-tls = "3.3"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 alcoholic_jwt = "4091"
-async-recursion = "1.0"
+async-recursion = "1.1"
 async-trait = "0.1"
 base64 = { workspace = true }
 chrono = { workspace = true }
@@ -93,7 +93,7 @@ reqwest = { workspace = true, features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.3", default-features = false, features = [
+sqlx = { version = "0.7.4", default-features = false, features = [
   "json",
   "runtime-tokio-native-tls",
   "mysql",
@@ -113,9 +113,9 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-http = "3.4"
+actix-http = "3.6"
 pem = "3.0.3"
 
 [build-dependencies]
-actix-http = "3.4"
+actix-http = "3.6"
 time = { workspace = true, features = ["local-offset", "formatting"] }

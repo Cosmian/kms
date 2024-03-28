@@ -379,12 +379,7 @@ where
         // find the key(s) that matches the tags
         // the user must be the owner or have decrypt permissions
         // Build the raw tags params
-        let tags_params = tags
-            .iter()
-            .enumerate()
-            .map(|(_i, _)| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
+        let tags_params = tags.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 
         // Build the raw SQL query
         let raw_sql = MYSQL_QUERIES

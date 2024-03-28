@@ -7,7 +7,6 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
-    vec::Vec,
 };
 
 #[cfg(feature = "openssl")]
@@ -140,9 +139,9 @@ pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
     AES = 0x0000_0003,
-    /// This is CKM_RSA_PKCS_OAEP from PKCS#11
+    /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
     /// see https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
-    /// To use  CKM_RSA_AES_KEY_WRAP from PKCS#11, use and RSA key with AES as the algorithm
+    /// To use  `CKM_RSA_AES_KEY_WRAP` from PKCS#11, use and RSA key with AES as the algorithm
     /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
     RSA = 0x0000_0004,
     DSA = 0x0000_0005,
@@ -1166,21 +1165,21 @@ impl CertificateAttributes {
                 })?
                 .trim();
             match key {
-                "CN" => certificate_attributes.certificate_subject_cn = value.to_owned(),
-                "O" => certificate_attributes.certificate_subject_o = value.to_owned(),
-                "OU" => certificate_attributes.certificate_subject_ou = value.to_owned(),
-                "Email" => certificate_attributes.certificate_subject_email = value.to_owned(),
-                "C" => certificate_attributes.certificate_subject_c = value.to_owned(),
-                "ST" => certificate_attributes.certificate_subject_st = value.to_owned(),
-                "L" => certificate_attributes.certificate_subject_l = value.to_owned(),
-                "UID" => certificate_attributes.certificate_subject_uid = value.to_owned(),
+                "CN" => value.clone_into(&mut certificate_attributes.certificate_subject_cn),
+                "O" => value.clone_into(&mut certificate_attributes.certificate_subject_o),
+                "OU" => value.clone_into(&mut certificate_attributes.certificate_subject_ou),
+                "Email" => value.clone_into(&mut certificate_attributes.certificate_subject_email),
+                "C" => value.clone_into(&mut certificate_attributes.certificate_subject_c),
+                "ST" => value.clone_into(&mut certificate_attributes.certificate_subject_st),
+                "L" => value.clone_into(&mut certificate_attributes.certificate_subject_l),
+                "UID" => value.clone_into(&mut certificate_attributes.certificate_subject_uid),
                 "Serial Number" => {
-                    certificate_attributes.certificate_subject_serial_number = value.to_owned();
+                    value.clone_into(&mut certificate_attributes.certificate_subject_serial_number);
                 }
-                "Title" => certificate_attributes.certificate_subject_title = value.to_owned(),
-                "DC" => certificate_attributes.certificate_subject_dc = value.to_owned(),
+                "Title" => value.clone_into(&mut certificate_attributes.certificate_subject_title),
+                "DC" => value.clone_into(&mut certificate_attributes.certificate_subject_dc),
                 "DN Qualifier" => {
-                    certificate_attributes.certificate_subject_dn_qualifier = value.to_owned();
+                    value.clone_into(&mut certificate_attributes.certificate_subject_dn_qualifier);
                 }
                 _ => {
                     return Err(KmipError::Default(format!(
@@ -1874,14 +1873,14 @@ pub enum StateEnumeration {
     /// cryptographic purposes after the Process Stop Date.
     Active = 0x0000_0002,
     /// Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    /// encryption, signing, wrapping, MACing, deriving) . The object SHALL only be used for
+    /// encryption, signing, wrapping, `MACing`, deriving) . The object SHALL only be used for
     /// cryptographic purposes permitted by the Cryptographic Usage Mask attribute. The object
     /// SHOULD only be used to process cryptographically-protected information (e.g., decryption,
     /// signature verification, unwrapping, MAC verification under extraordinary circumstances and
     /// when special permission is granted.
     Deactivated = 0x0000_0003,
     /// Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    /// encryption, signing, wrapping, MACing, deriving). The object SHOULD only be used to process
+    /// encryption, signing, wrapping, `MACing`, deriving). The object SHOULD only be used to process
     /// cryptographically-protected information (e.g., decryption, signature verification,
     /// unwrapping, MAC verification in a client that is trusted to use managed objects that have
     /// been compromised. The object SHALL only be used for cryptographic purposes permitted by the
