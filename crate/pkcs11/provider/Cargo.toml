@@ -29,5 +29,9 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 zeroize = { workspace = true }
 
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tracing-journald = "0.3.0"
+
 [dev-dependencies]
 kms_test_server = { path = "../../test_server" }

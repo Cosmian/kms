@@ -812,6 +812,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-error",
+ "tracing-journald",
  "tracing-subscriber",
  "zeroize",
 ]
