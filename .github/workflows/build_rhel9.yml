@@ -122,9 +122,6 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
-          # Speeds up Ristretto 25519 multiplication x 2
-          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
-
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size ++100M -delete

@@ -66,8 +66,6 @@ jobs:
         if: steps.cargo_cache.outputs.cache-hit != 'true' && !contains(runner.os, 'macos')
         run: ${{ inputs.commands }}
         env:
-          # Speeds up Ristretto 25519 multiplication x 2
-          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 
           # Google variables

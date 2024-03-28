@@ -6,7 +6,6 @@ pub mod serializer;
 mod tests;
 
 use core::fmt;
-use std::convert::TryInto;
 
 use num_bigint_dig::BigUint;
 use serde::{
@@ -477,7 +476,7 @@ pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
         .map(|group_of_4_bytes| {
             let mut acc = 0;
             for (k, elt) in group_of_4_bytes.iter().enumerate() {
-                acc += *elt as u32 * 2_u32.pow(k as u32 * 8);
+                acc += u32::from(*elt) * 2_u32.pow(k as u32 * 8);
             }
             acc
         })

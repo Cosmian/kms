@@ -166,7 +166,7 @@ repos:
       - id: cargo-test
         args: [--, --skip, test_wrap_auth]
       - id: cargo-audit
-      - id: cargo-outdated
+      # - id: cargo-outdated
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-others

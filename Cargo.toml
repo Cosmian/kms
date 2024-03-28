@@ -45,7 +45,7 @@ actix-server = { version = "2.3", default-features = false }
 actix-web = { version = "4.5", default-features = false }
 base64 = "0.21"
 chrono = "0.4"
-clap = { version = "4.4", default-features = false }
+clap = { version = "4.5", default-features = false }
 cloudproof = "3.0"
 env_logger = "0.11"
 hex = "0.4"
@@ -62,9 +62,9 @@ thiserror = "1.0"
 time = "0.3"
 # It is important to keep this version in sync with that of actix-web
 # use `cargo tree -i tokio` to check there is no other version of tokio
-tokio = "1.34"
+tokio = "1.36"
 tracing = "0.1"
-url = "2.4"
-uuid = "1.6"
+url = "2.5"
+uuid = "1.8"
 x509-parser = "0.16"
 zeroize = "1.7"
