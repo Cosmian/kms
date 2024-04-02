@@ -22,6 +22,7 @@ use tempfile::TempDir;
 use tracing::debug;
 
 use crate::{
+    actions::shared::utils::KeyUsage,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -329,7 +330,7 @@ fn test_import_export_wrap_private_key(
             None,
             None,
             &[],
-            None,
+            Some(vec![KeyUsage::Unrestricted]),
             false,
             true,
         )?;
