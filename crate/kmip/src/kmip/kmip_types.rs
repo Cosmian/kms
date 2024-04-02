@@ -26,7 +26,10 @@ use super::kmip_objects::ObjectType;
 use crate::kmip_error;
 use crate::{
     error::KmipError,
-    kmip::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    kmip::{
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        kmip_operations::ErrorReason,
+    },
 };
 
 /// 4.7
@@ -1091,6 +1094,38 @@ impl Attributes {
     /// Set the attributes's object type.
     pub fn set_object_type(&mut self, object_type: ObjectType) {
         self.object_type = Some(object_type);
+    }
+
+    /// Set the attributes's CryptographicUsageMask.
+    pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
+        self.cryptographic_usage_mask = mask;
+    }
+
+    /// Check that `flag` bit is set in object's CryptographicUsageMask.
+    /// If FIPS mode is disabled, check if Unrestricted bit is set too.
+    ///
+    /// Raise error if `flag` is not set or if object's CryptographicUsageMask
+    /// is None.
+    pub fn is_usage_mask_flag_set(&self, flag: CryptographicUsageMask) -> Result<(), KmipError> {
+        let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                "CryptographicUsageMask is None".to_string(),
+            )
+        })?;
+
+        #[cfg(not(feature = "fips"))]
+        // In non-FIPS mode, Unrestricted can be allowed.
+        let flag = flag | CryptographicUsageMask::Unrestricted;
+
+        if (usage_mask & flag).bits() != 0 {
+            Ok(())
+        } else {
+            Err(KmipError::InvalidKmipValue(
+                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                format!("CryptographicUsageMask bit {} is not set", flag.bits()).to_string(),
+            ))
+        }
     }
 }
 
