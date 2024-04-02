@@ -392,6 +392,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
         None,
         Some(&["root_ca"]),
+        None,
         false,
         true,
     )?;
@@ -407,6 +408,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
         None,
         Some(&["intermediate_ca"]),
+        None,
         false,
         true,
     )?;

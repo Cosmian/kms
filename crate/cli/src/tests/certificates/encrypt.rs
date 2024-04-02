@@ -193,6 +193,7 @@ async fn test_certificate_import_encrypt(
         None,
         None,
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -207,6 +208,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(root_certificate_id),
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -221,6 +223,7 @@ async fn test_certificate_import_encrypt(
         Some(private_key_id.clone()),
         Some(_subca_certificate_id),
         Some(tags),
+        None,
         false,
         true,
     )?;
