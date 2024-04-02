@@ -55,6 +55,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;
@@ -139,6 +140,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         None,
         Some(wrap_private_key_uid.to_string()),
         &[],
+        None,
         false,
         true,
     )?;
@@ -152,6 +154,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         None,
         Some(wrap_public_key_uid.to_string()),
         &[],
+        None,
         false,
         true,
     )?;
@@ -282,6 +285,7 @@ fn test_import_export_wrap_private_key(
             None,
             None,
             &[],
+            None,
             true,
             true,
         )?;
@@ -325,6 +329,7 @@ fn test_import_export_wrap_private_key(
             None,
             None,
             &[],
+            None,
             false,
             true,
         )?;
