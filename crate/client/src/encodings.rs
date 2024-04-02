@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{CertificateType, KeyFormatType},
+    kmip_types::{Attributes, CertificateType, CryptographicUsageMask, KeyFormatType},
 };
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
@@ -42,31 +42,54 @@ use crate::{client_bail, ClientError};
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
 ///
-pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
+pub fn objects_from_pem(
+    bytes: &[u8],
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> Result<Vec<Object>, ClientError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
+                key_block: key_block(
+                    KeyFormatType::PKCS1,
+                    pem.into_contents(),
+                    cryptographic_usage_mask,
+                ),
             }),
             "RSA PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
+                    key_block: key_block(
+                        KeyFormatType::PKCS1,
+                        pem.into_contents(),
+                        cryptographic_usage_mask,
+                    ),
                 },
             ),
             "PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::PKCS8, pem.into_contents()),
+                key_block: key_block(
+                    KeyFormatType::PKCS8,
+                    pem.into_contents(),
+                    cryptographic_usage_mask,
+                ),
             }),
             "PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(KeyFormatType::PKCS8, pem.into_contents()),
+                    key_block: key_block(
+                        KeyFormatType::PKCS8,
+                        pem.into_contents(),
+                        cryptographic_usage_mask,
+                    ),
                 },
             ),
             "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::ECPrivateKey, pem.into_contents()),
+                key_block: key_block(
+                    KeyFormatType::ECPrivateKey,
+                    pem.into_contents(),
+                    cryptographic_usage_mask,
+                ),
             }),
             "EC PUBLIC KEY" => {
                 return Err(ClientError::NotSupported(
@@ -104,7 +127,11 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
     Ok(objects)
 }
 
-fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
+fn key_block(
+    key_format_type: KeyFormatType,
+    bytes: Vec<u8>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> KeyBlock {
     KeyBlock {
         key_format_type,
         key_compression_type: None,
@@ -112,7 +139,10 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
-            attributes: None,
+            attributes: Some(Box::new(Attributes {
+                cryptographic_usage_mask,
+                ..Default::default()
+            })),
         },
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.

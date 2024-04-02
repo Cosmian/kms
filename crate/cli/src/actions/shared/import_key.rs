@@ -9,11 +9,13 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    KmsClient,
+    import_object,
+    kmip::kmip_types::CryptographicUsageMask,
+    objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes, KmsClient,
 };
 use zeroize::Zeroizing;
 
+use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
 use crate::error::CliError;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
@@ -100,37 +102,73 @@ pub struct ImportKeyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// For what operations should the key be used.
+    #[clap(long = "key-usage")]
+    key_usage: Option<Vec<KeyUsage>>,
 }
 
 impl ImportKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+        let cryptographic_usage_mask = build_usage_mask_from_key_usage(&self.key_usage);
         // read the key file
         let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
         let object = match &self.key_format {
-            ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
-            ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
-            ImportKeyFormat::Sec1 => {
-                build_private_key_from_der_bytes(KeyFormatType::ECPrivateKey, bytes)
+            ImportKeyFormat::JsonTtlv => {
+                let mut obj = read_object_from_json_ttlv_bytes(&bytes)?;
+                if let Ok(attr) = obj.attributes_mut() {
+                    attr.set_cryptographic_usage_mask(cryptographic_usage_mask);
+                }
+                obj
             }
-            ImportKeyFormat::Pkcs1Priv => {
-                build_private_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-            }
-            ImportKeyFormat::Pkcs1Pub => {
-                build_public_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-            }
-            ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            ImportKeyFormat::Aes => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)
-            }
-            ImportKeyFormat::Chacha20 => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)
-            }
+            ImportKeyFormat::Pem => read_key_from_pem(&bytes, cryptographic_usage_mask)?,
+            ImportKeyFormat::Sec1 => build_private_key_from_der_bytes(
+                KeyFormatType::ECPrivateKey,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Pkcs1Priv => build_private_key_from_der_bytes(
+                KeyFormatType::PKCS1,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Pkcs1Pub => build_public_key_from_der_bytes(
+                KeyFormatType::PKCS1,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(
+                KeyFormatType::PKCS8,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Spki => build_public_key_from_der_bytes(
+                KeyFormatType::PKCS8,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Aes => build_symmetric_key_from_bytes(
+                CryptographicAlgorithm::AES,
+                bytes,
+                cryptographic_usage_mask,
+            ),
+            ImportKeyFormat::Chacha20 => build_symmetric_key_from_bytes(
+                CryptographicAlgorithm::ChaCha20,
+                bytes,
+                cryptographic_usage_mask,
+            ),
         };
         let object_type = object.object_type();
 
-        //generate the import attributes if links are specified
-        let mut import_attributes = None;
+        // Generate the import attributes if links are specified.
+        let mut import_attributes = object.attributes().ok().cloned();
+        if import_attributes.is_none() {
+            import_attributes = Some(Attributes {
+                cryptographic_usage_mask,
+                ..Default::default()
+            })
+        }
+
         if let Some(issuer_certificate_id) = &self.certificate_id {
             let attributes = import_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
@@ -182,8 +220,11 @@ impl ImportKeyAction {
 }
 
 /// Read a key from a PEM file
-fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
-    let mut objects = objects_from_pem(bytes)?;
+fn read_key_from_pem(
+    bytes: &[u8],
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> Result<Object, CliError> {
+    let mut objects = objects_from_pem(bytes, cryptographic_usage_mask)?;
     let object = objects
         .pop()
         .ok_or_else(|| CliError::Default("The PEM file does not contain any object".to_owned()))?;
@@ -210,6 +251,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
 pub(crate) fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
@@ -217,7 +259,10 @@ pub(crate) fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: None,
+                attributes: Some(Box::new(Attributes {
+                    cryptographic_usage_mask,
+                    ..Default::default()
+                })),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -235,6 +280,7 @@ pub(crate) fn build_private_key_from_der_bytes(
 fn build_public_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
@@ -242,7 +288,10 @@ fn build_public_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: None,
+                attributes: Some(Box::new(Attributes {
+                    cryptographic_usage_mask,
+                    ..Default::default()
+                })),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -258,6 +307,7 @@ fn build_public_key_from_der_bytes(
 fn build_symmetric_key_from_bytes(
     cryptographic_algorithm: CryptographicAlgorithm,
     bytes: Zeroizing<Vec<u8>>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Object {
     let len = bytes.len() as i32 * 8;
     Object::SymmetricKey {
@@ -266,7 +316,10 @@ fn build_symmetric_key_from_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: None,
+                attributes: Some(Box::new(Attributes {
+                    cryptographic_usage_mask,
+                    ..Default::default()
+                })),
             },
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),

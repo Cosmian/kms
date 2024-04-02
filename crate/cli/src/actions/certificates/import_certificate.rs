@@ -16,7 +16,13 @@ use tracing::{debug, trace};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
-use crate::{actions::shared::import_key::build_private_key_from_der_bytes, error::CliError};
+use crate::{
+    actions::shared::{
+        import_key::build_private_key_from_der_bytes,
+        utils::{build_usage_mask_from_key_usage, KeyUsage},
+    },
+    error::CliError,
+};
 
 const MOZILLA_CCADB: &str =
     "https://ccadb.my.salesforce-sites.com/mozilla/IncludedRootsPEMTxt?TrustBitsInclude=Websites";
@@ -97,6 +103,10 @@ pub struct ImportCertificateAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// For what operations should the certificate be used.
+    #[clap(long = "key-usage")]
+    key_usage: Option<Vec<KeyUsage>>,
 }
 
 impl ImportCertificateAction {
@@ -242,10 +252,15 @@ impl ImportCertificateAction {
 
     /// Import the certificate, the chain and the associated private key
     async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> Result<String, CliError> {
+        let cryptographic_usage_mask = build_usage_mask_from_key_usage(&self.key_usage);
         let pkcs12_bytes = Zeroizing::from(read_bytes_from_file(&self.get_certificate_file()?)?);
 
         // Create a KMIP private key from the PKCS12 private key
-        let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);
+        let private_key = build_private_key_from_der_bytes(
+            KeyFormatType::PKCS12,
+            pkcs12_bytes,
+            cryptographic_usage_mask,
+        );
 
         let mut attributes = private_key.attributes().cloned().unwrap_or_default();
         if let Some(password) = &self.pkcs12_password {

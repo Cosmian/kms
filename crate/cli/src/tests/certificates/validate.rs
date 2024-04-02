@@ -38,6 +38,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         None,
         None,
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -53,6 +54,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         None,
         Some(root_certificate_id),
         Some(tags),
+        None,
         false,
         true,
     )?;
