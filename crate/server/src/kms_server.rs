@@ -182,38 +182,39 @@ pub async fn prepare_kms_server(
 ) -> KResult<actix_web::dev::Server> {
     // Check if this auth server is enabled for Google Client-Side Encryption
     let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
-    let google_cse_jwks = enable_google_cse.then_some(google_cse::list_jwks_uri());
 
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config, jwks_manager) =
-        if let Some(jwt_config) = &kms_server.params.jwt_config {
-            // Prepare all the needed URIs from all the configured Identity Providers
-            let mut all_jwks_uris: Vec<_> = jwt_config
-                .iter()
-                .map(|idp_config| {
-                    JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, Some(&idp_config.jwks_uri))
-                })
-                .collect();
-            // Add the one from google is cse is enabled
-            if let Some(google_cse_jwks) = google_cse_jwks {
-                all_jwks_uris.extend(google_cse_jwks)
-            }
+    let use_jwt_auth = kms_server.params.identity_provider_configurations.is_some();
+    let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
+        &kms_server.params.identity_provider_configurations
+    {
+        // Prepare all the needed URIs from all the configured Identity Providers
+        let mut all_jwks_uris: Vec<_> = identity_provider_configurations
+            .iter()
+            .map(|idp_config| {
+                JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
+            })
+            .collect();
+        // Add the one from google if cse is enabled
+        if enable_google_cse {
+            all_jwks_uris.extend(google_cse::list_jwks_uri())
+        }
 
-            let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
+        let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
 
-            let jwt_configs = jwt_config
-                .iter()
-                .map(|idp_config| JwtConfig {
-                    jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
-                    jwks: jwks_manager.clone(),
-                    jwt_audience: idp_config.jwt_audience.clone(),
-                })
-                .collect::<Vec<_>>();
+        let built_jwt_configurations = identity_provider_configurations
+            .iter()
+            .map(|idp_config| JwtConfig {
+                jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
+                jwks: jwks_manager.clone(),
+                jwt_audience: idp_config.jwt_audience.clone(),
+            })
+            .collect::<Vec<_>>();
 
-            (true, Some(Arc::new(jwt_configs)), Some(jwks_manager))
-        } else {
-            (false, None, None)
-        };
+        (Some(Arc::new(built_jwt_configurations)), Some(jwks_manager))
+    } else {
+        (None, None)
+    };
 
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.client_cert.is_some();
@@ -235,7 +236,7 @@ pub async fn prepare_kms_server(
             ));
         };
         Some(GoogleCseConfig {
-            authentication: jwt_config.clone().context(
+            authentication: jwt_configurations.clone().context(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
@@ -285,7 +286,7 @@ pub async fn prepare_kms_server(
         let default_scope = web::scope("")
             .wrap(Condition::new(
                 use_jwt_auth,
-                JwtAuth::new(jwt_config.clone()),
+                JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.

@@ -22,13 +22,13 @@ use crate::{error::KmsError, middlewares::jwt::JwtConfig};
 
 #[derive(Clone)]
 pub struct JwtAuth {
-    jwt_config: Option<Arc<Vec<JwtConfig>>>,
+    jwt_configurations: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(jwt_config: Option<Arc<Vec<JwtConfig>>>) -> Self {
-        Self { jwt_config }
+    pub fn new(jwt_configurations: Option<Arc<Vec<JwtConfig>>>) -> Self {
+        Self { jwt_configurations }
     }
 }
 
@@ -47,14 +47,14 @@ where
         debug!("JWT Authentication enabled");
         ok(JwtAuthMiddleware {
             service: Rc::new(service),
-            jwt_config: self.jwt_config.clone(),
+            jwt_configurations: self.jwt_configurations.clone(),
         })
     }
 }
 
 pub struct JwtAuthMiddleware<S> {
     service: Rc<S>,
-    jwt_config: Option<Arc<Vec<JwtConfig>>>,
+    jwt_configurations: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
@@ -73,7 +73,7 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // get the JWT config
-        let Some(jwt_config) = &self.jwt_config else {
+        let Some(jwt_configurations) = &self.jwt_configurations else {
             return Box::pin(async move {
                 error!(
                     "{:?} {} 401 unauthorized: JWT not properly configured on KMS server",
@@ -104,8 +104,8 @@ where
 
         // try to decode the JWT until it's working for one of the configured identity providers
         let mut private_claim: Result<Option<String>, KmsError> = Ok(None);
-        for idp_config in jwt_config.iter() {
-            match idp_config.decode_bearer_header(&identity) {
+        for jwt_config in jwt_configurations.iter() {
+            match jwt_config.decode_bearer_header(&identity) {
                 Ok(claim) => {
                     private_claim = Ok(claim.email);
                     break;
@@ -118,7 +118,7 @@ where
         }
 
         let srv = Rc::<S>::clone(&self.service);
-        let jwt_config = jwt_config.clone();
+        let jwt_configurations = jwt_configurations.clone();
 
         let handle_ok_none = |req: ServiceRequest| {
             error!(
@@ -140,11 +140,11 @@ where
 
         match private_claim {
             Err(_) => Box::pin(async move {
-                // Refresh jwks
-                jwt_config[0].jwks.refresh().await?;
+                // If decoding_bearer_header keep failing, jwks might have been updated and should be refreshed
+                jwt_configurations[0].jwks.refresh().await?;
 
-                for idp_config in jwt_config.iter() {
-                    match idp_config.decode_bearer_header(&identity) {
+                for jwt_config in jwt_configurations.iter() {
+                    match jwt_config.decode_bearer_header(&identity) {
                         Ok(claim) => {
                             private_claim = Ok(claim.email);
                             break;

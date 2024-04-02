@@ -84,7 +84,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
-    let server_params = ServerParams::try_from(&clap_config).await?;
+    let server_params = ServerParams::try_from(clap_config).await?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");

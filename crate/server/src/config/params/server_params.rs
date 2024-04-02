@@ -8,7 +8,7 @@ use crate::{config::ClapConfig, kms_bail, result::KResult};
 #[derive(Debug, Clone)]
 pub struct IdpConfig {
     pub jwt_issuer_uri: String,
-    pub jwks_uri: String,
+    pub jwks_uri: Option<String>,
     pub jwt_audience: Option<String>,
 }
 
@@ -17,7 +17,7 @@ pub struct IdpConfig {
 /// shared between all threads.
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
-    pub jwt_config: Option<Vec<IdpConfig>>,
+    pub identity_provider_configurations: Option<Vec<IdpConfig>>,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -60,12 +60,12 @@ pub struct ServerParams {
 }
 
 impl ServerParams {
-    pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
+    pub async fn try_from(conf: ClapConfig) -> KResult<Self> {
         // Initialize the workspace
         let workspace = conf.workspace.init()?;
 
         // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(conf)?;
+        let http_params = HttpParams::try_from(&conf)?;
 
         // Should we verify the client TLS certificates?
         let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
@@ -81,42 +81,60 @@ impl ServerParams {
             None
         };
 
-        let jwt_config = match (
-            &conf.auth.jwt_issuer_uri,
-            &conf.auth.jwks_uri,
-            &conf.auth.jwt_audience,
+        let identity_provider_configurations = match (
+            conf.auth.jwt_issuer_uri,
+            conf.auth.jwks_uri,
+            conf.auth.jwt_audience,
         ) {
-            (Some(jwt_issuer_uri), Some(jwks_uri), jwt_audience) => {
-                let min_length = jwt_issuer_uri.len().min(jwks_uri.len());
-                let mut idp_configs = Vec::with_capacity(min_length);
-                for index in 0..min_length {
+            (Some(jwt_issuer_uri), jwks_uri, jwt_audience) => {
+                let config_len = jwt_issuer_uri.len();
+                if jwks_uri
+                    .as_ref()
+                    .map_or(false, |uris| uris.len() != config_len)
+                {
+                    kms_bail!(
+                        "If jwks_uri are provided, they should match each provided jwt_issuer_uri."
+                    )
+                }
+                if jwt_audience
+                    .as_ref()
+                    .map_or(false, |audiences| audiences.len() != config_len)
+                {
+                    kms_bail!(
+                        "If jwt_audience are provided, they should match each provided \
+                         jwt_issuer_uri."
+                    )
+                }
+                let mut idp_configurations = Vec::with_capacity(config_len);
+                for (index, jwt_issuer_uri) in jwt_issuer_uri.into_iter().enumerate() {
+                    let jwks_uri = jwks_uri.as_ref().and_then(|jwks| jwks.get(index));
                     let jwt_audience = jwt_audience
                         .as_ref()
                         .and_then(|audience| audience.get(index));
                     let idp_config = IdpConfig {
-                        jwt_issuer_uri: jwt_issuer_uri[index].clone(),
-                        jwks_uri: jwks_uri[index].clone(),
+                        jwt_issuer_uri,
+                        jwks_uri: jwks_uri.cloned(),
                         jwt_audience: jwt_audience.cloned(),
                     };
-                    idp_configs.push(idp_config)
+                    idp_configurations.push(idp_config)
                 }
-                Some(idp_configs)
+                Some(idp_configurations)
             }
             _ => None,
         };
 
         let server_conf = Self {
-            jwt_config,
+            identity_provider_configurations,
             db_params: conf.db.init(&workspace)?,
             clear_db_on_start: conf.db.clear_database,
-            hostname: conf.http.hostname.clone(),
+            hostname: conf.http.hostname,
             port: conf.http.port,
-            http_params: HttpParams::try_from(conf)?,
-            default_username: conf.default_username.clone(),
+            http_params,
+            default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             client_cert: verify_cert,
-            google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
-            ms_dke_service_url: conf.ms_dke_service_url.clone(),
+            google_cse_kacls_url: conf.google_cse_kacls_url,
+            ms_dke_service_url: conf.ms_dke_service_url,
         };
         Ok(server_conf)
     }
@@ -152,8 +170,13 @@ impl fmt::Debug for ServerParams {
             )
             .field("db_params", &self.db_params)
             .field("clear_db_on_start", &self.clear_db_on_start);
-        let x = if let Some(jwt_config) = &self.jwt_config {
-            x.field("jwt_config", &jwt_config)
+        let x = if let Some(identity_provider_configurations) =
+            &self.identity_provider_configurations
+        {
+            x.field(
+                "identity_provider_configurations",
+                &identity_provider_configurations,
+            )
         } else {
             x
         };
@@ -182,7 +205,7 @@ impl fmt::Debug for ServerParams {
 impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
-            jwt_config: self.jwt_config.clone(),
+            identity_provider_configurations: self.identity_provider_configurations.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,
             db_params: None,
