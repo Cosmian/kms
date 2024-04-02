@@ -118,6 +118,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;
@@ -132,6 +133,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
             None,
             Some(uid.clone()),
             &[],
+            None,
             false,
             false,
         )
@@ -146,6 +148,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         None,
         Some(uid.clone()),
         &[],
+        None,
         false,
         true,
     )?;
