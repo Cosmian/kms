@@ -80,7 +80,8 @@ pub async fn test_app(
         .service(routes::google_cse::get_status)
         .service(routes::google_cse::wrap)
         .service(routes::google_cse::unwrap)
-        .service(routes::google_cse::private_key_sign);
+        .service(routes::google_cse::private_key_sign)
+        .service(routes::google_cse::private_key_decrypt);
     app = app.service(google_cse_scope);
 
     test::init_service(app).await

@@ -113,14 +113,14 @@ pub async fn unwrap(
 #[post("/privatekeysign")]
 pub async fn private_key_sign(
     req_http: HttpRequest,
-    unwrap_request: Json<operations::PrivateKeySignRequest>,
+    private_key_sign_request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeysign");
 
     // unwrap all calls parameters
-    let private_key_sign_request = unwrap_request.into_inner();
+    let private_key_sign_request = private_key_sign_request.into_inner();
     trace!("private_key_sign_request: {private_key_sign_request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
@@ -129,7 +129,34 @@ pub async fn private_key_sign(
         .await
         .map(Json)
     {
-        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+        Ok(sign_response) => HttpResponse::Ok().json(sign_response),
+        Err(e) => CseErrorReply::from(e).into(),
+    }
+}
+
+/// Unwraps a wrapped private key and then decrypts the content encryption key that is encrypted to the public key.
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/private-key-decrypt)
+#[post("/privatekeydecrypt")]
+pub async fn private_key_decrypt(
+    req_http: HttpRequest,
+    decrypt_request: Json<operations::PrivateKeyDecryptRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
+) -> HttpResponse {
+    info!("POST /google_cse/privatekeydecrypt");
+
+    // unwrap all calls parameters
+    let decrypt_request = decrypt_request.into_inner();
+    trace!("decrypt_request: {decrypt_request:?}");
+    let kms = kms.into_inner();
+    let cse_config = cse_config.into_inner();
+
+    match operations::private_key_decrypt(req_http, decrypt_request, &cse_config, &kms)
+        .await
+        .map(Json)
+    {
+        Ok(decrypt_response) => HttpResponse::Ok().json(decrypt_response),
         Err(e) => CseErrorReply::from(e).into(),
     }
 }

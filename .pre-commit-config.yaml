@@ -161,7 +161,7 @@ repos:
       - id: renew-kms-markdown
       - id: docker-compose-up
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign]
+        args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign, --skip, test_cse_private_key_decrypt]
       - id: cargo-audit
       # - id: cargo-outdated
       - id: clippy-autofix-all

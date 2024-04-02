@@ -16,13 +16,13 @@ use crate::{
 /// This function is used to unwrap a key before storing it in the database
 ///
 /// # Arguments
-/// * `object_type` - the type of the object to unwrap
-/// * `object_key_block` - the key block of the object to unwrap
-/// * `kms` - the KMS
-/// * `user` - the user accessing the unwrapping key
-/// * `params` - the extra database parameters
+/// * `object_key_block`    - the key block of the object to unwrap
+/// * `kms`                 - the KMS
+/// * `user`                - the user accessing the unwrapping key
+/// * `params`              - the extra database parameters
+///
 /// # Returns
-/// * `KResult<()>` - the result of the operation
+/// * `KResult<()>`         - the result of the operation
 pub async fn unwrap_key(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
