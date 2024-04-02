@@ -178,6 +178,7 @@ async fn test_certificate_import_encrypt(
             .map(|&s| s.to_string())
             .collect::<Vec<String>>()
             .as_slice(),
+        None,
         false,
         true,
     )?;

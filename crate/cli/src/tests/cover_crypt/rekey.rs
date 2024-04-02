@@ -143,6 +143,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         true,
     )?;
@@ -260,6 +261,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;
