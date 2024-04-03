@@ -38,7 +38,7 @@ impl CseErrorReply {
 impl From<CseErrorReply> for HttpResponse {
     fn from(e: CseErrorReply) -> Self {
         debug!("CSE Error: {:?}", e);
-        HttpResponse::InternalServerError().json(e)
+        Self::InternalServerError().json(e)
     }
 }
 
@@ -54,111 +54,111 @@ pub async fn get_status(
 
 // TODO
 #[derive(Deserialize, Debug)]
-struct DigestRequest {
-    authorization: String,
-    reason: String,
-    wrapped_key: String,
+pub struct DigestRequest {
+    pub authorization: String,
+    pub reason: String,
+    pub wrapped_key: String,
 }
 #[post("/digest")]
 pub async fn digest(
-    req_http: HttpRequest,
-    request: Json<DigestRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<DigestRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/digest");
     todo!();
 }
 
 #[derive(Deserialize, Debug)]
-struct PrivilegedPrivateKeyDecryptRequest {
-    authentication: String,
-    algorithm: String,
-    encrypted_data_encryption_key: String,
-    rsa_oaep_label: String,
-    reason: String,
-    spki_hash: String,
-    spki_hash_algorithm: String,
-    wrapped_private_key: String,
+pub struct PrivilegedPrivateKeyDecryptRequest {
+    pub authentication: String,
+    pub algorithm: String,
+    pub encrypted_data_encryption_key: String,
+    pub rsa_oaep_label: String,
+    pub reason: String,
+    pub spki_hash: String,
+    pub spki_hash_algorithm: String,
+    pub wrapped_private_key: String,
 }
 #[post("/privilegedprivatekeydecrypt")]
 pub async fn privilegedprivatekeydecrypt(
-    req_http: HttpRequest,
-    request: Json<PrivilegedPrivateKeyDecryptRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<PrivilegedPrivateKeyDecryptRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedprivatekeydecrypt");
     todo!();
 }
 
 #[derive(Deserialize, Debug)]
-struct PrivilegedUnwrapRequest {
-    authentication: String,
-    reason: String,
-    resource_name: String,
-    wrapped_key: String,
+pub struct PrivilegedUnwrapRequest {
+    pub authentication: String,
+    pub reason: String,
+    pub resource_name: String,
+    pub wrapped_key: String,
 }
 #[post("/privilegedunwrap")]
 pub async fn privilegedunwrap(
-    req_http: HttpRequest,
-    request: Json<PrivilegedUnwrapRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<PrivilegedUnwrapRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedunwrap");
     todo!();
 }
 
 #[derive(Deserialize, Debug)]
-struct PrivilegedWrapRequest {
-    authentication: String,
-    key: String,
-    perimeter_id: String,
-    reason: String,
-    resource_name: String,
+pub struct PrivilegedWrapRequest {
+    pub authentication: String,
+    pub key: String,
+    pub perimeter_id: String,
+    pub reason: String,
+    pub resource_name: String,
 }
 #[post("/privilegedwrap")]
 pub async fn privilegedwrap(
-    req_http: HttpRequest,
-    request: Json<PrivilegedWrapRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<PrivilegedWrapRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedwrap");
     todo!();
 }
 
 #[derive(Deserialize, Debug)]
-struct RewrapRequest {
-    authorization: String,
-    original_kacls_url: String,
-    reason: String,
-    wrapped_key: String,
+pub struct RewrapRequest {
+    pub authorization: String,
+    pub original_kacls_url: String,
+    pub reason: String,
+    pub wrapped_key: String,
 }
 #[post("/rewrap")]
 pub async fn rewrap(
-    req_http: HttpRequest,
-    request: Json<RewrapRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<RewrapRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/rewrap");
     todo!();
 }
 
 #[derive(Deserialize, Debug)]
-struct WrapPrivateKeyRequest {
-    authentication: String,
-    perimeter_id: String,
-    private_key: String,
+pub struct WrapPrivateKeyRequest {
+    pub authentication: String,
+    pub perimeter_id: String,
+    pub private_key: String,
 }
 #[post("/wrapprivatekey")]
 pub async fn wrapprivatekey(
-    req_http: HttpRequest,
-    request: Json<WrapPrivateKeyRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    _req_http: HttpRequest,
+    _request: Json<WrapPrivateKeyRequest>,
+    _cse_config: Data<Option<GoogleCseConfig>>,
+    _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrapprivatekey");
     todo!();

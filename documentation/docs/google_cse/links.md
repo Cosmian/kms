@@ -9,5 +9,4 @@ Google S/MIME: https://developers.google.com/gmail/api/guides/smime_certs
 Support Google:
 Algorithm details: https://support.google.com/a/answer/7300887#zippy=%2Cend-entity-certificate
 https://support.google.com/a/answer/10745596?hl=en
-https://support.google.com/a/answer/13069736#setup_users&zippy=%2Cstep-upload-users-smime-certi[…]y-metadata%2Cstep-turn-on-gmail-cse-for-your-users
 https://support.google.com/a/answer/6374496

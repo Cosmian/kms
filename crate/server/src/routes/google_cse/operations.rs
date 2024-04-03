@@ -124,9 +124,7 @@ pub async fn wrap(
             encoding_option: Some(EncodingOption::NoEncoding),
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
-                cryptographic_parameters: Some(Box::new(kmip_types::CryptographicParameters {
-                    ..Default::default()
-                })),
+                cryptographic_parameters: Some(Box::default()),
             }),
             ..Default::default()
         },
@@ -274,7 +272,7 @@ pub async fn private_key_sign(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeySignResponse> {
-    debug!("private_key_sign: entering");
+    debug!("private_key_sign: entering: {private_key_sign_request:?}");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_sign: validate_tokens");
@@ -334,7 +332,8 @@ pub async fn private_key_sign(
     let private_key = PKey::from_rsa(rsa_private_key)?;
     debug!("private_key_sign: build signer");
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
-    signer.update(private_key_sign_request.digest.as_bytes())?;
+    let digest = general_purpose::STANDARD.decode(private_key_sign_request.digest)?;
+    signer.update(&digest)?;
     let signature = signer.sign_to_vec()?;
 
     debug!("private_key_sign: exiting with success");
