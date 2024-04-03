@@ -15,8 +15,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
+            HashingAlgorithm, KeyFormatType, PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::kmip_private_key_to_openssl,
@@ -125,6 +125,11 @@ async fn get_key(
 }
 
 fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<DecryptResponse> {
+    // Make sure that the key used to decrypt can be used to decrypt.
+    owm.object
+        .attributes()?
+        .is_usage_mask_flag_set(CryptographicUsageMask::Decrypt)?;
+
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
@@ -180,6 +185,11 @@ fn decrypt_with_private_key(
     request: &Decrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<DecryptResponse> {
+    // Make sure that the key used to decrypt can be used to decrypt.
+    owm.object
+        .attributes()?
+        .is_usage_mask_flag_set(CryptographicUsageMask::Decrypt)?;
+
     let key_block = owm.object.key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => {

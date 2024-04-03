@@ -20,7 +20,8 @@ use crate::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
         kmip_types::{
-            CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+            CryptographicAlgorithm, CryptographicUsageMask, EncodingOption, KeyFormatType,
+            PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail,
@@ -105,6 +106,11 @@ pub(crate) fn unwrap(
         unwrapping_key,
         ciphertext.len()
     );
+
+    // Make sure that the key used to unwrap can be used to unwrap.
+    unwrapping_key
+        .attributes()?
+        .is_usage_mask_flag_set(CryptographicUsageMask::UnwrapKey)?;
 
     let unwrapping_key_block = unwrapping_key
         .key_block()

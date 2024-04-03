@@ -1123,7 +1123,12 @@ impl Attributes {
         } else {
             Err(KmipError::InvalidKmipValue(
                 ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-                format!("CryptographicUsageMask bit {} is not set", flag.bits()).to_string(),
+                format!(
+                    "CryptographicUsageMask {} a bit is not set against flags {}",
+                    usage_mask.bits(),
+                    flag.bits()
+                )
+                .to_string(),
             ))
         }
     }
