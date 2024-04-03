@@ -41,23 +41,24 @@ pub struct StatusResponse {
 
 #[must_use]
 pub fn get_status() -> StatusResponse {
+    debug!("get_status");
     StatusResponse {
         server_type: "KACLS".to_string(),
         vendor_id: "Cosmian".to_string(),
         version: crate_version!().to_string(),
         name: "Cosmian KMS".to_string(),
         operations_supported: vec![
-            // "digest".to_string(),
+            "digest".to_string(),
             "privatekeydecrypt".to_string(),
             "privatekeysign".to_string(),
-            // "privilegedprivatekeydecrypt".to_string(),
-            // "privilegedunwrap".to_string(),
-            // "privilegedwrap".to_string(),
-            // "rewrap".to_string(),
+            "privilegedprivatekeydecrypt".to_string(),
+            "privilegedunwrap".to_string(),
+            "privilegedwrap".to_string(),
+            "rewrap".to_string(),
             "status".to_string(),
             "unwrap".to_string(),
             "wrap".to_string(),
-            // "wrapprivatekey".to_string()
+            "wrapprivatekey".to_string(),
         ],
     }
 }
@@ -85,6 +86,7 @@ pub async fn wrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<WrapResponse> {
+    debug!("wrap: entering");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     let application = if wrap_request.reason.contains("Meet") {
@@ -92,10 +94,12 @@ pub async fn wrap(
     } else {
         "drive"
     };
+    debug!("wrap: entering on application: {application}");
 
     // the possible roles to wrap a key
     let roles = &["writer", "upgrader"];
 
+    debug!("wrap: validate_tokens");
     let user = validate_tokens(
         &wrap_request.authentication,
         &wrap_request.authorization,
@@ -106,11 +110,13 @@ pub async fn wrap(
     .await?;
 
     // decode the DEK and create a KMIP object from the key bytes
+    debug!("wrap: create KMIP dek object");
     let mut dek = create_symmetric_key_kmip_object(
         &general_purpose::STANDARD.decode(&wrap_request.key)?,
         CryptographicAlgorithm::AES,
     );
 
+    debug!("wrap: wrap dek");
     wrap_key(
         dek.key_block_mut()?,
         &KeyWrappingSpecification {
@@ -133,6 +139,7 @@ pub async fn wrap(
     // re-extract the bytes from the key
     let wrapped_dek = dek.key_block()?.key_bytes()?;
 
+    debug!("wrap: exiting with success");
     Ok(WrapResponse {
         wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
     })
@@ -161,6 +168,7 @@ pub async fn unwrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<UnwrapResponse> {
+    debug!("unwrap: entering");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     let application = if unwrap_request.reason.contains("Meet") {
@@ -168,6 +176,7 @@ pub async fn unwrap(
     } else {
         "drive"
     };
+    debug!("unwrap: entering with application {application}");
 
     // the possible roles to unwrap a key
     let roles = &["writer", "reader"];
@@ -180,8 +189,10 @@ pub async fn unwrap(
         Some(roles),
     )
     .await?;
+    debug!("unwrap: validate_tokens");
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
+    debug!("unwrap: create wrapped_dek KMIP object");
     let mut wrapped_dek = create_symmetric_key_kmip_object(
         &general_purpose::STANDARD.decode(&unwrap_request.wrapped_key)?,
         CryptographicAlgorithm::AES,
@@ -197,6 +208,7 @@ pub async fn unwrap(
         ..Default::default()
     }));
 
+    debug!("unwrap: unwrap key");
     unwrap_key(
         wrapped_dek.key_block_mut()?,
         kms,
@@ -208,6 +220,7 @@ pub async fn unwrap(
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
 
+    debug!("unwrap: exiting with success");
     Ok(UnwrapResponse {
         key: general_purpose::STANDARD.encode(dek),
     })
@@ -422,9 +435,9 @@ pub async fn private_key_decrypt(
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
 
-    debug!("sign with the private key");
+    debug!("decrypt with the private key");
 
-    // Sign with the unwrapped RSA private key
+    // Decrypt with the unwrapped RSA private key
     debug!("private_key_decrypt: private_key_from_der");
     let rsa_private_key = Rsa::<Private>::private_key_from_der(&dek)?;
     debug!("private_key_decrypt: from_rsa");
