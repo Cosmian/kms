@@ -225,23 +225,23 @@ pub async fn unwrap(
 #[post("/privatekeysign")]
 pub async fn private_key_sign(
     req_http: HttpRequest,
-    private_key_sign_request: Json<operations::PrivateKeySignRequest>,
+    request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeysign");
 
     // unwrap all calls parameters
-    let private_key_sign_request = private_key_sign_request.into_inner();
-    trace!("private_key_sign_request: {private_key_sign_request:?}");
+    let request = request.into_inner();
+    trace!("request: {request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::private_key_sign(req_http, private_key_sign_request, &cse_config, &kms)
+    match operations::private_key_sign(req_http, request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(sign_response) => HttpResponse::Ok().json(sign_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(e).into(),
     }
 }
@@ -252,23 +252,23 @@ pub async fn private_key_sign(
 #[post("/privatekeydecrypt")]
 pub async fn private_key_decrypt(
     req_http: HttpRequest,
-    decrypt_request: Json<operations::PrivateKeyDecryptRequest>,
+    request: Json<operations::PrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeydecrypt");
 
     // unwrap all calls parameters
-    let decrypt_request = decrypt_request.into_inner();
-    trace!("decrypt_request: {decrypt_request:?}");
+    let request = request.into_inner();
+    trace!("request: {request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::private_key_decrypt(req_http, decrypt_request, &cse_config, &kms)
+    match operations::private_key_decrypt(req_http, request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(decrypt_response) => HttpResponse::Ok().json(decrypt_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(e).into(),
     }
 }

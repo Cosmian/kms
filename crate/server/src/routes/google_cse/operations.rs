@@ -268,17 +268,17 @@ pub struct PrivateKeySignResponse {
 /// - S/MIME certificate profiles: https://support.google.com/a/answer/7300887
 pub async fn private_key_sign(
     req_http: HttpRequest,
-    private_key_sign_request: PrivateKeySignRequest,
+    request: PrivateKeySignRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeySignResponse> {
-    debug!("private_key_sign: entering: {private_key_sign_request:?}");
+    debug!("private_key_sign: entering");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_sign: validate_tokens");
     let user = validate_tokens(
-        &private_key_sign_request.authentication,
-        &private_key_sign_request.authorization,
+        &request.authentication,
+        &request.authorization,
         cse_config,
         "gmail",
         None,
@@ -290,11 +290,11 @@ pub async fn private_key_sign(
     debug!("private_key_sign: decode base64 wrapped_dek");
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     let mut wrapped_dek = create_symmetric_key_kmip_object(
-        &general_purpose::STANDARD.decode(&private_key_sign_request.wrapped_private_key)?,
+        &general_purpose::STANDARD.decode(&request.wrapped_private_key)?,
         CryptographicAlgorithm::AES,
     );
 
-    debug!("add key wrapping data substruct");
+    debug!("private_key_sign: add key wrapping data substruct");
     // add key wrapping parameters to the wrapped key
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(
         KeyWrappingData {
@@ -309,7 +309,7 @@ pub async fn private_key_sign(
         .into(),
     );
 
-    debug!("unwrap private key");
+    debug!("private_key_sign: unwrap private key");
     unwrap_key(
         wrapped_dek.key_block_mut()?,
         kms,
@@ -318,12 +318,12 @@ pub async fn private_key_sign(
     )
     .await?;
 
-    debug!("unwrapped private key");
+    debug!("private_key_sign: unwrapped private key");
 
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
 
-    debug!("sign with the private key");
+    debug!("private_key_sign: sign with the private key");
 
     // Sign with the unwrapped RSA private key
     debug!("private_key_sign: private_key_from_der");
@@ -332,11 +332,13 @@ pub async fn private_key_sign(
     let private_key = PKey::from_rsa(rsa_private_key)?;
     debug!("private_key_sign: build signer");
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
-    let digest = general_purpose::STANDARD.decode(private_key_sign_request.digest)?;
-    signer.update(&digest)?;
+    signer.update(&general_purpose::STANDARD.decode(request.digest)?)?;
     let signature = signer.sign_to_vec()?;
 
-    debug!("private_key_sign: exiting with success");
+    debug!(
+        "private_key_sign: exiting with success: {}",
+        general_purpose::STANDARD.encode(signature.clone())
+    );
     Ok(PrivateKeySignResponse {
         signature: general_purpose::STANDARD.encode(signature),
     })
@@ -374,7 +376,7 @@ pub struct PrivateKeyDecryptResponse {
 /// - Private Key Decrypt endpoint: https://developers.google.com/workspace/cse/reference/private-key-decrypt
 pub async fn private_key_decrypt(
     req_http: HttpRequest,
-    private_key_decrypt_request: PrivateKeyDecryptRequest,
+    request: PrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeyDecryptResponse> {
@@ -383,8 +385,8 @@ pub async fn private_key_decrypt(
 
     debug!("private_key_decrypt: validate_tokens");
     let user = validate_tokens(
-        &private_key_decrypt_request.authentication,
-        &private_key_decrypt_request.authorization,
+        &request.authentication,
+        &request.authorization,
         cse_config,
         "gmail",
         None,
@@ -393,19 +395,18 @@ pub async fn private_key_decrypt(
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     debug!("private_key_decrypt: decode encrypted_dek");
-    let encrypted_dek = general_purpose::STANDARD
-        .decode(&private_key_decrypt_request.encrypted_data_encryption_key)?;
+    let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
 
     debug!("private_key_sign: decode base64 wrapped_dek");
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     let mut wrapped_dek = create_symmetric_key_kmip_object(
-        &general_purpose::STANDARD.decode(&private_key_decrypt_request.wrapped_private_key)?,
+        &general_purpose::STANDARD.decode(&request.wrapped_private_key)?,
         CryptographicAlgorithm::AES,
     );
 
-    debug!("add key wrapping data substruct");
+    debug!("private_key_decrypt: add key wrapping data substruct");
     // add key wrapping parameters to the wrapped key
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(
         KeyWrappingData {
@@ -420,7 +421,7 @@ pub async fn private_key_decrypt(
         .into(),
     );
 
-    debug!("unwrap private key");
+    debug!("private_key_decrypt: unwrap private key");
     unwrap_key(
         wrapped_dek.key_block_mut()?,
         kms,
@@ -429,12 +430,12 @@ pub async fn private_key_decrypt(
     )
     .await?;
 
-    debug!("unwrapped private key");
+    debug!("private_key_decrypt: unwrapped private key");
 
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
 
-    debug!("decrypt with the private key");
+    debug!("private_key_decrypt: decrypt with the private key");
 
     // Decrypt with the unwrapped RSA private key
     debug!("private_key_decrypt: private_key_from_der");
@@ -443,10 +444,10 @@ pub async fn private_key_decrypt(
     let private_key = PKey::from_rsa(rsa_private_key)?;
 
     debug!("private_key_decrypt: build aad");
-    let rsa_oaep_label = if private_key_decrypt_request.rsa_oaep_label.is_empty() {
+    let rsa_oaep_label = if request.rsa_oaep_label.is_empty() {
         None
     } else {
-        Some(private_key_decrypt_request.rsa_oaep_label.as_bytes())
+        Some(request.rsa_oaep_label.as_bytes())
     };
 
     debug!("private_key_decrypt: rsa_oaep_aes_gcm_decrypt");

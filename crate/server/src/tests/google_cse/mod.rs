@@ -12,7 +12,13 @@ use cosmian_kms_cli::actions::shared::utils::{
     read_bytes_from_file, read_object_from_json_ttlv_bytes,
 };
 use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
-use openssl::x509::X509;
+use openssl::{
+    hash::MessageDigest,
+    pkey::{PKey, Private},
+    rsa::Rsa,
+    sign::{Signer, Verifier},
+    x509::X509,
+};
 
 use crate::{
     result::KResult,
@@ -44,6 +50,41 @@ fn import_google_cse_symmetric_key() -> Import {
 
     tracing::debug!("request: {request:?}");
     request
+}
+
+#[tokio::test]
+async fn test_ossl_sign_verify() -> KResult<()> {
+    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+
+    let digest =
+        general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
+    // The RSA blue private key
+    let blue_private_key = read_bytes_from_file(&PathBuf::from(
+        "src/routes/google_cse/python/openssl/blue.key",
+    ))
+    .unwrap();
+
+    let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
+    let private_key = PKey::from_rsa(rsa_private_key)?;
+    let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
+    signer.update(&digest)?;
+    let signature = signer.sign_to_vec()?;
+
+    // The RSA blue public key
+    let blue_public_key = read_bytes_from_file(&PathBuf::from(
+        "src/routes/google_cse/python/openssl/blue.pem",
+    ))
+    .unwrap();
+    let rsa_public_key = X509::from_pem(&blue_public_key)?;
+    let public_key = rsa_public_key.public_key()?;
+
+    // Verify the signature
+    let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+    verifier.update(&digest)?;
+
+    assert!(verifier.verify(&signature)?);
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -80,12 +121,13 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     // The RSA blue private key has been AES256 wrapped with `demo.key.json`
     let wrapped_private_key =
         include_str!("../../../../../documentation/docs/google_cse/blue_wrapped_private_key");
+    let digest = "9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=";
 
     let pksr = PrivateKeySignRequest {
         authentication: jwt.clone(),
         authorization: jwt,
-        algorithm: "RSA_SHA256".to_string(),
-        digest: "5fb7bcc0917b0ee8bd282ecbf64c07dfcbb37cb978fff6301eed0f3a3b99cfcc".to_string(),
+        algorithm: "SHA256withRSA".to_string(),
+        digest: digest.to_string(),
         rsa_pss_salt_length: None,
         reason: "Gmail".to_string(),
         wrapped_private_key: wrapped_private_key.to_string(),
@@ -95,6 +137,21 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     let pksr_response: PrivateKeySignResponse =
         test_utils::post_with_uri(&app, pksr, "/google_cse/privatekeysign").await?;
     tracing::debug!("private key sign response post: {pksr_response:?}");
+
+    // The RSA blue private key has been AES256 wrapped with `demo.key.json`
+    let blue_public_key = read_bytes_from_file(&PathBuf::from(
+        "src/routes/google_cse/python/openssl/blue.pem",
+    ))
+    .unwrap();
+
+    let rsa_public_key = X509::from_pem(&blue_public_key)?;
+    let public_key = rsa_public_key.public_key()?;
+
+    // Verify the data
+    let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+    let signature = general_purpose::STANDARD.decode(pksr_response.signature)?;
+    verifier.update(&general_purpose::STANDARD.decode(digest)?)?;
+    assert!(verifier.verify(&signature)?);
 
     Ok(())
 }
@@ -161,7 +218,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let request = PrivateKeyDecryptRequest {
         authentication: jwt.clone(),
         authorization: jwt,
-        algorithm: "RSA_SHA256".to_string(),
+        algorithm: "SHA256withRSA".to_string(),
         encrypted_data_encryption_key: general_purpose::STANDARD
             .encode(encrypted_data_encryption_key),
         rsa_oaep_label: String::new(),
