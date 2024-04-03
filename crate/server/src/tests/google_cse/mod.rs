@@ -1,27 +1,30 @@
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
     crypto::rsa::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
     kmip::{
+        kmip_objects::Object,
         kmip_operations::{Import, ImportResponse},
         kmip_types::UniqueIdentifier,
+        ttlv::{deserializer::from_ttlv, TTLV},
     },
-};
-use cosmian_kms_cli::actions::shared::utils::{
-    read_bytes_from_file, read_object_from_json_ttlv_bytes,
 };
 use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
-    rsa::Rsa,
+    rsa::{Padding, Rsa},
     sign::{Signer, Verifier},
     x509::X509,
 };
 
 use crate::{
-    result::KResult,
+    result::{KResult, KResultHelper},
     routes::google_cse::operations::{
         PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
         PrivateKeySignResponse,
@@ -30,6 +33,27 @@ use crate::{
 };
 
 pub mod utils;
+
+/// Read all bytes from a file
+pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
+    let mut buffer = Vec::new();
+    File::open(file)
+        .with_context(|| format!("could not open the file {}", file.as_ref().display()))?
+        .read_to_end(&mut buffer)
+        .with_context(|| format!("could not read the file {}", file.as_ref().display()))?;
+
+    Ok(buffer)
+}
+
+/// Read an object from KMIP JSON TTLV bytes slice
+pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> {
+    // Read the object from the file
+    let ttlv = serde_json::from_slice::<TTLV>(bytes)
+        .with_context(|| "failed parsing the object from the json file".to_owned())?;
+    // Deserialize the object
+    let object: Object = from_ttlv(&ttlv)?;
+    Ok(object)
+}
 
 fn import_google_cse_symmetric_key() -> Import {
     let symmetric_key = read_bytes_from_file(&PathBuf::from(
@@ -67,6 +91,10 @@ async fn test_ossl_sign_verify() -> KResult<()> {
     let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
     let private_key = PKey::from_rsa(rsa_private_key)?;
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
+    signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+
+    tracing::debug!("padding method: {:?}", signer.rsa_padding());
+
     signer.update(&digest)?;
     let signature = signer.sign_to_vec()?;
 
@@ -80,6 +108,7 @@ async fn test_ossl_sign_verify() -> KResult<()> {
 
     // Verify the signature
     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
     verifier.update(&digest)?;
 
     assert!(verifier.verify(&signature)?);
@@ -128,6 +157,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         authorization: jwt,
         algorithm: "SHA256withRSA".to_string(),
         digest: digest.to_string(),
+        e_key: "e_key".to_string(),
         rsa_pss_salt_length: None,
         reason: "Gmail".to_string(),
         wrapped_private_key: wrapped_private_key.to_string(),
@@ -149,6 +179,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
     // Verify the data
     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+
     let signature = general_purpose::STANDARD.decode(pksr_response.signature)?;
     verifier.update(&general_purpose::STANDARD.decode(digest)?)?;
     assert!(verifier.verify(&signature)?);

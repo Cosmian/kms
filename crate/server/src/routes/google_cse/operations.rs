@@ -16,7 +16,7 @@ use cosmian_kmip::{
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
-    rsa::Rsa,
+    rsa::{Padding, Rsa},
     sign::Signer,
 };
 use serde::{Deserialize, Serialize};
@@ -244,7 +244,7 @@ pub struct PrivateKeySignRequest {
     /// The format of the private key or the wrapped private key is up to
     /// the Key Access Control List Service (KACLS) implementation.
     /// On the client and on the Gmail side, this is treated as an opaque blob.
-    // pub e_key: String,
+    pub e_key: String,
 
     /// The salt length to use, if the signature algorithm is RSASSA-PSS.
     /// If the signature algorithm is not RSASSA-PSS, this field is ignored.
@@ -332,6 +332,8 @@ pub async fn private_key_sign(
     let private_key = PKey::from_rsa(rsa_private_key)?;
     debug!("private_key_sign: build signer");
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
+    debug!("padding method: {:?}", signer.rsa_padding());
+    signer.set_rsa_padding(Padding::PKCS1)?;
     signer.update(&general_purpose::STANDARD.decode(request.digest)?)?;
     let signature = signer.sign_to_vec()?;
 
