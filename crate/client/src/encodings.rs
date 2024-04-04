@@ -49,47 +49,30 @@ pub fn objects_from_pem(
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
+        let key_block_with_format_type =
+            |kft: KeyFormatType| key_block(kft, pem.contents().to_vec(), cryptographic_usage_mask);
+
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(
-                    KeyFormatType::PKCS1,
-                    pem.into_contents(),
-                    cryptographic_usage_mask,
-                ),
+                key_block: key_block_with_format_type(KeyFormatType::PKCS1),
             }),
             "RSA PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(
-                        KeyFormatType::PKCS1,
-                        pem.into_contents(),
-                        cryptographic_usage_mask,
-                    ),
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS1),
                 },
             ),
             "PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(
-                    KeyFormatType::PKCS8,
-                    pem.into_contents(),
-                    cryptographic_usage_mask,
-                ),
+                key_block: key_block_with_format_type(KeyFormatType::PKCS8),
             }),
             "PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(
-                        KeyFormatType::PKCS8,
-                        pem.into_contents(),
-                        cryptographic_usage_mask,
-                    ),
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS8),
                 },
             ),
             "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(
-                    KeyFormatType::ECPrivateKey,
-                    pem.into_contents(),
-                    cryptographic_usage_mask,
-                ),
+                key_block: key_block_with_format_type(KeyFormatType::ECPrivateKey),
             }),
             "EC PUBLIC KEY" => {
                 return Err(ClientError::NotSupported(
