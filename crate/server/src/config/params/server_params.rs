@@ -3,14 +3,11 @@ use std::{fmt, fs::File, io::Read, path::PathBuf};
 use openssl::x509::X509;
 
 use super::{DbParams, HttpParams};
-use crate::{config::ClapConfig, kms_bail, result::KResult};
-
-#[derive(Debug, Clone)]
-pub struct IdpConfig {
-    pub jwt_issuer_uri: String,
-    pub jwks_uri: Option<String>,
-    pub jwt_audience: Option<String>,
-}
+use crate::{
+    config::{ClapConfig, IdpConfig},
+    kms_bail,
+    result::KResult,
+};
 
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
@@ -61,71 +58,27 @@ pub struct ServerParams {
 
 impl ServerParams {
     pub async fn try_from(conf: ClapConfig) -> KResult<Self> {
-        // Initialize the workspace
-        let workspace = conf.workspace.init()?;
-
-        // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(&conf)?;
+        let http_params = HttpParams::try_from(&conf.http)?;
 
         // Should we verify the client TLS certificates?
-        let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
-            if http_params.is_running_https() {
-                Some(Self::load_cert(authority_cert_file)?)
-            } else {
-                kms_bail!(
-                    "The authority certificate file can only be used when the server is running \
-                     in HTTPS mode"
-                )
-            }
-        } else {
-            None
-        };
-
-        let identity_provider_configurations = match (
-            conf.auth.jwt_issuer_uri,
-            conf.auth.jwks_uri,
-            conf.auth.jwt_audience,
-        ) {
-            (Some(jwt_issuer_uri), jwks_uri, jwt_audience) => {
-                let config_len = jwt_issuer_uri.len();
-                if jwks_uri
-                    .as_ref()
-                    .map_or(false, |uris| uris.len() != config_len)
-                {
+        let verify_cert = conf
+            .http
+            .authority_cert_file
+            .map(|cert_file| {
+                if http_params.is_running_https() {
+                    Self::load_cert(&cert_file)
+                } else {
                     kms_bail!(
-                        "If jwks_uri are provided, they should match each provided jwt_issuer_uri."
+                        "The authority certificate file can only be used when the server is \
+                         running in HTTPS mode"
                     )
                 }
-                if jwt_audience
-                    .as_ref()
-                    .map_or(false, |audiences| audiences.len() != config_len)
-                {
-                    kms_bail!(
-                        "If jwt_audience are provided, they should match each provided \
-                         jwt_issuer_uri."
-                    )
-                }
-                let mut idp_configurations = Vec::with_capacity(config_len);
-                for (index, jwt_issuer_uri) in jwt_issuer_uri.into_iter().enumerate() {
-                    let jwks_uri = jwks_uri.as_ref().and_then(|jwks| jwks.get(index));
-                    let jwt_audience = jwt_audience
-                        .as_ref()
-                        .and_then(|audience| audience.get(index));
-                    let idp_config = IdpConfig {
-                        jwt_issuer_uri,
-                        jwks_uri: jwks_uri.cloned(),
-                        jwt_audience: jwt_audience.cloned(),
-                    };
-                    idp_configurations.push(idp_config)
-                }
-                Some(idp_configurations)
-            }
-            _ => None,
-        };
+            })
+            .transpose()?;
 
-        let server_conf = Self {
-            identity_provider_configurations,
-            db_params: conf.db.init(&workspace)?,
+        Ok(Self {
+            identity_provider_configurations: conf.auth.extract_idp_configs()?,
+            db_params: conf.db.init(&conf.workspace.init()?)?,
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname,
             port: conf.http.port,
@@ -135,8 +88,7 @@ impl ServerParams {
             client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
-        };
-        Ok(server_conf)
+        })
     }
 
     fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {

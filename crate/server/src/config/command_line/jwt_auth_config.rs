@@ -1,6 +1,8 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+use crate::{config::IdpConfig, error::KmsError, kms_ensure};
+
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
 
@@ -55,5 +57,43 @@ impl JwtAuthConfig {
             ),
             std::string::ToString::to_string,
         )
+    }
+
+    /// Parse this configuration into one identity provider configuration per JWT issuer URI.
+    ///
+    /// Assert that when provided, JWKS URI and JWT audience are provided once per JWT issuer URI;
+    pub fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
+        self.jwt_issuer_uri
+            .map(|issuer_uris| {
+                let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {
+                    option_vec
+                        .map(|vec| vec.into_iter().map(Some).collect())
+                        .unwrap_or_else(|| vec![None; issuer_uris.len()])
+                };
+
+                let jwks_uris = option_vec_to_vec_option(self.jwks_uri);
+                let audiences = option_vec_to_vec_option(self.jwt_audience);
+
+                kms_ensure!(
+                    jwks_uris.len() == issuer_uris.len(),
+                    "If jwks_uri are provided, they should match each provided jwt_issuer_uri."
+                );
+                kms_ensure!(
+                    audiences.len() == issuer_uris.len(),
+                    "If jwt_audience are provided, they should match each provided jwt_issuer_uri."
+                );
+
+                Ok(issuer_uris
+                    .into_iter()
+                    .zip(jwks_uris)
+                    .zip(audiences)
+                    .map(|((jwt_issuer_uri, jwks_uri), jwt_audience)| IdpConfig {
+                        jwt_issuer_uri,
+                        jwks_uri,
+                        jwt_audience,
+                    })
+                    .collect())
+            })
+            .transpose()
     }
 }
