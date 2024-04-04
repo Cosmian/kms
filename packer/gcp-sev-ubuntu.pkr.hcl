@@ -61,7 +61,7 @@ locals {
 
 variable "ubuntu_source_image" {
   type    = string
-  default = "cosmian-vm-1-1-0-rc-2-sev-ubuntu"
+  default = "cosmian-vm-1-1-0-rc-3-sev-ubuntu"
 }
 
 variable "ubuntu_source_image_family" {
