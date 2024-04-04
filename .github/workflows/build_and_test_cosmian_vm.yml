@@ -110,7 +110,7 @@ jobs:
 
       - name: Download Cosmian VM client
         run: |
-          wget https://package.cosmian.com/cosmian_vm/1.1.0-rc.2/cosmian_vm
+          wget https://package.cosmian.com/cosmian_vm/1.1.0-rc.3/cosmian_vm
 
       - name: Change permissions of binaries
         run: |

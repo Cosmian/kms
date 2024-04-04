@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.14.1] - 2024-04-04
+
+### Ci
+
+- Remove optimization RUSTFLAGS ([#227](https://github.com/Cosmian/kms/pull/227))
+
+### Features
+
+- Bump Cosmian VM version to 1.1.0-rc.3
+
 ## [4.14.0] - 2024-03-27
 
 ### Bug Fixes
