@@ -1,0 +1,9 @@
+[program:kms]
+command=kms
+environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
+directory=/usr/local/sbin
+autostart=false
+autorestart=true
+user=root
+stderr_logfile=/var/log/cosmian_kms.err.log
+stdout_logfile=/var/log/cosmian_kms.out.log

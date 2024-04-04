@@ -1,0 +1,122 @@
+---
+# tasks file for ansible/roles/kms
+
+- name: Check OS distribution
+  debug:
+    var: ansible_distribution
+
+- name: Install prerequisites packages
+  ansible.builtin.package:
+    name:
+      - nginx
+      - unzip
+      - redis
+    state: present
+
+- name: Create a Directory /usr/local/sbin
+  file:
+    path: /usr/local/sbin
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: Download KMS 4.14.0
+  get_url:
+    url: https://package.cosmian.com/kms/4.14.0/ubuntu_22_04.zip
+    dest: /usr/local/sbin
+    mode: 0755
+    group: root
+    owner: root
+
+- name: Unarchive binaries
+  ansible.builtin.unarchive:
+    src: /usr/local/sbin/ubuntu_22_04.zip
+    dest: /usr/local/sbin
+    remote_src: true
+
+- name: Copy KMS executable
+  ansible.builtin.copy:
+    src: /usr/local/sbin/ubuntu_22_04/cosmian_kms_server
+    dest: /usr/local/sbin/cosmian_kms
+    remote_src: true
+    owner: root
+    group: root
+    mode: 0500
+
+- name: Remove temporary files
+  file:
+    path:
+      - /usr/local/sbin/ubuntu_22_04
+      - /usr/local/sbin/ubuntu_22_04.zip
+    state: absent
+
+- name: Add KMS supervisor configuration
+  template:
+    src: supervisor_kms.conf.j2
+    dest: /etc/supervisor/conf.d/kms.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Add Nginx configuration
+  template:
+    src: nginx.j2
+    dest: /etc/nginx/sites-enabled/default
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Make sure Supervisor is running
+  ansible.builtin.systemd_service:
+    state: started
+    name: supervisor
+
+- name: Start Cosmian VM Agent
+  community.general.supervisorctl:
+    name: cosmian_vm_agent
+    state: started
+  tags: launch
+
+- name: Creates directory
+  ansible.builtin.file:
+    path: /var/lib/cosmian_vm/data/app
+    state: directory
+
+- name: Run Nginx
+  ansible.builtin.systemd_service:
+    state: started
+    name: nginx
+
+- name: Run Redis
+  ansible.builtin.systemd_service:
+    state: started
+    name: redis
+
+- name: Check if port 5355 is listening
+  wait_for:
+    port: 5355
+    delay: 5
+    timeout: 30
+    msg: Timeout waiting for 5355 to respond
+  tags: launch
+
+- name: Download Cosmian VM CLI
+  get_url:
+    url: https://package.cosmian.com/cosmian_vm/1.1.0-rc.3/cosmian_vm
+    dest: /usr/sbin/
+    mode: 0500
+    group: root
+    owner: root
+
+- name: Copy KMS configuration
+  template:
+    src: kms.toml.j2
+    dest: /tmp/kms.toml
+    owner: root
+    group: root
+
+- name: Cosmian VM App initialization
+  shell: |
+    cosmian_vm --url https://localhost:5355 --allow-insecure-tls app init -c /tmp/kms.toml
+  tags: app_init
