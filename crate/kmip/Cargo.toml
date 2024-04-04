@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kmip"
-version = "4.14.0"
+version = "4.14.1"
 edition = "2021"
 license-file = "../../LICENSE"
 
@@ -19,7 +19,7 @@ fips = ["openssl"]
 [dependencies]
 argon2 = "0.5"
 base58 = "0.2"
-bitflags = "2.4"
+bitflags = "2.5"
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }

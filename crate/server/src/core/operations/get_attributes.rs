@@ -93,9 +93,11 @@ pub async fn get_attributes(
                 let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
                 default_attributes.object_type = Some(object_type);
                 //re-add the vendor attributes
-                default_attributes.vendor_attributes = attributes.vendor_attributes.clone();
+                default_attributes
+                    .vendor_attributes
+                    .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link = attributes.link.clone();
+                default_attributes.link.clone_from(&attributes.link);
                 default_attributes
             }
         }
@@ -112,9 +114,11 @@ pub async fn get_attributes(
                 let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
                 default_attributes.object_type = Some(object_type);
                 //re-add the vendor attributes
-                default_attributes.vendor_attributes = attributes.vendor_attributes.clone();
+                default_attributes
+                    .vendor_attributes
+                    .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link = attributes.link.clone();
+                default_attributes.link.clone_from(&attributes.link);
                 default_attributes
             }
         }
@@ -177,7 +181,8 @@ pub async fn get_attributes(
                     res.cryptographic_length = attributes.cryptographic_length;
                 }
                 Tag::CryptographicParameters => {
-                    res.cryptographic_parameters = attributes.cryptographic_parameters.clone();
+                    res.cryptographic_parameters
+                        .clone_from(&attributes.cryptographic_parameters);
                 }
                 Tag::CryptographicDomainParameters => {
                     res.cryptographic_domain_parameters =

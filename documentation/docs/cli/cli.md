@@ -4,7 +4,7 @@ client `ckms_gui`.
 !!! info "Download ckms and ckms_gui"
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.14.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.14.1/)
 
 ## Configuring the clients
 

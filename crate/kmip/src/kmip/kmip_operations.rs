@@ -478,16 +478,16 @@ pub struct CreateKeyPair {
     /// to the Public Key Object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_attributes: Option<Attributes>,
-    /// Specifies all ProtectionStorage Mask selections that are permissible for
+    /// Specifies all `ProtectionStorage` Mask selections that are permissible for
     /// the new Private Key and Public Key objects.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub common_protection_storage_masks: Option<ProtectionStorageMasks>,
-    /// Specifies all ProtectionStorage Mask selections that are permissible for
+    /// Specifies all `ProtectionStorage` Mask selections that are permissible for
     /// the new Private Key object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private_protection_storage_masks: Option<ProtectionStorageMasks>,
-    /// Specifies all ProtectionStorage Mask selections that are permissible for
-    /// the new PublicKey object.
+    /// Specifies all `ProtectionStorage` Mask selections that are permissible for
+    /// the new `PublicKey` object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
@@ -874,7 +874,7 @@ pub struct Encrypt {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// The Cryptographic Parameters (Block
     /// Cipher Mode, Padding Method,
-    /// RandomIV) corresponding to the
+    /// `RandomIV`) corresponding to the
     /// particular encryption method
     /// requested.
     /// If there are no Cryptographic
