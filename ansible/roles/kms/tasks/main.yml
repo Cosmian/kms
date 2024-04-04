@@ -54,7 +54,15 @@
 - name: Add KMS supervisor configuration
   template:
     src: supervisor_kms.conf.j2
-    dest: /etc/supervisor/conf.d/kms.conf
+    dest: /etc/supervisor/conf.d/cosmian_kms.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Override Cosmian VM configuration
+  template:
+    src: agent.toml.j2
+    dest: /etc/cosmian_vm/agent.toml
     owner: root
     group: root
     mode: 0644
@@ -120,3 +128,9 @@
   shell: |
     cosmian_vm --url https://localhost:5355 --allow-insecure-tls app init -c /tmp/kms.toml
   tags: app_init
+
+- name: Start KMS
+  community.general.supervisorctl:
+    name: cosmian_kms
+    state: started
+  tags: launch

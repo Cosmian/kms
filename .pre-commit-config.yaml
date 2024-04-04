@@ -61,7 +61,7 @@ repos:
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
-        exclude: .github/workflows/main_release.yml
+        exclude: ansible
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.13.1
