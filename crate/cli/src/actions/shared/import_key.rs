@@ -116,9 +116,8 @@ impl ImportKeyAction {
         let object = match &self.key_format {
             ImportKeyFormat::JsonTtlv => {
                 let mut obj = read_object_from_json_ttlv_bytes(&bytes)?;
-                if let Ok(attr) = obj.attributes_mut() {
-                    attr.set_cryptographic_usage_mask(cryptographic_usage_mask);
-                }
+                obj.attributes_mut()?
+                    .set_cryptographic_usage_mask(cryptographic_usage_mask);
                 obj
             }
             ImportKeyFormat::Pem => read_key_from_pem(&bytes, cryptographic_usage_mask)?,

@@ -1101,6 +1101,17 @@ impl Attributes {
         self.cryptographic_usage_mask = mask;
     }
 
+    /// Set the bits in `mask` to the attributes's CryptographicUsageMask bits.
+    pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
+        let mask = if let Some(attr_mask) = self.cryptographic_usage_mask {
+            attr_mask | mask
+        } else {
+            mask
+        };
+
+        self.cryptographic_usage_mask = Some(mask);
+    }
+
     /// Check that `flag` bit is set in object's CryptographicUsageMask.
     /// If FIPS mode is disabled, check if Unrestricted bit is set too.
     ///
