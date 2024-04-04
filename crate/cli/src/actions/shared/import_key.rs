@@ -160,31 +160,30 @@ impl ImportKeyAction {
         let object_type = object.object_type();
 
         // Generate the import attributes if links are specified.
-        let mut import_attributes = object.attributes().ok().cloned();
-        if import_attributes.is_none() {
-            import_attributes = Some(Attributes {
+        let mut import_attributes = object
+            .attributes()
+            .unwrap_or(&Attributes {
                 cryptographic_usage_mask,
                 ..Default::default()
             })
-        }
+            .clone();
 
         if let Some(issuer_certificate_id) = &self.certificate_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            //let attributes = import_attributes.get_or_insert(Attributes::default());
+            import_attributes.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            //let attributes = import_attributes.get_or_insert(Attributes::default());
+            import_attributes.add_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         };
         if let Some(public_key_id) = &self.public_key_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            import_attributes.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
@@ -195,7 +194,7 @@ impl ImportKeyAction {
             kms_rest_client,
             self.key_id.clone(),
             object,
-            import_attributes,
+            Some(import_attributes),
             self.unwrap,
             self.replace_existing,
             &self.tags,

@@ -277,7 +277,6 @@ async fn process_public_key(
     }
 
     // check if the object will be replaced if it already exists
-    //let replace_existing = request.replace_existing.unwrap_or(false);
     let replace_existing = request.replace_existing.unwrap_or(false);
     Ok((
         uid.clone(),
