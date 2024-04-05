@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_python"
-version = "4.14.1"
+version = "4.14.2"
 authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE"

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.14.2] - 2024-04-05
+
+### Ci
+
+- Add standalone workflow to test KMS in Cosmian VM ([#233](https://github.com/Cosmian/kms/pull/233))
+
+### Features
+
+- Rebase KMS GCP image on Cosmian VM 1.1.0-rc.4
+
 ## [4.14.1] - 2024-04-04
 
 ### Ci
@@ -10,7 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Bump Cosmian VM version to 1.1.0-rc.3
+- Rebase KMS GCP image on Cosmian VM 1.1.0-rc.3
 
 ## [4.14.0] - 2024-03-27
 
