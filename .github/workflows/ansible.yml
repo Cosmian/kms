@@ -7,6 +7,9 @@ on:
       host:
         required: true
         type: string
+      kms-branch:
+        required: true
+        type: string
 
 jobs:
   install-kms:
@@ -15,8 +18,13 @@ jobs:
       - name: Display inputs
         run: |
           echo IP_ADDR: "${{ inputs.host }}"
+          echo KMS branch: "${{ inputs.kms-branch }}"
 
       - uses: actions/checkout@v3
+        with:
+          repository: Cosmian/kms
+          ref: ${{ inputs.kms-branch }}
+
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
