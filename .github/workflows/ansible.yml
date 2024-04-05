@@ -1,0 +1,32 @@
+---
+name: Install KMS via Ansible
+
+on:
+  workflow_call:
+    inputs:
+      host:
+        required: true
+        type: string
+
+jobs:
+  install-kms:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Display inputs
+        run: |
+          echo IP_ADDR: "${{ inputs.host }}"
+
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: pip # caching pip dependencies
+
+      - name: Install prerequisites
+        run: |
+          cd ansible
+          pip install -r python_modules.txt
+
+      - name: Check that the lib version is the same as the server
+        run: |
+          ansible-playbook kms_sev.yml -i ${{ inputs.host }}, -u cosmian

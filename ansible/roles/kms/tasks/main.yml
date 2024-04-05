@@ -5,6 +5,50 @@
   debug:
     var: ansible_distribution
 
+- name: Check Cosmian KMS version
+  debug:
+    var: cosmian_kms_version
+
+- name: Get supervisor Status
+  ansible.builtin.systemd:
+    name: supervisor
+  register: supervisor_status
+
+- debug:
+    var: supervisor_status.status.ActiveState
+
+- name: Check if /etc/supervisor/conf.d/cosmian_vm_agent.conf exists
+  stat:
+    path: /etc/supervisor/conf.d/cosmian_vm_agent.conf
+  register: vm_supervisor_conf_check
+
+- name: Check if /etc/supervisor/conf.d/cosmian_kms.conf exists
+  stat:
+    path: /etc/supervisor/conf.d/cosmian_kms.conf
+  register: kms_supervisor_conf_check
+
+- name: Stop Cosmian VM Agent if it exists
+  community.general.supervisorctl:
+    name: cosmian_vm_agent
+    state: stopped
+  when:
+    - vm_supervisor_conf_check.stat.exists
+    - supervisor_status.status.ActiveState=='active'
+
+- name: Stop Cosmian VM Agent if it exists
+  community.general.supervisorctl:
+    name: cosmian_kms
+    state: stopped
+  when:
+    - kms_supervisor_conf_check.stat.exists
+    - supervisor_status.status.ActiveState=='active'
+
+- name: Clean KMS existing folders
+  file:
+    path:
+      - /var/lib/cosmian_vm/data/app
+    state: absent
+
 - name: Install prerequisites packages
   ansible.builtin.package:
     name:
@@ -21,23 +65,23 @@
     owner: root
     group: root
 
-- name: Download KMS 4.14.0
+- name: Download KMS
   get_url:
-    url: https://package.cosmian.com/kms/4.14.0/ubuntu_22_04.zip
-    dest: /usr/local/sbin
+    url: https://package.cosmian.com/kms/{{ cosmian_kms_version }}/ubuntu_22_04.zip
+    dest: /tmp
     mode: 0755
     group: root
     owner: root
 
 - name: Unarchive binaries
   ansible.builtin.unarchive:
-    src: /usr/local/sbin/ubuntu_22_04.zip
-    dest: /usr/local/sbin
+    src: /tmp/ubuntu_22_04.zip
+    dest: /tmp
     remote_src: true
 
 - name: Copy KMS executable
   ansible.builtin.copy:
-    src: /usr/local/sbin/ubuntu_22_04/cosmian_kms_server
+    src: /tmp/ubuntu_22_04/cosmian_kms_server
     dest: /usr/local/sbin/cosmian_kms
     remote_src: true
     owner: root
@@ -47,8 +91,8 @@
 - name: Remove temporary files
   file:
     path:
-      - /usr/local/sbin/ubuntu_22_04
-      - /usr/local/sbin/ubuntu_22_04.zip
+      - /tmp/ubuntu_22_04
+      - /tmp/ubuntu_22_04.zip
     state: absent
 
 - name: Add KMS supervisor configuration
@@ -134,3 +178,27 @@
     name: cosmian_kms
     state: started
   tags: launch
+
+- name: Check if port 8080 is listening
+  wait_for:
+    port: 8080
+    delay: 5
+    timeout: 30
+    msg: Timeout waiting for 8080 to respond
+
+- name: Check if port 443 is listening
+  wait_for:
+    port: 443
+    delay: 5
+    timeout: 30
+    msg: Timeout waiting for 443 to respond
+
+# - name: Check KMS returns its version
+#   ansible.builtin.uri:
+#     url: http://localhost:8080/version
+#   tags: listening
+
+# - name: Check KMS returns its version on HTTPS
+#   ansible.builtin.uri:
+#     url: https://localhost/version
+#   tags: listening
