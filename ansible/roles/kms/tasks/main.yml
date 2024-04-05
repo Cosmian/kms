@@ -135,11 +135,6 @@
     path: /var/lib/cosmian_vm/data/app
     state: directory
 
-- name: Run Nginx
-  ansible.builtin.systemd_service:
-    state: started
-    name: nginx
-
 - name: Run Redis
   ansible.builtin.systemd_service:
     state: started
@@ -179,12 +174,19 @@
     state: started
   tags: launch
 
+- name: Run Nginx
+  ansible.builtin.systemd_service:
+    state: started
+    name: nginx
+  tags: listening
+
 - name: Check if port 8080 is listening
   wait_for:
     port: 8080
     delay: 5
     timeout: 30
     msg: Timeout waiting for 8080 to respond
+  tags: listening
 
 - name: Check if port 443 is listening
   wait_for:
@@ -192,6 +194,7 @@
     delay: 5
     timeout: 30
     msg: Timeout waiting for 443 to respond
+  tags: listening
 
 # - name: Check KMS returns its version
 #   ansible.builtin.uri:
@@ -200,5 +203,5 @@
 
 # - name: Check KMS returns its version on HTTPS
 #   ansible.builtin.uri:
-#     url: https://localhost/version
+#     url: https://34.29.179.11/version
 #   tags: listening
