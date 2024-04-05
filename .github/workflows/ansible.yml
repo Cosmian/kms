@@ -28,4 +28,5 @@ jobs:
 
       - name: Check that the lib version is the same as the server
         run: |
+          cd ansible
           ansible-playbook kms_sev.yml -i ${{ inputs.host }}, -u cosmian
