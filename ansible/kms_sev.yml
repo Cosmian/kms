@@ -1,6 +1,0 @@
----
-- name: Setup KMS
-  hosts: all
-  become: true
-  roles:
-    - kms
