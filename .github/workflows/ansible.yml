@@ -26,7 +26,9 @@ jobs:
           cd ansible
           pip install -r python_modules.txt
 
-      - name: Check that the lib version is the same as the server
+      - name: Ansible installation playbook
         run: |
+          set -x
           cd ansible
+          ls -al
           ansible-playbook kms_sev.yml -i ${{ inputs.host }}, -u cosmian
