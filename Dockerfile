@@ -1,6 +1,6 @@
 FROM ubuntu:22.04 as builder
 
-LABEL version="4.14.1"
+LABEL version="4.14.2"
 LABEL name="Cosmian KMS docker container"
 
 ARG FEATURES
