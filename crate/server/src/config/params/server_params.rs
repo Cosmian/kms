@@ -3,20 +3,18 @@ use std::{fmt, fs::File, io::Read, path::PathBuf};
 use openssl::x509::X509;
 
 use super::{DbParams, HttpParams};
-use crate::{config::ClapConfig, kms_bail, result::KResult};
+use crate::{
+    config::{ClapConfig, IdpConfig},
+    kms_bail,
+    result::KResult,
+};
 
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 pub struct ServerParams {
-    // The JWT issuer URI if Auth is enabled
-    pub jwt_issuer_uri: Option<String>,
-
-    // The JWKS URI if Auth is enabled
-    pub jwks_uri: Option<String>,
-
-    /// The JWT audience if Auth is enabled
-    pub jwt_audience: Option<String>,
+    /// The JWT Config if Auth is enabled
+    pub identity_provider_configurations: Option<Vec<IdpConfig>>,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -59,43 +57,38 @@ pub struct ServerParams {
 }
 
 impl ServerParams {
-    pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
-        // Initialize the workspace
-        let workspace = conf.workspace.init()?;
-
-        // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(conf)?;
+    pub async fn try_from(conf: ClapConfig) -> KResult<Self> {
+        let http_params = HttpParams::try_from(&conf.http)?;
 
         // Should we verify the client TLS certificates?
-        let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
-            if http_params.is_running_https() {
-                Some(Self::load_cert(authority_cert_file)?)
-            } else {
-                kms_bail!(
-                    "The authority certificate file can only be used when the server is running \
-                     in HTTPS mode"
-                )
-            }
-        } else {
-            None
-        };
+        let verify_cert = conf
+            .http
+            .authority_cert_file
+            .map(|cert_file| {
+                if http_params.is_running_https() {
+                    Self::load_cert(&cert_file)
+                } else {
+                    kms_bail!(
+                        "The authority certificate file can only be used when the server is \
+                         running in HTTPS mode"
+                    )
+                }
+            })
+            .transpose()?;
 
-        let server_conf = Self {
-            jwks_uri: conf.auth.jwks_uri.clone(),
-            jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
-            jwt_audience: conf.auth.jwt_audience.clone(),
-            db_params: conf.db.init(&workspace)?,
+        Ok(Self {
+            identity_provider_configurations: conf.auth.extract_idp_configs()?,
+            db_params: conf.db.init(&conf.workspace.init()?)?,
             clear_db_on_start: conf.db.clear_database,
-            hostname: conf.http.hostname.clone(),
+            hostname: conf.http.hostname,
             port: conf.http.port,
-            http_params: HttpParams::try_from(conf)?,
-            default_username: conf.default_username.clone(),
+            http_params,
+            default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             client_cert: verify_cert,
-            google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
-            ms_dke_service_url: conf.ms_dke_service_url.clone(),
-        };
-        Ok(server_conf)
+            google_cse_kacls_url: conf.google_cse_kacls_url,
+            ms_dke_service_url: conf.ms_dke_service_url,
+        })
     }
 
     fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
@@ -129,10 +122,13 @@ impl fmt::Debug for ServerParams {
             )
             .field("db_params", &self.db_params)
             .field("clear_db_on_start", &self.clear_db_on_start);
-        let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
-            x.field("jwt_issuer_uri", &jwt_issuer_uri)
-                .field("jwks_uri", &self.jwks_uri)
-                .field("jwt_audience", &self.jwt_audience)
+        let x = if let Some(identity_provider_configurations) =
+            &self.identity_provider_configurations
+        {
+            x.field(
+                "identity_provider_configurations",
+                &identity_provider_configurations,
+            )
         } else {
             x
         };
@@ -161,9 +157,7 @@ impl fmt::Debug for ServerParams {
 impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
-            jwt_issuer_uri: self.jwt_issuer_uri.clone(),
-            jwks_uri: self.jwks_uri.clone(),
-            jwt_audience: self.jwt_audience.clone(),
+            identity_provider_configurations: self.identity_provider_configurations.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,
             db_params: None,

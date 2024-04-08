@@ -205,7 +205,7 @@ async fn generate_server_params(
         },
         ..Default::default()
     };
-    ServerParams::try_from(&clap_config)
+    ServerParams::try_from(clap_config)
         .await
         .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))
 }
@@ -226,7 +226,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
             format!("http://0.0.0.0:{}", server_params.port)
         },
         accept_invalid_certs: true,
-        kms_access_token: if server_params.jwt_issuer_uri.is_some() {
+        kms_access_token: if server_params.identity_provider_configurations.is_some() {
             Some(AUTH0_TOKEN.to_string())
         } else {
             None

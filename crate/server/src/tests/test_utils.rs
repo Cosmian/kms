@@ -50,7 +50,7 @@ pub async fn test_app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config();
 
-    let server_params = ServerParams::try_from(&clap_config).await.unwrap();
+    let server_params = ServerParams::try_from(clap_config).await.unwrap();
 
     let kms_server = Arc::new(
         KMSServer::instantiate(server_params)

@@ -3,7 +3,7 @@ use std::{fmt, fs::File, io::Read};
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{
-    config::ClapConfig,
+    config::HttpConfig,
     result::{KResult, KResultHelper},
 };
 
@@ -14,10 +14,10 @@ pub enum HttpParams {
 }
 
 impl HttpParams {
-    pub fn try_from(config: &ClapConfig) -> KResult<Self> {
+    pub fn try_from(config: &HttpConfig) -> KResult<Self> {
         // start in HTTPS mode if a PKCS#12 file is provided
         if let (Some(p12_file), Some(p12_password)) =
-            (&config.http.https_p12_file, &config.http.https_p12_password)
+            (&config.https_p12_file, &config.https_p12_password)
         {
             // Open and read the file into a byte vector
             let mut file = File::open(p12_file)?;
