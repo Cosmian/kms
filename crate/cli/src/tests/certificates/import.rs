@@ -58,25 +58,7 @@ pub fn import_certificate(
     if let Some(key_usage_vec) = key_usage_vec {
         for key_usage in key_usage_vec {
             args.push("--key-usage".to_owned());
-            args.push(
-                match key_usage {
-                    KeyUsage::Sign => "sign",
-                    KeyUsage::Verify => "verify",
-                    KeyUsage::Encrypt => "encrypt",
-                    KeyUsage::Decrypt => "decrypt",
-                    KeyUsage::WrapKey => "wrap-key",
-                    KeyUsage::UnwrapKey => "unwrap-key",
-                    KeyUsage::MACGenerate => "mac-generate",
-                    KeyUsage::MACVerify => "mac-verify",
-                    KeyUsage::DeriveKey => "derive-key",
-                    KeyUsage::KeyAgreement => "key-agreement",
-                    KeyUsage::CertificateSign => "certificate-sign",
-                    KeyUsage::CRLSign => "crl-sign",
-                    KeyUsage::Authenticate => "authenticate",
-                    KeyUsage::Unrestricted => "unrestricted",
-                }
-                .to_string(),
-            );
+            args.push(key_usage.into());
         }
     }
     if let Some(tags) = tags {

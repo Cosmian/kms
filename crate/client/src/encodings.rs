@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{Attributes, CertificateType, CryptographicUsageMask, KeyFormatType},
+    kmip_types::{CertificateType, KeyFormatType},
 };
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
@@ -42,15 +42,12 @@ use crate::{client_bail, ClientError};
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
 ///
-pub fn objects_from_pem(
-    bytes: &[u8],
-    cryptographic_usage_mask: Option<CryptographicUsageMask>,
-) -> Result<Vec<Object>, ClientError> {
+pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
         let key_block_with_format_type =
-            |kft: KeyFormatType| key_block(kft, pem.contents().to_vec(), cryptographic_usage_mask);
+            |kft: KeyFormatType| key_block(kft, pem.contents().to_vec());
 
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
@@ -110,11 +107,7 @@ pub fn objects_from_pem(
     Ok(objects)
 }
 
-fn key_block(
-    key_format_type: KeyFormatType,
-    bytes: Vec<u8>,
-    cryptographic_usage_mask: Option<CryptographicUsageMask>,
-) -> KeyBlock {
+fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     KeyBlock {
         key_format_type,
         key_compression_type: None,
@@ -122,10 +115,7 @@ fn key_block(
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
-            attributes: Some(Box::new(Attributes {
-                cryptographic_usage_mask,
-                ..Default::default()
-            })),
+            attributes: Some(Box::default()),
         },
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.

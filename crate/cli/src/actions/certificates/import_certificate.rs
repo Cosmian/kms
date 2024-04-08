@@ -256,13 +256,11 @@ impl ImportCertificateAction {
         let pkcs12_bytes = Zeroizing::from(read_bytes_from_file(&self.get_certificate_file()?)?);
 
         // Create a KMIP private key from the PKCS12 private key
-        let private_key = build_private_key_from_der_bytes(
-            KeyFormatType::PKCS12,
-            pkcs12_bytes,
-            cryptographic_usage_mask,
-        );
+        let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);
 
         let mut attributes = private_key.attributes().cloned().unwrap_or_default();
+        attributes.set_cryptographic_usage_mask(cryptographic_usage_mask);
+
         if let Some(password) = &self.pkcs12_password {
             attributes.add_link(
                 LinkType::PKCS12PasswordLink,

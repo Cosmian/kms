@@ -18,6 +18,28 @@ pub enum KeyUsage {
     Unrestricted,
 }
 
+impl From<KeyUsage> for String {
+    fn from(key_usage: KeyUsage) -> Self {
+        match key_usage {
+            KeyUsage::Sign => "sign",
+            KeyUsage::Verify => "verify",
+            KeyUsage::Encrypt => "encrypt",
+            KeyUsage::Decrypt => "decrypt",
+            KeyUsage::WrapKey => "wrap-key",
+            KeyUsage::UnwrapKey => "unwrap-key",
+            KeyUsage::MACGenerate => "mac-generate",
+            KeyUsage::MACVerify => "mac-verify",
+            KeyUsage::DeriveKey => "derive-key",
+            KeyUsage::KeyAgreement => "key-agreement",
+            KeyUsage::CertificateSign => "certificate-sign",
+            KeyUsage::CRLSign => "crl-sign",
+            KeyUsage::Authenticate => "authenticate",
+            KeyUsage::Unrestricted => "unrestricted",
+        }
+        .to_string()
+    }
+}
+
 pub fn build_usage_mask_from_key_usage(
     key_usage_vec: &Option<Vec<KeyUsage>>,
 ) -> Option<CryptographicUsageMask> {
