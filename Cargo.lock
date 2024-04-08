@@ -2391,7 +2391,7 @@ dependencies = [
 [[package]]
 name = "native-pkcs11"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 dependencies = [
  "log",
  "native-pkcs11-core",
@@ -2410,7 +2410,7 @@ dependencies = [
 [[package]]
 name = "native-pkcs11-core"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 dependencies = [
  "bincode",
  "log",
@@ -2431,7 +2431,7 @@ dependencies = [
 [[package]]
 name = "native-pkcs11-keychain"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 dependencies = [
  "apple-security-framework",
  "apple-security-framework-sys",
@@ -2450,7 +2450,7 @@ dependencies = [
 [[package]]
 name = "native-pkcs11-traits"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 dependencies = [
  "once_cell",
  "rand",
@@ -2461,7 +2461,7 @@ dependencies = [
 [[package]]
 name = "native-pkcs11-windows"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 dependencies = [
  "native-pkcs11-traits",
  "windows",
@@ -2875,7 +2875,7 @@ dependencies = [
 [[package]]
 name = "pkcs11-sys"
 version = "0.2.17"
-source = "git+https://github.com/Cosmian/native-pkcs11.git?rev=402000cef7763e72c82231f069a8dc8bad847ab8#402000cef7763e72c82231f069a8dc8bad847ab8"
+source = "git+https://github.com/Cosmian/native-pkcs11.git?branch=main#7ef6422923b6788440d061bd24a845f00a17748c"
 
 [[package]]
 name = "pkcs5"
