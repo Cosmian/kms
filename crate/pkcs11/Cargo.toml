@@ -18,7 +18,7 @@ etcetera = "0.8.0"
 native-pkcs11 = { git = "https://github.com/Cosmian/native-pkcs11.git", branch="main", rev="114c93de2e32c2b943578f0aad1c0f43d69e7726", features = [
   "custom-function-list",
 ] }
-native-pkcs11-traits = { git = "https://github.com/Cosmian/native-pkcs11.git", branch="main, rev="114c93de2e32c2b943578f0aad1c0f43d69e7726" }
+native-pkcs11-traits = { git = "https://github.com/Cosmian/native-pkcs11.git", branch="main", rev="114c93de2e32c2b943578f0aad1c0f43d69e7726" }
 serde_json = { workspace = true }
 sha3 = "0.10.8"
 thiserror = { workspace = true }
