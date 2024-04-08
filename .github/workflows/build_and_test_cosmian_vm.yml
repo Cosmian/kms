@@ -226,5 +226,12 @@ jobs:
           TAG=${{ github.ref_name }}
           VERSION=$(echo $TAG | sed 's/\./-/g; s/_/-/g; s/+/-/g')
           NEW_IMAGE_NAME=cosmian-vm-kms-$VERSION-sev-${{ inputs.distrib }}
+
+          if [ "${{ inputs.distrib }}" = "ubuntu" ]; then
+            LICENSE="${{ secrets.GCP_KMS_UBUNTU_LICENSE }}"
+          else
+            LICENSE=${{ secrets.GCP_KMS_RHEL_LICENSE }}
+          fi
+
           gcloud beta compute --project=$GCP_DEV_PROJECT images create $NEW_IMAGE_NAME --source-image=$IMAGE_NAME --source-image-project=$GCP_DEV_PROJECT
-          gcloud beta compute --project=$GCP_PUBLIC_PROJECT images create $NEW_IMAGE_NAME --source-image=$IMAGE_NAME --source-image-project=$GCP_DEV_PROJECT
+          gcloud beta compute --project=$GCP_PUBLIC_PROJECT images create $NEW_IMAGE_NAME --source-image=$IMAGE_NAME --source-image-project=$GCP_DEV_PROJECT --licenses=$LICENSE
