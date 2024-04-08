@@ -14,6 +14,7 @@ use cosmian_kms_client::{
 };
 use zeroize::Zeroizing;
 
+use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
 use crate::error::CliError;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
@@ -100,13 +101,21 @@ pub struct ImportKeyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// For what operations should the key be used.
+    #[clap(long = "key-usage")]
+    key_usage: Option<Vec<KeyUsage>>,
 }
 
 impl ImportKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+        let cryptographic_usage_mask = self
+            .key_usage
+            .as_deref()
+            .and_then(build_usage_mask_from_key_usage);
         // read the key file
         let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
-        let object = match &self.key_format {
+        let mut object = match &self.key_format {
             ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
             ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
             ImportKeyFormat::Sec1 => {
@@ -127,27 +136,38 @@ impl ImportKeyAction {
                 build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)
             }
         };
+        // Assign CryptographicUsageMask from command line arguments.
+        object
+            .attributes_mut()?
+            .set_cryptographic_usage_mask(cryptographic_usage_mask);
+
         let object_type = object.object_type();
 
-        //generate the import attributes if links are specified
-        let mut import_attributes = None;
+        // Generate the import attributes if links are specified.
+        let mut import_attributes = object
+            .attributes()
+            .unwrap_or(&Attributes {
+                cryptographic_usage_mask,
+                ..Default::default()
+            })
+            .clone();
+
         if let Some(issuer_certificate_id) = &self.certificate_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            //let attributes = import_attributes.get_or_insert(Attributes::default());
+            import_attributes.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            //let attributes = import_attributes.get_or_insert(Attributes::default());
+            import_attributes.add_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         };
         if let Some(public_key_id) = &self.public_key_id {
-            let attributes = import_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            import_attributes.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
@@ -158,7 +178,7 @@ impl ImportKeyAction {
             kms_rest_client,
             self.key_id.clone(),
             object,
-            import_attributes,
+            Some(import_attributes),
             self.unwrap,
             self.replace_existing,
             &self.tags,
@@ -217,7 +237,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: None,
+                attributes: Some(Box::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -242,7 +262,7 @@ fn build_public_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: None,
+                attributes: Some(Box::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -266,7 +286,7 @@ fn build_symmetric_key_from_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: None,
+                attributes: Some(Box::default()),
             },
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),

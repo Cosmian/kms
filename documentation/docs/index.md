@@ -18,7 +18,7 @@ and an application-level encrypted database indexed with Findex.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.14.2
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.15.0
     ```
 
     Check the Cosmian KMS server version
@@ -27,7 +27,7 @@ and an application-level encrypted database indexed with Findex.
     curl http://localhost:9998/version
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.14.2/).
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.15.0/).
 
 <!-- toc -->
 
@@ -154,7 +154,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.14.2/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.15.0/)
 
 #### Integrated with Cloudproof libraries
 
@@ -176,7 +176,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.14.2 --help
+docker run --rm ghcr.io/cosmian/kms:4.15.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
@@ -255,8 +255,13 @@ Options:
 
           [env: KMS_AUTHORITY_CERT_FILE=]
 
-      --jwt-issuer-uri <JWT_ISSUER_URI>
+      --jwt-issuer-uri <JWT_ISSUER_URI>...
           The issuer URI of the JWT token
+
+          To handle multiple identity managers, add different parameters under each argument
+          (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+          the same order
+          --jwt-issuer-uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2>
 
           For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 
@@ -264,8 +269,13 @@ Options:
 
           [env: KMS_JWT_ISSUER_URI=]
 
-      --jwks-uri <JWKS_URI>
+      --jwks-uri <JWKS_URI>...
           The JWKS (Json Web Key Set) URI of the JWT token
+
+          To handle multiple identity managers, add different parameters under each argument
+          (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
+          the same order
+           --jwks-uri <JWKS_URI_1> <JWKS_URI_2>
 
           For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
@@ -275,7 +285,7 @@ Options:
 
           [env: KMS_JWKS_URI=]
 
-      --jwt-audience <JWT_AUDIENCE>
+      --jwt-audience <JWT_AUDIENCE>...
           The audience of the JWT token
 
           Optional: the server will validate the JWT `aud` claim against this value if set
@@ -364,9 +374,9 @@ https_p12_password = "[https p12 password]"
 authority_cert_file = "[authority cert file]"
 
 [auth]
-jwt_issuer_uri = "[jwt issuer uri]"
-jwks_uri = "[jwks uri]"
-jwt_audience = "[jwt audience]"
+jwt_issuer_uri = ["[jwt issuer uri]"]
+jwks_uri = ["[jwks uri]"]
+jwt_audience = ["[jwt audience]"]
 
 [workspace]
 root_data_path = "[root data path]"

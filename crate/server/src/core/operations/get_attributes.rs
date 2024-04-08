@@ -89,7 +89,10 @@ pub async fn get_attributes(
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_private_key_to_openssl(&owm.object)?;
-                let default_kmip = openssl_private_key_to_kmip_default_format(&pkey)?;
+                let default_kmip = openssl_private_key_to_kmip_default_format(
+                    &pkey,
+                    attributes.cryptographic_usage_mask,
+                )?;
                 let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
                 default_attributes.object_type = Some(object_type);
                 //re-add the vendor attributes
@@ -110,7 +113,10 @@ pub async fn get_attributes(
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_public_key_to_openssl(&owm.object)?;
-                let default_kmip = openssl_public_key_to_kmip_default_format(&pkey)?;
+                let default_kmip = openssl_public_key_to_kmip_default_format(
+                    &pkey,
+                    attributes.cryptographic_usage_mask,
+                )?;
                 let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
                 default_attributes.object_type = Some(object_type);
                 //re-add the vendor attributes

@@ -46,27 +46,30 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
+        let key_block_with_format_type =
+            |kft: KeyFormatType| key_block(kft, pem.contents().to_vec());
+
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
+                key_block: key_block_with_format_type(KeyFormatType::PKCS1),
             }),
             "RSA PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS1),
                 },
             ),
             "PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::PKCS8, pem.into_contents()),
+                key_block: key_block_with_format_type(KeyFormatType::PKCS8),
             }),
             "PUBLIC KEY" => objects.insert(
                 0,
                 Object::PublicKey {
-                    key_block: key_block(KeyFormatType::PKCS8, pem.into_contents()),
+                    key_block: key_block_with_format_type(KeyFormatType::PKCS8),
                 },
             ),
             "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
-                key_block: key_block(KeyFormatType::ECPrivateKey, pem.into_contents()),
+                key_block: key_block_with_format_type(KeyFormatType::ECPrivateKey),
             }),
             "EC PUBLIC KEY" => {
                 return Err(ClientError::NotSupported(
@@ -112,7 +115,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
-            attributes: None,
+            attributes: Some(Box::default()),
         },
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.

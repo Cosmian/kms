@@ -5,7 +5,7 @@ use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use crate::{
-    actions::certificates::CertificateInputFormat,
+    actions::{certificates::CertificateInputFormat, shared::utils::KeyUsage},
     error::CliError,
     tests::{
         utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
@@ -24,6 +24,7 @@ pub fn import_certificate(
     private_key_id: Option<String>,
     issuer_certificate_id: Option<String>,
     tags: Option<&[&str]>,
+    key_usage_vec: Option<Vec<KeyUsage>>,
     unwrap: bool,
     replace_existing: bool,
 ) -> Result<String, CliError> {
@@ -54,6 +55,12 @@ pub fn import_certificate(
             args.push(pkcs12_password.unwrap_or("").to_owned());
         }
     };
+    if let Some(key_usage_vec) = key_usage_vec {
+        for key_usage in key_usage_vec {
+            args.push("--key-usage".to_owned());
+            args.push(key_usage.into());
+        }
+    }
     if let Some(tags) = tags {
         for tag in tags {
             args.push("--tag".to_owned());
@@ -98,6 +105,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         None,
         None,
+        None,
         false,
         true,
     )?;
@@ -113,6 +121,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         None,
         Some(&["import_cert"]),
+        None,
         false,
         true,
     )?;
@@ -128,6 +137,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         None,
         Some(&["import_chain"]),
+        None,
         false,
         true,
     )?;
@@ -143,6 +153,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         None,
         Some(&["import_pkcs12"]),
+        None,
         false,
         true,
     )?;

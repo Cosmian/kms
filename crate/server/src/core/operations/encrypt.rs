@@ -15,8 +15,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
+            HashingAlgorithm, KeyFormatType, PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::kmip_public_key_to_openssl,
@@ -127,6 +127,18 @@ async fn get_key(
 }
 
 fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<EncryptResponse> {
+    // Make sure that the key used to encrypt can be used to encrypt.
+    if !owm
+        .object
+        .attributes()?
+        .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
+    {
+        return Err(KmsError::KmipError(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "CryptographicUsageMask not authorized for Encrypt".to_owned(),
+        ))
+    }
+
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -181,6 +193,18 @@ fn encrypt_with_public_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
+    // Make sure that the key used to encrypt can be used to encrypt.
+    if !owm
+        .object
+        .attributes()?
+        .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
+    {
+        return Err(KmsError::KmipError(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "CryptographicUsageMask not authorized for Encrypt".to_owned(),
+        ))
+    }
+
     let key_block = owm.object.key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptPublicKey => {

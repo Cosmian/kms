@@ -1,3 +1,4 @@
+#[cfg(not(feature = "fips"))]
 mod cover_crypt_tests;
 #[cfg(not(feature = "fips"))]
 mod curve_25519_tests;

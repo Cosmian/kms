@@ -15,7 +15,7 @@ use crate::tests::{
     symmetric::create_key::create_symmetric_key,
 };
 use crate::{
-    actions::shared::import_key::ImportKeyFormat,
+    actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
     error::CliError,
     tests::{
         shared::export::export_key,
@@ -32,6 +32,7 @@ pub fn import_key(
     key_format: Option<ImportKeyFormat>,
     key_id: Option<String>,
     tags: &[String],
+    key_usage_vec: Option<Vec<KeyUsage>>,
     unwrap: bool,
     replace_existing: bool,
 ) -> Result<String, CliError> {
@@ -60,6 +61,12 @@ pub fn import_key(
             ImportKeyFormat::Chacha20 => "chacha20",
         };
         args.push(kfs.to_string());
+    }
+    if let Some(key_usage_vec) = key_usage_vec {
+        for key_usage in key_usage_vec {
+            args.push("--key-usage".to_owned());
+            args.push(key_usage.into());
+        }
     }
     if unwrap {
         args.push("-u".to_owned());
@@ -93,6 +100,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;
@@ -107,6 +115,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
             None,
             Some(uid.clone()),
             &[],
+            None,
             false,
             false,
         )
@@ -121,6 +130,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         None,
         Some(uid.clone()),
         &[],
+        None,
         false,
         true,
     )?;
@@ -200,6 +210,7 @@ pub fn export_import_test(
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;

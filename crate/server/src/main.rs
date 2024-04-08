@@ -84,7 +84,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
-    let server_params = ServerParams::try_from(&clap_config).await?;
+    let server_params = ServerParams::try_from(clap_config).await?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
@@ -132,9 +132,15 @@ mod tests {
                 authority_cert_file: Some(PathBuf::from("[authority cert file]")),
             },
             auth: JwtAuthConfig {
-                jwt_issuer_uri: Some("[jwt issuer uri]".to_string()),
-                jwks_uri: Some("[jwks uri]".to_string()),
-                jwt_audience: Some("[jwt audience]".to_string()),
+                jwt_issuer_uri: Some(vec![
+                    "[jwt issuer uri 1]".to_string(),
+                    "[jwt issuer uri 2]".to_string(),
+                ]),
+                jwks_uri: Some(vec!["[jwks uri 1]".to_string(), "[jwks uri 2]".to_string()]),
+                jwt_audience: Some(vec![
+                    "[jwt audience 1]".to_string(),
+                    "[jwt audience 2]".to_string(),
+                ]),
             },
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -168,9 +174,9 @@ https_p12_password = "[https p12 password]"
 authority_cert_file = "[authority cert file]"
 
 [auth]
-jwt_issuer_uri = "[jwt issuer uri]"
-jwks_uri = "[jwks uri]"
-jwt_audience = "[jwt audience]"
+jwt_issuer_uri = ["[jwt issuer uri 1]", "[jwt issuer uri 2]"]
+jwks_uri = ["[jwks uri 1]", "[jwks uri 2]"]
+jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
 
 [workspace]
 root_data_path = "[root data path]"

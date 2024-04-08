@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix_web::{
     get, post,
     web::{Data, Json},
-    HttpRequest, HttpResponse,
+    HttpRequest, HttpResponse, ResponseError,
 };
 use serde::Serialize;
 use tracing::{debug, info, trace};
@@ -28,7 +28,7 @@ struct CseErrorReply {
 impl CseErrorReply {
     fn from(e: KmsError) -> Self {
         Self {
-            code: http::StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            code: e.status_code().as_u16(),
             message: "A CSE request to the Cosmian KMS failed".to_string(),
             details: e.to_string(),
         }

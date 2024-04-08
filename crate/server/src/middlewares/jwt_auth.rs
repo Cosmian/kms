@@ -22,13 +22,13 @@ use crate::middlewares::jwt::JwtConfig;
 
 #[derive(Clone)]
 pub struct JwtAuth {
-    jwt_config: Option<Arc<JwtConfig>>,
+    jwt_configurations: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(jwt_config: Option<Arc<JwtConfig>>) -> Self {
-        Self { jwt_config }
+    pub fn new(jwt_configurations: Option<Arc<Vec<JwtConfig>>>) -> Self {
+        Self { jwt_configurations }
     }
 }
 
@@ -47,20 +47,19 @@ where
         debug!("JWT Authentication enabled");
         ok(JwtAuthMiddleware {
             service: Rc::new(service),
-            jwt_config: self.jwt_config.clone(),
+            jwt_configurations: self.jwt_configurations.clone(),
         })
     }
 }
 
 pub struct JwtAuthMiddleware<S> {
     service: Rc<S>,
-    jwt_config: Option<Arc<JwtConfig>>,
+    jwt_configurations: Option<Arc<Vec<JwtConfig>>>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
 {
     type Error = Error;
     #[allow(clippy::type_complexity)]
@@ -72,9 +71,11 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // get the JWT config
-        let Some(jwt_config) = &self.jwt_config else {
-            return Box::pin(async move {
+        let service = self.service.clone();
+        if let Some(configurations) = self.jwt_configurations.clone() {
+            Box::pin(async move { manage_jwt_request(service, configurations, req).await })
+        } else {
+            Box::pin(async move {
                 error!(
                     "{:?} {} 401 unauthorized: JWT not properly configured on KMS server",
                     req.method(),
@@ -84,85 +85,84 @@ where
                     .into_response(HttpResponse::Unauthorized().finish())
                     .map_into_right_body())
             })
-        };
+        }
+    }
+}
 
-        trace!("JWT Authentication...");
+async fn manage_jwt_request<S, B>(
+    service: Rc<S>,
+    configs: Arc<Vec<JwtConfig>>,
+    request: ServiceRequest,
+) -> Result<ServiceResponse<EitherBody<B, BoxBody>>, Error>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+{
+    trace!("JWT Authentication...");
 
-        // get the identity from the authorization header
-        let identity = Identity::extract(req.request())
-            .into_inner()
-            .map_or_else(
-                |_| {
-                    req.headers()
-                        .get("Authorization")
-                        .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
-                },
-                |identity| identity.id().ok(),
-            )
-            .unwrap_or_default();
-        trace!("Checking JWT identity: {identity:?}");
+    let identity = Identity::extract(request.request())
+        .into_inner()
+        .map_or_else(
+            |_| {
+                request
+                    .headers()
+                    .get("Authorization")
+                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+            },
+            |identity| identity.id().ok(),
+        )
+        .unwrap_or_default();
 
-        // decode the JWT
-        let private_claim = jwt_config
-            .decode_bearer_header(&identity)
-            .map(|claim| claim.email);
+    trace!("Checking JWT identity: {identity:?}");
 
-        let srv = Rc::<S>::clone(&self.service);
-        let jwt_config = jwt_config.clone();
+    let extract_user_claim = || {
+        let mut jwt_log_errors = Vec::new();
+        for idp_config in configs.iter() {
+            match idp_config.decode_bearer_header(&identity) {
+                Ok(user_claim) => return Ok(user_claim),
+                Err(error) => {
+                    jwt_log_errors.push(error);
+                }
+            }
+        }
+        Err(jwt_log_errors)
+    };
 
-        let handle_ok_none = |req: ServiceRequest| {
+    let mut private_claim = extract_user_claim();
+    // If no configuration could get the claim, try refreshing them and extract user claim again
+    if private_claim.is_err() {
+        configs[0].jwks.refresh().await?;
+        private_claim = extract_user_claim();
+    }
+
+    match private_claim.map(|user_claim| user_claim.email) {
+        Ok(Some(email)) => {
+            debug!("JWT Access granted to {email} !");
+            request.extensions_mut().insert(JwtAuthClaim::new(email));
+            let res = service.call(request).await?;
+            Ok(res.map_into_left_body())
+        }
+        Ok(None) => {
             error!(
                 "{:?} {} 401 unauthorized, no email in JWT",
-                req.method(),
-                req.path()
+                request.method(),
+                request.path()
             );
-            Ok(req
+            Ok(request
                 .into_response(HttpResponse::Unauthorized().finish())
                 .map_into_right_body())
-        };
-
-        let handle_email = move |req: ServiceRequest, email: String| {
-            // forward to the endpoint the email got from this JWT
-            debug!("JWT Access granted to {email} !");
-            req.extensions_mut().insert(JwtAuthClaim::new(email));
-            srv.call(req)
-        };
-
-        match private_claim {
-            Err(_) => Box::pin(async move {
-                jwt_config.jwks.refresh().await?;
-
-                let private_claim = jwt_config
-                    .decode_bearer_header(&identity)
-                    .map(|claim| claim.email);
-
-                match private_claim {
-                    Err(e) => {
-                        error!(
-                            "{:?} {} 401 unauthorized: bad JWT ({e})",
-                            req.method(),
-                            req.path(),
-                        );
-                        Ok(req
-                            .into_response(HttpResponse::Unauthorized().finish())
-                            .map_into_right_body())
-                    }
-                    Ok(None) => handle_ok_none(req),
-                    Ok(Some(email)) => {
-                        let fut = handle_email(req, email);
-                        let res = fut.await?;
-                        Ok(res.map_into_left_body())
-                    }
-                }
-            }),
-            Ok(None) => Box::pin(async move { handle_ok_none(req) }),
-            Ok(Some(email)) => {
-                let fut = handle_email(req, email);
-                Box::pin(async move {
-                    let res = fut.await?;
-                    Ok(res.map_into_left_body())
-                })
+        }
+        Err(jwt_log_errors) => {
+            for error in jwt_log_errors.iter() {
+                tracing::info!("{error:?}");
             }
+            error!(
+                "{:?} {} 401 unauthorized: bad JWT",
+                request.method(),
+                request.path(),
+            );
+            Ok(request
+                .into_response(HttpResponse::Unauthorized().finish())
+                .map_into_right_body())
         }
     }
 }

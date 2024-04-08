@@ -26,7 +26,7 @@ The server must be started using TLS, and the certificate used to verify the cli
 !!! info "Example client TLS authentication."
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.14.2 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.15.0 \
         --https-p12-file kms.server.p12  --https-p12-password password \
         --authority-cert-file verifier.cert.pem
     ```
@@ -65,7 +65,7 @@ The KMS server JWT authentication is configured using three command line options
 Below is an example of a JWT configuration for the KMS server using Google as the authorization server.
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.14.2 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.15.0 \
     --jwt-issuer-uri=https://accounts.google.com \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
     --jwt-audience=cosmian_kms
@@ -76,7 +76,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.14.2 \
 The issuer URI of the JWT token is called to validate the token signature.
 
 - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
-- env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`
+- env. variable: `KMS_JWT_ISSUER_URI=[<JWT_ISSUER_URI>]`
 
 #### JWKS URI
 
@@ -84,14 +84,14 @@ The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve 
 Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
 - server option: `--jwks-uri <JWKS_URI>`
-- env. variable: `KMS_JWKS_URI=<JWKS_URI>`
+- env. variable: `KMS_JWKS_URI=[<JWKS_URI>]`
 
 #### JWT audience
 
 The KMS server validates the JWT `aud` claim against this value if set
 
 - server option: `--jwt-audience <JWT_AUDIENCE>`
-- env. variable: `KMS_JWT_AUDIENCE=<JWT_AUDIENCE>`
+- env. variable: `KMS_JWT_AUDIENCE=[<JWT_AUDIENCE>]`
 
 #### Using Google ID tokens
 
@@ -130,4 +130,14 @@ Use the following options to configure the KMS server for Okta:
 --jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
 --jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
 --jwt-audience=<OKTA_CLIENT_ID>
+```
+
+#### Using Microsoft Entra ID
+
+Use the following options to configure the KMS server for Microsoft Entra Id:
+
+```sh
+--jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
+--jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
+--jwt-audience=<CLIENT_ID>
 ```

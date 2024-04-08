@@ -15,7 +15,10 @@ use crate::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{ErrorReason, GetResponse},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, WrappingMethod},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            WrappingMethod,
+        },
     },
 };
 
@@ -43,6 +46,7 @@ pub fn wrapped_secret_key(
     let wrapped_key_attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
 

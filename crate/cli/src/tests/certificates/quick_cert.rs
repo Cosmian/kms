@@ -357,6 +357,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
             None,
             None,
             Some(&["import_pkcs12"]),
+            None,
             false,
             true,
         )?;

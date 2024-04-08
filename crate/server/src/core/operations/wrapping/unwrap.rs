@@ -82,6 +82,8 @@ pub async fn unwrap_key(
         _ => kms_bail!("unwrap_key: unsupported object type: {}", object_type),
     };
 
+    // Check on key CryptographicUsageMask is done inside `unwrap_key_block`.
     unwrap_key_block(object_key_block, &unwrapping_key.object)?;
+
     Ok(())
 }

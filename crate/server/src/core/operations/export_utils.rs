@@ -4,8 +4,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType, StateEnumeration,
-            UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, LinkType,
+            StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -244,7 +244,10 @@ async fn process_private_key(
             )
         } else {
             // generate a KMIP PrivateKey in the default format
-            let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
+            let mut object = openssl_private_key_to_kmip_default_format(
+                &openssl_key,
+                attributes.cryptographic_usage_mask,
+            )?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
             key_block.key_value.attributes = Some(Box::new(attributes));
@@ -265,14 +268,21 @@ async fn process_private_key(
             | KeyFormatType::TransparentRSAPrivateKey
             | KeyFormatType::ECPrivateKey
             | KeyFormatType::PKCS12 => {
-                let object = openssl_private_key_to_kmip(&openssl_key, *kft)?;
+                let object = openssl_private_key_to_kmip(
+                    &openssl_key,
+                    *kft,
+                    attributes.cryptographic_usage_mask,
+                )?;
                 object_with_metadata.object = object;
             }
             _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
         },
         None => {
             // No format type requested: export the private key to the default format
-            let object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
+            let object = openssl_private_key_to_kmip_default_format(
+                &openssl_key,
+                attributes.cryptographic_usage_mask,
+            )?;
             object_with_metadata.object = object;
         }
     }
@@ -344,7 +354,10 @@ async fn process_public_key(
             )
         } else {
             // generate a KMIP PrivateKey in the default format
-            let mut object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
+            let mut object = openssl_public_key_to_kmip_default_format(
+                &openssl_key,
+                attributes.cryptographic_usage_mask,
+            )?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
             key_block.key_value.attributes = Some(Box::new(attributes));
@@ -371,14 +384,21 @@ async fn process_public_key(
             | KeyFormatType::PKCS8
             | KeyFormatType::TransparentECPublicKey
             | KeyFormatType::TransparentRSAPublicKey => {
-                let object = openssl_public_key_to_kmip(&openssl_key, *kft)?;
+                let object = openssl_public_key_to_kmip(
+                    &openssl_key,
+                    *kft,
+                    attributes.cryptographic_usage_mask,
+                )?;
                 object_with_metadata.object = object;
             }
             _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
         },
         None => {
             // No format type requested: export the private key to the default format
-            let object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
+            let object = openssl_public_key_to_kmip_default_format(
+                &openssl_key,
+                attributes.cryptographic_usage_mask,
+            )?;
             object_with_metadata.object = object;
         }
     }
@@ -436,32 +456,46 @@ async fn process_covercrypt_key(
     Ok(())
 }
 
-pub(crate) fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Object> {
+pub(crate) fn openssl_private_key_to_kmip_default_format(
+    key: &PKey<Private>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Object> {
     let key_type_id = key.id();
     let object = match key_type_id {
         Id::RSA => {
             // The default for RSA is `PKCS#1`
-            openssl_private_key_to_kmip(key, KeyFormatType::PKCS1)?
+            openssl_private_key_to_kmip(key, KeyFormatType::PKCS1, cryptographic_usage_mask)?
         }
         Id::EC | Id::ED25519 | Id::X448 | Id::X25519 => {
             // The default for EC is `TransparentECPrivateKey`
-            openssl_private_key_to_kmip(key, KeyFormatType::TransparentECPrivateKey)?
+            openssl_private_key_to_kmip(
+                key,
+                KeyFormatType::TransparentECPrivateKey,
+                cryptographic_usage_mask,
+            )?
         }
         x => kms_bail!("Private Keys of type: {x:?}, are not supported"),
     };
     Ok(object)
 }
 
-pub(crate) fn openssl_public_key_to_kmip_default_format(key: &PKey<Public>) -> KResult<Object> {
+pub(crate) fn openssl_public_key_to_kmip_default_format(
+    key: &PKey<Public>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Object> {
     let key_type_id = key.id();
     let object = match key_type_id {
         Id::RSA => {
             // The default for RSA is `PKCS#1`
-            openssl_public_key_to_kmip(key, KeyFormatType::PKCS1)?
+            openssl_public_key_to_kmip(key, KeyFormatType::PKCS1, cryptographic_usage_mask)?
         }
         Id::EC | Id::ED25519 | Id::X448 | Id::X25519 => {
             // The default for EC is `TransparentECPrivateKey`
-            openssl_public_key_to_kmip(key, KeyFormatType::TransparentECPublicKey)?
+            openssl_public_key_to_kmip(
+                key,
+                KeyFormatType::TransparentECPublicKey,
+                cryptographic_usage_mask,
+            )?
         }
         x => kms_bail!("Private Keys of type: {x:?}, are not supported"),
     };

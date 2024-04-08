@@ -18,8 +18,8 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkType, LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
 };
@@ -34,6 +34,7 @@ pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -60,6 +61,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
                 cover_crypt_master_private_key_id.to_owned(),
             ),
         }]),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -96,6 +98,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
             ),
         }]),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -171,6 +174,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                 cover_crypt_master_public_key_id.to_owned(),
             ),
         }]),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

@@ -22,6 +22,7 @@ use tempfile::TempDir;
 use tracing::debug;
 
 use crate::{
+    actions::shared::utils::KeyUsage,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -55,12 +56,12 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         false,
     )?;
 
     // test CC
-    println!("testing Covercrypt keys");
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
@@ -76,7 +77,6 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     )?;
 
     // test ec
-    println!("testing ec keys");
     let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
         &ctx.owner_client_conf_path,
         "nist-p256",
@@ -91,7 +91,6 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     )?;
 
     // test sym
-    println!("testing symmetric keys");
     let key_id = symmetric::create_key::create_symmetric_key(
         &ctx.owner_client_conf_path,
         None,
@@ -126,8 +125,8 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_private_key_uid,
         wrap_public_key_uid,
         Some(CryptographicAlgorithm::EC),
-        Some(CryptographicUsageMask::Decrypt),
-        Some(CryptographicUsageMask::Encrypt),
+        Some(CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey),
+        Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey),
     )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
@@ -139,6 +138,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         None,
         Some(wrap_private_key_uid.to_string()),
         &[],
+        None,
         false,
         true,
     )?;
@@ -152,6 +152,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         None,
         Some(wrap_public_key_uid.to_string()),
         &[],
+        None,
         false,
         true,
     )?;
@@ -282,6 +283,7 @@ fn test_import_export_wrap_private_key(
             None,
             None,
             &[],
+            None,
             true,
             true,
         )?;
@@ -325,6 +327,7 @@ fn test_import_export_wrap_private_key(
             None,
             None,
             &[],
+            Some(vec![KeyUsage::Unrestricted]),
             false,
             true,
         )?;

@@ -33,7 +33,7 @@ use crate::{
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
@@ -205,7 +205,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = Message {

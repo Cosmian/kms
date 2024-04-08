@@ -26,7 +26,10 @@ use super::kmip_objects::ObjectType;
 use crate::kmip_error;
 use crate::{
     error::KmipError,
-    kmip::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    kmip::{
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        kmip_operations::ErrorReason,
+    },
 };
 
 /// 4.7
@@ -1091,6 +1094,43 @@ impl Attributes {
     /// Set the attributes's object type.
     pub fn set_object_type(&mut self, object_type: ObjectType) {
         self.object_type = Some(object_type);
+    }
+
+    /// Set the attributes's CryptographicUsageMask.
+    pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
+        self.cryptographic_usage_mask = mask;
+    }
+
+    /// Set the bits in `mask` to the attributes's CryptographicUsageMask bits.
+    pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
+        let mask = if let Some(attr_mask) = self.cryptographic_usage_mask {
+            attr_mask | mask
+        } else {
+            mask
+        };
+
+        self.cryptographic_usage_mask = Some(mask);
+    }
+
+    /// Check that `flag` bit is set in object's CryptographicUsageMask.
+    /// If FIPS mode is disabled, check if Unrestricted bit is set too.
+    ///
+    /// Return `true` if `flag` has at least one bit set in self's attributes,
+    /// return `false` otherwise.
+    /// Raise error if object's CryptographicUsageMask is None.
+    pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
+        let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                "CryptographicUsageMask is None".to_string(),
+            )
+        })?;
+
+        #[cfg(not(feature = "fips"))]
+        // In non-FIPS mode, Unrestricted can be allowed.
+        let flag = flag | CryptographicUsageMask::Unrestricted;
+
+        Ok((usage_mask & flag).bits() != 0)
     }
 }
 

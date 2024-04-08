@@ -135,7 +135,7 @@ pub async fn decode_jwt_authorization_token(
 /// (something like <https://cse.mydomain.com/google_cse>)
 #[derive(Clone)]
 pub struct GoogleCseConfig {
-    pub authentication: Arc<JwtConfig>,
+    pub authentication: Arc<Vec<JwtConfig>>,
     pub authorization: HashMap<String, Arc<JwtConfig>>,
     pub kacls_url: String,
 }
@@ -157,9 +157,20 @@ pub async fn validate_tokens(
     })?;
 
     // validate authentication token
-    let authentication_token = cse_config
-        .authentication
-        .decode_authentication_token(authentication_token)?;
+    let mut decoded_token = None;
+    for idp_config in cse_config.authentication.iter() {
+        if let Ok(token) = idp_config.decode_authentication_token(authentication_token) {
+            // store the decoded claim and break the loop if decoding succeeds
+            decoded_token = Some(token);
+            break;
+        }
+    }
+    let authentication_token = decoded_token.ok_or_else(|| {
+        KmsError::Unauthorized(
+            "Fail to decode authentication token with the given config".to_owned(),
+        )
+    })?;
+
     tracing::trace!("authentication token: {authentication_token:?}");
 
     let jwt_config = cse_config.authorization.get(application).ok_or_else(|| {
@@ -287,14 +298,14 @@ mod tests {
 
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(JWT_ISSUER_URI.to_string()),
-            jwks_uri: Some(JWKS_URI.to_string()),
-            jwt_audience: None,
+            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_string()]),
+            jwks_uri: Some(vec![JWKS_URI.to_string()]),
+            jwt_audience: Some(vec![client_id]),
         };
         let jwt_authentication_config = JwtConfig {
-            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.clone().unwrap(),
+            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.unwrap()[0].clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: jwt_authentication_config.jwt_audience.clone(),
+            jwt_audience: Some(jwt_authentication_config.jwt_audience.unwrap()[0].clone()),
         };
 
         let authentication_token = jwt_authentication_config
