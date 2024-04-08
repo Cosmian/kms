@@ -24,6 +24,7 @@ async fn test_get_attributes_p12() {
         None,
         None,
         Some(&["import_pkcs12"]),
+        None,
         false,
         true,
     )

@@ -6,6 +6,7 @@ use kms_test_server::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 
 use crate::{
+    actions::shared::utils::KeyUsage,
     error::CliError,
     tests::{
         cover_crypt::{
@@ -143,6 +144,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
         None,
         None,
         &[],
+        None,
         false,
         true,
     )?;
@@ -260,6 +262,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
         None,
         None,
         &[],
+        Some(vec![KeyUsage::Unrestricted]),
         false,
         false,
     )?;

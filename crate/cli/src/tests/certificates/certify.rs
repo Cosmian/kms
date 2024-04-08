@@ -119,6 +119,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         None,
         None,
         Some(&["root_ca"]),
+        None,
         false,
         true,
     )?;
@@ -134,6 +135,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         None,
         None,
         Some(&["intermediate_ca"]),
+        None,
         false,
         true,
     )?;
@@ -227,6 +229,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         None,
         None,
         Some(&["root_ca"]),
+        None,
         false,
         true,
     )?;
@@ -242,6 +245,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         None,
         None,
         Some(&["intermediate_ca"]),
+        None,
         false,
         true,
     )?;
@@ -388,6 +392,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
         None,
         Some(&["root_ca"]),
+        None,
         false,
         true,
     )?;
@@ -403,6 +408,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
         None,
         Some(&["intermediate_ca"]),
+        None,
         false,
         true,
     )?;

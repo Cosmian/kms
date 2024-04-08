@@ -5,11 +5,12 @@ use openssl::{
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
+#[cfg(feature = "fips")]
+use crate::crypto::rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 #[cfg(not(feature = "fips"))]
 use crate::kmip::{
-    kmip_data_structures::KeyWrappingSpecification,
-    kmip_objects::Object,
-    kmip_types::{CryptographicUsageMask, EncodingOption},
+    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
+    kmip_types::EncodingOption,
 };
 #[cfg(not(feature = "fips"))]
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
     },
     kmip::{
         kmip_data_structures::KeyWrappingData,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
     },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
@@ -214,17 +215,35 @@ fn test_encrypt_decrypt_rsa() {
         rsa_privkey.e().to_owned().unwrap(),
     )
     .unwrap();
-    let wrap_key_pair_pub = openssl_public_key_to_kmip(
+    let mut wrap_key_pair_pub = openssl_public_key_to_kmip(
         &PKey::from_rsa(rsa_pubkey).unwrap(),
         KeyFormatType::TransparentRSAPublicKey,
+        #[cfg(feature = "fips")]
+        Some(FIPS_PUBLIC_RSA_MASK),
+        #[cfg(not(feature = "fips"))]
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
 
-    let wrap_key_pair_priv = openssl_private_key_to_kmip(
+    let mut wrap_key_pair_priv = openssl_private_key_to_kmip(
         &PKey::from_rsa(rsa_privkey).unwrap(),
         KeyFormatType::TransparentRSAPrivateKey,
+        #[cfg(feature = "fips")]
+        Some(FIPS_PRIVATE_RSA_MASK),
+        #[cfg(not(feature = "fips"))]
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
+
+    wrap_key_pair_pub
+        .attributes_mut()
+        .unwrap()
+        .cryptographic_usage_mask = Some(CryptographicUsageMask::WrapKey);
+
+    wrap_key_pair_priv
+        .attributes_mut()
+        .unwrap()
+        .cryptographic_usage_mask = Some(CryptographicUsageMask::UnwrapKey);
 
     let plaintext = b"plaintext";
     let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
@@ -252,6 +271,7 @@ fn test_encrypt_decrypt_no_rsa_1024_in_fips() {
     let wrap_key_pair_pub = openssl_public_key_to_kmip(
         &PKey::from_rsa(rsa_pubkey).unwrap(),
         KeyFormatType::TransparentRSAPublicKey,
+        Some(FIPS_PUBLIC_RSA_MASK),
     )
     .unwrap();
 
@@ -271,12 +291,14 @@ fn test_encrypt_decrypt_ec_p192() {
     let wrap_key_pair_pub = openssl_public_key_to_kmip(
         &PKey::from_ec_key(ec_pubkey).unwrap(),
         KeyFormatType::TransparentECPublicKey,
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
 
     let wrap_key_pair_priv = openssl_private_key_to_kmip(
         &PKey::from_ec_key(ec_privkey).unwrap(),
         KeyFormatType::TransparentECPrivateKey,
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
 
@@ -302,12 +324,14 @@ fn test_encrypt_decrypt_ec_p384() {
     let wrap_key_pair_pub = openssl_public_key_to_kmip(
         &PKey::from_ec_key(ec_pubkey).unwrap(),
         KeyFormatType::TransparentECPublicKey,
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
 
     let wrap_key_pair_priv = openssl_private_key_to_kmip(
         &PKey::from_ec_key(ec_privkey).unwrap(),
         KeyFormatType::TransparentECPrivateKey,
+        Some(CryptographicUsageMask::Unrestricted),
     )
     .unwrap();
 

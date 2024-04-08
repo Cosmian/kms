@@ -15,8 +15,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
+            HashingAlgorithm, KeyFormatType, PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::kmip_private_key_to_openssl,
@@ -45,6 +45,18 @@ pub async fn decrypt(
     trace!("Decrypt: {:?}", &request.unique_identifier);
 
     let owm = get_key(kms, &request, user, params).await?;
+
+    // Make sure that the key used to decrypt can be used to decrypt.
+    if !owm
+        .object
+        .attributes()?
+        .is_usage_authorized_for(CryptographicUsageMask::Decrypt)?
+    {
+        return Err(KmsError::KmipError(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "CryptographicUsageMask not authorized for Decrypt".to_owned(),
+        ))
+    }
 
     trace!(
         "get_decryption_system: matching on object: {:?}",

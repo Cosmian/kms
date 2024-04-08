@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
 use cosmian_kmip::{
     kmip::{
         kmip_objects::{
@@ -97,6 +99,14 @@ async fn process_symmetric_key(
     }
     // replace attributes
     attributes.object_type = Some(ObjectType::SymmetricKey);
+
+    #[cfg(not(feature = "fips"))]
+    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+    // default to Unrestricted.
+    if attributes.cryptographic_usage_mask.is_none() {
+        attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+    }
+
     object_key_block.key_value.attributes = Some(Box::new(attributes.clone()));
 
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
@@ -166,6 +176,12 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
         certificate_attributes: Some(Box::new(certificate_attributes)),
+        #[cfg(not(feature = "fips"))]
+        // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+        // default to Unrestricted.
+        cryptographic_usage_mask: request_attributes
+            .cryptographic_usage_mask
+            .or(Some(CryptographicUsageMask::Unrestricted)),
         ..Attributes::default()
     };
 
@@ -219,7 +235,11 @@ async fn process_public_key(
             // first, see if the public key can be parsed as an openssl object
             let openssl_pk = kmip_public_key_to_openssl(&(object.clone()))?;
             // convert back to KMIP Object
-            openssl_public_key_to_kmip(&openssl_pk, KeyFormatType::PKCS8)?
+            openssl_public_key_to_kmip(
+                &openssl_pk,
+                KeyFormatType::PKCS8,
+                request_attributes.cryptographic_usage_mask,
+            )?
         } else {
             object
         }
@@ -244,7 +264,18 @@ async fn process_public_key(
         uid => uid,
     };
 
+    #[cfg(feature = "fips")]
     let public_key_attributes = object.attributes()?.clone();
+    #[cfg(not(feature = "fips"))]
+    let mut public_key_attributes = object.attributes_mut()?.clone();
+
+    #[cfg(not(feature = "fips"))]
+    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+    // default to Unrestricted.
+    if request_attributes.cryptographic_usage_mask.is_none() {
+        public_key_attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+    }
+
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
     Ok((
@@ -287,6 +318,13 @@ async fn process_private_key(
 
     // Process based on the key block type
     let key_block = object.key_block()?;
+
+    #[cfg(not(feature = "fips"))]
+    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
+    // default to Unrestricted.
+    if request_attributes.cryptographic_usage_mask.is_none() {
+        request_attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+    }
 
     // wrapped keys and Covercrypt keys
     // cannot be further processed and must be imported as such
@@ -365,7 +403,11 @@ fn private_key_from_openssl(
     request_uid: &str,
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
     // convert the private key to PKCS#8
-    let mut sk = openssl_private_key_to_kmip(&sk, KeyFormatType::PKCS8)?;
+    let mut sk = openssl_private_key_to_kmip(
+        &sk,
+        KeyFormatType::PKCS8,
+        request_attributes.cryptographic_usage_mask,
+    )?;
 
     let sk_uid = if request_uid.is_empty() {
         Uuid::new_v4().to_string()

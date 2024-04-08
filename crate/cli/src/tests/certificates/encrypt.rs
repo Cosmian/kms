@@ -11,7 +11,7 @@ use super::SUB_COMMAND;
 use crate::{
     actions::{
         certificates::CertificateInputFormat,
-        shared::{import_key::ImportKeyFormat, ExportKeyFormat},
+        shared::{import_key::ImportKeyFormat, utils::KeyUsage, ExportKeyFormat},
     },
     error::CliError,
     tests::{
@@ -178,6 +178,7 @@ async fn test_certificate_import_encrypt(
             .map(|&s| s.to_string())
             .collect::<Vec<String>>()
             .as_slice(),
+        None,
         false,
         true,
     )?;
@@ -192,6 +193,7 @@ async fn test_certificate_import_encrypt(
         None,
         None,
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -206,6 +208,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(root_certificate_id),
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -220,6 +223,7 @@ async fn test_certificate_import_encrypt(
         Some(private_key_id.clone()),
         Some(_subca_certificate_id),
         Some(tags),
+        None,
         false,
         true,
     )?;
@@ -293,6 +297,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
             .map(|&s| s.to_string())
             .collect::<Vec<String>>()
             .as_slice(),
+        Some(vec![KeyUsage::Decrypt, KeyUsage::UnwrapKey]),
         false,
         true,
     )?;
@@ -308,6 +313,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         Some(private_key_id.clone()),
         None,
         Some(tags),
+        Some(vec![KeyUsage::Encrypt]),
         false,
         true,
     )?;
@@ -338,6 +344,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         false,
     )?;
 
+    println!("import private key with unwrap");
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
     import_key(
         &ctx.owner_client_conf_path,
@@ -346,9 +353,11 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         Some(ImportKeyFormat::JsonTtlv),
         Some(Uuid::new_v4().to_string()),
         &[],
+        Some(vec![KeyUsage::Decrypt]),
         true,
         true,
     )?;
+    println!("import private key with unwrap OK");
 
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
     let wrapped_private_key_uid = import_key(
@@ -358,6 +367,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         Some(ImportKeyFormat::JsonTtlv),
         Some(Uuid::new_v4().to_string()),
         &[],
+        Some(vec![KeyUsage::Decrypt]),
         false,
         true,
     )?;

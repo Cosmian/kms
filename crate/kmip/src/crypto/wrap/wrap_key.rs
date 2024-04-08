@@ -24,8 +24,10 @@ use crate::{
             KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
         },
         kmip_objects::Object,
+        kmip_operations::ErrorReason,
         kmip_types::{
-            CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+            CryptographicAlgorithm, CryptographicUsageMask, EncodingOption, KeyFormatType,
+            PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail, kmip_error,
@@ -139,6 +141,18 @@ pub(crate) fn wrap(
             if key_block.key_wrapping_data.is_some() {
                 kmip_bail!("unable to wrap keys: wrapping key is wrapped and that is not supported")
             }
+
+            // Make sure that the key used to wrap can be used to wrap.
+            if !wrapping_key
+                .attributes()?
+                .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
+            {
+                return Err(KmipError::InvalidKmipValue(
+                    ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                    "CryptographicUsageMask not authorized for WrapKey".to_owned(),
+                ))
+            }
+
             let ciphertext = match key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     // wrap using rfc_5649

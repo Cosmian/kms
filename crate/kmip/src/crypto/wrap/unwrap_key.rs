@@ -19,8 +19,10 @@ use crate::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
+        kmip_operations::ErrorReason,
         kmip_types::{
-            CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+            CryptographicAlgorithm, CryptographicUsageMask, EncodingOption, KeyFormatType,
+            PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail,
@@ -105,6 +107,17 @@ pub(crate) fn unwrap(
         unwrapping_key,
         ciphertext.len()
     );
+
+    // Make sure that the key used to unwrap can be used to unwrap.
+    if !unwrapping_key
+        .attributes()?
+        .is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)?
+    {
+        return Err(KmipError::InvalidKmipValue(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "CryptographicUsageMask not authorized for UnwrapKey".to_owned(),
+        ))
+    }
 
     let unwrapping_key_block = unwrapping_key
         .key_block()

@@ -21,8 +21,8 @@ use crate::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
-            RecommendedCurve,
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
         },
     },
     kmip_bail, pad_be_bytes,
@@ -209,7 +209,16 @@ fn ec_private_key_from_scalar(
 pub fn openssl_private_key_to_kmip(
     private_key: &PKey<Private>,
     key_format_type: KeyFormatType,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, KmipError> {
+    #[cfg(not(feature = "fips"))]
+    // When not in FIPS mode, None defaults to Unrestricted.
+    let cryptographic_usage_mask = if cryptographic_usage_mask.is_none() {
+        Some(CryptographicUsageMask::Unrestricted)
+    } else {
+        cryptographic_usage_mask
+    };
+
     let key_block = match key_format_type {
         KeyFormatType::TransparentRSAPrivateKey => {
             let rsa_private_key = private_key
@@ -254,6 +263,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
+                        cryptographic_usage_mask,
                         ..Attributes::default()
                     })),
                 },
@@ -342,6 +352,7 @@ pub fn openssl_private_key_to_kmip(
                             ..CryptographicDomainParameters::default()
                         }),
                         cryptographic_parameters: None,
+                        cryptographic_usage_mask,
                         ..Attributes::default()
                     })),
                 },
@@ -373,6 +384,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),
+                        cryptographic_usage_mask,
                         ..Attributes::default()
                     })),
                 },
@@ -398,6 +410,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::ECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
+                        cryptographic_usage_mask,
                         ..Attributes::default()
                     })),
                 },
@@ -422,6 +435,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PrivateKey),
+                        cryptographic_usage_mask,
                         ..Attributes::default()
                     })),
                 },
@@ -449,6 +463,12 @@ mod tests {
         rsa::Rsa,
     };
 
+    #[cfg(feature = "fips")]
+    use crate::crypto::{
+        elliptic_curves::FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, rsa::FIPS_PRIVATE_RSA_MASK,
+    };
+    #[cfg(not(feature = "fips"))]
+    use crate::kmip::kmip_types::CryptographicUsageMask;
     use crate::{
         kmip::{
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -467,8 +487,13 @@ mod tests {
         keysize: u32,
         kft: KeyFormatType,
     ) {
+        #[cfg(feature = "fips")]
+        let mask = Some(FIPS_PRIVATE_RSA_MASK);
+        #[cfg(not(feature = "fips"))]
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+
         // PKCS#X
-        let object = openssl_private_key_to_kmip(private_key, kft).unwrap();
+        let object = openssl_private_key_to_kmip(private_key, kft, mask).unwrap();
         let object_ = object.clone();
         let key_block = match object {
             Object::PrivateKey { key_block } => key_block,
@@ -519,8 +544,14 @@ mod tests {
     }
 
     fn test_private_key_conversion_sec1(private_key: &PKey<Private>, id: Id, keysize: u32) {
+        #[cfg(feature = "fips")]
+        let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
+        #[cfg(not(feature = "fips"))]
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+
         // SEC1.
-        let object = openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey).unwrap();
+        let object =
+            openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey, mask).unwrap();
         let object_ = object.clone();
         let key_block = match object {
             Object::PrivateKey { key_block } => key_block,
@@ -559,8 +590,13 @@ mod tests {
         id: Id,
         keysize: u32,
     ) {
+        #[cfg(feature = "fips")]
+        let mask = Some(FIPS_PRIVATE_RSA_MASK);
+        #[cfg(not(feature = "fips"))]
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+
         let object =
-            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey)
+            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
         let key_block = match object {
@@ -645,9 +681,14 @@ mod tests {
         id: Id,
         keysize: u32,
     ) {
+        #[cfg(feature = "fips")]
+        let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
+        #[cfg(not(feature = "fips"))]
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+
         // Transparent EC.
         let object =
-            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey)
+            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
         let key_block = match object {

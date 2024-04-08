@@ -16,8 +16,8 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::ErrorReason,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier,
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkType, LinkedObjectIdentifier,
         },
     },
 };
@@ -124,6 +124,8 @@ impl UserDecryptionKeysHandler {
 
         let mut attributes = attributes.cloned().unwrap_or_default();
         attributes.object_type = Some(ObjectType::PrivateKey);
+        // Covercrypt keys are set to have unrestricted usage.
+        attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
 
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;

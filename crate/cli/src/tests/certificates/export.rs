@@ -50,6 +50,7 @@ async fn test_import_export_p12_25519() {
         None,
         None,
         Some(&["import_pkcs12"]),
+        None,
         false,
         true,
     )
@@ -230,6 +231,7 @@ async fn test_import_p12_rsa() {
         None,
         None,
         Some(&["import_pkcs12"]),
+        None,
         false,
         true,
     )

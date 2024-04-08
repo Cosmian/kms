@@ -66,6 +66,7 @@ fn test_pems(
         Some(ImportKeyFormat::Pem),
         None,
         &[],
+        None,
         false,
         true,
     )?;
