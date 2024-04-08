@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.15.0] - 2024-04-08
+
+### Bug Fixes
+
+- Add license to KMS GCP image ([#235](https://github.com/Cosmian/kms/pull/235))
+- Re-enable the validation of JWT Issuer URI
+- Fix CSE error status code, propagating the right status code instead of generic server code error
+
+### Features
+
+- Handle many identity providers in jwt authentification
+- New command line argument `--key-usage` to define key or certificate usage on import
+- Exhaustive verification that the key used to perform cryptographic operations is allowed to do them
+- KMIP object creation can now precisely define the usage of the key it describes
+
 ## [4.14.2] - 2024-04-05
 
 ### Ci
