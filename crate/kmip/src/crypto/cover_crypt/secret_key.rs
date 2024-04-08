@@ -46,13 +46,7 @@ pub fn wrapped_secret_key(
     let wrapped_key_attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         ..Attributes::default()
     };
 

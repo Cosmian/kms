@@ -252,7 +252,10 @@ impl ImportCertificateAction {
 
     /// Import the certificate, the chain and the associated private key
     async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> Result<String, CliError> {
-        let cryptographic_usage_mask = build_usage_mask_from_key_usage(&self.key_usage);
+        let cryptographic_usage_mask = self
+            .key_usage
+            .as_deref()
+            .and_then(build_usage_mask_from_key_usage);
         let pkcs12_bytes = Zeroizing::from(read_bytes_from_file(&self.get_certificate_file()?)?);
 
         // Create a KMIP private key from the PKCS12 private key

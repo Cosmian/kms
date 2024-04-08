@@ -109,7 +109,10 @@ pub struct ImportKeyAction {
 
 impl ImportKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
-        let cryptographic_usage_mask = build_usage_mask_from_key_usage(&self.key_usage);
+        let cryptographic_usage_mask = self
+            .key_usage
+            .as_deref()
+            .and_then(build_usage_mask_from_key_usage);
         // read the key file
         let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
         let mut object = match &self.key_format {

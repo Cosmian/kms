@@ -46,6 +46,18 @@ pub async fn decrypt(
 
     let owm = get_key(kms, &request, user, params).await?;
 
+    // Make sure that the key used to decrypt can be used to decrypt.
+    if !owm
+        .object
+        .attributes()?
+        .is_usage_authorized_for(CryptographicUsageMask::Decrypt)?
+    {
+        return Err(KmsError::KmipError(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "CryptographicUsageMask not authorized for Decrypt".to_owned(),
+        ))
+    }
+
     trace!(
         "get_decryption_system: matching on object: {:?}",
         owm.object
@@ -125,18 +137,6 @@ async fn get_key(
 }
 
 fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<DecryptResponse> {
-    // Make sure that the key used to decrypt can be used to decrypt.
-    if !owm
-        .object
-        .attributes()?
-        .is_usage_authorized_for(CryptographicUsageMask::Decrypt)?
-    {
-        return Err(KmsError::KmipError(
-            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-            "CryptographicUsageMask not authorized for Decrypt".to_owned(),
-        ))
-    }
-
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
@@ -192,17 +192,6 @@ fn decrypt_with_private_key(
     request: &Decrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<DecryptResponse> {
-    // Make sure that the key used to decrypt can be used to decrypt.
-    if !owm
-        .object
-        .attributes()?
-        .is_usage_authorized_for(CryptographicUsageMask::Decrypt)?
-    {
-        return Err(KmsError::KmipError(
-            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-            "CryptographicUsageMask not authorized for Decrypt".to_owned(),
-        ))
-    }
     let key_block = owm.object.key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => {
