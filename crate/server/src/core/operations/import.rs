@@ -86,8 +86,12 @@ async fn process_symmetric_key(
     // recover user tags
     let mut attributes = request.attributes;
     let mut tags = attributes.remove_tags();
-    if let Some(tags) = tags.as_ref() {
+
+    if let Some(tags) = tags.as_mut() {
         Attributes::check_user_tags(tags)?;
+        // Insert the tag corresponding to the object type if tags should be
+        // updated.
+        tags.insert("_sk".to_string());
     }
 
     let mut object = request.object;
@@ -97,14 +101,14 @@ async fn process_symmetric_key(
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
         unwrap_key(object_key_block, kms, owner, params).await?;
     }
+
     // replace attributes
     attributes.object_type = Some(ObjectType::SymmetricKey);
-
     #[cfg(not(feature = "fips"))]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
     if attributes.cryptographic_usage_mask.is_none() {
-        attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+        attributes.set_cryptographic_usage_mask(Some(CryptographicUsageMask::Unrestricted));
     }
 
     object_key_block.key_value.attributes = Some(Box::new(attributes.clone()));
@@ -114,12 +118,6 @@ async fn process_symmetric_key(
         uid => uid,
     };
 
-    // insert the tag corresponding to the object type if tags should be updated
-    if let Some(tags) = tags.as_mut() {
-        tags.insert("_sk".to_string());
-    }
-
-    let sk_attributes = object.attributes()?.clone();
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
     Ok((
@@ -128,7 +126,7 @@ async fn process_symmetric_key(
             tags,
             replace_existing,
             object,
-            sk_attributes,
+            attributes,
             uid,
         )],
     ))
@@ -136,10 +134,13 @@ async fn process_symmetric_key(
 
 fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
-    let mut request_attributes = request.attributes;
-    let mut user_tags = request_attributes.remove_tags();
-    if let Some(tags) = user_tags.as_ref() {
+    let mut attributes = request.attributes;
+    let mut user_tags = attributes.remove_tags();
+    if let Some(tags) = user_tags.as_mut() {
         Attributes::check_user_tags(tags)?;
+        // Insert the tag corresponding to the object type if tags should be
+        // updated.
+        tags.insert("_cert".to_string());
     }
 
     // The specification says that this should be DER bytes
@@ -157,11 +158,6 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let certificate = X509::from_der(&certificate_der_bytes)?;
     let certificate_attributes = CertificateAttributes::from(&certificate);
 
-    // insert the tag corresponding to the object type if tags should be updated
-    if let Some(tags) = user_tags.as_mut() {
-        tags.insert("_cert".to_string());
-    };
-
     // convert the certificate to a KMIP object
     let (unique_id, object) = openssl_certificate_to_kmip(&certificate)?;
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
@@ -172,14 +168,14 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let certificate_attributes = Attributes {
         certificate_type: Some(CertificateType::X509),
         key_format_type: Some(KeyFormatType::X509),
-        link: request_attributes.link,
+        link: attributes.link,
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
         certificate_attributes: Some(Box::new(certificate_attributes)),
         #[cfg(not(feature = "fips"))]
         // In non-FIPS mode, if no CryptographicUsageMask has been specified,
         // default to Unrestricted.
-        cryptographic_usage_mask: request_attributes
+        cryptographic_usage_mask: attributes
             .cryptographic_usage_mask
             .or(Some(CryptographicUsageMask::Unrestricted)),
         ..Attributes::default()
@@ -206,10 +202,11 @@ async fn process_public_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
-    let mut request_attributes = request.attributes;
-    let mut tags = request_attributes.remove_tags();
-    if let Some(tags) = tags.as_ref() {
+    let mut attributes = request.attributes;
+    let mut tags = attributes.remove_tags();
+    if let Some(tags) = tags.as_mut() {
         Attributes::check_user_tags(tags)?;
+        tags.insert("_pk".to_string());
     }
 
     // unwrap key block if required
@@ -238,7 +235,7 @@ async fn process_public_key(
             openssl_public_key_to_kmip(
                 &openssl_pk,
                 KeyFormatType::PKCS8,
-                request_attributes.cryptographic_usage_mask,
+                attributes.cryptographic_usage_mask,
             )?
         } else {
             object
@@ -252,12 +249,8 @@ async fn process_public_key(
             .key_value
             .attributes
             .get_or_insert(Box::default()),
-        &request_attributes,
+        &attributes,
     );
-
-    if let Some(tags) = tags.as_mut() {
-        tags.insert("_pk".to_string());
-    }
 
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
@@ -272,7 +265,7 @@ async fn process_public_key(
     #[cfg(not(feature = "fips"))]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
-    if request_attributes.cryptographic_usage_mask.is_none() {
+    if attributes.cryptographic_usage_mask.is_none() {
         public_key_attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
 
@@ -296,15 +289,14 @@ async fn process_private_key(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
-    // recover user tags
-    let mut request_attributes = request.attributes;
-    let tags = request_attributes.remove_tags();
-    // insert the tag corresponding to the object type if tags should be updated
+    // Recover user tags.
+    let mut attributes = request.attributes;
+    let tags = attributes.remove_tags();
+    // Insert the tag corresponding to the object type if tags should be
+    // updated.
     if let Some(tags) = tags.as_ref() {
         Attributes::check_user_tags(tags)?;
     }
-    // whether the object will be replaced if it already exists
-    let replace_existing = request.replace_existing.unwrap_or(false);
 
     // unwrap key block if required
     let mut object = {
@@ -322,9 +314,12 @@ async fn process_private_key(
     #[cfg(not(feature = "fips"))]
     // In non-FIPS mode, if no CryptographicUsageMask has been specified,
     // default to Unrestricted.
-    if request_attributes.cryptographic_usage_mask.is_none() {
-        request_attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+    if attributes.cryptographic_usage_mask.is_none() {
+        attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
+
+    // Whether the object will be replaced if it already exists.
+    let replace_existing = request.replace_existing.unwrap_or(false);
 
     // wrapped keys and Covercrypt keys
     // cannot be further processed and must be imported as such
@@ -336,7 +331,7 @@ async fn process_private_key(
         let object_key_block = object.key_block_mut()?;
         // add imported links to attributes
         add_imported_links_to_attributes(
-            &mut request_attributes,
+            &mut attributes,
             object_key_block
                 .key_value
                 .attributes
@@ -355,7 +350,7 @@ async fn process_private_key(
                 tags,
                 replace_existing,
                 object,
-                request_attributes,
+                attributes,
                 uid,
             )],
         ))
@@ -367,7 +362,7 @@ async fn process_private_key(
         return process_pkcs12(
             request.unique_identifier.as_str().unwrap_or_default(),
             object,
-            request_attributes,
+            attributes,
             tags,
             request.replace_existing.unwrap_or(false),
         )
@@ -381,7 +376,7 @@ async fn process_private_key(
     let (sk_uid, sk, sk_tags) = private_key_from_openssl(
         openssl_sk,
         tags,
-        &mut request_attributes,
+        &mut attributes,
         request.unique_identifier.as_str().unwrap_or_default(),
     )?;
     Ok((
@@ -390,7 +385,7 @@ async fn process_private_key(
             sk_tags,
             replace_existing,
             sk,
-            request_attributes,
+            attributes,
             sk_uid,
         )],
     ))
