@@ -228,7 +228,6 @@ pub async fn validate_tokens(
 mod tests {
     use std::sync::Arc;
 
-    use serde::Deserialize;
     use tracing::info;
 
     use crate::{
@@ -236,10 +235,12 @@ mod tests {
         middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
             self,
-            jwt::{decode_jwt_authorization_token, jwt_authorization_config},
+            jwt::{
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
+            },
             operations::WrapRequest,
         },
-        tests::google_cse::utils::{generate_google_jwt, GOOGLE_JWKS_URI, GOOGLE_JWT_ISSUER_URI},
+        tests::google_cse::utils::generate_google_jwt,
     };
 
     #[tokio::test]
@@ -263,25 +264,23 @@ mod tests {
 
         let uris = {
             let mut uris = google_cse::list_jwks_uri();
-            uris.push(JwtAuthConfig::uri(
-                GOOGLE_JWT_ISSUER_URI,
-                Some(GOOGLE_JWKS_URI),
-            ));
+            uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
         let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
         jwks_manager.refresh().await.unwrap();
 
+        let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(GOOGLE_JWT_ISSUER_URI.to_string()),
-            jwks_uri: Some(GOOGLE_JWKS_URI.to_string()),
-            jwt_audience: None,
+            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_string()]),
+            jwks_uri: Some(vec![JWKS_URI.to_string()]),
+            jwt_audience: Some(vec![client_id]),
         };
         let jwt_authentication_config = JwtConfig {
-            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.clone().unwrap(),
+            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.unwrap()[0].clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: jwt_authentication_config.jwt_audience.clone(),
+            jwt_audience: Some(jwt_authentication_config.jwt_audience.unwrap()[0].clone()),
         };
 
         let authentication_token = jwt_authentication_config
@@ -307,8 +306,8 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", GOOGLE_JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", GOOGLE_JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
         let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 

@@ -55,13 +55,14 @@ repos:
       - id: markdown-link-check
         args: [-q]
         exclude: documentation/docs/ms_dke/ms_dke.md
-        
+
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
         exclude: ansible
+
   - repo: https://github.com/crate-ci/typos
     rev: v1.13.1
     hooks:
