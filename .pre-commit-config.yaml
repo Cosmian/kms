@@ -69,13 +69,6 @@ repos:
       - id: yamllint
         args: [--format, parsable, --strict]
 
-  - repo: https://github.com/ansible/ansible-lint.git
-    rev: v24.2.1
-    hooks:
-      - id: ansible-lint
-        additional_dependencies:
-          - ansible
-
   - repo: https://github.com/crate-ci/typos
     rev: v1.13.1
     hooks:
