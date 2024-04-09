@@ -28,7 +28,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
-    let app = test_utils::test_app().await;
+    let app = test_utils::test_app(None).await;
 
     let policy = policy()?;
 
@@ -106,7 +106,7 @@ fn policy() -> Result<Policy, KmsError> {
 async fn integration_tests_with_tags() -> KResult<()> {
     // log_init("cosmian_kms_server=debug");
 
-    let app = test_utils::test_app().await;
+    let app = test_utils::test_app(None).await;
 
     let policy = policy()?;
 

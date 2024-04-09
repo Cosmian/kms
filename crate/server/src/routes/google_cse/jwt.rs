@@ -17,7 +17,7 @@ const JWT_ISSUER_URI: &str = "https://accounts.google.com";
 #[cfg(test)]
 const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-static APPLICATIONS: &[&str; 2] = &["meet", "drive"];
+static APPLICATIONS: &[&str; 3] = &["meet", "drive", "gmail"];
 
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
@@ -147,7 +147,7 @@ pub async fn validate_tokens(
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
     application: &str,
-    roles: &[&str],
+    roles: Option<&[&str]>,
 ) -> KResult<String> {
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
@@ -197,28 +197,29 @@ pub async fn validate_tokens(
         )
     );
 
-    let role = authorization_token.role.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain a role".to_string())
-    })?;
-    kms_ensure!(
-        roles.contains(&role.as_str()),
-        KmsError::Unauthorized(
-            "Authorization token should contain a role of writer or owner".to_string()
-        )
-    );
+    if let Some(roles) = roles {
+        let role = authorization_token.role.ok_or_else(|| {
+            KmsError::Unauthorized("Authorization token should contain a role".to_string())
+        })?;
+        kms_ensure!(
+            roles.contains(&role.as_str()),
+            KmsError::Unauthorized(
+                "Authorization token should contain a role of writer or owner".to_string()
+            )
+        );
+    }
 
-    let kacls_url = authorization_token.kacls_url.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain a kacls_url".to_string())
-    })?;
-    kms_ensure!(
-        kacls_url == cse_config.kacls_url,
-        KmsError::Unauthorized(format!(
-            "KACLS Urls should match: expected: {}, got: {} ",
-            cse_config.kacls_url, kacls_url
-        ))
-    );
+    if let Some(kacls_url) = authorization_token.kacls_url {
+        kms_ensure!(
+            kacls_url == cse_config.kacls_url,
+            KmsError::Unauthorized(format!(
+                "KACLS Urls should match: expected: {}, got: {} ",
+                cse_config.kacls_url, kacls_url
+            ))
+        );
+    }
 
-    tracing::debug!("wrap request authorized for user {authentication_email}");
+    tracing::debug!("Google CSE request authorized for user {authentication_email}");
 
     Ok(authentication_email)
 }
@@ -235,45 +236,17 @@ mod tests {
         middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
             self,
-            jwt::{
-                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
-            },
+            jwt::{decode_jwt_authorization_token, jwt_authorization_config},
             operations::WrapRequest,
         },
+        tests::google_cse::utils::{generate_google_jwt, GOOGLE_JWKS_URI, GOOGLE_JWT_ISSUER_URI},
     };
 
     #[tokio::test]
     async fn test_wrap_auth() {
         // log_init("cosmian_kms_server=info");
 
-        #[derive(Deserialize)]
-        struct Token {
-            pub id_token: String,
-        }
-
-        let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
-        let client_secret = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_SECRET").unwrap();
-        let refresh_token = std::env::var("TEST_GOOGLE_OAUTH_REFRESH_TOKEN").unwrap();
-
-        assert!(!client_id.is_empty());
-        assert!(!client_secret.is_empty());
-        assert!(!refresh_token.is_empty());
-
-        let res = reqwest::Client::new()
-            .post("https://oauth2.googleapis.com/token")
-            .form(&[
-                ("client_id", client_id.as_str()),
-                ("client_secret", client_secret.as_str()),
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token.as_str()),
-            ])
-            .send()
-            .await
-            .unwrap();
-
-        tracing::debug!("Oauth response: {res:?}");
-
-        let jwt = res.json::<Token>().await.unwrap().id_token;
+        let jwt = generate_google_jwt().await;
 
         let wrap_request = format!(
             r#"
@@ -290,7 +263,10 @@ mod tests {
 
         let uris = {
             let mut uris = google_cse::list_jwks_uri();
-            uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
+            uris.push(JwtAuthConfig::uri(
+                GOOGLE_JWT_ISSUER_URI,
+                Some(GOOGLE_JWKS_URI),
+            ));
             uris
         };
         let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
@@ -298,14 +274,14 @@ mod tests {
 
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_string()]),
-            jwks_uri: Some(vec![JWKS_URI.to_string()]),
-            jwt_audience: Some(vec![client_id]),
+            jwt_issuer_uri: Some(GOOGLE_JWT_ISSUER_URI.to_string()),
+            jwks_uri: Some(GOOGLE_JWKS_URI.to_string()),
+            jwt_audience: None,
         };
         let jwt_authentication_config = JwtConfig {
-            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.unwrap()[0].clone(),
+            jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.clone().unwrap(),
             jwks: jwks_manager.clone(),
-            jwt_audience: Some(jwt_authentication_config.jwt_audience.unwrap()[0].clone()),
+            jwt_audience: jwt_authentication_config.jwt_audience.clone(),
         };
 
         let authentication_token = jwt_authentication_config
@@ -331,8 +307,8 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", GOOGLE_JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", GOOGLE_JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
         let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 

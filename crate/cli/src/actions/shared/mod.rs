@@ -2,7 +2,7 @@ mod export_key;
 mod get_attributes;
 pub(crate) mod import_key;
 mod locate;
-pub(crate) mod utils;
+pub mod utils;
 
 #[cfg(feature = "openssl")]
 mod wrap_key;

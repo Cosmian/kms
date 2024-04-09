@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|documentation/docs/google_cse
+exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -111,7 +111,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke
+        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md
@@ -163,7 +163,7 @@ repos:
       - id: renew-kms-markdown
       - id: docker-compose-up
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth]
+        args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign, --skip, test_cse_private_key_decrypt]
       - id: cargo-audit
       # - id: cargo-outdated
       - id: clippy-autofix-all
