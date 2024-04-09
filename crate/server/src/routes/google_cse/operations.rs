@@ -244,7 +244,8 @@ pub struct PrivateKeySignRequest {
     /// The format of the private key or the wrapped private key is up to
     /// the Key Access Control List Service (KACLS) implementation.
     /// On the client and on the Gmail side, this is treated as an opaque blob.
-    pub e_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e_key: Option<String>,
 
     /// The salt length to use, if the signature algorithm is RSASSA-PSS.
     /// If the signature algorithm is not RSASSA-PSS, this field is ignored.
