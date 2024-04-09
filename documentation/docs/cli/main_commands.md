@@ -295,6 +295,10 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
+`--key-usage <KEY_USAGE>` For what operations should the key be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
 
 
 ---
@@ -773,6 +777,10 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the certificate. To specify multiple tags, use the option multiple times
 
+`--key-usage <KEY_USAGE>` For what operations should the certificate be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
 
 
 ---
@@ -942,6 +950,10 @@ Possible values:  `"true", "false"` [default: `"false"`]
 Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+`--key-usage <KEY_USAGE>` For what operations should the key be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
 
 
@@ -1225,6 +1237,10 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
+`--key-usage <KEY_USAGE>` For what operations should the key be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
 
 
 ---
@@ -1479,6 +1495,10 @@ Possible values:  `"true", "false"` [default: `"false"`]
 Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+`--key-usage <KEY_USAGE>` For what operations should the key be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
 
 

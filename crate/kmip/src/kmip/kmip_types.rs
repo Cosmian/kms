@@ -1096,12 +1096,12 @@ impl Attributes {
         self.object_type = Some(object_type);
     }
 
-    /// Set the attributes's CryptographicUsageMask.
+    /// Set the attributes's `CryptographicUsageMask`.
     pub fn set_cryptographic_usage_mask(&mut self, mask: Option<CryptographicUsageMask>) {
         self.cryptographic_usage_mask = mask;
     }
 
-    /// Set the bits in `mask` to the attributes's CryptographicUsageMask bits.
+    /// Set the bits in `mask` to the attributes's `CryptographicUsageMask` bits.
     pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
         let mask = if let Some(attr_mask) = self.cryptographic_usage_mask {
             attr_mask | mask
@@ -1112,12 +1112,12 @@ impl Attributes {
         self.cryptographic_usage_mask = Some(mask);
     }
 
-    /// Check that `flag` bit is set in object's CryptographicUsageMask.
+    /// Check that `flag` bit is set in object's `CryptographicUsageMask`.
     /// If FIPS mode is disabled, check if Unrestricted bit is set too.
     ///
     /// Return `true` if `flag` has at least one bit set in self's attributes,
     /// return `false` otherwise.
-    /// Raise error if object's CryptographicUsageMask is None.
+    /// Raise error if object's `CryptographicUsageMask` is None.
     pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
             KmipError::InvalidKmipValue(

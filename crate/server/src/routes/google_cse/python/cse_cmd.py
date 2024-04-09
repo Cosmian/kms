@@ -29,7 +29,7 @@ class CseCmd:
         self.cmd_mapping = {}
         self.add_keypair_cmds(self.subparsers)
         self.add_identity_cmds(self.subparsers)
-        self.add_composite_cmds(self.subparsers)
+        # self.add_composite_cmds(self.subparsers)
         return
 
     def add_keypair_cmds(self, parser):
@@ -344,6 +344,7 @@ class CseCmd:
                 .list(userId=user_id)
                 .execute()
             )
+            print(f'results: {results}')
 
             keypairs = results.get('cseKeyPairs', [])
             pp = pprint.PrettyPrinter(indent=4)
@@ -389,12 +390,14 @@ class CseCmd:
 
         email_kpid_dict = {}
 
+        print(f'wrapped_key_files: {wrapped_key_files}')
+        print(f'p7_cert_files: {p7_cert_files}')
         for email, key_file in email_key_file_map.items():
             if not email in email_cert_file_map:
                 print(f'skipping {email}, missing cert file')
                 continue
 
-            print(f'Processing user:{email}')
+            print(f'Processing user: {email}')
 
             try:
                 with open(key_file, 'r') as kf, open(
@@ -418,8 +421,10 @@ class CseCmd:
                         ],
                     }
 
-                    # print(key_pair_info)
+                    print(f'key_pair_info: {key_pair_info}')
+                    # print(f"Creating keypair for KACLS: {kacls_url}")
                     service = self._setup_service(args.creds, email)
+
                     results = (
                         service.users()
                         .settings()
@@ -430,6 +435,7 @@ class CseCmd:
                     )
 
                     print(results)
+                    print(f'Keypair created for {email}')
 
                     email_kpid_dict[email] = results['keyPairId']
             except Exception as exc:
@@ -463,6 +469,8 @@ class CseCmd:
         identity = {'primaryKeyPairId': kp_id, 'emailAddress': kp_email}
 
         try:
+            print(f'Creating identity for user: {email}')
+
             service = self._setup_service(args.creds, email)
             results = (
                 service.users()
@@ -474,6 +482,7 @@ class CseCmd:
             )
 
             print(results)
+            print(f'Identity created for {email}')
         except Exception as exc:
             print(exc)
 
@@ -527,7 +536,7 @@ class CseCmd:
                        Ex: user1@example.com
           args.kpemail: the email alias for which identity will be deleted.
                         Currently, it has to be same as the userid (until we have
-                        sendas support).
+                        send as support).
 
         Returns:
           Prints the deleted identity info to screen

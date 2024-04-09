@@ -1,74 +1,34 @@
+# S/MIME certificate guidelines
 
-### Root certificate authority
+Links:
 
-To generate a self-signed root CA with OpenSSL, you can use the following steps:
-
-1. Create a new private key for the CA:
-
-```
-openssl genrsa -out ca.key 4096
-```
-
-This will generate a 4096-bit RSA private key, which is a good size for most applications.
-
-2. Generate a self-signed certificate for the CA:
-
-```
-openssl req -x509 -new -days 3650 -key ca.key -out ca.crt
-```
-
-This will generate a self-signed certificate for the CA, which will be valid for 3650 days (10 years).
+- https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate
+- https://support.google.com/a/answer/13297070?hl=en#guidelines
 
 
-### Intermediate certificate
+## Import custom root CA
 
+- Run generate.sh
+- insert fullchain.pem (not reversed_fullchain.pem) in admin.google.com in S/MIME parameters
 
-1. Generate a private key for the intermediate certificate:
+## Import wrapped private key
 
-```
-openssl genrsa -out int.key 4096
-```
+### Prepare keys for blue@cosmian.com
 
-2. Generate a CSR for the intermediate certificate:
+First, import the AES wrapping key (will wrap the RSA private key):
+./ckms login
+./ckms sym keys import -t google_cse documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.json
+./ckms rsa keys import -f pem ../../crate/server/src/routes/google_cse/python/openssl/blue.key -t gmail_blue
+./ckms rsa keys export -t gmail_blue -w google_cse pk_blue -f raw
+base64 -w 0 pk_blue
 
-```
-openssl req -new -key int.key -out int.csr
-```
+And (re)create keypair and identity for blue:
 
-3. Sign the intermediate certificate with the root CA certificate:
+Credentials `google-idp-for-cse-service-account.json` comes from gcloud console.
 
-```
-openssl x509 -req -in int.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out int.crt -days 3650
-```
+python cse_cmd.py delete_identity --creds ~/Downloads/google-idp-for-cse-service-account.json --userid blue@cosmian.com --kpemail blue@cosmian.com
+python cse_cmd.py insert_keypair --creds ~/Downloads/google-idp-for-cse-service-account.json --inkeydir wrapped_key_blue --incertdir openssl
 
-4. Verify the intermediate certificate:
+Identifier `ANe1Bmgnt1mW_X2RkAeUxhD13VbawLSf7kqZ8rLci7ymdMV89bVtl14` comes from `insert_keypair` output command.
 
-```
-openssl verify -CAfile ca.crt int.crt
-```
-
-### S/MIME user certificate
-
-To sign a user certificate for the blue user with the intermediate certificate, you can use the following steps:
-
-1. Generate a private key for the user certificate:
-
-```
-openssl genrsa -out blue.key 4096
-```
-
-2. Generate a CSR for the user certificate:
-
-```
-openssl req -new -key blue.key -out blue.csr
-```
-
-3. Sign the user certificate with the intermediate certificate:
-
-```
-openssl x509 -req -in blue.csr -CA int.crt -CAkey int.key -CAcreateserial -out blue.crt -days 3650
-```
-
-
-
-
+python cse_cmd.py insert_identity --creds ~/Downloads/google-idp-for-cse-service-account.json --userid blue@cosmian.com --kpid "ANe1Bmgnt1mW_X2RkAeUxhD13VbawLSf7kqZ8rLci7ymdMV89bVtl14" --kpemail blue@cosmian.com
