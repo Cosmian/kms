@@ -1249,6 +1249,7 @@ dependencies = [
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
  "cosmian_kms_client",
+ "cosmian_logger",
  "dotenvy",
  "env_logger",
  "futures",

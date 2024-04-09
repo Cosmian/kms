@@ -78,7 +78,7 @@ fn import_google_cse_symmetric_key() -> Import {
 
 #[tokio::test]
 async fn test_ossl_sign_verify() -> KResult<()> {
-    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+    // cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
     let digest =
         general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
@@ -189,7 +189,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_private_key_decrypt() -> KResult<()> {
-    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+    // cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
     let jwt = generate_google_jwt().await;
 
