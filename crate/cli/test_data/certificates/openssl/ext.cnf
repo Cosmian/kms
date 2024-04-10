@@ -5,10 +5,12 @@ fullname = @url_section
 
 [url_section]
 URI.1=ldap://www.example.com/ldap?DN=TEST
-URI.2=https://package.cosmian.com/kms/prime256v1.crl
+URI.2=https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem
 
 [v3_ca]
-basicConstraints=CA:TRUE,pathlen:0
+basicConstraints=CA:FALSE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
-crlDistributionPoints=URI:http://cse.example.com/crl.pem
+crlDistributionPoints=URI:https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer

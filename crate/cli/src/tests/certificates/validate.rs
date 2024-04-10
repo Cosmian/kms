@@ -121,8 +121,7 @@ pub(crate) fn validate_certificate(
 }
 
 #[tokio::test]
-// #[ignore = "error: connection closed before message completed"]
-async fn test_cli_validate() -> Result<(), CliError> {
+async fn test_validate_cli() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
@@ -221,7 +220,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
-    assert_eq!(test2_res, "Valid\n");
+    assert_eq!("Valid\n", test2_res);
 
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -250,7 +249,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
     )?;
 
     info!("validate chain only. Must be valid.");
-    assert_eq!(test4_res, "Valid\n");
+    assert_eq!("Valid\n", test4_res);
 
     info!("validate tests successfully passed");
     Ok(())

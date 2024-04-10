@@ -32,7 +32,7 @@ pub fn log_init(default_value: &str) {
 /// Will panic if:
 /// - we cannot set global subscriber
 /// - we cannot init the log tracer
-fn tracing_setup() {
+pub fn tracing_setup() {
     let format = tracing_subscriber::fmt::layer()
         .with_level(true)
         .with_target(true)
