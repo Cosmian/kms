@@ -653,7 +653,7 @@ pub enum LinkType {
 /// operation is repeated for each of them. If an operation appears
 /// multiple times in a request, it is the most recent that is referred to.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, Hash)]
 pub enum UniqueIdentifierEnumeration {
     IDPlaceholder = 0x0000_0001,
     Certify = 0x0000_0002,
@@ -1964,7 +1964,7 @@ pub enum StateEnumeration {
 ///
 /// This attribute SHALL be assigned by the key management system at creation or registration time,
 /// and then SHALL NOT be changed or deleted before the object is destroyed.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(untagged)]
 pub enum UniqueIdentifier {
     TextString(String),
