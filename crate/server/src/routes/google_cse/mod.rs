@@ -38,7 +38,14 @@ impl CseErrorReply {
 impl From<CseErrorReply> for HttpResponse {
     fn from(e: CseErrorReply) -> Self {
         debug!("CSE Error: {:?}", e);
-        Self::InternalServerError().json(e)
+        match e.code {
+            400 => Self::BadRequest().json(e),
+            401 => Self::Unauthorized().json(e),
+            403 => Self::Forbidden().json(e),
+            404 => Self::NotFound().json(e),
+            405 => Self::MethodNotAllowed().json(e),
+            _ => Self::InternalServerError().json(e),
+        }
     }
 }
 
