@@ -152,7 +152,7 @@ where
                 .map_into_right_body())
         }
         Err(jwt_log_errors) => {
-            for error in jwt_log_errors.iter() {
+            for error in &jwt_log_errors {
                 tracing::info!("{error:?}");
             }
             error!(

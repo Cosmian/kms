@@ -197,7 +197,7 @@ pub async fn prepare_kms_server(
             .collect();
         // Add the one from google if cse is enabled
         if enable_google_cse {
-            all_jwks_uris.extend(google_cse::list_jwks_uri())
+            all_jwks_uris.extend(google_cse::list_jwks_uri());
         }
 
         let jwks_manager = Arc::new(JwksManager::new(all_jwks_uris).await?);
