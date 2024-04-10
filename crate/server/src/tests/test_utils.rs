@@ -21,6 +21,7 @@ use crate::{
     routes, KMSServer,
 };
 
+#[allow(dead_code)]
 pub fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }

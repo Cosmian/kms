@@ -66,9 +66,10 @@ impl JwtAuthConfig {
         self.jwt_issuer_uri
             .map(|issuer_uris| {
                 let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {
-                    option_vec
-                        .map(|vec| vec.into_iter().map(Some).collect())
-                        .unwrap_or_else(|| vec![None; issuer_uris.len()])
+                    option_vec.map_or_else(
+                        || vec![None; issuer_uris.len()],
+                        |vec| vec.into_iter().map(Some).collect(),
+                    )
                 };
 
                 let jwks_uris = option_vec_to_vec_option(self.jwks_uri);

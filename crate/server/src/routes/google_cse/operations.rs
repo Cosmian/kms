@@ -334,7 +334,7 @@ pub async fn private_key_sign(
     debug!("private_key_sign: build signer");
     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
     debug!("padding method: {:?}", signer.rsa_padding());
-    signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+    signer.set_rsa_padding(Padding::PKCS1)?;
     signer.update(&general_purpose::STANDARD.decode(request.digest)?)?;
     let signature = signer.sign_to_vec()?;
 
