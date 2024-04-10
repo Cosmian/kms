@@ -34,6 +34,14 @@ use crate::{
 
 pub mod utils;
 
+// Default JWT issuer URI
+#[cfg(test)]
+const JWT_ISSUER_URI: &str = "https://accounts.google.com";
+
+// Default JWT Set URI
+#[cfg(test)]
+const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
+
 /// Read all bytes from a file
 pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
     let mut buffer = Vec::new();
@@ -118,6 +126,8 @@ async fn test_ossl_sign_verify() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_private_key_sign() -> KResult<()> {
+    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
+    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
     let jwt = generate_google_jwt().await;
@@ -189,6 +199,9 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_private_key_decrypt() -> KResult<()> {
+    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
+    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+
     // cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
     let jwt = generate_google_jwt().await;
