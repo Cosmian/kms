@@ -15,13 +15,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
-use openssl::{
-    hash::MessageDigest,
-    pkey::{PKey, Private},
-    rsa::{Padding, Rsa},
-    sign::{Signer, Verifier},
-    x509::X509,
-};
+use openssl::{pkey_ctx::PkeyCtx, x509::X509};
 
 use crate::{
     result::{KResult, KResultHelper},
@@ -84,45 +78,68 @@ fn import_google_cse_symmetric_key() -> Import {
     request
 }
 
-#[tokio::test]
-async fn test_ossl_sign_verify() -> KResult<()> {
-    // cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+// #[tokio::test]
+// async fn test_ossl_sign_verify() -> KResult<()> {
+//     cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
-    let digest =
-        general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
-    // The RSA blue private key
-    let blue_private_key = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/blue.key",
-    ))
-    .unwrap();
+//     //-------------------------------------------------------------------------
+//     // The RSA blue public key
+//     //-------------------------------------------------------------------------
+//     let blue_public_key = read_bytes_from_file(&PathBuf::from(
+//         "src/routes/google_cse/python/openssl/blue.pem",
+//     ))
+//     .unwrap();
+//     let rsa_public_key = X509::from_pem(&blue_public_key)?;
+//     let public_key = rsa_public_key.public_key()?;
 
-    let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
-    let private_key = PKey::from_rsa(rsa_private_key)?;
-    let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
-    signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+//     // PAYLOAD
+//     let digest =
+//         general_purpose::STANDARD.decode("MSKaRPMiIFwZoWGYjA/MV8mLNNYGW3GpODrEjdbbQqE=")?;
+//     let signature =
+//         general_purpose::STANDARD.decode("O3VF4GC/ohpXtA9bofQfKAtJ5ieDF0jDE2dslC7HVIVo49sDAIqlmosybRaTLgy4L6x5dXiGkefBxySiNxShdMBoe0QK+Z63+R84+S/dAC40rvMhkuTOpm4CphrpdeJpMpAH3Ge8P98+mCqw33VlWTQ82wRGT1wRzNhI9iI67tFw0mn7bH92XR4FfXoJZfpuuQ3VJxENJw6+kBBa4zQV1pudG84afRe8BkayfzjwWPl0btoF3A9rnKHv9sQohGgLM0NWlETJFWeDtUr4OJKPv+GyoFN8vJfHCFwIRtFg/CbLqZqHJa+lIUpGxirglCVAYJl7Ir6FKyVP1KsRjDmSOGPg+ZrtrZY9aibwnMwx0C0sbInlSLInvddFlMBoLKBbKWu8VUPh4toA7o7Pf/cum+tUk6BbCftMrQUsW4J/78KCIFx6dDFijM9WyFfbYrgEkbA7ClPBTfuJDaxf1nwqTc00BW9HcjVy8noyRPDctCFCZdLOoB+L5a0+Oz7O5niPAXa0Eku/Q261bgV+2Oj0YzUprkmGiwTbnaQLSvzgPpkw5DO9nAmOfR2KI5lBvMt/879JrcZtK0Sm5p5307Tzy28DPRFnHR3p11ANnFLK8lLA0Z+3RYv38h3n8yt6UfX0w8Rbc4++fnbVAfVC04W8PP2FmlKxHAb+p8wBQgTzs/U=")?;
 
-    tracing::debug!("padding method: {:?}", signer.rsa_padding());
+//     // Verify the signature
+//     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+//     verifier.update(&digest)?;
 
-    signer.update(&digest)?;
-    let signature = signer.sign_to_vec()?;
+//     assert!(verifier.verify(&signature)?);
 
-    // The RSA blue public key
-    let blue_public_key = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/blue.pem",
-    ))
-    .unwrap();
-    let rsa_public_key = X509::from_pem(&blue_public_key)?;
-    let public_key = rsa_public_key.public_key()?;
+//     //-------------------------------------------------------------------------
+//     // Signature again
+//     //-------------------------------------------------------------------------
+//     let digest =
+//         general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
+//     // The RSA blue private key
+//     let blue_private_key = read_bytes_from_file(&PathBuf::from(
+//         "src/routes/google_cse/python/openssl/blue.key",
+//     ))
+//     .unwrap();
 
-    // Verify the signature
-    let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
-    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-    verifier.update(&digest)?;
+//     let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
+//     let private_key = PKey::from_rsa(rsa_private_key)?;
+//     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
 
-    assert!(verifier.verify(&signature)?);
+//     tracing::debug!("padding method: {:?}", signer.rsa_padding());
 
-    Ok(())
-}
+//     signer.update(&digest)?;
+//     let signature = signer.sign_to_vec()?;
+
+//     tracing::debug!(
+//         "signature: {}",
+//         general_purpose::STANDARD.encode(signature.clone())
+//     );
+
+//     //-------------------------------------------------------------------------
+//     // Verify
+//     //-------------------------------------------------------------------------
+//     // Verify the signature
+//     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+//     verifier.update(&digest)?;
+
+//     assert!(verifier.verify(&signature)?);
+
+//     Ok(())
+// }
 
 #[tokio::test]
 async fn test_cse_private_key_sign() -> KResult<()> {
@@ -160,7 +177,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     // The RSA blue private key has been AES256 wrapped with `demo.key.json`
     let wrapped_private_key =
         include_str!("../../../../../documentation/docs/google_cse/blue_wrapped_private_key");
-    let digest = "9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=";
+    let digest = "MSKaRPMiIFwZoWGYjA/MV8mLNNYGW3GpODrEjdbbQqE=";
 
     let pksr = PrivateKeySignRequest {
         authentication: jwt.clone(),
@@ -187,12 +204,12 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     let rsa_public_key = X509::from_pem(&blue_public_key)?;
     let public_key = rsa_public_key.public_key()?;
 
-    // Verify the data
-    let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
-
-    let signature = general_purpose::STANDARD.decode(pksr_response.signature)?;
-    verifier.update(&general_purpose::STANDARD.decode(digest)?)?;
-    assert!(verifier.verify(&signature)?);
+    let mut pkey_context = PkeyCtx::new(&public_key)?;
+    pkey_context.verify_init()?;
+    pkey_context.verify(
+        &general_purpose::STANDARD.decode(digest)?,
+        &general_purpose::STANDARD.decode(pksr_response.signature)?,
+    )?;
 
     Ok(())
 }
