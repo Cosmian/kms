@@ -16,7 +16,7 @@ use cosmian_kmip::{
 use openssl::{
     pkey::{PKey, Private},
     pkey_ctx::PkeyCtx,
-    rsa::Rsa,
+    rsa::{Padding, Rsa},
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -333,6 +333,7 @@ pub async fn private_key_sign(
     debug!("private_key_sign: build signer");
     let mut pkey_context = PkeyCtx::new(&private_key)?;
     pkey_context.sign_init()?;
+    pkey_context.set_rsa_padding(Padding::PKCS1)?;
     let signature_size = pkey_context.sign(
         &general_purpose::STANDARD.decode(request.digest.clone())?,
         None,
