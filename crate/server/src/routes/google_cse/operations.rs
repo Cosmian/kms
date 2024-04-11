@@ -336,10 +336,7 @@ pub async fn private_key_sign(
     pkey_context.sign_init()?;
     pkey_context.set_rsa_padding(Padding::PKCS1)?;
     pkey_context.set_signature_md(Md::sha256())?;
-    let signature_size = pkey_context.sign(
-        &general_purpose::STANDARD.decode(request.digest.clone())?,
-        None,
-    )?;
+    let signature_size = pkey_context.sign(request.digest.as_bytes(), None)?;
 
     let mut signature = vec![0_u8; signature_size];
     let signature_size = pkey_context.sign(
