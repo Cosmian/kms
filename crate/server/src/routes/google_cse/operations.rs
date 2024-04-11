@@ -14,10 +14,9 @@ use cosmian_kmip::{
     },
 };
 use openssl::{
-    hash::MessageDigest,
     pkey::{PKey, Private},
-    rsa::{Padding, Rsa},
-    sign::Signer,
+    pkey_ctx::PkeyCtx,
+    rsa::Rsa,
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -332,11 +331,19 @@ pub async fn private_key_sign(
     debug!("private_key_sign: from_rsa");
     let private_key = PKey::from_rsa(rsa_private_key)?;
     debug!("private_key_sign: build signer");
-    let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
-    debug!("padding method: {:?}", signer.rsa_padding());
-    signer.set_rsa_padding(Padding::PKCS1)?;
-    signer.update(&general_purpose::STANDARD.decode(request.digest)?)?;
-    let signature = signer.sign_to_vec()?;
+    let mut pkey_context = PkeyCtx::new(&private_key)?;
+    pkey_context.sign_init()?;
+    let signature_size = pkey_context.sign(
+        &general_purpose::STANDARD.decode(request.digest.clone())?,
+        None,
+    )?;
+
+    let mut signature = vec![0_u8; signature_size];
+    let signature_size = pkey_context.sign(
+        &general_purpose::STANDARD.decode(request.digest)?,
+        Some(&mut *signature),
+    )?;
+    debug!("private_key_sign: signature {signature_size}");
 
     debug!(
         "private_key_sign: exiting with success: {}",
