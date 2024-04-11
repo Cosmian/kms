@@ -5,17 +5,14 @@ use std::{
 };
 
 use base64::{engine::general_purpose, Engine};
-use cosmian_kmip::{
-    crypto::rsa::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Import, ImportResponse},
-        kmip_types::UniqueIdentifier,
-        ttlv::{deserializer::from_ttlv, TTLV},
-    },
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::{Import, ImportResponse},
+    kmip_types::UniqueIdentifier,
+    ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
-use openssl::{pkey_ctx::PkeyCtx, x509::X509};
+use openssl::{pkey_ctx::PkeyCtx, rsa::Padding, x509::X509};
 
 use crate::{
     result::{KResult, KResultHelper},
@@ -219,7 +216,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
     std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
 
-    // cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+    cosmian_logger::log_utils::log_init("info,cosmian_kms_server=trace");
 
     let jwt = generate_google_jwt().await;
 
@@ -238,16 +235,17 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
 
     let public_key = rsa_public_key.public_key()?;
 
+    // Perform RSA PKCS1 decryption.
+    let mut ctx = PkeyCtx::new(&public_key)?;
+    ctx.encrypt_init()?;
+    ctx.set_rsa_padding(Padding::PKCS1)?;
     let dek = vec![0_u8; 32];
-    let encrypted_data_encryption_key = rsa_oaep_aes_gcm_encrypt(
-        &public_key,
-        cosmian_kmip::kmip::kmip_types::HashingAlgorithm::SHA256,
-        &dek,
-        None,
-    )?;
-    tracing::debug!(
-        "rsa_oaep_aes_gcm: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}"
-    );
+    let encrypt_size = ctx.encrypt(&dek, None)?;
+
+    let mut encrypted_data_encryption_key = vec![0_u8; encrypt_size];
+    ctx.encrypt(&dek, Some(&mut *encrypted_data_encryption_key))?;
+
+    tracing::debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
 
     let import_request = import_google_cse_symmetric_key();
     tracing::debug!("import_request created");

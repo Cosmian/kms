@@ -339,10 +339,7 @@ pub async fn private_key_sign(
     let signature_size = pkey_context.sign(request.digest.as_bytes(), None)?;
 
     let mut signature = vec![0_u8; signature_size];
-    let signature_size = pkey_context.sign(
-        &general_purpose::STANDARD.decode(request.digest)?,
-        Some(&mut *signature),
-    )?;
+    let signature_size = pkey_context.sign(request.digest.as_bytes(), Some(&mut *signature))?;
     debug!("private_key_sign: signature {signature_size}");
 
     debug!(
@@ -460,13 +457,27 @@ pub async fn private_key_decrypt(
         .as_ref()
         .map(std::string::String::as_bytes);
 
-    debug!("private_key_decrypt: rsa_oaep_aes_gcm_decrypt");
-    let plaintext = rsa_oaep_aes_gcm_decrypt(
-        &private_key,
-        kmip_types::HashingAlgorithm::SHA256,
-        &encrypted_dek,
-        rsa_oaep_label,
-    )?;
+    debug!("private_key_decrypt: ");
+    let plaintext = match rsa_oaep_label {
+        Some(rsa_oaep_label) => rsa_oaep_aes_gcm_decrypt(
+            &private_key,
+            kmip_types::HashingAlgorithm::SHA256,
+            &encrypted_dek,
+            Some(rsa_oaep_label),
+        )?
+        .to_vec(),
+        None => {
+            // Perform RSA PKCS1 decryption.
+            let mut ctx = PkeyCtx::new(&private_key)?;
+            ctx.decrypt_init()?;
+            ctx.set_rsa_padding(Padding::PKCS1)?;
+            let decrypt_size = ctx.decrypt(&encrypted_dek, None)?;
+
+            let mut plaintext = vec![0_u8; decrypt_size];
+            ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
+            plaintext
+        }
+    };
 
     debug!("private_key_decrypt: exiting with success");
 
