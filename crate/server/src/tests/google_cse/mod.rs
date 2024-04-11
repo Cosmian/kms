@@ -282,7 +282,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
         algorithm: "SHA256withRSA".to_string(),
         encrypted_data_encryption_key: general_purpose::STANDARD
             .encode(encrypted_data_encryption_key),
-        rsa_oaep_label: String::new(),
+        rsa_oaep_label: None,
         reason: "Gmail".to_string(),
         wrapped_private_key: wrapped_private_key.to_string(),
     };

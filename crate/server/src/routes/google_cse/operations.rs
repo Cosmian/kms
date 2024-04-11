@@ -367,7 +367,8 @@ pub struct PrivateKeyDecryptRequest {
     /// Base64-encoded encrypted content encryption key, which is encrypted with the public key associated with the private key. Max size: 1 KB.
     pub encrypted_data_encryption_key: String,
     /// Base64-encoded label L, if the algorithm is RSAES-OAEP. If the algorithm is not RSAES-OAEP, this field is ignored.
-    pub rsa_oaep_label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rsa_oaep_label: Option<String>,
     /// A passthrough JSON string providing additional context about the operation. The JSON provided should be sanitized before being displayed. Max size: 1 KB.
     pub reason: String,
     /// The base64-encoded wrapped private key. Max size: 8 KB.
@@ -454,11 +455,10 @@ pub async fn private_key_decrypt(
     let private_key = PKey::from_rsa(rsa_private_key)?;
 
     debug!("private_key_decrypt: build aad");
-    let rsa_oaep_label = if request.rsa_oaep_label.is_empty() {
-        None
-    } else {
-        Some(request.rsa_oaep_label.as_bytes())
-    };
+    let rsa_oaep_label: Option<&[u8]> = request
+        .rsa_oaep_label
+        .as_ref()
+        .map(std::string::String::as_bytes);
 
     debug!("private_key_decrypt: rsa_oaep_aes_gcm_decrypt");
     let plaintext = rsa_oaep_aes_gcm_decrypt(
