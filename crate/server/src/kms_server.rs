@@ -266,10 +266,17 @@ pub async fn prepare_kms_server(
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
                 .wrap(Cors::permissive())
+                .service(google_cse::digest)
+                .service(google_cse::private_key_sign)
+                .service(google_cse::private_key_decrypt)
+                .service(google_cse::privilegedprivatekeydecrypt)
+                .service(google_cse::privilegedunwrap)
+                .service(google_cse::privilegedwrap)
+                .service(google_cse::rewrap)
                 .service(google_cse::get_status)
-                .service(google_cse::wrap)
                 .service(google_cse::unwrap)
-                .service(google_cse::private_key_sign);
+                .service(google_cse::wrap)
+                .service(google_cse::wrapprivatekey);
             app = app.service(google_cse_scope);
         }
 
