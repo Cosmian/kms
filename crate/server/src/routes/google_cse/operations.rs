@@ -408,7 +408,7 @@ pub async fn private_key_decrypt(
 
     // Unwrap private key which has been previously wrapped using AES
 
-    debug!("private_key_sign: decode base64 wrapped_dek");
+    debug!("private_key_decrypt: decode base64 wrapped_dek");
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     let mut wrapped_dek = create_symmetric_key_kmip_object(
         &general_purpose::STANDARD.decode(&request.wrapped_private_key)?,
@@ -458,7 +458,7 @@ pub async fn private_key_decrypt(
         .as_ref()
         .map(std::string::String::as_bytes);
 
-    debug!("private_key_decrypt: ");
+    debug!("private_key_decrypt: {:?}", rsa_oaep_label);
     let plaintext = match rsa_oaep_label {
         Some(rsa_oaep_label) => rsa_oaep_aes_gcm_decrypt(
             &private_key,
@@ -472,11 +472,15 @@ pub async fn private_key_decrypt(
             let mut ctx = PkeyCtx::new(&private_key)?;
             ctx.decrypt_init()?;
             ctx.set_rsa_padding(Padding::PKCS1)?;
+
             let decrypt_size = ctx.decrypt(&encrypted_dek, None)?;
+            debug!("privatekeydecrypt: decrypt_size: {decrypt_size}");
 
             let mut plaintext = vec![0_u8; decrypt_size];
-            ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
-            plaintext
+            let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
+            debug!("privatekeydecrypt: decrypt_size: {decrypt_size}");
+            debug!("privatekeydecrypt: plaintext: {plaintext:?}");
+            plaintext[0..decrypt_size].to_vec()
         }
     };
 
