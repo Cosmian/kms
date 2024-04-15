@@ -239,7 +239,8 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let mut ctx = PkeyCtx::new(&public_key)?;
     ctx.encrypt_init()?;
     ctx.set_rsa_padding(Padding::PKCS1)?;
-    let dek = vec![0_u8; 32];
+
+    let dek = vec![1_u8; 32];
     let encrypt_size = ctx.encrypt(&dek, None)?;
 
     let mut encrypted_data_encryption_key = vec![0_u8; encrypt_size];
@@ -289,6 +290,11 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let response: PrivateKeyDecryptResponse =
         test_utils::post_with_uri(&app, request, "/google_cse/privatekeydecrypt").await?;
     tracing::debug!("private key decrypt response post: {response:?}"); //TODO: remove it
+
+    assert_eq!(
+        general_purpose::STANDARD.encode(dek),
+        response.data_encryption_key
+    );
 
     Ok(())
 }
