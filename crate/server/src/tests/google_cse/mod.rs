@@ -12,7 +12,14 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
-use openssl::{pkey_ctx::PkeyCtx, rsa::Padding, x509::X509};
+use openssl::{
+    hash::MessageDigest,
+    pkey::{PKey, Private},
+    pkey_ctx::PkeyCtx,
+    rsa::{Padding, Rsa},
+    sign::{Signer, Verifier},
+    x509::X509,
+};
 
 use crate::{
     result::{KResult, KResultHelper},
@@ -75,68 +82,53 @@ fn import_google_cse_symmetric_key() -> Import {
     request
 }
 
-// #[tokio::test]
-// async fn test_ossl_sign_verify() -> KResult<()> {
-//     cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+#[test]
+fn test_ossl_sign_verify() -> KResult<()> {
+    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
-//     //-------------------------------------------------------------------------
-//     // The RSA blue public key
-//     //-------------------------------------------------------------------------
-//     let blue_public_key = read_bytes_from_file(&PathBuf::from(
-//         "src/routes/google_cse/python/openssl/blue.pem",
-//     ))
-//     .unwrap();
-//     let rsa_public_key = X509::from_pem(&blue_public_key)?;
-//     let public_key = rsa_public_key.public_key()?;
+    //-------------------------------------------------------------------------
+    // Signature
+    //-------------------------------------------------------------------------
+    let digest =
+        general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
+    // The RSA blue private key
+    let blue_private_key = read_bytes_from_file(&PathBuf::from(
+        "src/routes/google_cse/python/openssl/blue.key",
+    ))
+    .unwrap();
 
-//     // PAYLOAD
-//     let digest =
-//         general_purpose::STANDARD.decode("MSKaRPMiIFwZoWGYjA/MV8mLNNYGW3GpODrEjdbbQqE=")?;
-//     let signature =
-//         general_purpose::STANDARD.decode("O3VF4GC/ohpXtA9bofQfKAtJ5ieDF0jDE2dslC7HVIVo49sDAIqlmosybRaTLgy4L6x5dXiGkefBxySiNxShdMBoe0QK+Z63+R84+S/dAC40rvMhkuTOpm4CphrpdeJpMpAH3Ge8P98+mCqw33VlWTQ82wRGT1wRzNhI9iI67tFw0mn7bH92XR4FfXoJZfpuuQ3VJxENJw6+kBBa4zQV1pudG84afRe8BkayfzjwWPl0btoF3A9rnKHv9sQohGgLM0NWlETJFWeDtUr4OJKPv+GyoFN8vJfHCFwIRtFg/CbLqZqHJa+lIUpGxirglCVAYJl7Ir6FKyVP1KsRjDmSOGPg+ZrtrZY9aibwnMwx0C0sbInlSLInvddFlMBoLKBbKWu8VUPh4toA7o7Pf/cum+tUk6BbCftMrQUsW4J/78KCIFx6dDFijM9WyFfbYrgEkbA7ClPBTfuJDaxf1nwqTc00BW9HcjVy8noyRPDctCFCZdLOoB+L5a0+Oz7O5niPAXa0Eku/Q261bgV+2Oj0YzUprkmGiwTbnaQLSvzgPpkw5DO9nAmOfR2KI5lBvMt/879JrcZtK0Sm5p5307Tzy28DPRFnHR3p11ANnFLK8lLA0Z+3RYv38h3n8yt6UfX0w8Rbc4++fnbVAfVC04W8PP2FmlKxHAb+p8wBQgTzs/U=")?;
+    let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
+    let private_key = PKey::from_rsa(rsa_private_key)?;
+    let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
 
-//     // Verify the signature
-//     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
-//     verifier.update(&digest)?;
+    tracing::debug!("padding method: {:?}", signer.rsa_padding());
 
-//     assert!(verifier.verify(&signature)?);
+    signer.update(&digest)?;
+    let signature = signer.sign_to_vec()?;
 
-//     //-------------------------------------------------------------------------
-//     // Signature again
-//     //-------------------------------------------------------------------------
-//     let digest =
-//         general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
-//     // The RSA blue private key
-//     let blue_private_key = read_bytes_from_file(&PathBuf::from(
-//         "src/routes/google_cse/python/openssl/blue.key",
-//     ))
-//     .unwrap();
+    tracing::debug!(
+        "signature: {}",
+        general_purpose::STANDARD.encode(signature.clone())
+    );
 
-//     let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
-//     let private_key = PKey::from_rsa(rsa_private_key)?;
-//     let mut signer = Signer::new(MessageDigest::sha256(), &private_key)?;
+    //-------------------------------------------------------------------------
+    // Verify
+    //-------------------------------------------------------------------------
+    // The RSA blue public key
+    let blue_public_key = read_bytes_from_file(&PathBuf::from(
+        "src/routes/google_cse/python/openssl/blue.pem",
+    ))
+    .unwrap();
+    let rsa_public_key = X509::from_pem(&blue_public_key)?;
+    let public_key = rsa_public_key.public_key()?;
+    // Verify the signature
+    let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
+    verifier.update(&digest)?;
 
-//     tracing::debug!("padding method: {:?}", signer.rsa_padding());
+    assert!(verifier.verify(&signature)?);
 
-//     signer.update(&digest)?;
-//     let signature = signer.sign_to_vec()?;
-
-//     tracing::debug!(
-//         "signature: {}",
-//         general_purpose::STANDARD.encode(signature.clone())
-//     );
-
-//     //-------------------------------------------------------------------------
-//     // Verify
-//     //-------------------------------------------------------------------------
-//     // Verify the signature
-//     let mut verifier = Verifier::new(MessageDigest::sha256(), &public_key)?;
-//     verifier.update(&digest)?;
-
-//     assert!(verifier.verify(&signature)?);
-
-//     Ok(())
-// }
+    Ok(())
+}
 
 #[tokio::test]
 async fn test_cse_private_key_sign() -> KResult<()> {
@@ -201,9 +193,9 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     let rsa_public_key = X509::from_pem(&blue_public_key)?;
     let public_key = rsa_public_key.public_key()?;
 
-    let mut pkey_context = PkeyCtx::new(&public_key)?;
-    pkey_context.verify_init()?;
-    pkey_context.verify(
+    let mut ctx = PkeyCtx::new(&public_key)?;
+    ctx.verify_init()?;
+    ctx.verify(
         &general_purpose::STANDARD.decode(digest)?,
         &general_purpose::STANDARD.decode(pksr_response.signature)?,
     )?;
@@ -278,7 +270,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let request = PrivateKeyDecryptRequest {
         authentication: jwt.clone(),
         authorization: jwt,
-        algorithm: "SHA256withRSA".to_string(),
+        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
         encrypted_data_encryption_key: general_purpose::STANDARD
             .encode(encrypted_data_encryption_key),
         rsa_oaep_label: None,
@@ -289,7 +281,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     tracing::debug!("private key decrypt request post");
     let response: PrivateKeyDecryptResponse =
         test_utils::post_with_uri(&app, request, "/google_cse/privatekeydecrypt").await?;
-    tracing::debug!("private key decrypt response post: {response:?}"); //TODO: remove it
+    tracing::debug!("private key decrypt response post: {response:?}");
 
     assert_eq!(
         general_purpose::STANDARD.encode(dek),

@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Handle many identity providers in jwt authentification
+- Handle many identity providers in jwt authentication
 - New command line argument `--key-usage` to define key or certificate usage on import
 - Exhaustive verification that the key used to perform cryptographic operations is allowed to do them
 - KMIP object creation can now precisely define the usage of the key it describes

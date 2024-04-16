@@ -4,10 +4,7 @@ use actix_web::HttpRequest;
 use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
 use cosmian_kmip::{
-    crypto::{
-        rsa::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
-        symmetric::create_symmetric_key_kmip_object,
-    },
+    crypto::symmetric::create_symmetric_key_kmip_object,
     kmip::{
         kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
         kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
@@ -21,10 +18,15 @@ use openssl::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+use zeroize::Zeroizing;
 
 use super::GoogleCseConfig;
 use crate::{
-    core::operations::{unwrap_key, wrap_key},
+    core::{
+        extra_database_params::ExtraDatabaseParams,
+        operations::{unwrap_key, wrap_key},
+    },
+    kms_ensure,
     result::KResult,
     routes::google_cse::jwt::validate_tokens,
     KMSServer,
@@ -235,7 +237,7 @@ pub struct PrivateKeySignRequest {
     pub authentication: String,
     pub authorization: String,
     /// The algorithm that was used to encrypt the Data Encryption Key (DEK) in envelope encryption.
-    pub algorithm: String, //TODO: unhandled for now
+    pub algorithm: String,
     /// Base64-encoded message digest.
     /// The digest of the DER encoded SignedAttributes.
     /// This value is unpadded. Max size: 128B
@@ -286,62 +288,34 @@ pub async fn private_key_sign(
     )
     .await?;
 
+    debug!("private_key_sign: check algorithm");
+    kms_ensure!(
+        request.algorithm == "SHA256withRSA",
+        "Only SHA256withRSA is supported"
+    );
+
     // Unwrap private key which has been previously wrapped using AES
-
-    debug!("private_key_sign: decode base64 wrapped_dek");
-    // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
-    let mut wrapped_dek = create_symmetric_key_kmip_object(
-        &general_purpose::STANDARD.decode(&request.wrapped_private_key)?,
-        CryptographicAlgorithm::AES,
-    );
-
-    debug!("private_key_sign: add key wrapping data substruct");
-    // add key wrapping parameters to the wrapped key
-    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(
-        KeyWrappingData {
-            wrapping_method: kmip_types::WrappingMethod::Encrypt,
-            encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
-                cryptographic_parameters: None,
-            }),
-            encoding_option: Some(EncodingOption::TTLVEncoding),
-            ..Default::default()
-        }
-        .into(),
-    );
-
-    debug!("private_key_sign: unwrap private key");
-    unwrap_key(
-        wrapped_dek.key_block_mut()?,
-        kms,
-        &user,
-        database_params.as_ref(),
-    )
-    .await?;
-
-    debug!("private_key_sign: unwrapped private key");
-
-    // re-extract the bytes from the key
-    let dek = wrapped_dek.key_block()?.key_bytes()?;
-
-    debug!("private_key_sign: sign with the private key");
+    let dek = cse_symmetric_unwrap(request.wrapped_private_key, user, kms, database_params).await?;
 
     // Sign with the unwrapped RSA private key
-    debug!("private_key_sign: private_key_from_der");
-    let rsa_private_key = Rsa::<Private>::private_key_from_der(&dek)?;
     debug!("private_key_sign: from_rsa");
-    let private_key = PKey::from_rsa(rsa_private_key)?;
-    debug!("private_key_sign: build signer");
-    let mut pkey_context = PkeyCtx::new(&private_key)?;
-    pkey_context.sign_init()?;
-    pkey_context.set_rsa_padding(Padding::PKCS1)?;
-    pkey_context.set_signature_md(Md::sha256())?;
-    let digest = general_purpose::STANDARD.decode(request.digest)?;
-    let signature_size = pkey_context.sign(&digest, None)?;
+    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&dek)?)?;
 
-    let mut signature = vec![0_u8; signature_size];
-    let signature_size = pkey_context.sign(&digest, Some(&mut *signature))?;
+    debug!("private_key_sign: build signer");
+    let mut ctx = PkeyCtx::new(&private_key)?;
+    ctx.sign_init()?;
+    ctx.set_rsa_padding(Padding::PKCS1)?;
+    ctx.set_signature_md(Md::sha256())?;
+    let digest = general_purpose::STANDARD.decode(request.digest)?;
+    let allocation_size = ctx.sign(&digest, None)?;
+
+    let mut signature = vec![0_u8; allocation_size];
+    let signature_size = ctx.sign(&digest, Some(&mut *signature))?;
     debug!("private_key_sign: signature {signature_size}");
+    kms_ensure!(
+        allocation_size == signature_size,
+        "private_key_sign: allocation_size MUST be equal to signature_size"
+    );
 
     debug!(
         "private_key_sign: exiting with success: {}",
@@ -361,7 +335,7 @@ pub struct PrivateKeyDecryptRequest {
     pub authentication: String,
     pub authorization: String,
     /// The algorithm that was used to encrypt the Data Encryption Key (DEK) in envelope encryption.
-    pub algorithm: String, //TODO: unhandled for now
+    pub algorithm: String,
     /// Base64-encoded encrypted content encryption key, which is encrypted with the public key associated with the private key. Max size: 1 KB.
     pub encrypted_data_encryption_key: String,
     /// Base64-encoded label L, if the algorithm is RSAES-OAEP. If the algorithm is not RSAES-OAEP, this field is ignored.
@@ -402,20 +376,79 @@ pub async fn private_key_decrypt(
     )
     .await?;
 
+    debug!("private_key_decrypt: check algorithm");
+    kms_ensure!(
+        request.algorithm == "RSA/ECB/PKCS1Padding",
+        "Only RSA/ECB/PKCS1Padding is supported"
+    );
+
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     debug!("private_key_decrypt: decode encrypted_dek");
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
+    let dek = cse_symmetric_unwrap(request.wrapped_private_key, user, kms, database_params).await?;
 
-    debug!("private_key_decrypt: decode base64 wrapped_dek");
+    // Decrypt with the unwrapped RSA private key
+    debug!("private_key_decrypt: from_rsa");
+    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&dek)?)?;
+
+    // Perform RSA PKCS1 decryption.
+    let mut ctx = PkeyCtx::new(&private_key)?;
+    ctx.decrypt_init()?;
+    ctx.set_rsa_padding(Padding::PKCS1)?;
+    if let Some(label) = request.rsa_oaep_label {
+        ctx.set_rsa_oaep_label(label.as_bytes())?;
+        ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
+    }
+    let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
+    debug!("privatekeydecrypt: allocation_size: {allocation_size}");
+    let mut plaintext = vec![0_u8; allocation_size];
+    let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
+
+    kms_ensure!(
+        decrypt_size > 0,
+        "privatekeydecrypt: decrypted plaintext cannot be empty"
+    );
+
+    debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
+    let response = PrivateKeyDecryptResponse {
+        data_encryption_key: general_purpose::STANDARD.encode(&plaintext[0..decrypt_size]),
+    };
+    Ok(response)
+}
+
+/// Unwraps a private key
+///
+/// # Arguments
+///
+/// * `wrapped_private_key` - A base64-encoded string representing the wrapped private key.
+/// * `user` - A string identifying the user associated with the key.
+/// * `kms` - the KMS Server instance
+/// * `database_params` - An optional `ExtraDatabaseParams` containing additional parameters for database operations.
+///
+/// # Returns
+///
+/// The decrypted key bytes
+///
+/// # Errors
+///
+/// Returns an error if decoding base64 fails, adding key wrapping data fails, unwrapping the key fails, or extracting the key bytes fails.
+///
+async fn cse_symmetric_unwrap(
+    wrapped_private_key: String,
+    user: String,
+    kms: &Arc<KMSServer>,
+    database_params: Option<ExtraDatabaseParams>,
+) -> KResult<Zeroizing<Vec<u8>>> {
+    debug!("cse_unwrap: decode base64 wrapped_dek");
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     let mut wrapped_dek = create_symmetric_key_kmip_object(
-        &general_purpose::STANDARD.decode(&request.wrapped_private_key)?,
+        &general_purpose::STANDARD.decode(&wrapped_private_key)?,
         CryptographicAlgorithm::AES,
     );
 
-    debug!("private_key_decrypt: add key wrapping data substruct");
+    debug!("cse_unwrap: add key wrapping data substruct");
     // add key wrapping parameters to the wrapped key
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(
         KeyWrappingData {
@@ -430,7 +463,7 @@ pub async fn private_key_decrypt(
         .into(),
     );
 
-    debug!("private_key_decrypt: unwrap private key");
+    debug!("cse_unwrap: unwrap private key");
     unwrap_key(
         wrapped_dek.key_block_mut()?,
         kms,
@@ -439,55 +472,9 @@ pub async fn private_key_decrypt(
     )
     .await?;
 
-    debug!("private_key_decrypt: unwrapped private key");
+    debug!("cse_unwrap: unwrapped private key");
 
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
-
-    debug!("private_key_decrypt: decrypt with the private key");
-
-    // Decrypt with the unwrapped RSA private key
-    debug!("private_key_decrypt: private_key_from_der");
-    let rsa_private_key = Rsa::<Private>::private_key_from_der(&dek)?;
-    debug!("private_key_decrypt: from_rsa");
-    let private_key = PKey::from_rsa(rsa_private_key)?;
-
-    debug!("private_key_decrypt: build aad");
-    let rsa_oaep_label: Option<&[u8]> = request
-        .rsa_oaep_label
-        .as_ref()
-        .map(std::string::String::as_bytes);
-
-    debug!("private_key_decrypt: {:?}", rsa_oaep_label);
-    let plaintext = match rsa_oaep_label {
-        Some(rsa_oaep_label) => rsa_oaep_aes_gcm_decrypt(
-            &private_key,
-            kmip_types::HashingAlgorithm::SHA256,
-            &encrypted_dek,
-            Some(rsa_oaep_label),
-        )?
-        .to_vec(),
-        None => {
-            // Perform RSA PKCS1 decryption.
-            let mut ctx = PkeyCtx::new(&private_key)?;
-            ctx.decrypt_init()?;
-            ctx.set_rsa_padding(Padding::PKCS1)?;
-
-            let decrypt_size = ctx.decrypt(&encrypted_dek, None)?;
-            debug!("privatekeydecrypt: decrypt_size: {decrypt_size}");
-
-            let mut plaintext = vec![0_u8; decrypt_size];
-            let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
-            debug!("privatekeydecrypt: decrypt_size: {decrypt_size}");
-            debug!("privatekeydecrypt: plaintext: {plaintext:?}");
-            plaintext[0..decrypt_size].to_vec()
-        }
-    };
-
-    debug!("private_key_decrypt: exiting with success");
-
-    let response = PrivateKeyDecryptResponse {
-        data_encryption_key: general_purpose::STANDARD.encode(plaintext),
-    };
-    Ok(response)
+    Ok(dek)
 }

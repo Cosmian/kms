@@ -1,6 +1,6 @@
 #To generate a certificate authority (CA) that will sign an intermediate certificate with OpenSSL in the command line, you can use the following steps:
 
-## Clean-up
+# Clean-up
 rm ca.*
 rm intermediate.*
 rm leaf.*
