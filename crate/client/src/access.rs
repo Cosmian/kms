@@ -35,6 +35,7 @@ pub enum ObjectOperationType {
     Locate,
     Revoke,
     Rekey,
+    Validate,
 }
 
 impl fmt::Debug for ObjectOperationType {
@@ -58,6 +59,7 @@ impl fmt::Display for ObjectOperationType {
             Self::Locate => "locate",
             Self::Revoke => "revoke",
             Self::Rekey => "rekey",
+            Self::Validate => "validate",
         };
         write!(f, "{str}")
     }
