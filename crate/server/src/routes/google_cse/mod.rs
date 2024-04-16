@@ -60,7 +60,6 @@ pub async fn get_status(
     Ok(Json(operations::get_status()))
 }
 
-// TODO
 #[derive(Deserialize, Debug)]
 pub struct DigestRequest {
     pub authorization: String,
@@ -74,8 +73,8 @@ pub async fn digest(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/digest");
-    todo!();
+    info!("POST /google_cse/digest: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Deserialize, Debug)]
@@ -96,8 +95,8 @@ pub async fn privilegedprivatekeydecrypt(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedprivatekeydecrypt");
-    todo!();
+    info!("POST /google_cse/privilegedprivatekeydecrypt: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Deserialize, Debug)]
@@ -114,8 +113,8 @@ pub async fn privilegedunwrap(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedunwrap");
-    todo!();
+    info!("POST /google_cse/privilegedunwrap: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Deserialize, Debug)]
@@ -133,8 +132,8 @@ pub async fn privilegedwrap(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedwrap");
-    todo!();
+    info!("POST /google_cse/privilegedwrap: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Deserialize, Debug)]
@@ -151,8 +150,8 @@ pub async fn rewrap(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/rewrap");
-    todo!();
+    info!("POST /google_cse/rewrap: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Deserialize, Debug)]
@@ -168,8 +167,8 @@ pub async fn wrapprivatekey(
     _cse_config: Data<Option<GoogleCseConfig>>,
     _kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/wrapprivatekey");
-    todo!();
+    info!("POST /google_cse/wrapprivatekey: not implemented yet");
+    HttpResponse::Ok().finish()
 }
 
 /// Returns encrypted Data Encryption Key (DEK) and associated data.
