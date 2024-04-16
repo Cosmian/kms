@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::reexport::x509_cert::Certificate;
+use chrono::Local;
 use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
@@ -9,6 +9,7 @@ use cosmian_kmip::{
     KmipError, KmipResultHelper,
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use openssl::asn1::Asn1Time;
 use tracing::trace;
 
 use crate::{
@@ -42,18 +43,37 @@ pub async fn validate(
         let uid_own =
             retrieve_object_for_operation(uid, ObjectOperationType::Validate, kms, user, params)
                 .await?;
-        let certificate = kmip_certificate_to_openssl(&uid_own.object)?;
+        // I've to deal with borrowing uid_own
+        let obj = uid_own.clone();
+
         if let Object::Certificate {
             certificate_type: _certificate_type,
             certificate_value: _certificate_value,
         } = uid_own.object
         {
-            // just for not having yellow lines
-            let certificate_str = String::from_utf8(certificate.to_text().unwrap())?;
+            let certificate = kmip_certificate_to_openssl(&obj.object)?;
 
-            // check if date is some. in case use that date, otherwise actual time.
+            let _certificate_serial_number = certificate.serial_number();
+            let certificate_validity_date = certificate.not_after();
+            let current_date = {
+                if let Some(date) = request.validity_time {
+                    Asn1Time::from_str(&date.to_string())
+                } else {
+                    Asn1Time::from_str(&Local::now().to_string())
+                }
+            }?;
 
-            return KResult::Err(KmsError::DatabaseError(certificate_str));
+            // Only checking time! need to check also the validity of the
+            // serial number.
+            if certificate_validity_date >= current_date.as_ref() {
+                return KResult::Ok(ValidateResponse {
+                    validity_indicator: ValidityIndicator::Valid,
+                })
+            } else {
+                return KResult::Ok(ValidateResponse {
+                    validity_indicator: ValidityIndicator::Invalid,
+                })
+            }
         } else {
             return KResult::Err(KmsError::from(KmipError::InvalidKmipObject(
                 cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
