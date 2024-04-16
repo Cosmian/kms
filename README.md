@@ -40,8 +40,6 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-- [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
-- [GCP Images Correspondence](#gcp-images-correspondence)
 - [Releases](#releases)
 
 <!-- tocstop -->
@@ -260,51 +258,6 @@ The app has been configured
 ```console
 ./cosmian_vm --url https://domain.name:port app restart --key 378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820
 ```
-
-## Use the KMS inside a Cosmian VM on SGX
-
-Follow [this README](https://github.com/Cosmian/cosmian_vm/blob/main/resources/sgx/README.md) to
-setup Cosmian VM tools.
-
-In a nutshell, copy the KMS server binary (renamed as `app`) and the KMS server configuration file.
-Edit `cosmian_vm.manifest.template` and replace the following line:
-
-```jinja
-    { path = "/etc/app/server.toml", uri = "file:etc/app/server.toml" },
-```
-
-by that one:
-
-```jinja
-    { path = "/etc/cosmian_kms/server.toml", uri = "file:etc/app/server.toml" },
-```
-
-Then run the entrypoint script.
-
-The `etc/app/server.toml` file contains:
-
-```toml
-[http]
-port = 3000
-hostname = "0.0.0.0"
-
-[workspace]
-root_data_path = "/var/lib/app"
-```
-
-## GCP Images Correspondence
-
-The GCP KMS images are based on GCP Cosmian VM images.
-
-This table shows the minimum version correspondence between the various components.
-
-| `Cosmian VM` | KMS            |
-| ------------ | -------------- |
-| 1.1.0-rc1    | 4.13.3         |
-| 1.1.0-rc2    | 4.13.5, 4.14.0 |
-| 1.1.0-rc3    | 4.14.1         |
-| 1.1.0-rc4    | 4.14.2         |
-| 1.1.0-rc4    | 4.15.0         |
 
 ## Releases
 

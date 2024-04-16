@@ -216,17 +216,3 @@ jobs:
         target/x86_64-apple-darwin/release/ckms
         target/x86_64-apple-darwin/release/cosmian_kms_server
         target/x86_64-apple-darwin/release/libckms_pkcs11.dylib
-
-  cosmian_vm:
-    needs:
-      - ubuntu-22
-      - rhel9
-    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
-    strategy:
-      fail-fast: false
-      matrix:
-        distrib: [ubuntu, rhel]
-    name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
-    secrets: inherit
-    with:
-      distrib: ${{ matrix.distrib }}
