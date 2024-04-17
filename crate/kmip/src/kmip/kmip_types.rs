@@ -2572,3 +2572,13 @@ pub enum ValidityIndicator {
     Invalid = 0x0000_0001,
     Unknown = 0x0000_0002,
 }
+
+// pub trait LogicalOps {
+//     fn and<T>(o1: Self, o2: T) -> T;
+// }
+
+// impl LogicalOps for ValidityIndicator {
+//     fn and<ValidityIndicator>(o1: Self, o2: ValidityIndicator) -> ValidityIndicator {
+//         ValidityIndicator::Valid
+//     }
+// }

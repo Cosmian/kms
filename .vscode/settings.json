@@ -66,5 +66,11 @@
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
   },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
+  },
   "rust-analyzer.showUnlinkedFileNotification": false
 }
+

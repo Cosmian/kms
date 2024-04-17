@@ -1343,12 +1343,12 @@ pub struct DestroyResponse {
 /// Likewise, the order in which the supplied certificate chain is validated and
 /// the specification of trust anchors used to terminate validation are also
 /// controlled by the server.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Validate {
     /// One or more Certificates.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate: Option<Vec<u8>>,
+    pub certificate: Option<Vec<Vec<u8>>>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
