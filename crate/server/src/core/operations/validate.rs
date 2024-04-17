@@ -6,11 +6,16 @@ use cosmian_kmip::{
         kmip_types::ValidityIndicator,
     },
     //openssl::kmip_certificate_to_openssl,
+    openssl::{kmip_certificate_to_openssl, openssl_certificate_to_kmip},
     KmipError,
     KmipResultHelper,
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use openssl::{asn1::Asn1Time, x509::X509};
+use futures::future::join_all;
+use openssl::{
+    asn1::{Asn1OctetStringRef, Asn1Time},
+    x509::X509,
+};
 use tracing::trace;
 
 use crate::{
@@ -42,20 +47,20 @@ pub async fn validate(
             // what if both certificate and unique identifier are some? then we should
             // return the logical and btw validations?
             {
-                let check_serial_numbers_and_date = certificates
-                    .iter()
-                    .map(|certificate: &Vec<u8>| {
+                let check_serial_numbers_and_date =
+                    join_all(certificates.iter().map(|certificate: &Vec<u8>| async {
                         (
                             validate_date(certificate, req.validity_time).unwrap(),
-                            validate_serial_number(certificate, kms, &req, user, params).unwrap(),
+                            validate_serial_number(certificate, kms, user, params)
+                                .await
+                                .unwrap(),
                         )
-                    })
-                    .collect::<Vec<(ValidityIndicator, ValidityIndicator)>>();
+                    }))
+                    .await;
                 let validity_indicator = check_serial_numbers_and_date.iter().fold(
                     ValidityIndicator::Valid,
                     |acc, (v_date, v_serial): &(ValidityIndicator, ValidityIndicator)| {
-                        let inner_and = validity_indicator_and(*v_date, *v_serial);
-                        validity_indicator_and(acc, inner_and)
+                        validity_indicator_and(acc, validity_indicator_and(*v_date, *v_serial))
                     },
                 );
                 KResult::Ok(ValidateResponse { validity_indicator })
@@ -129,17 +134,31 @@ fn validate_date(certificate: &[u8], date: Option<DateTime<Local>>) -> KResult<V
     }
 }
 
-fn validate_serial_number(
-    _certificate: &[u8],
-    _kms: &KMS,
-    _request: &Validate,
-    _user: &str,
-    _params: Option<&ExtraDatabaseParams>,
+async fn validate_serial_number(
+    certificate: &[u8],
+    kms: &KMS,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ValidityIndicator> {
-    // retrieve an uid
-    // get it from kms
-    // check same issuer
-    Ok(ValidityIndicator::Unknown)
+    let certificate = &X509::from_der(certificate)?;
+    let (uid_cert, _) = openssl_certificate_to_kmip(certificate)?;
+    let uid_own = retrieve_object_for_operation(
+        &uid_cert as &str,
+        ObjectOperationType::Validate,
+        kms,
+        user,
+        params,
+    )
+    .await?;
+    let certificate_kms = kmip_certificate_to_openssl(&uid_own.object)?;
+    let (auth_key_id1, auth_key_id2) = ({ certificate_kms.authority_key_id().unwrap() }, {
+        certificate.authority_key_id().unwrap()
+    });
+    if Asn1OctetStringRef::as_slice(auth_key_id1).eq(Asn1OctetStringRef::as_slice(auth_key_id2)) {
+        KResult::Ok(ValidityIndicator::Valid)
+    } else {
+        KResult::Ok(ValidityIndicator::Invalid)
+    }
 }
 
 fn validity_indicator_and(v1: ValidityIndicator, v2: ValidityIndicator) -> ValidityIndicator {
