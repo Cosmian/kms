@@ -243,12 +243,6 @@ pub struct PrivateKeySignRequest {
     /// This value is unpadded. Max size: 128B
     pub digest: String,
 
-    /// The format of the private key or the wrapped private key is up to
-    /// the Key Access Control List Service (KACLS) implementation.
-    /// On the client and on the Gmail side, this is treated as an opaque blob.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub e_key: Option<String>,
-
     /// The salt length to use, if the signature algorithm is RSASSA-PSS.
     /// If the signature algorithm is not RSASSA-PSS, this field is ignored.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -405,11 +399,6 @@ pub async fn private_key_decrypt(
     debug!("privatekeydecrypt: allocation_size: {allocation_size}");
     let mut plaintext = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
-
-    kms_ensure!(
-        decrypt_size > 0,
-        "privatekeydecrypt: decrypted plaintext cannot be empty"
-    );
 
     debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {
