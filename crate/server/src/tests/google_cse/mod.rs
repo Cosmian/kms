@@ -173,7 +173,6 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         authorization: jwt,
         algorithm: "SHA256withRSA".to_string(),
         digest: digest.to_string(),
-        e_key: Some("e_key".to_string()),
         rsa_pss_salt_length: None,
         reason: "Gmail".to_string(),
         wrapped_private_key: wrapped_private_key.to_string(),
