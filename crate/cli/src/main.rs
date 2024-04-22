@@ -16,6 +16,7 @@ use cosmian_kms_cli::{
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
+        google::GoogleCommands,
     },
     error::CliError,
 };
@@ -58,6 +59,8 @@ enum CliCommands {
     Logout(LogoutAction),
     #[clap(hide = true)]
     Markdown(MarkdownAction),
+    #[command(subcommand)]
+    Google(GoogleCommands),
 }
 
 #[tokio::main]
@@ -111,6 +114,7 @@ async fn main_() -> Result<(), CliError> {
                 CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
+                CliCommands::Google(action) => action.process(&conf_path).await?,
                 _ => {
                     println!("Error: unexpected command");
                 }
