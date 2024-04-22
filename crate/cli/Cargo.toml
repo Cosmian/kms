@@ -24,6 +24,7 @@ fips = ["cosmian_kms_client/fips"]
 # Avoid pulling openssl
 actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true, features = [
   "help",
   "env",
@@ -37,7 +38,9 @@ cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
 der = { version = "0.7", features = ["pem"] }
 env_logger = { workspace = true }
+jwt = { version = "0.16.0", features = ["openssl"] }
 oauth2 = "4.4"
+openssl = { workspace = true }
 pem = "3.0"
 reqwest = { workspace = true }
 serde = { workspace = true }

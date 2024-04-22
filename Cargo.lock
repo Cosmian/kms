@@ -1166,6 +1166,7 @@ dependencies = [
  "actix-web",
  "assert_cmd",
  "base64 0.21.7",
+ "chrono",
  "clap",
  "cloudproof",
  "const-oid",
@@ -1173,6 +1174,7 @@ dependencies = [
  "cosmian_kms_server",
  "der",
  "env_logger",
+ "jwt",
  "kms_test_server",
  "oauth2",
  "openssl",
@@ -2208,6 +2210,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a1d36f1235bc969acba30b7f5990b864423a6068a10f7c90ae8f0112e3a59d1"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jwt"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6204285f77fe7d9784db3fdc449ecce1a0114927a51d5a41c4c7a292011c015f"
+dependencies = [
+ "base64 0.13.1",
+ "crypto-common",
+ "digest",
+ "hmac",
+ "openssl",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

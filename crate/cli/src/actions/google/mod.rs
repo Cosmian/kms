@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-// use cosmian_kms_client::KmsClient;
 
 use self::{keypairs::KeypairsCommands};
 use crate::error::CliError;
 
 mod keypairs;
+mod gmail_client;
 
 /// Manage google elements. Handle keypairs and identities from Gmail API.
 #[derive(Parser)]
