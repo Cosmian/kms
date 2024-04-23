@@ -6,11 +6,11 @@ use crate::{
     error::{CliError}, actions::google::{gmail_client::{GmailClient, RequestError}, GoogleApiError},
 };
 
-/// Retrieves an existing client-side encryption key pair.
+/// Turns on a client-side encryption key pair that was turned off. The key pair becomes active again for any associated client-side encryption identities.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct GetKeypairsAction {
-    /// The identifier of the key pair to retrieve
+pub struct EnableKeypairsAction {
+    /// The identifier of the key pair to enable
     #[clap(required = true)]
     keypairs_id: String,
 
@@ -23,11 +23,11 @@ pub struct GetKeypairsAction {
     user_id: String
 }
 
-impl GetKeypairsAction {
+impl EnableKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint =  "/settings/cse/keypairs/".to_owned() + &self.keypairs_id;
-        let response = gmail_client.await?.get(&endpoint).await?;
+        let endpoint =  "/settings/cse/keypairs/".to_owned() + &self.keypairs_id + ":enable";
+        let response = gmail_client.await?.post(&endpoint, "".to_string()).await?;
         let status_code = response.status();
         if status_code.is_success() {
             println!("{}", response.text().await.unwrap());

@@ -6,14 +6,12 @@ use crate::{
     error::{CliError}, actions::google::{gmail_client::{GmailClient, RequestError}, GoogleApiError},
 };
 
-/// Retrieves an existing client-side encryption key pair.
+
+
+/// Lists client-side encryption key pairs for a user.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct GetKeypairsAction {
-    /// The identifier of the key pair to retrieve
-    #[clap(required = true)]
-    keypairs_id: String,
-
+pub struct ListKeypairsAction {
     /// The requester's primary email address
     #[clap(
         long = "user-id",
@@ -23,10 +21,10 @@ pub struct GetKeypairsAction {
     user_id: String
 }
 
-impl GetKeypairsAction {
+impl ListKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint =  "/settings/cse/keypairs/".to_owned() + &self.keypairs_id;
+        let endpoint =  "/settings/cse/keypairs/".to_owned();
         let response = gmail_client.await?.get(&endpoint).await?;
         let status_code = response.status();
         if status_code.is_success() {

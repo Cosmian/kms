@@ -6,11 +6,13 @@ use crate::{
     error::{CliError}, actions::google::{gmail_client::{GmailClient, RequestError}, GoogleApiError},
 };
 
-/// Retrieves an existing client-side encryption key pair.
+
+
+/// Deletes a client-side encryption key pair permanently and immediately. You can only permanently delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by an obliterated key. Authenticated users and Google Workspace administrators lose access to reading the encrypted messages.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct GetKeypairsAction {
-    /// The identifier of the key pair to retrieve
+pub struct ObliterateKeypairsAction {
+    /// The identifier of the key pair to obliterate
     #[clap(required = true)]
     keypairs_id: String,
 
@@ -23,11 +25,11 @@ pub struct GetKeypairsAction {
     user_id: String
 }
 
-impl GetKeypairsAction {
+impl ObliterateKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint =  "/settings/cse/keypairs/".to_owned() + &self.keypairs_id;
-        let response = gmail_client.await?.get(&endpoint).await?;
+        let endpoint =  "/settings/cse/keypairs/".to_owned() + &self.keypairs_id + ":obliterate";
+        let response = gmail_client.await?.post(&endpoint, "".to_string()).await?;
         let status_code = response.status();
         if status_code.is_success() {
             println!("{}", response.text().await.unwrap());

@@ -7,6 +7,7 @@ use crate::error::CliError;
 
 mod keypairs;
 mod gmail_client;
+pub (crate) use gmail_client::GoogleApiError;
 
 /// Manage google elements. Handle keypairs and identities from Gmail API.
 #[derive(Parser)]
