@@ -20,6 +20,3 @@ pub enum GoogleApiError {
     #[error("Serialization error `{0}`")]
     SerdeError(#[from] serde_json::Error),
 }
-
-// /// A `Result` alias with a `GoogleApiError` for the Err case.
-// pub type Result<T> = std::result::Result<T, GoogleApiError>;

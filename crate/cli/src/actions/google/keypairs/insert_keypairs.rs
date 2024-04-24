@@ -8,13 +8,8 @@ use std::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    actions::google::{
-        gmail_client::{GmailClient, RequestError},
-        GoogleApiError,
-    },
-    error::CliError,
-};
+use super::KEYPAIRS_ENDPOINT;
+use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key metadata for a user.
 #[derive(Parser)]
@@ -82,9 +77,14 @@ impl InsertKeypairsAction {
         let mut email_file_map = HashMap::new();
 
         for file in files {
-            let bname = file.file_name().unwrap().to_string_lossy();
-            let (email, xtn) = match bname.rfind('.') {
-                Some(idx) => bname.split_at(idx),
+            let fname = file
+                .file_name()
+                .ok_or_else(|| {
+                    CliError::Conversion(format!("cannot get file name from input file {file:?}",))
+                })?
+                .to_string_lossy();
+            let (email, xtn) = match fname.rfind('.') {
+                Some(idx) => fname.split_at(idx),
                 None => continue,
             };
 
@@ -99,13 +99,56 @@ impl InsertKeypairsAction {
     }
 
     async fn post_keypairs(
-        keydir_path: &PathBuf,
-        certdir_path: &PathBuf,
-        gmail_client: GmailClient,
+        gmail_client: &GmailClient,
+        email_cert_file_map: &HashMap<String, PathBuf>,
+        email: &str,
+        key_file: &PathBuf,
     ) -> Result<(), CliError> {
-        let endpoint = "/settings/cse/keypairs/".to_owned();
-        let wrapped_key_files = Self::get_input_files(keydir_path, "wrap")?;
-        let p7_cert_files = Self::get_input_files(certdir_path, "p7pem")?;
+        let endpoint: String = KEYPAIRS_ENDPOINT.to_string();
+        println!("Processing {:?}.", email);
+
+        // Open key file
+        let mut kf = File::open(key_file)?;
+        let mut kf_contents = String::new();
+        kf.read_to_string(&mut kf_contents)?;
+
+        // Parse JSON from key file
+        let kf_resp: KeyFile = serde_json::from_str(&kf_contents)?;
+
+        // Extract kacls_url and wrapped_private_key from kf_resp
+        let kacls_url = kf_resp.kacls_url;
+        let wrapped_private_key = kf_resp.wrapped_private_key;
+
+        // Open cert file
+        let mut cf = File::open(&email_cert_file_map[email])?;
+        let mut certs = String::new();
+        cf.read_to_string(&mut certs)?;
+
+        // Construct key_pair_info
+        let key_pair_info = KeyPairInfo {
+            pkcs7: certs,
+            privateKeyMetadata: vec![PrivateKeyMetadata {
+                kaclsKeyMetadata: KaclsKeyMetadata {
+                    kaclsUri: kacls_url,
+                    kaclsData: wrapped_private_key,
+                },
+            }],
+        };
+        let res = gmail_client
+            .post(&endpoint, serde_json::to_string(&key_pair_info)?)
+            .await;
+        match res {
+            Ok(_) => println!("Keypairs inserted for {:?}.", email),
+            Err(error) => println!("Error inserting keypairs for {:?} : {:?}", email, error),
+        }
+        Ok(())
+    }
+
+    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+        let gmail_client = GmailClient::new(conf_path, &self.user_id).await?;
+
+        let wrapped_key_files = Self::get_input_files(&self.inkeydir, "wrap")?;
+        let p7_cert_files = Self::get_input_files(&self.incertdir, "p7pem")?;
 
         let email_key_file_map = Self::get_email_to_file(&wrapped_key_files, "wrap")?;
         let email_cert_file_map = Self::get_email_to_file(&p7_cert_files, "p7pem")?;
@@ -118,58 +161,8 @@ impl InsertKeypairsAction {
                 println!("Skipping {:?}, missing cert file.", email);
                 continue;
             }
-            println!("Processing {:?}.", email);
-            // Open key file
-            let mut kf = File::open(key_file)?;
-            let mut kf_contents = String::new();
-            kf.read_to_string(&mut kf_contents)?;
-
-            // Parse JSON from key file
-            let kf_resp: KeyFile = serde_json::from_str(&kf_contents)?;
-
-            // Extract kacls_url and wrapped_private_key from kf_resp
-            let kacls_url = kf_resp.kacls_url;
-            let wrapped_private_key = kf_resp.wrapped_private_key;
-
-            // Open cert file
-            let mut cf = File::open(&email_cert_file_map[email])?;
-            let mut certs = String::new();
-            cf.read_to_string(&mut certs)?;
-
-            // Construct key_pair_info
-            let key_pair_info = KeyPairInfo {
-                pkcs7: certs,
-                privateKeyMetadata: vec![PrivateKeyMetadata {
-                    kaclsKeyMetadata: KaclsKeyMetadata {
-                        kaclsUri: kacls_url,
-                        kaclsData: wrapped_private_key,
-                    },
-                }],
-            };
-            let response = gmail_client
-                .post(&endpoint, serde_json::to_string(&key_pair_info)?)
-                .await?;
-            let status_code = response.status();
-            if status_code.is_success() {
-                println!("Keypairs inserted for {:?}.", email);
-            } else {
-                let json_body = response
-                    .json::<RequestError>()
-                    .await
-                    .map_err(GoogleApiError::ReqwestError)?;
-                println!(
-                    "Error inserting keypairs for {:?} : {:?}.",
-                    email,
-                    json_body.error.message.to_string()
-                );
-            }
+            Self::post_keypairs(&gmail_client, &email_cert_file_map, email, key_file).await?
         }
-        Ok(())
-    }
-
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id).await?;
-        Self::post_keypairs(&self.inkeydir, &self.incertdir, gmail_client).await?;
         Ok(())
     }
 }

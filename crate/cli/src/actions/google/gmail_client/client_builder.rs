@@ -35,16 +35,18 @@ impl<'a> GmailClientBuilder {
         let token = retrieve_token(&self.service_account, &self.user_id).await?;
 
         Ok(GmailClient {
-            user_id: self.user_id,
+            client: Client::new(),
             token,
+            base_url: "https://gmail.googleapis.com/gmail/v1/users/".to_string() + &self.user_id,
         })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct GmailClient {
-    user_id: String,
+    client: Client,
     token: String,
+    base_url: String,
 }
 
 impl GmailClient {
@@ -53,53 +55,73 @@ impl GmailClient {
         client_builder.build().await
     }
 
-    pub async fn get(&self, endpoint: &str) -> Result<Response, GoogleApiError> {
-        let client = Client::new();
-        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client
-            .get(gmail_url + endpoint)
+    async fn handle_response(response: Response) -> Result<(), CliError> {
+        let status_code = response.status();
+        if status_code.is_success() {
+            println!(
+                "{}",
+                response
+                    .text()
+                    .await
+                    .map_err(GoogleApiError::ReqwestError)?
+            );
+            Ok(())
+        } else {
+            let json_body = response
+                .json::<RequestError>()
+                .await
+                .map_err(GoogleApiError::ReqwestError)?;
+            Err(CliError::GmailApiError(json_body.error.message.to_string()))
+        }
+    }
+
+    pub async fn get(&self, endpoint: &str) -> Result<(), CliError> {
+        let response = self
+            .client
+            .get(self.base_url.to_string() + endpoint)
             .bearer_auth(&self.token)
             .send()
             .await
-            .map_err(GoogleApiError::ReqwestError)
+            .map_err(GoogleApiError::ReqwestError)?;
+        Self::handle_response(response).await
     }
 
-    pub async fn post(&self, endpoint: &str, content: String) -> Result<Response, GoogleApiError> {
-        let client = Client::new();
-        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client
-            .post(gmail_url + endpoint)
+    pub async fn post(&self, endpoint: &str, content: String) -> Result<(), CliError> {
+        let response = self
+            .client
+            .post(self.base_url.to_string() + endpoint)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header(reqwest::header::CONTENT_LENGTH, content.len())
             .body(content)
             .bearer_auth(&self.token)
             .send()
             .await
-            .map_err(GoogleApiError::ReqwestError)
+            .map_err(GoogleApiError::ReqwestError)?;
+        Self::handle_response(response).await
     }
 
-    pub async fn patch(&self, endpoint: &str, content: String) -> Result<Response, GoogleApiError> {
-        let client = Client::new();
-        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client
-            .patch(gmail_url + endpoint)
+    pub async fn patch(&self, endpoint: &str, content: String) -> Result<(), CliError> {
+        let response = self
+            .client
+            .patch(self.base_url.to_string() + endpoint)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header(reqwest::header::CONTENT_LENGTH, content.len())
             .body(content)
             .bearer_auth(&self.token)
             .send()
             .await
-            .map_err(GoogleApiError::ReqwestError)
+            .map_err(GoogleApiError::ReqwestError)?;
+        Self::handle_response(response).await
     }
 
-    pub async fn delete(&self, endpoint: &str) -> Result<Response, GoogleApiError> {
-        let client = Client::new();
-        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client
-            .delete(gmail_url + endpoint)
+    pub async fn delete(&self, endpoint: &str) -> Result<(), CliError> {
+        let response = self
+            .client
+            .delete(self.base_url.to_string() + endpoint)
             .bearer_auth(&self.token)
             .send()
             .await
-            .map_err(GoogleApiError::ReqwestError)
+            .map_err(GoogleApiError::ReqwestError)?;
+        Self::handle_response(response).await
     }
 }

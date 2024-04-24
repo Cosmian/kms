@@ -15,6 +15,8 @@ mod insert_identities;
 mod list_identities;
 mod patch_identities;
 
+pub const IDENTITIES_ENDPOINT: &str = "/settings/cse/identities/";
+
 /// Insert, get, list, patch and delete identities from Gmail API.
 #[derive(Subcommand)]
 pub enum IdentitiesCommands {
