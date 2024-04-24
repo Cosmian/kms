@@ -10,23 +10,19 @@ use crate::{
     error::CliError,
 };
 
-/// Retrieves an existing client-side encryption key pair.
+/// Lists the client-side encrypted identities for an authenticated user.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct GetKeypairsAction {
-    /// The identifier of the key pair to retrieve
-    #[clap(required = true)]
-    keypairs_id: String,
-
-    /// The requester's primary email address
+pub struct ListIdentitiesAction {
+    /// The requester's primary email address.
     #[clap(long = "user-id", short = 'u', required = true)]
     user_id: String,
 }
 
-impl GetKeypairsAction {
+impl ListIdentitiesAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint = "/settings/cse/keypairs/".to_owned() + &self.keypairs_id;
+        let endpoint = "/settings/cse/identities/".to_owned();
         let response = gmail_client.await?.get(&endpoint).await?;
         let status_code = response.status();
         if status_code.is_success() {

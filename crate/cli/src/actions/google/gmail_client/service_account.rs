@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CliError;
 
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ServiceAccount {
     #[serde(rename = "type")]
@@ -24,10 +23,9 @@ pub struct ServiceAccount {
 impl ServiceAccount {
     pub fn load_from_config(conf_path: &PathBuf) -> Result<Self, CliError> {
         let conf = ClientConf::load(conf_path)?;
-        let gmail_api_conf = conf
-            .gmail_api_conf
-            .as_ref()
-            .ok_or_else(|| CliError::Default(format!("No gmail_api_conf object in {conf_path:?}")))?;
+        let gmail_api_conf = conf.gmail_api_conf.as_ref().ok_or_else(|| {
+            CliError::Default(format!("No gmail_api_conf object in {conf_path:?}"))
+        })?;
         let service_account = ServiceAccount {
             account_type: gmail_api_conf.account_type.clone(),
             project_id: gmail_api_conf.project_id.clone(),

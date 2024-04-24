@@ -1,47 +1,42 @@
-use std::{path::PathBuf, fs::{self, File}, collections::HashMap};
-
-use clap::Parser;
-use serde::{Serialize, Deserialize};
-
-use crate::{
-    error::{CliError}, actions::google::{gmail_client::{GmailClient, RequestError}, GoogleApiError},
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
 };
 
-use std::io::Read;
+use clap::Parser;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    actions::google::{
+        gmail_client::{GmailClient, RequestError},
+        GoogleApiError,
+    },
+    error::CliError,
+};
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key metadata for a user.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct InsertKeypairsAction {
     /// The requester's primary email address
-    #[clap(
-        long = "user-id",
-        short = 'u',
-        required = true
-    )]
+    #[clap(long = "user-id", short = 'u', required = true)]
     user_id: String,
 
     /// Input directory with wrapped key files, with email as basename
-    #[clap(
-        long = "inkeydir",
-        short = 'k',
-        required = true
-    )]
+    #[clap(long = "inkeydir", short = 'k', required = true)]
     inkeydir: PathBuf,
 
     /// Input directory with p7 pem certs with extension p7pem, with email as basename
-    #[clap(
-        long = "incertdir",
-        short = 'c',
-        required = true
-    )]
+    #[clap(long = "incertdir", short = 'c', required = true)]
     incertdir: PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct KeyFile {
     kacls_url: String,
-    wrapped_private_key: String
+    wrapped_private_key: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -65,26 +60,25 @@ struct KaclsKeyMetadata {
 }
 
 impl InsertKeypairsAction {
-    fn get_input_files(indir: &PathBuf, ext: &str) -> Vec<PathBuf> {
-        let full_names: Vec<PathBuf> = fs::read_dir(indir).unwrap()
+    fn get_input_files(indir: &PathBuf, ext: &str) -> Result<Vec<PathBuf>, CliError> {
+        let full_names: Vec<PathBuf> = fs::read_dir(indir)?
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .collect();
 
-        let all_files: Vec<PathBuf> = full_names
-            .iter()
-            .filter(|f| f.is_file())
-            .cloned()
-            .collect();
+        let all_files: Vec<PathBuf> = full_names.iter().filter(|f| f.is_file()).cloned().collect();
 
         let input_files: Vec<PathBuf> = all_files
             .into_iter()
             .filter(|f| f.extension().map_or(false, |e| e == ext))
             .collect();
 
-        input_files
+        Ok(input_files)
     }
 
-    fn get_email_to_file(files: &[PathBuf], ext: &str) -> HashMap<String, PathBuf> {
+    fn get_email_to_file(
+        files: &[PathBuf],
+        ext: &str,
+    ) -> Result<HashMap<String, PathBuf>, CliError> {
         let mut email_file_map = HashMap::new();
 
         for file in files {
@@ -101,16 +95,20 @@ impl InsertKeypairsAction {
             email_file_map.insert(email.to_string(), file.clone());
         }
 
-        email_file_map
+        Ok(email_file_map)
     }
 
-    async fn post_keypairs(keydir_path: &PathBuf, certdir_path: &PathBuf, gmail_client: GmailClient) -> Result<(), CliError> {
-        let endpoint =  "/settings/cse/keypairs/".to_owned();
-        let wrapped_key_files = Self::get_input_files(keydir_path, "wrap");
-        let p7_cert_files = Self::get_input_files(certdir_path, "p7pem");
+    async fn post_keypairs(
+        keydir_path: &PathBuf,
+        certdir_path: &PathBuf,
+        gmail_client: GmailClient,
+    ) -> Result<(), CliError> {
+        let endpoint = "/settings/cse/keypairs/".to_owned();
+        let wrapped_key_files = Self::get_input_files(keydir_path, "wrap")?;
+        let p7_cert_files = Self::get_input_files(certdir_path, "p7pem")?;
 
-        let email_key_file_map = Self::get_email_to_file(&wrapped_key_files, "wrap");
-        let email_cert_file_map = Self::get_email_to_file(&p7_cert_files, "p7pem");
+        let email_key_file_map = Self::get_email_to_file(&wrapped_key_files, "wrap")?;
+        let email_cert_file_map = Self::get_email_to_file(&p7_cert_files, "p7pem")?;
 
         println!("wrapped_key_files: {:?}.", wrapped_key_files);
         println!("p7_cert_files: {:?}.", p7_cert_files);
@@ -138,25 +136,32 @@ impl InsertKeypairsAction {
             let mut certs = String::new();
             cf.read_to_string(&mut certs)?;
 
-
             // Construct key_pair_info
             let key_pair_info = KeyPairInfo {
                 pkcs7: certs,
-                privateKeyMetadata: vec![ PrivateKeyMetadata {
+                privateKeyMetadata: vec![PrivateKeyMetadata {
                     kaclsKeyMetadata: KaclsKeyMetadata {
                         kaclsUri: kacls_url,
-                        kaclsData: wrapped_private_key
-                    }
-                }]
+                        kaclsData: wrapped_private_key,
+                    },
+                }],
             };
-            let response = gmail_client.post(&endpoint, serde_json::to_string(&key_pair_info)?).await?;
+            let response = gmail_client
+                .post(&endpoint, serde_json::to_string(&key_pair_info)?)
+                .await?;
             let status_code = response.status();
             if status_code.is_success() {
                 println!("Keypairs inserted for {:?}.", email);
-            }
-            else {
-                let json_body = response.json::<RequestError>().await.map_err(GoogleApiError::ReqwestError)?;
-                println!("Error inserting keypairs for {:?} : {:?}.", email, json_body.error.message.to_string());
+            } else {
+                let json_body = response
+                    .json::<RequestError>()
+                    .await
+                    .map_err(GoogleApiError::ReqwestError)?;
+                println!(
+                    "Error inserting keypairs for {:?} : {:?}.",
+                    email,
+                    json_body.error.message.to_string()
+                );
             }
         }
         Ok(())

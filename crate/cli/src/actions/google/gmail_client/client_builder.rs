@@ -1,16 +1,14 @@
-
-use std::{path::PathBuf};
+use std::path::PathBuf;
 
 use reqwest::{Client, Response};
 use serde::Deserialize;
 
+use super::{service_account::ServiceAccount, token::retrieve_token, GoogleApiError};
 use crate::error::CliError;
-
-use super::{service_account::{ServiceAccount}, token::retrieve_token, {GoogleApiError}};
 
 #[derive(Deserialize)]
 pub struct RequestError {
-    pub error: ErrorContent
+    pub error: ErrorContent,
 }
 
 #[derive(Deserialize)]
@@ -25,10 +23,7 @@ struct GmailClientBuilder {
 }
 
 impl<'a> GmailClientBuilder {
-    pub fn new(
-        conf_path: &PathBuf,
-        user_id: &str,
-    ) -> Result<Self, CliError> {
+    pub fn new(conf_path: &PathBuf, user_id: &str) -> Result<Self, CliError> {
         let service_account = ServiceAccount::load_from_config(conf_path)?;
         Ok(Self {
             service_account,
@@ -46,7 +41,6 @@ impl<'a> GmailClientBuilder {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct GmailClient {
     user_id: String,
@@ -62,14 +56,50 @@ impl GmailClient {
     pub async fn get(&self, endpoint: &str) -> Result<Response, GoogleApiError> {
         let client = Client::new();
         let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client.get(gmail_url + endpoint).bearer_auth(&self.token).send().await
+        client
+            .get(gmail_url + endpoint)
+            .bearer_auth(&self.token)
+            .send()
+            .await
             .map_err(GoogleApiError::ReqwestError)
     }
 
     pub async fn post(&self, endpoint: &str, content: String) -> Result<Response, GoogleApiError> {
         let client = Client::new();
         let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
-        client.post(gmail_url + endpoint).header(reqwest::header::CONTENT_TYPE, "application/json").header(reqwest::header::CONTENT_LENGTH, content.len()).body(content).bearer_auth(&self.token).send().await
+        client
+            .post(gmail_url + endpoint)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(reqwest::header::CONTENT_LENGTH, content.len())
+            .body(content)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(GoogleApiError::ReqwestError)
+    }
+
+    pub async fn patch(&self, endpoint: &str, content: String) -> Result<Response, GoogleApiError> {
+        let client = Client::new();
+        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
+        client
+            .patch(gmail_url + endpoint)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(reqwest::header::CONTENT_LENGTH, content.len())
+            .body(content)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(GoogleApiError::ReqwestError)
+    }
+
+    pub async fn delete(&self, endpoint: &str) -> Result<Response, GoogleApiError> {
+        let client = Client::new();
+        let gmail_url = "https://gmail.googleapis.com/gmail/v1/users/".to_owned() + &self.user_id;
+        client
+            .delete(gmail_url + endpoint)
+            .bearer_auth(&self.token)
+            .send()
+            .await
             .map_err(GoogleApiError::ReqwestError)
     }
 }

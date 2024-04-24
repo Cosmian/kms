@@ -1,14 +1,11 @@
-use super::{service_account::ServiceAccount, GoogleApiError};
-
-use jwt::{SignWithKey, PKeyWithDigest};
-
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use chrono::{Duration, Utc};
-
-use openssl::{pkey::PKey, hash::MessageDigest};
+use jwt::{PKeyWithDigest, SignWithKey};
+use openssl::{hash::MessageDigest, pkey::PKey};
 use serde::{Deserialize, Serialize};
 
+use super::{service_account::ServiceAccount, GoogleApiError};
 
 #[derive(Serialize, Deserialize)]
 pub struct GoogleAuthResponse {
@@ -36,8 +33,10 @@ impl GoogleAuthRequest {
 pub const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
 pub const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
 
-
-pub fn create_jwt(service_account: &ServiceAccount, user_email: &str) -> Result<String, GoogleApiError> {
+pub fn create_jwt(
+    service_account: &ServiceAccount,
+    user_email: &str,
+) -> Result<String, GoogleApiError> {
     let private_key = PKey::private_key_from_pem(service_account.private_key.as_bytes())?;
     let key_with_digest = PKeyWithDigest {
         digest: MessageDigest::sha256(),
@@ -63,7 +62,10 @@ pub fn create_jwt(service_account: &ServiceAccount, user_email: &str) -> Result<
     Ok(claims.sign_with_key(&key_with_digest)?)
 }
 
-pub async fn retrieve_token(service_account: &ServiceAccount, user_email: &str) -> Result<String, GoogleApiError> {
+pub async fn retrieve_token(
+    service_account: &ServiceAccount,
+    user_email: &str,
+) -> Result<String, GoogleApiError> {
     let jwt = create_jwt(service_account, user_email)?;
 
     let client = reqwest::Client::new();

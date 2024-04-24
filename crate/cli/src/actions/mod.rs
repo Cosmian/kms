@@ -3,6 +3,7 @@ pub mod certificates;
 #[cfg(not(feature = "fips"))]
 pub mod cover_crypt;
 pub mod elliptic_curves;
+pub mod google;
 pub mod login;
 pub mod logout;
 pub mod markdown;
@@ -11,4 +12,3 @@ pub mod rsa;
 pub mod shared;
 pub mod symmetric;
 pub mod version;
-pub mod google;

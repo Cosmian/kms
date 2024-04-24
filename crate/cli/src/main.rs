@@ -8,6 +8,7 @@ use cosmian_kms_cli::{
         access::AccessAction,
         certificates::CertificatesCommands,
         elliptic_curves::EllipticCurveCommands,
+        google::GoogleCommands,
         login::LoginAction,
         logout::LogoutAction,
         markdown::MarkdownAction,
@@ -16,7 +17,6 @@ use cosmian_kms_cli::{
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
-        google::GoogleCommands,
     },
     error::CliError,
 };

@@ -90,7 +90,7 @@ pub struct GmailApiConf {
     pub token_uri: String,
     pub auth_provider_x509_cert_url: String,
     pub client_x509_cert_url: String,
-    pub universe_domain: String
+    pub universe_domain: String,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
