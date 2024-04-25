@@ -1351,7 +1351,7 @@ pub struct Validate {
     pub certificate: Option<Vec<Vec<u8>>>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_identifier: Option<UniqueIdentifier>,
+    pub unique_identifier: Option<Vec<UniqueIdentifier>>,
     /// A Date-Time object indicating when the certificate chain needs to be
     /// valid. If omitted, the current date and time SHALL be assumed.
     #[serde(skip_serializing_if = "Option::is_none")]
