@@ -15,18 +15,29 @@ use cosmian_kms_client::{
 
 use crate::error::CliError;
 
-/// Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+/// Issue or renew a X509 certificate
+///
+/// To issue a certificate
+///  - either provide a Certificate Signing Request (CSR)
+///  - or create a CSR on the fly using an existing Public key
+///    and providing additional parameters
+///
+/// To issue a self-signed certificate,
+/// do not provide an issuer certificate id or an issuer private key id.
+///
+/// To renew a certificate, only provide an existing certificate id.
+/// A certificate with a new id and validity period will be issued.
 ///
 /// Tags can be later used to retrieve the key. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CertifyAction {
-    /// The certificate unique identifier.
-    /// A random one will be generated if not provided.
+    /// The certificate unique identifier to issue or renew.
+    /// A random one will be generated if not provided when issuing a certificate.
     #[clap(long = "certificate-id", short = 'i')]
     certificate_id: Option<String>,
 
-    /// The path to a certificate signing request.
+    /// The path to a certificate signing request. Do not provide a public key id if using a CSR.
     #[clap(long = "certificate-signing-request", short = 'r', group = "csr_pk")]
     certificate_signing_request: Option<PathBuf>,
 
@@ -46,7 +57,12 @@ pub struct CertifyAction {
     /// When certifying a public key, the subject name to use
     ///
     /// For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"
-    #[clap(long = "subject-name", short = 's')]
+    #[clap(
+        long = "subject-name",
+        short = 's',
+        verbatim_doc_comment,
+        requires = "public_key_id_to_certify"
+    )]
     subject_name: Option<String>,
 
     /// The unique identifier of the private key of the issuer.

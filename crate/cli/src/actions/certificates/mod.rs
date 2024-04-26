@@ -12,7 +12,6 @@ use self::{
 use crate::error::CliError;
 
 mod certify;
-
 mod decrypt_certificate;
 mod destroy_certificate;
 mod encrypt_certificate;
@@ -24,7 +23,6 @@ mod revoke_certificate;
 #[derive(Subcommand)]
 pub enum CertificatesCommands {
     Certify(CertifyAction),
-    // Create(CreateCertificateAction),
     Decrypt(DecryptCertificateAction),
     Encrypt(EncryptCertificateAction),
     Export(ExportCertificateAction),

@@ -58,6 +58,9 @@ pub async fn certify(
         Attributes::check_user_tags(&tags)?;
     }
 
+    // Retrieve the certificate id if any
+    let certificate_id = attributes.unique_identifier.as_ref();
+
     // Retrieve the issuer certificate id if provided
     let issuer_certificate_id = attributes.get_link(LinkType::CertificateLink);
     // Retrieve the issuer private key id if provided
@@ -72,6 +75,12 @@ pub async fn certify(
         params,
     )
     .await?;
+
+    // There are 3 possibles cases:
+    // 1. A certificate creation and a CSR is provided
+    // 2. A certificate creation and a public key id is provided, a subject is provided and a validity days is provided
+    // 3. A certificate renewal: the certificate id is provided and the certificate exists,
+    // the validity days are provided, the subject is not provided
 
     // convert to openssl
     let issuer_pkey = kmip_private_key_to_openssl(&issuer_private_key.object)?;
