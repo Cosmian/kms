@@ -7,6 +7,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -86,7 +87,10 @@ impl DecryptAction {
             .write_all(&plaintext)
             .with_context(|| "Fail to write the plain file")?;
 
-        println!("The decrypted file is available at {output_file:?}");
+        let stdout = format!("The decrypted file is available at {output_file:?}");
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_tags(self.tags.as_ref());
+        stdout.write()?;
 
         Ok(())
     }

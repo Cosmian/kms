@@ -4,6 +4,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -26,7 +27,10 @@ pub async fn destroy(kms_rest_client: &KmsClient, key_id: &str) -> Result<(), Cl
             .as_str()
             .context("The server did not return the key uid as a string")?
     {
-        println!("Successfully destroyed the key: {}.", &key_id);
+        let mut stdout = console::Stdout::new("Successfully destroyed the key.");
+        stdout.set_unique_identifier(key_id);
+        stdout.write()?;
+
         Ok(())
     } else {
         cli_bail!("Something went wrong when destroying the key.")

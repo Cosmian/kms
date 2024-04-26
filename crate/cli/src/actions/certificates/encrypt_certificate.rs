@@ -8,6 +8,7 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -23,7 +24,7 @@ pub struct EncryptCertificateAction {
 
     /// The certificate unique identifier.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'k', group = "key-tags")]
+    #[clap(long = "certificate-id", short = 'c', group = "key-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
@@ -89,7 +90,11 @@ impl EncryptCertificateAction {
             .write_all(&ciphertext)
             .with_context(|| "failed to write the encrypted file")?;
 
-        println!("The encrypted file is available at {:?}", &output_file);
+        console::Stdout::new(&format!(
+            "The encrypted file is available at {:?}",
+            &output_file
+        ))
+        .write()?;
 
         Ok(())
     }

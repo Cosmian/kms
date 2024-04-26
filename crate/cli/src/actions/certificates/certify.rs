@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    fmt::{Display, Formatter},
+    path::PathBuf,
+};
 
 use clap::Parser;
 use cosmian_kms_client::{
@@ -10,44 +13,154 @@ use cosmian_kms_client::{
             LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
+    kmip::kmip_types::{
+        CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
+    },
     read_bytes_from_file, KmsClient,
 };
 
-use crate::error::CliError;
+use crate::{actions::console, error::CliError};
 
-/// Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+/// The algorithm to use for the keypair generation
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+pub enum Algorithm {
+    #[cfg(not(feature = "fips"))]
+    NistP192,
+    NistP224,
+    NistP256,
+    NistP384,
+    NistP521,
+    #[cfg(not(feature = "fips"))]
+    X25519,
+    #[cfg(not(feature = "fips"))]
+    Ed25519,
+    #[cfg(not(feature = "fips"))]
+    X448,
+    #[cfg(not(feature = "fips"))]
+    Ed448,
+    #[cfg(not(feature = "fips"))]
+    RSA1024,
+    RSA2048,
+    RSA3072,
+    RSA4096,
+}
+
+impl Display for Algorithm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(not(feature = "fips"))]
+            Algorithm::NistP192 => write!(f, "nist-p192"),
+            Algorithm::NistP224 => write!(f, "nist-p224"),
+            Algorithm::NistP256 => write!(f, "nist-p256"),
+            Algorithm::NistP384 => write!(f, "nist-p384"),
+            Algorithm::NistP521 => write!(f, "nist-p521"),
+            #[cfg(not(feature = "fips"))]
+            Algorithm::X25519 => write!(f, "x25519"),
+            #[cfg(not(feature = "fips"))]
+            Algorithm::Ed25519 => write!(f, "ed25519"),
+            #[cfg(not(feature = "fips"))]
+            Algorithm::X448 => write!(f, "x448"),
+            #[cfg(not(feature = "fips"))]
+            Algorithm::Ed448 => write!(f, "ed448"),
+            #[cfg(not(feature = "fips"))]
+            Algorithm::RSA1024 => write!(f, "rsa1024"),
+            Algorithm::RSA2048 => write!(f, "rsa2048"),
+            Algorithm::RSA3072 => write!(f, "rsa3072"),
+            Algorithm::RSA4096 => write!(f, "rsa4096"),
+        }
+    }
+}
+
+/// Issue or renew a X509 certificate
 ///
-/// Tags can be later used to retrieve the key. Tags are optional.
+/// There are 4 possibilities to generate a certificate
+/// 1. Provide a Certificate Signing Request (CSR)
+///    using -certificate-signing-request
+/// 2. Provide a public key id to certify
+///    using -public-key-id-to-certify as well as a subject name
+/// 3. Provide an existing certificate id to re-certify
+///    using -certificate-id-to-re-certify
+/// 4. Generate a keypair then sign the public key to generate a certificate
+///    using -generate-key-pair as well as a subject name and an algorithm
+///
+/// The signer (issuer) is specified by providing an issuer private key id
+/// using -issuer-private-key-id and/or
+/// an issuer certificate id using -issuer-certificate-id. If only
+/// one of this parameter is specified, the other one will be inferred
+/// from the links of the cryptographic object behind the provided parameter.
+///
+/// If no signer is provided, the certificate will be self-signed.
+/// It is not possible to self-sign a CSR.
+///
+/// When re-certifying a certificate, if no --certificate-id is provided,
+/// the original certificate id will be used and the original certificate will
+/// be replaced by the new one. In all other cases, a random certificate id
+/// will be generated.
+///
+/// Tags can be later used to retrieve the certificate. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CertifyAction {
-    /// The certificate unique identifier.
-    /// A random one will be generated if not provided.
-    #[clap(long = "certificate-id", short = 'i')]
+    /// The unique identifier of the certificate to issue or renew.
+    /// If not provided, a random one will be generated when issuing a certificate,
+    /// or the original one will be used when renewing a certificate.
+    #[clap(long = "certificate-id", short = 'c')]
     certificate_id: Option<String>,
 
     /// The path to a certificate signing request.
-    #[clap(long = "certificate-signing-request", short = 'r', group = "csr_pk")]
+    #[clap(
+        long = "certificate-signing-request",
+        short = 'r',
+        group = "csr_pk",
+        required = false
+    )]
     certificate_signing_request: Option<PathBuf>,
 
     /// The format of the certificate signing request.
     #[clap(long ="certificate-signing-request-format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
     certificate_signing_request_format: String,
 
-    /// If not using a CSR, the id of the public key to certify
+    /// The id of a public key to certify
     #[clap(
         long = "public-key-id-to-certify",
         short = 'p',
         group = "csr_pk",
-        requires = "subject_name"
+        requires = "subject_name",
+        required = false
     )]
     public_key_id_to_certify: Option<String>,
 
-    /// When certifying a public key, the subject name to use
+    /// The id of a certificate to re-certify
+    #[clap(
+        long = "certificate-id-to-re-certify",
+        short = 'n',
+        group = "csr_pk",
+        required = false
+    )]
+    certificate_id_to_re_certify: Option<String>,
+
+    /// Generate a keypair then sign the public key
+    /// and generate a certificate
+    #[clap(
+        long = "generate-key-pair",
+        short = 'g',
+        group = "csr_pk",
+        requires = "subject_name",
+        requires = "algorithm",
+        required = false
+    )]
+    generate_key_pair: bool,
+
+    /// When certifying a public key, or generating a keypair,
+    /// the subject name to use.
     ///
     /// For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"
-    #[clap(long = "subject-name", short = 's')]
+    #[clap(long = "subject-name", short = 's', verbatim_doc_comment)]
     subject_name: Option<String>,
+
+    /// The algorithm to use for the keypair generation
+    #[clap(long = "algorithm", short = 'a', default_value = "rsa4096")]
+    algorithm: Algorithm,
 
     /// The unique identifier of the private key of the issuer.
     /// A certificate must be linked to that private key
@@ -58,7 +171,7 @@ pub struct CertifyAction {
     /// The unique identifier of the certificate of the issuer.
     /// A private key must be linked to that certificate
     /// if no issuer private key id is provided.
-    #[clap(long = "issuer-certificate-id", short = 'c')]
+    #[clap(long = "issuer-certificate-id", short = 'i')]
     issuer_certificate_id: Option<String>,
 
     /// The requested number of validity days
@@ -78,21 +191,6 @@ pub struct CertifyAction {
 
 impl CertifyAction {
     pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
-        if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
-            return Err(CliError::Default(
-                "Either a certificate signing request or a public key to certify must be provided"
-                    .to_string(),
-            ))
-        }
-
-        if self.issuer_certificate_id.is_none() && self.issuer_private_key_id.is_none() {
-            return Err(CliError::Default(
-                "Either an issuer certificate id or an issuer private key id or both must be \
-                 provided"
-                    .to_string(),
-            ))
-        }
-
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
@@ -125,25 +223,17 @@ impl CertifyAction {
 
         attributes.set_tags(&self.tags)?;
 
-        // Using a CSR?
-        let (certificate_request_value, certificate_request_type) =
-            if let Some(certificate_signing_request) = &self.certificate_signing_request {
-                let certificate_request_value =
-                    Some(read_bytes_from_file(certificate_signing_request)?);
+        let mut certificate_request_value = None;
+        let mut certificate_request_type = None;
+        let mut unique_identifier = None;
 
-                let certificate_request_type =
-                    match self.certificate_signing_request_format.as_str() {
-                        "der" => Some(CertificateRequestType::PKCS10),
-                        _ => Some(CertificateRequestType::PEM),
-                    };
-                (certificate_request_value, certificate_request_type)
-            } else {
-                (None, None)
+        if let Some(certificate_signing_request) = &self.certificate_signing_request {
+            certificate_request_value = Some(read_bytes_from_file(certificate_signing_request)?);
+            certificate_request_type = match self.certificate_signing_request_format.as_str() {
+                "der" => Some(CertificateRequestType::PKCS10),
+                _ => Some(CertificateRequestType::PEM),
             };
-
-        // Using a Public Key ?
-        let unique_identifier = if let Some(public_key_to_certify) = &self.public_key_id_to_certify
-        {
+        } else if let Some(public_key_to_certify) = &self.public_key_id_to_certify {
             attributes.certificate_attributes =
                 Some(Box::new(CertificateAttributes::parse_subject_line(
                     self.subject_name.as_ref().ok_or_else(|| {
@@ -152,12 +242,112 @@ impl CertifyAction {
                         )
                     })?,
                 )?));
-            Some(UniqueIdentifier::TextString(
+            unique_identifier = Some(UniqueIdentifier::TextString(
                 public_key_to_certify.to_string(),
-            ))
+            ));
+        } else if let Some(certificate_id_to_renew) = &self.certificate_id_to_re_certify {
+            unique_identifier = Some(UniqueIdentifier::TextString(
+                certificate_id_to_renew.clone(),
+            ));
+        } else if self.generate_key_pair {
+            attributes.certificate_attributes =
+                Some(Box::new(CertificateAttributes::parse_subject_line(
+                    self.subject_name.as_ref().ok_or_else(|| {
+                        CliError::Default(
+                            "subject name is required when generating a keypair".to_string(),
+                        )
+                    })?,
+                )?));
+            match self.algorithm {
+                #[cfg(not(feature = "fips"))]
+                Algorithm::RSA1024 => {
+                    rsa_algorithm(&mut attributes, 1024);
+                }
+                Algorithm::RSA2048 => {
+                    rsa_algorithm(&mut attributes, 2048);
+                }
+                Algorithm::RSA3072 => {
+                    rsa_algorithm(&mut attributes, 3072);
+                }
+                Algorithm::RSA4096 => {
+                    rsa_algorithm(&mut attributes, 4096);
+                }
+                #[cfg(not(feature = "fips"))]
+                Algorithm::NistP192 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P192,
+                    );
+                }
+                Algorithm::NistP224 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P224,
+                    );
+                }
+                Algorithm::NistP256 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P256,
+                    );
+                }
+                Algorithm::NistP384 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P384,
+                    );
+                }
+                Algorithm::NistP521 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P521,
+                    );
+                }
+                #[cfg(not(feature = "fips"))]
+                Algorithm::X25519 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::CURVE25519,
+                    );
+                }
+                #[cfg(not(feature = "fips"))]
+                Algorithm::Ed25519 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::Ed25519,
+                        RecommendedCurve::CURVEED25519,
+                    );
+                }
+                #[cfg(not(feature = "fips"))]
+                Algorithm::X448 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::CURVE448,
+                    );
+                }
+                #[cfg(not(feature = "fips"))]
+                Algorithm::Ed448 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::Ed448,
+                        RecommendedCurve::CURVEED448,
+                    );
+                }
+            }
         } else {
-            None
-        };
+            return Err(CliError::Default(
+                "Supply a certificate signing request, a public key id or an existing certificate \
+                 id or request a keypair to be generated"
+                    .to_string(),
+            ));
+        }
 
         if let Some(extension_file) = &self.certificate_extensions {
             attributes.set_x509_extension_file(std::fs::read(extension_file)?);
@@ -174,10 +364,37 @@ impl CertifyAction {
         let certificate_unique_identifier = client_connector
             .certify(certify_request)
             .await
-            .expect("failed creating certificate")
+            .map_err(|e| CliError::ServerError(format!("failed creating certificate: {e:?}")))?
             .unique_identifier;
 
-        println!("The certificate was issued with id: {certificate_unique_identifier}.");
+        let mut stdout = console::Stdout::new("The certificate was successfully generated.");
+        stdout.set_tags(Some(&self.tags));
+        stdout.set_unique_identifier(certificate_unique_identifier);
+        stdout.write()?;
+
         Ok(())
     }
+}
+
+fn ec_algorithm(
+    attributes: &mut Attributes,
+    cryptographic_algorithm: CryptographicAlgorithm,
+    recommended_curve: RecommendedCurve,
+) {
+    attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
+    attributes.cryptographic_domain_parameters = Some(CryptographicDomainParameters {
+        recommended_curve: Some(recommended_curve),
+        ..CryptographicDomainParameters::default()
+    });
+    attributes.key_format_type = Some(KeyFormatType::ECPrivateKey);
+    attributes.object_type = Some(ObjectType::PrivateKey);
+}
+
+fn rsa_algorithm(attributes: &mut Attributes, cryptographic_length: i32) {
+    attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+    attributes.cryptographic_length = Some(cryptographic_length);
+    attributes.cryptographic_domain_parameters = None;
+    attributes.cryptographic_parameters = None;
+    attributes.key_format_type = Some(KeyFormatType::TransparentRSAPrivateKey);
+    attributes.object_type = Some(ObjectType::PrivateKey);
 }

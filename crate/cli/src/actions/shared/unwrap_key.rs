@@ -11,6 +11,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -101,10 +102,12 @@ impl UnwrapKeyAction {
 
         write_kmip_object_to_file(&object, &output_file)?;
 
-        println!(
+        let stdout = format!(
             "The key of type {:?} in file {:?} was unwrapped in file: {:?}",
             object_type, self.key_file_in, &output_file
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }

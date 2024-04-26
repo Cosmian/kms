@@ -36,7 +36,7 @@ pub fn create_ec_key_pair(
     if output.status.success() {
         let master_keys_output = std::str::from_utf8(&output.stdout)?;
         assert!(master_keys_output.contains("Private key unique identifier:"));
-        assert!(master_keys_output.contains("Public key unique identifier :"));
+        assert!(master_keys_output.contains("Public key unique identifier:"));
         let master_private_key_id = extract_private_key(master_keys_output)
             .ok_or_else(|| {
                 CliError::Default("failed extracting the master private key".to_owned())

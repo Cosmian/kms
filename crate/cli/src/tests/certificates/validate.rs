@@ -86,13 +86,13 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliErr
     import_revoked_certificate_encrypt("prime256v1").await
 }
 
-async fn validate_certificate(
+pub async fn validate_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     certificates: Vec<String>,
     uids: Vec<String>,
     date: String,
-) -> Result<(), CliError> {
+) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -110,7 +110,8 @@ async fn validate_certificate(
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(())
+        let validate_output = std::str::from_utf8(&output.stdout)?;
+        return Ok(validate_output.to_string())
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -189,7 +190,7 @@ async fn test_validate() -> Result<(), CliError> {
 
     println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
 
-    validate_certificate(
+    let test1_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         [].to_vec(),
@@ -203,11 +204,13 @@ async fn test_validate() -> Result<(), CliError> {
     )
     .await?;
 
+    assert_eq!(test1_res, "Invalid");
+
     println!(
         "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
     );
 
-    validate_certificate(
+    let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         [].to_vec(),
@@ -221,12 +224,14 @@ async fn test_validate() -> Result<(), CliError> {
     )
     .await?;
 
+    assert_eq!(test2_res, "Valid");
+
     println!(
         "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
          leaf2's expiration date"
     );
 
-    validate_certificate(
+    let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         [].to_vec(),
@@ -240,6 +245,19 @@ async fn test_validate() -> Result<(), CliError> {
         "4804152030Z".to_string(),
     )
     .await?;
+
+    assert_eq!(test3_res, "Invalid");
+
+    let test4_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [root_certificate_id.clone()].to_vec(),
+        String::new(),
+    )
+    .await?;
+
+    assert_eq!(test4_res, "Valid");
 
     Ok(())
 }

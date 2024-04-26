@@ -72,7 +72,7 @@ pub async fn unwrap_key(
                     })?;
             // fetch the private key
             retrieve_object_for_operation(
-                &private_key_uid,
+                &private_key_uid.to_string(),
                 ObjectOperationType::Decrypt,
                 kms,
                 user,

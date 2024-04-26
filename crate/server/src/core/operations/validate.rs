@@ -140,10 +140,17 @@ fn index_certificates(
         let is_root = match (aki, ski) {
             (Some(aki), Some(ski)) => aki.as_slice() == ski.as_slice(),
             (None, Some(_)) => true,
-            _ => {
+            (Some(_), None) => {
                 return Err(KmsError::from(KmipError::InvalidKmipObject(
                     cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
                     "Certificate has no Subject Key Identifier".to_string(),
+                )))
+            }
+            (None, None) => {
+                return Err(KmsError::from(KmipError::InvalidKmipObject(
+                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
+                    "Certificate has neither Subject Key Identifier nor Authority Key Identifier"
+                        .to_string(),
                 )))
             }
         };

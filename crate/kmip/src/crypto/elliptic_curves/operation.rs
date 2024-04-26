@@ -49,14 +49,16 @@ fn check_ecc_mask_against_flags(
         // Mask is `None` but FIPS mode is restrictive so it's considered too
         // permissive.
         kmip_bail!(
-            "Fordidden CryptographicUsageMask value, got None but expected among {} in FIPS mode.",
+            "EC: forbidden CryptographicUsageMask value, got None but expected among {} in FIPS \
+             mode.",
             flags.bits()
         )
     };
 
     if (mask & !flags).bits() != 0 {
         kmip_bail!(
-            "Fordidden CryptographicUsageMask flag set, expected among {} in FIPS mode.",
+            "EC: forbidden CryptographicUsageMask flag set: {}, expected among {} in FIPS mode.",
+            mask.bits(),
             flags.bits()
         )
     }
@@ -80,11 +82,12 @@ fn check_ecc_mask_algorithm_compliance(
     let Some(algorithm) = algorithm else {
         // Algorithm is None but FIPS mode is restrictive so it's considered too permissive.
         kmip_bail!(
-            "Fordidden CryptographicAlgorithm value, got `None` but expected precise algorithm."
+            "EC: forbidden CryptographicAlgorithm value, got `None` but expected precise \
+             algorithm."
         )
     };
     if !allowed_algorithms.contains(&algorithm) {
-        kmip_bail!("Fordidden CryptographicAlgorithm value in FIPS mode.")
+        kmip_bail!("EC: forbidden CryptographicAlgorithm value in FIPS mode.")
     }
     match algorithm {
         CryptographicAlgorithm::ECDH => {

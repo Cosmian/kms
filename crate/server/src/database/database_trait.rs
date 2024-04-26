@@ -175,7 +175,7 @@ pub trait Database {
     /// (typically in a transaction)
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -197,7 +197,7 @@ pub enum AtomicOperation {
             StateEnumeration,
         ),
     ),
-    /// Update the object (uid, object, attributes, tags, state) - the state will be not be updated
+    /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
     /// Update the state (uid, state)
     UpdateState((String, StateEnumeration)),

@@ -5,7 +5,10 @@ use cosmian_kms_client::{
     KmsClient,
 };
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResultHelper, CliError},
+};
 
 /// Create a new user decryption key given an access policy expressed as a boolean expression.
 ///
@@ -82,13 +85,11 @@ impl CreateUserKeyAction {
 
         let user_key_unique_identifier = &create_response.unique_identifier;
 
-        println!("Created the user decryption key with ID: {user_key_unique_identifier}");
-        if !self.tags.is_empty() {
-            println!("Tags:");
-            for tag in &self.tags {
-                println!("    - {tag}");
-            }
-        }
+        let mut stdout =
+            console::Stdout::new("The user decryption key pair has been properly generated.");
+        stdout.set_tags(Some(&self.tags));
+        stdout.set_unique_identifier(user_key_unique_identifier.to_owned());
+        stdout.write()?;
 
         Ok(())
     }
