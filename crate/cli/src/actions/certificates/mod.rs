@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub(crate) use certify::Algorithm;
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 pub use export_certificate::CertificateExportFormat;
@@ -12,7 +14,6 @@ use self::{
 use crate::error::CliError;
 
 mod certify;
-
 mod decrypt_certificate;
 mod destroy_certificate;
 mod encrypt_certificate;
@@ -25,7 +26,6 @@ mod validate_certificate;
 #[derive(Subcommand)]
 pub enum CertificatesCommands {
     Certify(CertifyAction),
-    // Create(CreateCertificateAction),
     Decrypt(DecryptCertificateAction),
     Encrypt(EncryptCertificateAction),
     Export(ExportCertificateAction),

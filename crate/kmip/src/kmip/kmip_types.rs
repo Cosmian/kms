@@ -20,6 +20,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
+use uuid::Uuid;
 
 use super::kmip_objects::ObjectType;
 #[cfg(feature = "openssl")]
@@ -687,6 +688,26 @@ pub enum LinkedObjectIdentifier {
     Index(i64),
 }
 
+impl Display for LinkedObjectIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            LinkedObjectIdentifier::TextString(s) => write!(f, "{s}"),
+            LinkedObjectIdentifier::Enumeration(e) => write!(f, "{e}"),
+            LinkedObjectIdentifier::Index(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+impl From<UniqueIdentifier> for LinkedObjectIdentifier {
+    fn from(value: UniqueIdentifier) -> Self {
+        match value {
+            UniqueIdentifier::TextString(s) => LinkedObjectIdentifier::TextString(s),
+            UniqueIdentifier::Enumeration(e) => LinkedObjectIdentifier::Enumeration(e),
+            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i64::from(i)),
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum RevocationReasonEnumeration {
@@ -1045,16 +1066,12 @@ impl Attributes {
 
     /// Get the link to the object.
     #[must_use]
-    pub fn get_link(&self, link_type: LinkType) -> Option<String> {
+    pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
         if let Some(links) = &self.link {
             links
                 .iter()
                 .find(|&l| l.link_type == link_type)
-                .and_then(|l| match &l.linked_object_identifier {
-                    LinkedObjectIdentifier::TextString(s) => Some(s.clone()),
-                    LinkedObjectIdentifier::Enumeration(_e) => None,
-                    LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
-                })
+                .map(|l| l.linked_object_identifier.clone())
         } else {
             None
         }
@@ -1072,7 +1089,7 @@ impl Attributes {
 
     /// Get the parent id of the object.
     #[must_use]
-    pub fn get_parent_id(&self) -> Option<String> {
+    pub fn get_parent_id(&self) -> Option<LinkedObjectIdentifier> {
         self.get_link(LinkType::ParentLink)
     }
 
@@ -1194,12 +1211,19 @@ impl CertificateAttributes {
             let mut parts = component.splitn(2, '=');
             let key = parts
                 .next()
-                .ok_or_else(|| KmipError::Default("subject name identifier missing".to_string()))?
+                .ok_or_else(|| {
+                    KmipError::Default(
+                        "Missing x509 certificate `subject name` identifier".to_string(),
+                    )
+                })?
                 .trim();
             let value = parts
                 .next()
                 .ok_or_else(|| {
-                    KmipError::Default(format!("subject name value missing for identifier {key}"))
+                    KmipError::Default(format!(
+                        "Missing or invalid x509 certificate `subject name` value for identifier \
+                         {key}"
+                    ))
                 })?
                 .trim();
             match key {
@@ -1958,6 +1982,22 @@ impl Display for UniqueIdentifier {
     }
 }
 
+impl Default for UniqueIdentifier {
+    fn default() -> Self {
+        Self::TextString(Uuid::new_v4().to_string())
+    }
+}
+
+impl From<&UniqueIdentifier> for String {
+    fn from(value: &UniqueIdentifier) -> Self {
+        value.to_string()
+    }
+}
+impl From<UniqueIdentifier> for String {
+    fn from(value: UniqueIdentifier) -> Self {
+        value.to_string()
+    }
+}
 impl UniqueIdentifier {
     /// Returns the value as a string if it is a `TextString`
     #[must_use]
@@ -1965,6 +2005,16 @@ impl UniqueIdentifier {
         match self {
             UniqueIdentifier::TextString(s) => Some(s),
             _ => None,
+        }
+    }
+}
+
+impl From<LinkedObjectIdentifier> for UniqueIdentifier {
+    fn from(value: LinkedObjectIdentifier) -> Self {
+        match value {
+            LinkedObjectIdentifier::TextString(s) => UniqueIdentifier::TextString(s),
+            LinkedObjectIdentifier::Enumeration(e) => UniqueIdentifier::Enumeration(e),
+            LinkedObjectIdentifier::Index(i) => UniqueIdentifier::Integer(i as i32),
         }
     }
 }

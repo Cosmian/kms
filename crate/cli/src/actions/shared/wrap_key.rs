@@ -16,7 +16,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::shared::SYMMETRIC_WRAPPING_KEY_SIZE,
+    actions::{console, shared::SYMMETRIC_WRAPPING_KEY_SIZE},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -87,9 +87,9 @@ impl WrapKeyAction {
             let symmetric_key_object =
                 create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);
 
-            // Print the wrapping key for user. This is the only time that this wrapping key will be printed
+            // Print the wrapping key for user.
             println!(
-                "Wrapping key: {}",
+                "Wrapping key: {}. This is the only time that this wrapping key will be printed.",
                 general_purpose::STANDARD.encode(&*key_bytes)
             );
             symmetric_key_object
@@ -118,10 +118,11 @@ impl WrapKeyAction {
 
         write_kmip_object_to_file(&object, &output_file)?;
 
-        println!(
+        let stdout = format!(
             "The key of type {:?} in file {:?} was wrapped in file: {:?}",
             object_type, self.key_file_in, &output_file
         );
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }

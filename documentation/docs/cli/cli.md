@@ -116,7 +116,7 @@ The `gmail_api_conf` field is a JSON object with the following fields:
 
 
 I can be retrieved directly from a JSON file downloaded from Google interface when creating
-and configurating the service account (following Google documentation).
+and configuring the service account (following Google documentation).
 
 Example:
 
@@ -125,7 +125,7 @@ Example:
   "kms_server_url": "https://kms.acme.com:9999",
   "gmail_api_conf": {
     "account_type": "service_account",
-    "project_id": "projet_id",
+    "project_id": "project_id",
     "private_key_id": "abc123abc123abc123abc123abc123abc123",
     "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
     "client_email": "xxx@yyyy.iam.gserviceaccount.com",

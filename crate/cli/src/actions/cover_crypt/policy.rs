@@ -20,6 +20,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -132,10 +133,12 @@ impl CreateAction {
         write_json_object_to_file(&policy, &self.policy_binary_file)
             .with_context(|| "failed writing the policy binary file".to_string())?;
 
-        println!(
+        let stdout = format!(
             "The binary policy file was generated in {:?}.",
             &self.policy_binary_file
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }
@@ -248,7 +251,7 @@ impl BinaryAction {
 /// View the policy of an existing public or private master key.
 ///
 ///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract rhe policy from a Key exported as TTLV.
+///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ViewAction {
@@ -286,7 +289,7 @@ impl ViewAction {
             let specs: HashMap<String, Vec<String>> = policy.try_into()?;
             serde_json::to_string_pretty(&specs)?
         };
-        println!("{json}");
+        console::Stdout::new(&json).write()?;
         Ok(())
     }
 }
@@ -339,13 +342,15 @@ impl AddAttributeAction {
             .await
             .with_context(|| "failed adding an attribute to the master keys")?;
 
-        println!(
+        let stdout = format!(
             "New attribute {} was successfully added to the master private key {} and master \
              public key {}.",
             &self.attribute,
             &rekey_response.private_key_unique_identifier,
             &rekey_response.public_key_unique_identifier,
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }
@@ -398,10 +403,12 @@ impl RenameAttributeAction {
             .await
             .with_context(|| "failed renaming an attribute in the master keys' policy")?;
 
-        println!(
+        let stdout = format!(
             "Attribute {} was successfully renamed to {}.",
             &self.attribute, &self.new_name
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }
@@ -448,10 +455,12 @@ impl DisableAttributeAction {
             .await
             .with_context(|| "failed disabling an attribute from the master keys")?;
 
-        println!(
+        let stdout = format!(
             "Attribute {} was successfully disabled from the master public key {}.",
             &self.attribute, &rekey_response.public_key_unique_identifier,
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }
@@ -501,13 +510,15 @@ impl RemoveAttributeAction {
             .await
             .with_context(|| "failed removing an attribute from the master keys")?;
 
-        println!(
+        let stdout = format!(
             "Attribute {} was successfully removed from the master private key {} and master \
              public key {}.",
             &self.attribute,
             &rekey_response.private_key_unique_identifier,
             &rekey_response.public_key_unique_identifier,
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }

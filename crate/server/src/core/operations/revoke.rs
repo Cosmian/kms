@@ -125,8 +125,11 @@ pub(crate) async fn recursively_revoke_key(
                     .await?;
                 }
                 // revoke any linked public key
-                if let Some(public_key_id) =
-                    owm.object.attributes()?.get_link(LinkType::PublicKeyLink)
+                if let Some(public_key_id) = owm
+                    .object
+                    .attributes()?
+                    .get_link(LinkType::PublicKeyLink)
+                    .map(|l| l.to_string())
                 {
                     if !ids_to_skip.contains(&public_key_id) {
                         recursively_revoke_key(
@@ -155,8 +158,11 @@ pub(crate) async fn recursively_revoke_key(
                 //add this key to the ids to skip
                 ids_to_skip.insert(owm.id.clone());
                 // revoke any linked private key
-                if let Some(private_key_id) =
-                    owm.object.attributes()?.get_link(LinkType::PrivateKeyLink)
+                if let Some(private_key_id) = owm
+                    .object
+                    .attributes()?
+                    .get_link(LinkType::PrivateKeyLink)
+                    .map(|l| l.to_string())
                 {
                     if !ids_to_skip.contains(&private_key_id) {
                         recursively_revoke_key(

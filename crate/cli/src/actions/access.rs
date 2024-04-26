@@ -5,7 +5,10 @@ use cosmian_kms_client::{
     KmsClient,
 };
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResultHelper, CliError},
+};
 
 /// Manage the users' access rights to the cryptographic objects
 #[derive(Parser, Debug)]
@@ -67,10 +70,11 @@ impl GrantAccess {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!(
+        let stdout = format!(
             "The following access right were successfully granted to `{}`: {:?}",
             self.user, self.operations,
         );
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -112,10 +116,11 @@ impl RevokeAccess {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!(
+        let stdout = format!(
             "The following permissions have been properly removed for `{}`: {:?}",
             self.user, self.operations
         );
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -139,13 +144,14 @@ impl ListAccessesGranted {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!(
+        let stdout = format!(
             "The access rights granted on object {} are:",
             &self.object_uid
         );
-        for access in accesses {
-            println!(" - {}: {:?}", access.user_id, access.operations);
-        }
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_accesses(accesses);
+        stdout.write()?;
+
         Ok(())
     }
 }
@@ -164,10 +170,14 @@ impl ListOwnedObjects {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The objects owned by this user are:\n");
-        for object in objects {
-            println!("{object}");
+        if !objects.is_empty() {
+            let mut stdout = console::Stdout::new("The objects owned by this user are:");
+            stdout.set_object_owned(objects);
+            stdout.write()?;
+        } else {
+            console::Stdout::new("No object owned by this user.").write()?;
         }
+
         Ok(())
     }
 }
@@ -186,10 +196,14 @@ impl ListAccessRightsObtained {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The access right obtained are:\n");
-        for object in objects {
-            println!("{object}");
+        if !objects.is_empty() {
+            let mut stdout = console::Stdout::new("The access rights obtained are: ");
+            stdout.set_access_rights_obtained(objects);
+            stdout.write()?;
+        } else {
+            console::Stdout::new("No access right obtained.").write()?;
         }
+
         Ok(())
     }
 }

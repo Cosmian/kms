@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     write_kmip_object_to_file, ClientResultHelper, KmsClient,
 };
 
-use crate::{cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
@@ -162,12 +162,16 @@ impl ExportKeyAction {
             write_kmip_object_to_file(&object, &self.key_file)?;
         }
 
-        println!(
+        let stdout = format!(
             "The key {} of type {} was exported to {:?}",
             &id,
             object.object_type(),
             &self.key_file
         );
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_unique_identifier(id);
+        stdout.write()?;
+
         Ok(())
     }
 }

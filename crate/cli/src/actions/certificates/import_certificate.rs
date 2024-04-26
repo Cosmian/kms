@@ -17,9 +17,12 @@ use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::shared::{
-        import_key::build_private_key_from_der_bytes,
-        utils::{build_usage_mask_from_key_usage, KeyUsage},
+    actions::{
+        console,
+        shared::{
+            import_key::build_private_key_from_der_bytes,
+            utils::{build_usage_mask_from_key_usage, KeyUsage},
+        },
     },
     error::CliError,
 };
@@ -68,7 +71,12 @@ pub struct ImportCertificateAction {
     certificate_id: Option<String>,
 
     /// Import the certificate in the selected format.
-    #[clap(long = "format", short = 'f', default_value = "json-ttlv")]
+    #[clap(
+        required = true,
+        long = "format",
+        short = 'f',
+        default_value = "json-ttlv"
+    )]
     input_format: CertificateInputFormat,
 
     /// The corresponding private key id if any.
@@ -137,7 +145,7 @@ impl ImportCertificateAction {
             );
         };
 
-        match self.input_format {
+        let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
@@ -150,7 +158,10 @@ impl ImportCertificateAction {
                         leaf_certificate_attributes,
                     )
                     .await?;
-                println!("The certificate in the JSON TTLV was imported with id: {certificate_id}",);
+                (
+                    "The certificate in the JSON TTLV was successfully imported!".to_string(),
+                    Some(certificate_id),
+                )
             }
             CertificateInputFormat::Pem => {
                 trace!("CLI: import certificate as PEM file");
@@ -171,7 +182,10 @@ impl ImportCertificateAction {
                         leaf_certificate_attributes,
                     )
                     .await?;
-                println!("The certificate in the PEM file was imported with id: {certificate_id}");
+                (
+                    "The certificate in the PEM file was successfully imported!".to_string(),
+                    Some(certificate_id),
+                )
             }
             CertificateInputFormat::Der => {
                 debug!("CLI: import certificate as a DER file");
@@ -192,14 +206,18 @@ impl ImportCertificateAction {
                         leaf_certificate_attributes,
                     )
                     .await?;
-                println!("The certificate in the DER file was imported with id: {certificate_id}");
+                (
+                    "The certificate in the DER file was successfully imported!".to_string(),
+                    Some(certificate_id),
+                )
             }
             CertificateInputFormat::Pkcs12 => {
                 debug!("CLI: import certificate as PKCS12 file");
                 let private_key_id = self.import_pkcs12(kms_rest_client).await?;
-                println!(
-                    "The private key in the PKCS12 file was imported with id: {private_key_id}"
-                );
+                (
+                    "The private key in the PKCS12 file was successfully imported!".to_string(),
+                    Some(private_key_id),
+                )
             }
             CertificateInputFormat::Chain => {
                 debug!("CLI: import certificate chain as PEM file");
@@ -214,10 +232,10 @@ impl ImportCertificateAction {
                         leaf_certificate_attributes,
                     )
                     .await?;
-                println!(
-                    "The certificate chain in the PEM file was imported with id: \
-                     {leaf_certificate_id}"
-                );
+                (
+                    "The certificate chain in the PEM file was successfully imported!".to_string(),
+                    Some(leaf_certificate_id),
+                )
             }
             CertificateInputFormat::CCADB => {
                 let ccadb_bytes = reqwest::get(MOZILLA_CCADB)
@@ -238,15 +256,17 @@ impl ImportCertificateAction {
                 let objects = build_chain_from_stack(&ccadb_bytes)?;
                 self.import_chain(kms_rest_client, objects, self.replace_existing, None)
                     .await?;
-                println!("The list of Mozilla CCADB certificates was imported");
+
+                ("The list of Mozilla CCADB certificates".to_string(), None)
             }
         };
-        if !self.tags.is_empty() {
-            println!("Tags:");
-            for tag in &self.tags {
-                println!("    - {tag}");
-            }
+        let mut stdout = console::Stdout::new(&stdout_message);
+        stdout.set_tags(Some(&self.tags));
+        if let Some(id) = returned_unique_identifier {
+            stdout.set_unique_identifier(id);
         }
+        stdout.write()?;
+
         Ok(())
     }
 
