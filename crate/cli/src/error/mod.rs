@@ -203,7 +203,6 @@ impl From<std::fmt::Error> for CliError {
 impl From<GoogleApiError> for CliError {
     fn from(e: GoogleApiError) -> Self {
         match e {
-            GoogleApiError::OpenSSLError(e) => Self::GmailApiError(e.to_string()),
             GoogleApiError::JwtError(e) => Self::GmailApiError(e.to_string()),
             GoogleApiError::ReqwestError(e) => Self::GmailApiError(e.to_string()),
             GoogleApiError::TokenRetrivalError(e) => Self::GmailApiError(e.to_string()),

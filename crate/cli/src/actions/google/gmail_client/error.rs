@@ -1,12 +1,9 @@
 /// Errors that may occur during any of the operations in this lib.
 #[derive(Debug, thiserror::Error)]
 pub enum GoogleApiError {
-    /// A tls error occurred.
-    #[error("OpenSSL error stack `{0}`")]
-    OpenSSLError(#[from] openssl::error::ErrorStack),
     /// A jwt error occurred.
     #[error("JWT error `{0}`")]
-    JwtError(#[from] jwt::Error),
+    JwtError(#[from] jwt_simple::Error),
     /// Got an error whilst processing a request.
     #[error("Reqwest error `{0}`")]
     ReqwestError(#[from] reqwest::Error),

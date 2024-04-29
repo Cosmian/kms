@@ -1,13 +1,12 @@
-use std::collections::BTreeMap;
-
-use chrono::{Duration, Utc};
-use jwt::{PKeyWithDigest, SignWithKey};
-use openssl::{hash::MessageDigest, pkey::PKey};
+use jwt_simple::{
+    algorithms::RSAKeyPairLike,
+    prelude::{Claims, Duration, RS256KeyPair},
+};
 use serde::{Deserialize, Serialize};
 
 use super::{service_account::ServiceAccount, GoogleApiError};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GoogleAuthResponse {
     pub access_token: String,
     pub expires_in: u32,
@@ -33,33 +32,30 @@ impl GoogleAuthRequest {
 pub const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
 pub const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
 
+#[derive(Serialize, Deserialize)]
+struct JwtAuth {
+    aud: String,
+    iss: String,
+    scope: String,
+    sub: String,
+}
+
 pub fn create_jwt(
     service_account: &ServiceAccount,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
-    let private_key = PKey::private_key_from_pem(service_account.private_key.as_bytes())?;
-    let key_with_digest = PKeyWithDigest {
-        digest: MessageDigest::sha256(),
-        key: private_key,
+    let key_pair = RS256KeyPair::from_pem(&service_account.private_key)?;
+    let jwt_data = JwtAuth {
+        aud: GOOGLE_AUD_VALUE.to_string(),
+        iss: service_account.client_email.clone(),
+        scope: GMAIL_SCOPE.to_string(),
+        sub: user_email.to_string().clone(),
     };
 
-    let mut claims: BTreeMap<&str, &str> = BTreeMap::new();
+    let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(1));
 
-    claims.insert("iss", &service_account.client_email);
-    claims.insert("scope", GMAIL_SCOPE);
-    claims.insert("aud", GOOGLE_AUD_VALUE);
-
-    let now = Utc::now();
-    let now_timestamp = now.timestamp().to_string();
-    claims.insert("iat", &now_timestamp);
-
-    let exp_time = now + Duration::hours(1);
-
-    let exp_time_timestamp = exp_time.timestamp().to_string();
-    claims.insert("exp", &exp_time_timestamp);
-    claims.insert("sub", user_email);
-
-    Ok(claims.sign_with_key(&key_with_digest)?)
+    let token = key_pair.sign(claims)?;
+    Ok(token)
 }
 
 pub async fn retrieve_token(
@@ -78,7 +74,6 @@ pub async fn retrieve_token(
         .await?
         .text()
         .await?;
-
     let response: GoogleAuthResponse = serde_json::from_str(&response_text)?;
     Ok(response.access_token)
 }
