@@ -92,7 +92,7 @@ jobs:
           yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
 
       - name: install cpanm and SHA module
-        uses: perl-actions/install-with-cpanm@stable
+        uses: perl-actions/install-with-cpanm@v1.5
         with:
           install: |
             Digest::SHA
