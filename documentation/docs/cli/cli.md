@@ -45,6 +45,10 @@ configuration of the KMS.
   pinning
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
   when connecting to a KMS using a client-side encrypted database
+- `oauth2_conf` is OPTIONAL and contains information about the configured identity
+  provider, used to login users with the ckms client
+- `gmail_api_conf` is OPTIONAL and contains information about the configured
+  service account used to fetch Gmail API and enable S/MIME on Gmail CSE
 
 Here is an example configuration with TLS authentication and a client-side encrypted
 database:
