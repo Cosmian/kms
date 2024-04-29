@@ -75,6 +75,8 @@ pub async fn certify(
         params,
     )
     .await?;
+    
+    if let Some()
 
     // There are 3 possibles cases:
     // 1. A certificate creation and a CSR is provided
