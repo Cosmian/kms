@@ -21,8 +21,8 @@ staging = []
 fips = ["cosmian_kms_client/fips"]
 
 [dependencies]
-## Avoid pulling openssl
-actix-web = { workspace = true, features = ["macros", "rustls"] }
+# Avoid pulling openssl
+actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 clap = { workspace = true, features = [
   "help",
