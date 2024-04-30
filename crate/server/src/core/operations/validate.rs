@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Error,
+};
 
 use chrono::{DateTime, Local};
 use cosmian_kmip::{
@@ -25,7 +28,44 @@ use crate::{
     error::KmsError,
     result::KResult,
 };
+struct IndexedCertificateChain {
+    pub head: u8,
+    pub map: HashMap<Vec<u8>, u8>,
+    pub vec: Vec<Vec<u8>>,
+    pub current: u8,
+}
 
+impl IndexedCertificateChain {
+    pub fn reset(&mut self) {
+        self.current = self.head;
+    }
+
+    pub fn next(&mut self) -> Result<Option<Vec<u8>>, Error> {
+        let current_cert = self
+            .vec
+            .get(self.current as usize)
+            .expect("existing element")
+            .as_slice()
+            .to_vec();
+        let current_x509 = X509::from_der(&current_cert)?;
+        let son_issuer_id = current_x509
+            .subject_key_id()
+            .expect("existing subject key id")
+            .as_slice()
+            .to_vec();
+        let son_cert_id = self.map.get(&son_issuer_id);
+        if let Some(son_cert_id) = son_cert_id {
+            let res = self
+                .vec
+                .get(*son_cert_id as usize)
+                .expect("the son certificate must exist");
+            self.current = *son_cert_id;
+            Result::Ok(Some(res.clone()))
+        } else {
+            Result::Ok(None)
+        }
+    }
+}
 // validation has to change :
 // vectors to certificates.
 // uids to certificates.
@@ -104,10 +144,7 @@ pub async fn validate(
     let crl_validation = ValidityIndicator::Unknown;
 
     KResult::Ok(ValidateResponse {
-        validity_indicator: validity_indicator_and(
-            crl_validation,
-            validity_indicator_and(structural_validity, date_validation),
-        ),
+        validity_indicator: crl_validation.and(structural_validity.and(date_validation)),
     })
 }
 
@@ -164,9 +201,7 @@ fn validate_chain_structure(
     let validity = son_x509.verify(&root_pkey)?;
     let (res, count) =
         validate_chain_structure(son_cert.unwrap(), certificates, hm_certificates, _count + 1)?;
-    if validity_indicator_and(map_bool_to_validity_indicator(validity), res)
-        == ValidityIndicator::Valid
-    {
+    if map_bool_to_validity_indicator(validity).and(res) == ValidityIndicator::Valid {
         KResult::Ok((ValidityIndicator::Valid, count))
     } else {
         KResult::Ok((ValidityIndicator::Invalid, count))
@@ -244,7 +279,7 @@ fn validate_chain_date(
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
             let validation = _validate_date(certificate, &current_date)?;
-            KResult::Ok(validity_indicator_and(acc, validation))
+            KResult::Ok(acc.and(validation))
         })
 }
 
@@ -281,7 +316,7 @@ fn _chain_revocation_status(
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
             let res = _certificate_revocation_status(certificate, crls)?;
-            KResult::Ok(validity_indicator_and(acc, res))
+            KResult::Ok(acc.and(res))
         })
 }
 
@@ -292,7 +327,7 @@ fn _certificate_revocation_status(
     let res = crls.iter().try_fold(ValidityIndicator::Valid, |acc, crl| {
         let certificate = X509::from_der(certificate)?;
         let res = _crl_status_to_validity_indicator(crl.get_by_serial(certificate.serial_number()));
-        KResult::Ok(validity_indicator_and(acc, res))
+        KResult::Ok(acc.and(res))
     })?;
     KResult::Ok(res)
 }
@@ -348,16 +383,6 @@ fn _validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndica
         KResult::Ok(ValidityIndicator::Valid)
     } else {
         KResult::Ok(ValidityIndicator::Invalid)
-    }
-}
-
-fn validity_indicator_and(v1: ValidityIndicator, v2: ValidityIndicator) -> ValidityIndicator {
-    match (v1, v2) {
-        (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
-        (ValidityIndicator::Invalid, _) | (_, ValidityIndicator::Invalid) => {
-            ValidityIndicator::Invalid
-        }
-        _ => ValidityIndicator::Unknown,
     }
 }
 

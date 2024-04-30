@@ -2573,12 +2573,14 @@ pub enum ValidityIndicator {
     Unknown = 0x0000_0002,
 }
 
-// pub trait LogicalOps {
-//     fn and<T>(o1: Self, o2: T) -> T;
-// }
-
-// impl LogicalOps for ValidityIndicator {
-//     fn and<ValidityIndicator>(o1: Self, o2: ValidityIndicator) -> ValidityIndicator {
-//         ValidityIndicator::Valid
-//     }
-// }
+impl ValidityIndicator {
+    pub fn and(&self, vi: ValidityIndicator) -> ValidityIndicator {
+        match (self, vi) {
+            (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            (ValidityIndicator::Invalid, _) | (_, ValidityIndicator::Invalid) => {
+                ValidityIndicator::Invalid
+            }
+            _ => ValidityIndicator::Unknown,
+        }
+    }
+}
