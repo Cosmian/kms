@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Validate, ValidateResponse},
-        kmip_types::ValidityIndicator,
+        kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
     //openssl::kmip_certificate_to_openssl,
     //openssl::{kmip_certificate_to_openssl, openssl_certificate_to_kmip},
@@ -38,77 +38,77 @@ use crate::{
 // - check serial number not revoked, following the chain order in CRL.
 
 pub async fn validate(
-    _kms: &KMS,
+    kms: &KMS,
     request: Validate,
-    _user: &str,
-    _params: Option<&ExtraDatabaseParams>,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {:?}", request);
-    match (request.unique_identifier, request.certificate) {
+    let certificates = match (request.unique_identifier, request.certificate) {
         (None, None) =>
         // None uid, None cert case
         {
-            KResult::Ok(ValidateResponse {
+            return KResult::Ok(ValidateResponse {
                 validity_indicator: ValidityIndicator::Unknown,
             })
         }
         (None, Some(certificates)) => {
             // None uid, Some cert case
-            let hm_certificates = &mut HashMap::<Vec<u8>, u8>::new();
-            let root_idx = index_certificates(&mut certificates.clone(), hm_certificates)?;
-
-            let root_cert = certificates.get(root_idx as usize).expect("root not found");
-            let root_x509 = X509::from_der(root_cert)?;
-            let root_pkey = root_x509.public_key()?;
-            // Checking if the root certificate is is well signed.
-            // A root certificate signes itself.
-            if !root_x509.verify(&root_pkey).unwrap() {
-                return KResult::Ok(ValidateResponse {
-                    validity_indicator: ValidityIndicator::Invalid,
-                })
-            };
-
-            // Checking structural validity. The chain is valid, is well signed,
-            // and returning the size of the chain. Result is a ValidityIndicator,
-            // representing the validity of the chain, and a u8, representing the
-            // length of the chain
-            let (structural_validity, count) =
-                validate_chain_structure(root_cert, &certificates, hm_certificates, 0)?;
-            if certificates.len() != count as usize {
-                return KResult::Ok(ValidateResponse {
-                    validity_indicator: ValidityIndicator::Invalid,
-                })
-            };
-
-            // Checking if the certificate chain has not expired
-            let date_validation =
-                validate_chain_date(&mut certificates.clone(), request.validity_time)?;
-
-            // Checking if the certificate chain has revocked elements
-            let crl_validation = ValidityIndicator::Unknown;
-
-            KResult::Ok(ValidateResponse {
-                validity_indicator: validity_indicator_and(
-                    crl_validation,
-                    validity_indicator_and(structural_validity, date_validation),
-                ),
-            })
+            KResult::Ok(certificates)
         }
-        (Some(_uids), None) =>
+        (Some(unique_identifiers), None) =>
         // None uid, Some cert case
         {
-            KResult::Ok(ValidateResponse {
-                validity_indicator: ValidityIndicator::Unknown,
-            })
+            certificates_by_uid(unique_identifiers, kms, user, params).await
         }
-        (Some(_uids), Some(_certificates)) =>
+        (Some(unique_identifiers), Some(certificates)) =>
         // None uid, Some cert case
         {
-            KResult::Ok(ValidateResponse {
-                validity_indicator: ValidityIndicator::Unknown,
-            })
+            let mut certificates_uid =
+                certificates_by_uid(unique_identifiers, kms, user, params).await?;
+            let mut certificates = certificates.clone();
+            certificates.append(&mut certificates_uid);
+            KResult::Ok(certificates.clone())
         }
-    }
+    }?;
+    let hm_certificates = &mut HashMap::<Vec<u8>, u8>::new();
+    let root_idx = index_certificates(&mut certificates.clone(), hm_certificates)?;
+
+    let root_cert = certificates.get(root_idx as usize).expect("root not found");
+    let root_x509 = X509::from_der(root_cert)?;
+    let root_pkey = root_x509.public_key()?;
+    // Checking if the root certificate is is well signed.
+    // A root certificate signes itself.
+    if !root_x509.verify(&root_pkey).unwrap() {
+        return KResult::Ok(ValidateResponse {
+            validity_indicator: ValidityIndicator::Invalid,
+        })
+    };
+
+    // Checking structural validity. The chain is valid, is well signed,
+    // and returning the size of the chain. Result is a ValidityIndicator,
+    // representing the validity of the chain, and a u8, representing the
+    // length of the chain
+    let (structural_validity, count) =
+        validate_chain_structure(root_cert, &certificates, hm_certificates, 0)?;
+    if certificates.len() != count as usize {
+        return KResult::Ok(ValidateResponse {
+            validity_indicator: ValidityIndicator::Invalid,
+        })
+    };
+
+    // Checking if the certificate chain has not expired
+    let date_validation = validate_chain_date(&mut certificates.clone(), request.validity_time)?;
+
+    // Checking if the certificate chain has revocked elements
+    let crl_validation = ValidityIndicator::Unknown;
+
+    KResult::Ok(ValidateResponse {
+        validity_indicator: validity_indicator_and(
+            crl_validation,
+            validity_indicator_and(structural_validity, date_validation),
+        ),
+    })
 }
 
 // key : authority key identifier
@@ -175,15 +175,18 @@ fn validate_chain_structure(
 
 // If fetching a certificate fails, the method reports the first error happening.
 // Otherwise it returns a vector of certificates.
-async fn _certificates_by_uid(
-    unique_identifiers: Vec<&str>,
+async fn certificates_by_uid(
+    unique_identifiers: Vec<UniqueIdentifier>,
     kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<Vec<u8>>> {
     KResult::Ok(
         join_all(unique_identifiers.iter().map(|unique_identifier| async {
-            _certificate_by_uid(unique_identifier, kms, user, params)
+            let unique_identifier = unique_identifier
+                .as_str()
+                .expect("The unique identifier must be Some");
+            certificate_by_uid(unique_identifier, kms, user, params)
                 .await
                 .unwrap()
         }))
@@ -192,7 +195,7 @@ async fn _certificates_by_uid(
 }
 
 // Fetches a certificate. If it fails, returns the according error
-async fn _certificate_by_uid(
+async fn certificate_by_uid(
     unique_identifier: &str,
     kms: &KMS,
     user: &str,
