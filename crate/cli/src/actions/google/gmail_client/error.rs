@@ -1,19 +1,33 @@
+use thiserror::Error;
+
 /// Errors that may occur during any of the operations in this lib.
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum GoogleApiError {
     /// A jwt error occurred.
     #[error("JWT error `{0}`")]
-    JwtError(#[from] jwt_simple::Error),
+    Jwt(jwt_simple::Error),
     /// Got an error whilst processing a request.
     #[error("Reqwest error `{0}`")]
-    ReqwestError(#[from] reqwest::Error),
-    /// An error occurred whilst retrieving the access token.
-    #[error("Token retrieval error `{0}`")]
-    TokenRetrivalError(String),
-    /// An IO error occurred.
-    #[error("Failed to load service account file `{0}`")]
-    ServiceAccountLoadFailure(std::io::Error),
-    /// A serialization error occurred
+    Reqwest(reqwest::Error),
+    // A serialization error occurred
     #[error("Serialization error `{0}`")]
-    SerdeError(#[from] serde_json::Error),
+    Serde(serde_json::Error),
+}
+
+impl From<jwt_simple::Error> for GoogleApiError {
+    fn from(e: jwt_simple::Error) -> Self {
+        Self::Jwt(e)
+    }
+}
+
+impl From<reqwest::Error> for GoogleApiError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Reqwest(e)
+    }
+}
+
+impl From<serde_json::Error> for GoogleApiError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serde(e)
+    }
 }

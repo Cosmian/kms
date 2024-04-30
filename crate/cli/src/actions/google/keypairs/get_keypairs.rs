@@ -20,8 +20,9 @@ pub struct GetKeypairsAction {
 
 impl GetKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
-        let endpoint = KEYPAIRS_ENDPOINT.to_string() + &self.keypairs_id;
+        let endpoint = [KEYPAIRS_ENDPOINT, &self.keypairs_id].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        gmail_client.await?.get(&endpoint).await
+        let response = gmail_client.await?.get(&endpoint).await?;
+        GmailClient::handle_response(response).await
     }
 }

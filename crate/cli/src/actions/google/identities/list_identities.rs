@@ -17,7 +17,7 @@ pub struct ListIdentitiesAction {
 impl ListIdentitiesAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint = IDENTITIES_ENDPOINT.to_owned();
-        gmail_client.await?.get(&endpoint).await
+        let response = gmail_client.await?.get(IDENTITIES_ENDPOINT).await?;
+        GmailClient::handle_response(response).await
     }
 }

@@ -30,12 +30,11 @@ pub enum IdentitiesCommands {
 impl IdentitiesCommands {
     pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         match self {
-            Self::Get(action) => action.run(conf_path).await?,
-            Self::List(action) => action.run(conf_path).await?,
-            Self::Insert(action) => action.run(conf_path).await?,
-            Self::Delete(action) => action.run(conf_path).await?,
-            Self::Patch(action) => action.run(conf_path).await?,
-        };
-        Ok(())
+            Self::Get(action) => action.run(conf_path).await,
+            Self::List(action) => action.run(conf_path).await,
+            Self::Insert(action) => action.run(conf_path).await,
+            Self::Delete(action) => action.run(conf_path).await,
+            Self::Patch(action) => action.run(conf_path).await,
+        }
     }
 }

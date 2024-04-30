@@ -13,15 +13,18 @@ struct IdentityInfo {
     emailAddress: String,
 }
 
-/// Associates a different key pair with an existing client-side encryption identity. The updated key pair must validate against Google's S/MIME certificate profiles.
+/// Associates a different key pair with an existing client-side encryption identity. The updated
+/// key pair must validate against Google's S/MIME certificate profiles.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct PatchIdentitiesAction {
-    /// The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
+    /// The keypair id, associated with a given cert/key. You can get the by listing the keypairs
+    /// associated with the user-id
     #[clap(required = true)]
     keypairs_id: String,
 
-    /// The primary email address associated with the client-side encryption identity configuration that's retrieved.
+    /// The primary email address associated with the client-side encryption identity configuration
+    /// that's retrieved.
     #[clap(long = "user-id", short = 'u', required = true)]
     user_id: String,
 }
@@ -29,16 +32,17 @@ pub struct PatchIdentitiesAction {
 impl PatchIdentitiesAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let endpoint = IDENTITIES_ENDPOINT.to_owned() + &self.user_id;
+        let endpoint = [IDENTITIES_ENDPOINT, &self.user_id].concat();
 
         // Construct identity_info
         let identity_info = IdentityInfo {
             primaryKeyPairId: self.keypairs_id.clone(),
             emailAddress: self.user_id.clone(),
         };
-        gmail_client
+        let response = gmail_client
             .await?
             .patch(&endpoint, serde_json::to_string(&identity_info)?)
-            .await
+            .await?;
+        GmailClient::handle_response(response).await
     }
 }

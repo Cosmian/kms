@@ -203,11 +203,9 @@ impl From<std::fmt::Error> for CliError {
 impl From<GoogleApiError> for CliError {
     fn from(e: GoogleApiError) -> Self {
         match e {
-            GoogleApiError::JwtError(e) => Self::GmailApiError(e.to_string()),
-            GoogleApiError::ReqwestError(e) => Self::GmailApiError(e.to_string()),
-            GoogleApiError::TokenRetrivalError(e) => Self::GmailApiError(e.to_string()),
-            GoogleApiError::ServiceAccountLoadFailure(e) => Self::GmailApiError(e.to_string()),
-            GoogleApiError::SerdeError(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Jwt(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Reqwest(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Serde(e) => Self::GmailApiError(e.to_string()),
         }
     }
 }

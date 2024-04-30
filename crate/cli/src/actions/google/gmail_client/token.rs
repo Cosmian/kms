@@ -31,6 +31,8 @@ impl GoogleAuthRequest {
 
 pub const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
 pub const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
+// Token expiration time in hours
+const TOKEN_EXPIRATION_TIME: u64 = 1;
 
 #[derive(Serialize, Deserialize)]
 struct JwtAuth {
@@ -52,7 +54,7 @@ pub fn create_jwt(
         sub: user_email.to_string().clone(),
     };
 
-    let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(1));
+    let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(TOKEN_EXPIRATION_TIME));
 
     let token = key_pair.sign(claims)?;
     Ok(token)

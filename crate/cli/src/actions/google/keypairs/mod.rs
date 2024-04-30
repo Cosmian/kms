@@ -32,14 +32,12 @@ pub enum KeypairsCommands {
 impl KeypairsCommands {
     pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         match self {
-            Self::Get(action) => action.run(conf_path).await?,
-            Self::List(action) => action.run(conf_path).await?,
-            Self::Insert(action) => action.run(conf_path).await?,
-            Self::Enable(action) => action.run(conf_path).await?,
-            Self::Disable(action) => action.run(conf_path).await?,
-            Self::Obliterate(action) => action.run(conf_path).await?,
-        };
-
-        Ok(())
+            Self::Get(action) => action.run(conf_path).await,
+            Self::List(action) => action.run(conf_path).await,
+            Self::Insert(action) => action.run(conf_path).await,
+            Self::Enable(action) => action.run(conf_path).await,
+            Self::Disable(action) => action.run(conf_path).await,
+            Self::Obliterate(action) => action.run(conf_path).await,
+        }
     }
 }
