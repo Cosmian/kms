@@ -56,8 +56,7 @@ pub fn create_jwt(
 
     let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(TOKEN_EXPIRATION_TIME));
 
-    let token = key_pair.sign(claims)?;
-    Ok(token)
+    Ok(key_pair.sign(claims)?)
 }
 
 pub async fn retrieve_token(
