@@ -12,6 +12,8 @@ use cosmian_kms_client::{
 use pem::PemError;
 use thiserror::Error;
 
+use crate::actions::google::GoogleApiError;
+
 pub mod result;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -72,6 +74,10 @@ pub enum CliError {
     // Url parsing errors
     #[error(transparent)]
     UrlParsing(#[from] url::ParseError),
+
+    // When an error occurs fetching Gmail API
+    #[error("Error interacting with Gmail API: {0}")]
+    GmailApiError(String),
 }
 
 impl CliError {
@@ -191,6 +197,16 @@ impl From<PemError> for CliError {
 impl From<std::fmt::Error> for CliError {
     fn from(e: std::fmt::Error) -> Self {
         Self::Default(e.to_string())
+    }
+}
+
+impl From<GoogleApiError> for CliError {
+    fn from(e: GoogleApiError) -> Self {
+        match e {
+            GoogleApiError::Jwt(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Reqwest(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::Serde(e) => Self::GmailApiError(e.to_string()),
+        }
     }
 }
 

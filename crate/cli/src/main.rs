@@ -8,6 +8,7 @@ use cosmian_kms_cli::{
         access::AccessAction,
         certificates::CertificatesCommands,
         elliptic_curves::EllipticCurveCommands,
+        google::GoogleCommands,
         login::LoginAction,
         logout::LogoutAction,
         markdown::MarkdownAction,
@@ -58,6 +59,8 @@ enum CliCommands {
     Logout(LogoutAction),
     #[clap(hide = true)]
     Markdown(MarkdownAction),
+    #[command(subcommand)]
+    Google(GoogleCommands),
 }
 
 #[tokio::main]
@@ -111,6 +114,7 @@ async fn main_() -> Result<(), CliError> {
                 CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
+                CliCommands::Google(action) => action.process(&conf_path).await?,
                 _ => {
                     println!("Error: unexpected command");
                 }
