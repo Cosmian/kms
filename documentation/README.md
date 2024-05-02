@@ -2,11 +2,6 @@
 
 The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
-## TODO
-
-- add examples using Rust in the doc
-- better document the KMIP lib
-
 ## Installing Rendering Tools
 
 You **do not need these tools** to author the doc and should probably **not** install LaTeX.
@@ -16,10 +11,34 @@ However, if you want to see how it looks fully rendered, you must install `mkdoc
 
 ### Installing mkdocs
 
+#### Ubuntu pre-requisites
+
 ```sh
-# MKdocs
+## Ubuntu 22.04
 sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
-pip install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-material  pandoc-latex-admonition install markdown-katex git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
+
+## Ubuntu 23.10
+sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
+```
+
+#### MacOS pre-requisites
+
+```sh
+brew install pandoc librsvg
+brew install --cask homebrew/cask-fonts/font-noto-mono
+```
+
+#### mkdocs
+
+```sh
+cd documentation
+python3 -m venv venv
+
+source venv/bin/activate 
+
+pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
+mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-material mkdocs-mermaid2-plugin \
+pandoc-latex-admonition markdown-katex git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
 ```
 
 ### Using mkdocs
@@ -28,10 +47,13 @@ From the root of the project, run
 
 ```bash
 cd documentation/
-mkdocs serve
+
+# Run the server on all interfaces
+source venv/bin/activate
+./venv/bin/mkdocs serve
 ```
 
-Open a browser window at `http://127.0.0.1:8003`
+Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
 
 The doc is live rendered when editing the markdown files.
 

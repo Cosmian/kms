@@ -471,13 +471,19 @@ body.dark-mode {
     color: var(--light);
     border-color: var(--border--grey-4-dark-mode) !important;
 }
-body.dark-mode .md-main{
+
+body.dark-mode .md-main {
     background: var(--bg-color-dark-mode) none !important;
 }
 
 
-/*keep the background of images white */
+/* Keep the background of images white */
 body.dark-mode p:has(img:only-child) {
+    background-color: white;
+}
+
+/* Keep the background of mermaid drawings white */
+body .mermaid {
     background-color: white;
 }
 
@@ -502,8 +508,7 @@ body.dark-mode .md-typeset .tabbed-labels > label {
 
 body.dark-mode a:hover,
 body.dark-mode label:hover,
-body.dark-mode .md-typeset .tabbed-set
-{
+body.dark-mode .md-typeset .tabbed-set {
     color: var(--text--active-dark-mode) !important;
 }
 
@@ -519,21 +524,24 @@ body.dark-mode .md-nav--primary,
 body.dark-mode .md-nav__title ~ .md-nav__list {
     background-color: var(--bg-color-dark-mode);
 }
+
 body.dark-mode .md-nav__title[for=__drawer],
 body.dark-mode .md-nav__title {
     background-color: var(--bg-color-light-dark-mode);
     box-shadow: var(--bg-color-dark-mode);
 }
+
 body.dark-mode .md-nav__title {
     color: var(--md-default-fg-color--light-dark-mode);
 }
+
 body.dark-mode .md-nav__item .md-nav__link--active,
 body.dark-mode .md-nav__item .md-nav__link--active code {
     color: var(--text--active-dark-mode);
 }
 
-body.dark-mode  .md-nav__link:not(.md-nav__link--active),
-body.dark-mode  .md-nav__link:not(.md-nav__container):focus,
+body.dark-mode .md-nav__link:not(.md-nav__link--active),
+body.dark-mode .md-nav__link:not(.md-nav__container):focus,
 body.dark-mode .md-nav__link:not(.md-nav__container):hover {
     color: var(--text--md-primary-fg-color-dark-mode);
 }
@@ -557,21 +565,26 @@ body.dark-mode .highlight .si,
 body.dark-mode .highlight .ss {
     color: var(--md-default-fg-color--light-dark-mode);
 }
+
 body.dark-mode .highlight .c,
 body.dark-mode .highlight .c1 {
     color: grey;
 }
+
 body.dark-mode .highlight .n {
     color: var(--lighter);
 }
+
 body.dark-mode .highlight .s,
 body.dark-mode .highlight .s1,
 body.dark-mode .highlight .s2 {
     color: goldenrod;
 }
+
 body.dark-mode .highlight .nt {
     color: cornflowerblue;
 }
+
 body.dark-mode .highlight .na,
 body.dark-mode .highlight .m {
     color: indianred;
@@ -580,18 +593,22 @@ body.dark-mode .highlight .m {
 body.dark-mode .md-typeset {
     color: var(--text-dark-mode);
 }
+
 body.dark-mode .md-typeset h5,
 body.dark-mode .md-typeset h6 {
     color: var(--md-default-fg-color--light-dark-mode);
 }
+
 body.dark-mode .md-typeset code {
     background-color: var(--bg-color-dark-mode);
     color: var(--lighter);
 }
+
 body.dark-mode .md-typeset .admonition {
     background-color: var(--bg-color-dark-mode);
     color: var(--text-dark-mode);
 }
+
 body.dark-mode .md-typeset .md-button {
     background: var(--bg-color-dark-mode) none;
     color: var(--text-dark-mode);
@@ -602,6 +619,7 @@ body.dark-mode .md-header input {
     background-color: var(--bg-color-light-dark-mode);
     color: var(--text-dark-mode);
 }
+
 body.dark-mode .md-header .md-search__form .md-search__icon {
     color: var(--text-dark-mode) !important;
 }
@@ -609,6 +627,7 @@ body.dark-mode .md-header .md-search__form .md-search__icon {
 body.dark-mode .md-search__scrollwrap {
     background-color: var(--bg-color-dark-mode);
 }
+
 body.dark-mode .md-search-result,
 body.dark-mode .md-search-result__meta,
 body.dark-mode .md-search-result__icon {

@@ -18,7 +18,8 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md#configuration).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md),
+and authentication to the KMS is done using the same mechanisms (certificates, JWT tokens, none).
 
 Authentication of the machine to the KMS is likely to be done using a PKCS#12 file.
 The path to the PKCS#12 file and its password should be set in the configuration file.
@@ -26,7 +27,9 @@ The path to the PKCS#12 file and its password should be set in the configuration
 The `Common Name` of the certificate in the PKCS#12 file will be used as the
 username to authenticate the machine to the KMS and fetch the corresponding key.
 
-See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to learn how to configure the KMS to use certificate authentication (please note that the KMS can
+See
+[Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
+to learn how to configure the KMS to use certificate authentication (please note that the KMS can
 also manage the machines certificates).
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
