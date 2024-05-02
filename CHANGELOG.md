@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.15.1] - 2024-05-02
+
+### Features
+
+- Add Google Workspace CSE endpoints for **encrypted Gmail** ([#192](https://github.com/Cosmian/kms/pull/192))
+
+### Bug Fixes
+
+- RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
+- Remove everything related to GCP images build ([#241](https://github.com/Cosmian/kms/pull/241))
+
+### Documentation
+
+- Oauth2 OIDC doc fixes
+
 ## [4.15.0] - 2024-04-08
 
 ### Bug Fixes
