@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [4.15.2] - 2024-05-03
 
+### Features
+
+- Create Gmail key pairs and identities with `ckms` via Gmail API ([#243](https://github.com/Cosmian/kms/pull/243))
+
 ### Bug Fixes
 
 - Comment out mermaid configuration
