@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.15.2] - 2024-05-03
+
+### Bug Fixes
+
+- Comment out mermaid configuration
+
 ## [4.15.1] - 2024-05-02
 
 ### Features
