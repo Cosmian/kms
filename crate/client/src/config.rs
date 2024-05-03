@@ -76,6 +76,23 @@ pub struct Oauth2Conf {
     pub scopes: Vec<String>,
 }
 
+/// The configuration that is used by the google command
+/// to perform actions over Gmail API.
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+pub struct GmailApiConf {
+    pub account_type: String,
+    pub project_id: String,
+    pub private_key_id: String,
+    pub private_key: String,
+    pub client_email: String,
+    pub client_id: String,
+    pub auth_uri: String,
+    pub token_uri: String,
+    pub auth_provider_x509_cert_url: String,
+    pub client_x509_cert_url: String,
+    pub universe_domain: String,
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct ClientConf {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
@@ -96,6 +113,8 @@ pub struct ClientConf {
     pub kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth2_conf: Option<Oauth2Conf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gmail_api_conf: Option<GmailApiConf>,
 }
 
 impl Default for ClientConf {
@@ -109,6 +128,7 @@ impl Default for ClientConf {
             ssl_client_pkcs12_path: None,
             ssl_client_pkcs12_password: None,
             oauth2_conf: None,
+            gmail_api_conf: None,
         }
     }
 }

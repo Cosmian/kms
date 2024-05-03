@@ -4,7 +4,7 @@ client `ckms_gui`.
 !!! info "Download ckms and ckms_gui"
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.15.1/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.15.2/)
 
 ## Configuring the clients
 
@@ -34,7 +34,7 @@ configuration of the KMS.
   to a KMS server using a certificate.
 - `ssl_client_pkcs12_password`: is OPTIONAL and is the password to open the
   PKCS12 file when authenticating to the KMS server using a certificate.
-- `oauth2_conf`: is OPTIONAL and is the OAuth2 configuration (see [below](#configuring-the-clients))
+- `oauth2_conf`: is OPTIONAL and is the OAuth2 configuration (see [below](#oauth2oidc-configuration))
   to use when authenticating to the KMS server using OAuth2 or Open ID Connect.
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
   when connecting to a KMS using an encrypted database
@@ -43,8 +43,9 @@ configuration of the KMS.
   SSL certificate. Useful to run tests with a self-signed certificate.
 - `verified_cert` contains the verified PEM TLS certificate used for certificate
   pinning
-- `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
-  when connecting to a KMS using a client-side encrypted database
+- `gmail_api_conf` is OPTIONAL and contains information about the configured
+  service account used to fetch Gmail API and handle easily S/MIME elements (identities, keypairs)
+  (see [below](#smime-gmail-service-account-configuration))
 
 Here is an example configuration with TLS authentication and a client-side encrypted
 database:
@@ -87,6 +88,53 @@ Example:
     "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token",
     "scopes": []
+  }
+}
+```
+
+## S/MIME Gmail service account configuration
+
+When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide
+the necessary information about the configured service account to interact with Gmail API, and handle
+identities and keypairs easily from the ckms.
+
+This configuration is mandatory for `ckms google` subcommands.
+
+The `gmail_api_conf` field is a JSON object with the following fields:
+
+- `account_type`
+- `project_id`
+- `private_key_id`
+- `private_key`
+- `client_email`
+- `client_id`
+- `auth_uri`
+- `token_uri`
+- `auth_provider_x509_cert_url`
+- `client_x509_cert_url`
+- `universe_domain`
+
+
+I can be retrieved directly from a JSON file downloaded from Google interface when creating
+and configurating the service account (following Google documentation).
+
+Example:
+
+```json
+{
+  "kms_server_url": "https://kms.acme.com:9999",
+  "gmail_api_conf": {
+    "account_type": "service_account",
+    "project_id": "projet_id",
+    "private_key_id": "abc123abc123abc123abc123abc123abc123",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+    "client_email": "xxx@yyyy.iam.gserviceaccount.com",
+    "client_id": "12345678901234567890",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/xxx%40yyyy.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
   }
 }
 ```

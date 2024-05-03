@@ -1,6 +1,6 @@
 [package]
 name = "kms_test_server"
-version = "4.15.1"
+version = "4.15.2"
 edition = "2021"
 
 [lib]
