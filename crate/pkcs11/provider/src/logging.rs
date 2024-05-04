@@ -40,10 +40,7 @@ fn init(
     _log_home: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let level = level.unwrap_or(Level::INFO);
-    println!(
-        "ckms-pkcs11 module logging at {} level to file /var/log/{}.log",
-        level, log_name
-    );
+    println!("ckms-pkcs11 module logging at {level} level to file /var/log/{log_name}.log");
     log_to_file(log_name, level, &PathBuf::from("/var/log"))
 }
 

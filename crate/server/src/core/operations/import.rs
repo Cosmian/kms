@@ -98,7 +98,7 @@ async fn process_symmetric_key(
         Attributes::check_user_tags(tags)?;
         // Insert the tag corresponding to the object type if tags should be
         // updated.
-        tags.insert("_sk".to_string());
+        tags.insert("_kk".to_string());
     }
 
     // check if the object will be replaced if it already exists
@@ -114,7 +114,7 @@ async fn process_symmetric_key(
     // Replace attributes in object structure.
     object_key_block.key_value.attributes = Some(Box::new(attributes.clone()));
 
-    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+    let uid = match request.unique_identifier.to_string() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid,
     };
@@ -256,7 +256,7 @@ async fn process_public_key(
         &attributes,
     );
 
-    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+    let uid = match request.unique_identifier.to_string() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid,
     };
