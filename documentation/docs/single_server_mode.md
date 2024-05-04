@@ -16,7 +16,7 @@ protected during operation by running the server inside an enclave. Ask Cosmian 
 To run in single server mode, using the defaults, run the container as follows:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.15.2
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.16.0
 ```
 
 The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
@@ -30,7 +30,7 @@ directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.15.2
+  --name kms ghcr.io/cosmian/kms:4.16.0
 ```
 
 ### Using client-side encrypted databases
@@ -41,7 +41,7 @@ To start the KMS server with a client-side encrypted SQLite databases, pass the
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.15.2 \
+  --name kms ghcr.io/cosmian/kms:4.16.0 \
   --database-type=sqlite-enc
 ```
 

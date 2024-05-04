@@ -1,8 +1,11 @@
 [package]
 name = "cosmian_kms_python"
-version = "4.15.2"
-authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 license-file = "../../LICENSE"
 
 [lib]

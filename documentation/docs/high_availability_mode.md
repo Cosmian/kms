@@ -46,7 +46,7 @@ e.g.
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.15.2 \
+  --name kms ghcr.io/cosmian/kms:4.16.0 \
   --database-type=postgresql \
   --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
 
@@ -61,7 +61,7 @@ Example:
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.15.2 \
+  --name kms ghcr.io/cosmian/kms:4.16.0 \
   --database-type=redis-findex \
   --database-url=redis://localhost:6379 \
   --redis-master-password password \
@@ -98,7 +98,7 @@ Say the certificate is called `cert.p12` and is in a directory called `/certific
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.15.2 \
+  --name kms ghcr.io/cosmian/kms:4.16.0 \
   -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
