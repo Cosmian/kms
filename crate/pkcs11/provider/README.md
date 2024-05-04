@@ -14,4 +14,3 @@ The primary goal is to support the Cosmian KMS as
 - a LUKS keys provider,
 
 but it can be used with any application that supports PKCS#11.
-

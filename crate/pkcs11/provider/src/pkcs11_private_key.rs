@@ -1,6 +1,6 @@
 use cosmian_pkcs11_module::traits::{RemoteObjectId, RemoteObjectType};
 
-/// A PKCS11 data object is a DataObject that wraps data from a KMS object
+/// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
 #[derive(Debug)]
 pub struct Pkcs11PrivateKey {
     remote_id: String,

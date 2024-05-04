@@ -96,7 +96,7 @@ async fn locate_objects(
         .unique_identifiers
         .unwrap_or_default()
         .iter()
-        .map(|id| id.to_string())
+        .map(std::string::ToString::to_string)
         .filter(|id| !id.is_empty())
         .collect();
     debug!(

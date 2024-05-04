@@ -1,11 +1,11 @@
 [package]
 name = "ckms_pkcs11"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
-rust-version.workspace = true
-repository.workspace = true
+edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "ckms_pkcs11"
@@ -20,7 +20,6 @@ cosmian_kms_client = { path = "../../client" }
 cosmian_logger = { path = "../../logger" }
 cosmian_pkcs11_module = { path = "../module" }
 etcetera = "0.8.0"
-hex = "0.4.3"
 serde_json = { workspace = true }
 sha3 = "0.10.8"
 thiserror = { workspace = true }
@@ -31,10 +30,8 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 x509-cert = { version = "0.2.5", default-features = false }
 zeroize = { workspace = true }
 
-
 [target.'cfg(target_os = "linux")'.dependencies]
 tracing-journald = "0.3.0"
 
 [dev-dependencies]
 kms_test_server = { path = "../../test_server" }
-

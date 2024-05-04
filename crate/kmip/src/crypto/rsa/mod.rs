@@ -35,6 +35,7 @@ pub const FIPS_PUBLIC_RSA_MASK: CryptographicUsageMask = CryptographicUsageMask:
     .union(CryptographicUsageMask::DeriveKey)
     .union(CryptographicUsageMask::KeyAgreement);
 
+#[must_use]
 pub fn default_cryptographic_parameters(
     cryptographic_parameters: Option<&CryptographicParameters>,
 ) -> (CryptographicAlgorithm, PaddingMethod, HashingAlgorithm) {

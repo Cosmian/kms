@@ -249,5 +249,5 @@ pub fn close(handle: CK_SESSION_HANDLE) -> bool {
 }
 
 pub fn close_all() {
-    SESSIONS.lock().unwrap().clear()
+    SESSIONS.lock().unwrap().clear();
 }

@@ -34,7 +34,18 @@ use std::{
 };
 
 use log::debug;
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CKF_HW_SLOT, CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION,
+    CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED,
+    CKF_WRITE_PROTECTED, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS, CK_ATTRIBUTE_PTR, CK_BBOOL,
+    CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS, CK_FUNCTION_LIST, CK_INFO, CK_INFO_PTR,
+    CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE,
+    CK_MECHANISM_TYPE_PTR, CK_NOTIFY, CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_SESSION_HANDLE,
+    CK_SESSION_HANDLE_PTR, CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR,
+    CK_SLOT_INFO, CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
+    CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
+    CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+};
 pub use pkcs11_sys::{CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV};
 use rand::RngCore;
 use tracing::{info, trace};
@@ -130,7 +141,7 @@ macro_rules! valid_slot {
 }
 
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
-    // In this structure ‘version’ is the cryptoki specification version number. The major and minor
+    // In this structure 'version' is the cryptoki specification version number. The major and minor
     // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
     version: CK_VERSION { major: 2, minor: 4 },
     C_Initialize: Some(C_Initialize),
@@ -588,8 +599,10 @@ cryptoki_fn!(
                     if (attribute.ulValueLen as usize) < value.len() {
                         continue;
                     }
-                    unsafe { slice::from_raw_parts_mut(attribute.pValue as *mut u8, value.len()) }
-                        .copy_from_slice(&value);
+                    unsafe {
+                        slice::from_raw_parts_mut(attribute.pValue.cast::<u8>(), value.len())
+                    }
+                    .copy_from_slice(&value);
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }

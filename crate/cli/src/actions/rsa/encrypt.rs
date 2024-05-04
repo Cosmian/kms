@@ -19,7 +19,7 @@ use crate::{
 ///
 /// `CKM_RSA_PKCS` is deprecated in FIPS 140-3 and is therefore not available in FIPS mode.
 /// `CKM_RSA_AES_KEY_WRAP` is meant be used to wrap/unwrap keys with RSA keys although,
-/// since it is using AES_KEY_WRAP_PAD (a.k.a RFC 5649), encrypt/decrypt operations of text
+/// since it is using `AES_KEY_WRAP_PAD` (a.k.a RFC 5649), encrypt/decrypt operations of text
 /// with arbitrary length should be possible as specified in PKCS#11 v2.40 2.14.
 ///
 /// When using `CKM_RSA_PKCS`:

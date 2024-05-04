@@ -245,6 +245,7 @@ impl Object {
         attribute
     }
 
+    #[must_use]
     pub fn matches(&self, others: &Attributes) -> bool {
         if let Some(class) = others.get(AttributeType::Class) {
             if *class != self.attribute(AttributeType::Class).unwrap() {

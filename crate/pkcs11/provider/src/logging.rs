@@ -63,9 +63,8 @@ fn log_to_file(
         .append(true)
         .create(true)
         .open(log_path)?;
-    let env_filter = EnvFilter::new(
-        format!("info,ckms_pkcs11={},cosmian_pkcs11_module={}", level, level).as_str(),
-    );
+    let env_filter =
+        EnvFilter::new(format!("info,ckms_pkcs11={level},cosmian_pkcs11_module={level}").as_str());
     _ = Registry::default()
         .with(
             tracing_subscriber::fmt::layer()

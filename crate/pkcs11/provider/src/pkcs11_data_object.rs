@@ -6,7 +6,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
-/// A PKCS11 data object is a DataObject that wraps data from a KMS object
+/// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
 #[derive(Debug)]
 pub struct Pkcs11DataObject {
     value: Zeroizing<Vec<u8>>,

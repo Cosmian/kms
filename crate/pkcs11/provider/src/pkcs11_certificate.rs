@@ -27,20 +27,17 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
                 CertificateType::X509 => Ok(Self {
                     certificate: X509Certificate::from_der(&certificate_value).map_err(|e| {
                         Pkcs11Error::ServerError(format!(
-                            "Invalid X509 Certificate DER bytes: {:?}",
-                            e
+                            "Invalid X509 Certificate DER bytes: {e:?}"
                         ))
                     })?,
                     label: kms_object.other_tags.join(","),
                 }),
                 _ => Err(Pkcs11Error::ServerError(format!(
-                    "Invalid Certificate Type: {:?}",
-                    certificate_type
+                    "Invalid Certificate Type: {certificate_type:?}"
                 ))),
             },
             o => Err(Pkcs11Error::ServerError(format!(
-                "Invalid KMS Object for a certificate: {:?}",
-                o
+                "Invalid KMS Object for a certificate: {o:?}"
             ))),
         }
     }

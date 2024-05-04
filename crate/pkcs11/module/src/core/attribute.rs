@@ -20,7 +20,17 @@
 use core::ops::Deref;
 use std::ffi::CString;
 
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CKA_ALWAYS_AUTHENTICATE, CKA_ALWAYS_SENSITIVE, CKA_APPLICATION, CKA_CERTIFICATE_CATEGORY,
+    CKA_CERTIFICATE_TYPE, CKA_CLASS, CKA_COEFFICIENT, CKA_DECRYPT, CKA_EC_PARAMS, CKA_EC_POINT,
+    CKA_ENCRYPT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_ISSUER, CKA_KEY_TYPE,
+    CKA_LABEL, CKA_MODULUS, CKA_MODULUS_BITS, CKA_NEVER_EXTRACTABLE, CKA_PRIME_1, CKA_PRIME_2,
+    CKA_PRIVATE, CKA_PRIVATE_EXPONENT, CKA_PROFILE_ID, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
+    CKA_SERIAL_NUMBER, CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT, CKA_TOKEN, CKA_TRUSTED, CKA_UNWRAP,
+    CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY, CKA_VERIFY_RECOVER, CKA_WRAP, CKC_X_509, CK_ATTRIBUTE,
+    CK_ATTRIBUTE_TYPE, CK_BBOOL, CK_CERTIFICATE_CATEGORY, CK_CERTIFICATE_TYPE, CK_FALSE,
+    CK_KEY_TYPE, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_TRUE, CK_ULONG,
+};
 use strum_macros::Display;
 use tracing::{debug, trace};
 
@@ -165,6 +175,7 @@ pub enum Attribute {
 }
 
 impl Attribute {
+    #[must_use]
     pub fn attribute_type(&self) -> AttributeType {
         match self {
             Attribute::AlwaysAuthenticate(_) => AttributeType::AlwaysAuthenticate,
@@ -210,6 +221,7 @@ impl Attribute {
         }
     }
 
+    #[must_use]
     pub fn as_raw_value(&self) -> Vec<u8> {
         match self {
             Attribute::AlwaysAuthenticate(bool)
@@ -251,7 +263,7 @@ impl Attribute {
             | Attribute::PublicExponent(bytes)
             | Attribute::SerialNumber(bytes)
             | Attribute::Subject(bytes)
-            | Attribute::Value(bytes) => bytes.to_vec(),
+            | Attribute::Value(bytes) => bytes.clone(),
             Attribute::Application(c_string) => c_string.as_bytes().to_vec(),
             Attribute::Label(string) => string.as_bytes().to_vec(),
         }
@@ -360,6 +372,7 @@ fn try_u8_into_bool(slice: &[u8]) -> MResult<bool> {
 pub struct Attributes(Vec<Attribute>);
 
 impl Attributes {
+    #[must_use]
     pub fn get(&self, type_: AttributeType) -> Option<&Attribute> {
         self.0.iter().find(|&attr| attr.attribute_type() == type_)
     }
@@ -369,25 +382,24 @@ impl Attributes {
             Some(Attribute::Class(class)) => Ok(*class),
             None => Err(MError::Todo("get_class: no class attribute".to_string())),
             other => Err(MError::Todo(format!(
-                "get_class: unexpected attribute value: {:?}, on class attribute type",
-                other
+                "get_class: unexpected attribute value: {other:?}, on class attribute type"
             ))),
         }
     }
 
-    /// Ensure that the attributes contain a CKC_X_509 certificate request or None.
+    /// Ensure that the attributes contain a `CKC_X_509` certificate request or None.
     pub fn ensure_X509_or_none(&self) -> MResult<()> {
         match self.get(AttributeType::CertificateType) {
             Some(Attribute::CertificateType(cert_type)) => match *cert_type {
                 CKC_X_509 => Ok(()),
                 _ => Err(MError::Todo(format!(
-                    "ensure_X509_or_none: support for certificate type: {} is not implemented",
-                    cert_type
+                    "ensure_X509_or_none: support for certificate type: {cert_type} is not \
+                     implemented"
                 ))),
             },
             Some(other_type) => Err(MError::Todo(format!(
-                "ensure_X509_or_none: unexpected attribute value: {:?}, on class attribute type",
-                other_type
+                "ensure_X509_or_none: unexpected attribute value: {other_type:?}, on class \
+                 attribute type"
             ))),
             None => Ok(()),
         }

@@ -15,9 +15,9 @@ checking for the `+P11KIT` flag.
 ❯ systemd-cryptenroll --version
 
 systemd 253 (253.5-1ubuntu6.1)
-+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL 
-+ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY 
-+P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT 
++PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL
++ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY
++P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT
 default-hierarchy=unified
 ```
 
@@ -86,7 +86,7 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
      manufacturer: Cosmian
      model: software
      serial-number: x.y.z
-     flags: 
+     flags:
            rng
            write-protected
            login-required
@@ -227,18 +227,18 @@ When not set, the default tag searched is `disk-encryption`.
 ```bash
 > sudo systemd-cryptenroll /dev/vda4 --pkcs11-token-uri=list
 
-URI                                                                        LABEL       MANUFACTURER MODEL   
+URI                                                                        LABEL       MANUFACTURER MODEL
 pkcs11:model=software;manufacturer=Cosmian;serial=x.y.z;token=Cosmian-KMS Cosmian-KMS Cosmian      software
 ```
 
 #### 2. Enroll the partition with the Cosmian KMS
 
 ```bash
-# this is equivalent to 
-# sudo COSMIAN_PKCS11_LOGGING_LEVEL=info COSMIAN_PKCS11_DISK_ENCRYPTION_TAG=disk-encryption systemd-cryptenroll /dev/vda4  --pkcs11-token-uri=pkcs11:token=Cosmian-KMS 
+# this is equivalent to
+# sudo COSMIAN_PKCS11_LOGGING_LEVEL=info COSMIAN_PKCS11_DISK_ENCRYPTION_TAG=disk-encryption systemd-cryptenroll /dev/vda4  --pkcs11-token-uri=pkcs11:token=Cosmian-KMS
 > sudo systemd-cryptenroll /dev/vda4  --pkcs11-token-uri=pkcs11:token=Cosmian-KMS
 
-🔐 Please enter current passphrase for disk /dev/vda4: *************                    
+🔐 Please enter current passphrase for disk /dev/vda4: *************
 ckms-pkcs11 module logging at INFO level to file /var/log/ckms-pkcs11.log
 Successfully logged into security token 'Cosmian-KMS' via protected authentication path.
 New PKCS#11 token enrolled as key slot 1.
@@ -248,7 +248,7 @@ New PKCS#11 token enrolled as key slot 1.
 
 ```bash
  > sudo cryptsetup luksDump /dev/vda4
-  
+
 LUKS header information
 Version:        2
 Epoch:          5
@@ -401,7 +401,3 @@ Successfully revoked: 6fc631....
 - [cryptsetup](https://www.man7.org/linux/man-pages/man8/cryptsetup.8.html)
 - [systemd-cryptenroll](https://www.man7.org/linux/man-pages/man1/systemd-cryptenroll.1.html)
 - [p11-kit](https://p11-glue.github.io/p11-glue/p11-kit.html)
-
-
-
-

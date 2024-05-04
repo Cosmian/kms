@@ -17,7 +17,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CKG_MGF1_SHA1, CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_ECDSA,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA1_RSA_PKCS, CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS,
+    CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKM_SHA_1, CK_MECHANISM,
+    CK_MECHANISM_TYPE, CK_RSA_PKCS_PSS_PARAMS,
+};
 
 use crate::{
     traits::{DigestType, EncryptionAlgorithm, SignatureAlgorithm},
@@ -77,7 +82,7 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, MErr
             }
             //  TODO(kcking): check alignment as well?
             let params: CK_RSA_PKCS_PSS_PARAMS =
-                unsafe { (parameter_ptr as *mut CK_RSA_PKCS_PSS_PARAMS).read() };
+                unsafe { parameter_ptr.cast::<CK_RSA_PKCS_PSS_PARAMS>().read() };
             let mgf = params.mgf;
             let hash_alg = params.hashAlg;
             let salt_len = params.sLen;
@@ -158,7 +163,7 @@ impl From<Mechanism> for EncryptionAlgorithm {
     fn from(mechanism: Mechanism) -> Self {
         match mechanism {
             Mechanism::RsaPkcs => EncryptionAlgorithm::RsaPkcs1v15,
-            x => panic!("Unsupported encryption algorithm: {:?}", x),
+            x => panic!("Unsupported encryption algorithm: {x:?}"),
         }
     }
 }

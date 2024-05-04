@@ -53,6 +53,7 @@ pub enum DigestType {
 }
 
 impl DigestType {
+    #[must_use]
     pub fn digest_len(&self) -> usize {
         match self {
             DigestType::Sha1 => 20,

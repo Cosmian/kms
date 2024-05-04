@@ -2,7 +2,7 @@
 // Changes made to the original code are
 // licensed under the Business Source License version 1.1.
 
-//! CKO_DATA object as defined in PKCS#11 2.40 4.5
+//! `CKO_DATA` object as defined in PKCS#11 2.40 4.5
 //! [PKCS#11 2.40 ~ 4.5](http://docs.oasis-open.org/pkcs11/pkcs11-base/v2.40/os/pkcs11-base-v2.40-os.html#_Toc416959706)
 
 use std::{any::Any, ffi::CString, hash::Hash};

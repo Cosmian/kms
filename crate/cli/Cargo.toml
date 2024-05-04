@@ -25,19 +25,21 @@ fips = ["cosmian_kms_client/fips"]
 actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 clap = { workspace = true, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
 cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
 der = { version = "0.7", features = ["pem"] }
 env_logger = { workspace = true }
-jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust"] }
+jwt-simple = { version = "0.12", default-features = false, features = [
+  "pure-rust",
+] }
 oauth2 = "4.4"
 pem = "3.0"
 reqwest = { workspace = true }
@@ -58,7 +60,7 @@ actix-server = { workspace = true }
 assert_cmd = "2.0"
 const-oid = { version = "0.9", features = ["db"] }
 cosmian_kms_server = { path = "../server", features = [
-    "insecure",
+  "insecure",
 ], default-features = false }
 kms_test_server = { path = "../test_server" }
 openssl = { workspace = true }

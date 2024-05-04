@@ -4,6 +4,13 @@ use std::{
     sync::{Arc, Once},
 };
 
+use pkcs11_sys::{
+    CKA_CLASS, CKM_DSA, CKO_PRIVATE_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_MECHANISM_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID, CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS,
+    CK_FALSE, CK_INVALID_HANDLE,
+};
 use serial_test::serial;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -121,7 +128,7 @@ pub fn test_init() {
         };
         // Update the function list with this PKCS#11 entry function
         func_list.C_GetFunctionList = Some(C_GetFunctionList);
-        unsafe { C_GetFunctionList((&mut func_list) as *mut _ as *mut _) };
+        unsafe { C_GetFunctionList(std::ptr::addr_of_mut!(func_list) as *mut _) };
     }
 }
 
@@ -137,14 +144,14 @@ fn get_initialize() {
     assert_eq!({ C_Finalize(ptr::null_mut()) }, CKR_OK);
     let mut args = CK_C_INITIALIZE_ARGS::default();
     assert_eq!(
-        { C_Initialize(&mut args as CK_C_INITIALIZE_ARGS_PTR as *mut std::ffi::c_void) },
+        { C_Initialize((&mut args as CK_C_INITIALIZE_ARGS_PTR).cast::<std::ffi::c_void>()) },
         CKR_OK
     );
     assert_eq!({ C_Finalize(ptr::null_mut()) }, CKR_OK);
     // Expect CKR_ARGUMENTS_BAD if pReserved is not null.
-    args.pReserved = 1 as *mut u32 as *mut std::ffi::c_void;
+    args.pReserved = (1 as *mut u32).cast::<std::ffi::c_void>();
     assert_eq!(
-        { C_Initialize(&mut args as CK_C_INITIALIZE_ARGS_PTR as *mut std::ffi::c_void) },
+        { C_Initialize((&mut args as CK_C_INITIALIZE_ARGS_PTR).cast::<std::ffi::c_void>()) },
         CKR_ARGUMENTS_BAD
     );
 }
@@ -156,7 +163,7 @@ fn finalize() {
     assert_eq!({ C_Initialize(ptr::null_mut()) }, CKR_OK);
     // Expect CKR_ARGUMENTS_BAD if pReserved is not null.
     assert_eq!(
-        { C_Finalize(1 as *mut u32 as *mut std::ffi::c_void) },
+        { C_Finalize((1 as *mut u32).cast::<std::ffi::c_void>()) },
         CKR_ARGUMENTS_BAD
     );
     assert_eq!({ C_Finalize(ptr::null_mut()) }, CKR_OK);
@@ -229,7 +236,7 @@ fn get_slot_list() {
     assert_eq!(
         unsafe { C_GetSlotList(CK_FALSE, ptr::null_mut(), &mut count) },
         CKR_CRYPTOKI_NOT_INITIALIZED
-    )
+    );
 }
 
 #[test]
@@ -389,7 +396,7 @@ fn open_session() {
 
 #[test]
 #[serial]
-fn close_sesson() {
+fn close_session() {
     test_init();
     assert_eq!({ C_Initialize(ptr::null_mut()) }, CKR_OK);
     let mut handle = CK_INVALID_HANDLE;
