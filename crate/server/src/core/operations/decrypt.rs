@@ -1,12 +1,14 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kmip::{
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
-            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
+            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
         symmetric::aead::{aead_decrypt, AeadCipher},
         DecryptionSystem,
@@ -15,8 +17,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
-            HashingAlgorithm, KeyFormatType, PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+            PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::kmip_private_key_to_openssl,
@@ -232,7 +234,6 @@ fn decrypt_with_pkey(
             private_key,
             request.cryptographic_parameters.as_ref(),
             ciphertext,
-            request.authenticated_encryption_additional_data.as_deref(),
         )?,
         #[cfg(not(feature = "fips"))]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?,
@@ -251,35 +252,27 @@ fn decrypt_with_rsa(
     private_key: &PKey<Private>,
     cryptographic_parameters: Option<&CryptographicParameters>,
     ct: &[u8],
-    aad: Option<&[u8]>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
-    let (algorithm, padding, hashing_fn) = cryptographic_parameters
-        .map(|cp| {
-            (
-                cp.cryptographic_algorithm
-                    .unwrap_or(CryptographicAlgorithm::RSA),
-                cp.padding_method.unwrap_or(PaddingMethod::OAEP),
-                cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                // default to CKM_RSA_PKCS_OAEP_KEY_WRAP
-                CryptographicAlgorithm::RSA,
-                PaddingMethod::OAEP,
-                HashingAlgorithm::SHA256,
-            )
-        });
+    let (algorithm, padding, hashing_fn) =
+        default_cryptographic_parameters(cryptographic_parameters);
+    trace!(
+        "decrypt_with_rsa: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
+        algorithm,
+        padding,
+        hashing_fn
+    );
 
-    if padding != PaddingMethod::OAEP {
-        kms_bail!("Unable to decrypt with RSA: padding method not supported: {padding:?}")
-    }
-    let plaintext = match algorithm {
-        CryptographicAlgorithm::AES => rsa_oaep_aes_gcm_decrypt(private_key, hashing_fn, ct, aad)?,
-        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?,
-        x => {
-            kms_bail!("Unable to decrypt with RSA: algorithm not supported for decrypting: {x:?}")
+    Ok(match (algorithm, padding) {
+        (CryptographicAlgorithm::AES, PaddingMethod::OAEP) => {
+            ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ct)?
         }
-    };
-    Ok(plaintext)
+        (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {
+            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?
+        }
+        #[cfg(not(feature = "fips"))]
+        (CryptographicAlgorithm::RSA, PaddingMethod::PKCS1v15) => {
+            ckm_rsa_pkcs_decrypt(private_key, ct)?
+        }
+        _ => kms_bail!("Decrypt: algorithm or padding method not supported for RSA decryption"),
+    })
 }

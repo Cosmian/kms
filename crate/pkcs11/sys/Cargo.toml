@@ -1,0 +1,15 @@
+[package]
+name = "pkcs11_sys"
+version = "0.2.17"
+authors = [
+  "Brandon Weeks <bweeks@google.com>",
+  "Kevin King <kcking@google.com>",
+]
+edition.workspace = true
+license = "Apache-2.0"
+repository.workspace = true
+rust-version.workspace = true
+description = "Generated bindings for pkcs11.h. Useful for building PKCS#11 modules in rust."
+
+[build-dependencies]
+bindgen = { version = "0.69.4", optional = true }

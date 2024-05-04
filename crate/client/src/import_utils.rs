@@ -6,7 +6,7 @@ use crate::{
         kmip_operations::Import,
         kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
     },
-    ClientError, ClientResultHelper, KmsClient,
+    ClientError, KmsClient,
 };
 
 /// Import an Object into the KMS
@@ -72,8 +72,6 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     // send the import request
     let response = kms_rest_client.import(import).await?;
 
-    response.unique_identifier.to_string().context(
-        "import_object: the server did not return a string unique identifier for the imported \
-         object",
-    )
+    // return the unique identifier
+    Ok(response.unique_identifier.to_string())
 }

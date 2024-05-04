@@ -68,10 +68,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         )
         .await?;
     debug!("  -> response {:?}", cr);
-    let sk_uid = cr
-        .private_key_unique_identifier
-        .to_string()
-        .context("No private key uid as string in response")?;
+    let sk_uid = cr.private_key_unique_identifier.to_string();
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&sk_uid, &sk_uid_.to_string());
@@ -107,18 +104,9 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // get Public Key
     debug!("ABE Get Master Public Key");
-    let pk_uid = cr
-        .public_key_unique_identifier
-        .to_string()
-        .context("No public key uid as string in response")?;
+    let pk_uid = cr.public_key_unique_identifier.to_string();
     let gr_pk = kms.get(Get::from(pk_uid.as_str()), owner, None).await?;
-    assert_eq!(
-        pk_uid,
-        gr_pk
-            .unique_identifier
-            .to_string()
-            .context("No uid in response")?
-    );
+    assert_eq!(pk_uid, gr_pk.unique_identifier.to_string());
     assert_eq!(ObjectType::PublicKey, gr_pk.object_type);
 
     // check pk
@@ -176,10 +164,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
-    let usk_uid = cr
-        .unique_identifier
-        .to_string()
-        .context("No uid string in user response key")?;
+    let usk_uid = cr.unique_identifier.to_string();
     // check the generated id is an UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -209,10 +194,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
-    let usk_uid = cr
-        .unique_identifier
-        .to_string()
-        .context("no string uid in user key")?;
+    let usk_uid = cr.unique_identifier.to_string();
     // check the generated id is an UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -302,7 +284,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 None,
                 Some(confidential_authentication_data.clone()),
                 None,
-                None,
             )?,
             owner,
             None,
@@ -326,7 +307,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 None,
                 Some(confidential_authentication_data.clone()),
                 None,
-                None,
             )?,
             nonexistent_owner,
             None,
@@ -346,7 +326,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
-                None,
                 None,
             )?,
             owner,
@@ -370,7 +349,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
-                None,
                 None,
             )?,
             nonexistent_owner,
@@ -407,7 +385,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 None,
                 Some(confidential_authentication_data.clone()),
                 None,
-                None,
             ),
             owner,
             None,
@@ -434,7 +411,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 None,
                 Some(confidential_authentication_data),
                 None,
-                None,
             ),
             nonexistent_owner,
             None,
@@ -451,7 +427,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data.clone(),
                 None,
                 Some(secret_authentication_data.clone()),
-                None,
                 None,
             ),
             owner,
@@ -478,7 +453,6 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data,
                 None,
                 Some(secret_authentication_data),
-                None,
                 None,
             ),
             nonexistent_owner,
@@ -523,10 +497,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
-    let master_private_key_uid = ckr
-        .private_key_unique_identifier
-        .to_string()
-        .context("There should be a private key unique identifier in the response")?;
+    let master_private_key_uid = ckr.private_key_unique_identifier.to_string();
 
     // define search criteria
     let search_attrs = Attributes {
@@ -622,14 +593,8 @@ async fn test_import_decrypt() -> KResult<()> {
         )
         .await?;
     debug!("  -> response {:?}", cr);
-    let sk_uid = cr
-        .private_key_unique_identifier
-        .to_string()
-        .context("There should be a private key unique identifier in the response")?;
-    let pk_uid = cr
-        .public_key_unique_identifier
-        .to_string()
-        .context("There should be a public key unique identifier in the response")?;
+    let sk_uid = cr.private_key_unique_identifier.to_string();
+    let pk_uid = cr.public_key_unique_identifier.to_string();
 
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -647,7 +612,6 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
-                None,
                 None,
             )?,
             owner,
@@ -675,10 +639,7 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    let secret_mkg_fin_user_key = cr
-        .unique_identifier
-        .to_string()
-        .context("There should be a unique identifier in the response as string")?;
+    let secret_mkg_fin_user_key = cr.unique_identifier.to_string();
 
     // Retrieve the user key...
     let gr_sk = kms
@@ -721,7 +682,6 @@ async fn test_import_decrypt() -> KResult<()> {
                 None,
                 Some(confidential_authentication_data.clone()),
                 None,
-                None,
             ),
             owner,
             None,
@@ -763,7 +723,6 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
                 None,
                 Some(confidential_authentication_data.clone()),
-                None,
                 None,
             ),
             owner,

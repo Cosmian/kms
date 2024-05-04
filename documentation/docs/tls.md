@@ -23,7 +23,7 @@ Say the certificate is called `server.mydomain.com.p12`, is protected by the pas
 ```sh
 docker run --rm -p 443:9998 \
   -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:4.15.2 \
+  --name kms ghcr.io/cosmian/kms:4.16.0 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
   --https-p12-file=server.mydomain.com.p12 \

@@ -31,10 +31,7 @@ pub async fn unwrap_key(
 ) -> KResult<()> {
     let unwrapping_key_uid = match &object_key_block.key_wrapping_data {
         Some(kwd) => match &kwd.encryption_key_information {
-            Some(eki) => eki
-                .unique_identifier
-                .to_string()
-                .context("unwrap_key: unable to unwrap key: unwrapping key uid is not a string")?,
+            Some(eki) => eki.unique_identifier.to_string(),
             None => kms_bail!("unwrap_key: unable to unwrap key: unwrapping key uid is missing"),
         },
         None => kms_bail!("unwrap_key: unable to unwrap key: key wrapping data is missing"),

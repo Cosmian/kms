@@ -25,7 +25,7 @@ use crate::{
 ///
 /// Send `c|iv|ct|tag` where `|` is the concatenation operator, `iv` the
 /// initialization vector and `tag` the authentication tag.
-pub fn rsa_oaep_aes_gcm_encrypt(
+pub fn ckm_rsa_oaep_aes_key_wrap_encrypt(
     pubkey: &PKey<Public>,
     hash_fn: HashingAlgorithm,
     plaintext: &[u8],
@@ -123,7 +123,7 @@ mod tests {
     use openssl::{pkey::PKey, rand::rand_bytes};
 
     use crate::{
-        crypto::rsa::rsa_oaep_aes_gcm::{rsa_oaep_aes_gcm_decrypt, rsa_oaep_aes_gcm_encrypt},
+        crypto::rsa::rsa_oaep_aes_gcm::{rsa_oaep_aes_gcm_decrypt, ckm_rsa_oaep_aes_key_wrap_encrypt},
         error::KmipError,
         kmip::kmip_types::HashingAlgorithm,
     };
@@ -140,7 +140,7 @@ mod tests {
         let mut plaintext = [0; 256];
         rand_bytes(&mut plaintext)?;
 
-        let ct = rsa_oaep_aes_gcm_encrypt(
+        let ct = ckm_rsa_oaep_aes_key_wrap_encrypt(
             &pubkey,
             HashingAlgorithm::SHA256,
             &plaintext,

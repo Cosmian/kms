@@ -1,6 +1,9 @@
+use std::fmt::Display;
+
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm},
+    kmip::kmip_types::{CryptographicParameters, PaddingMethod},
     KmsClient,
 };
 
@@ -33,15 +36,22 @@ impl RsaCommands {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 pub enum EncryptionAlgorithm {
+    #[cfg(not(feature = "fips"))]
+    // a.k.a PKCS#1 v1.5 RSA
+    CkmRsaPkcs,
+    // a.k.a PKCS#1 RSA OAEP
     CkmRsaPkcsOaep,
-    RsaOaepAes128Gcm,
+    // CKM_RSA_AES_KEY_WRAP
+    CkmRsaAesKeyWrap,
 }
 
-impl From<EncryptionAlgorithm> for CryptographicAlgorithm {
-    fn from(value: EncryptionAlgorithm) -> Self {
-        match value {
-            EncryptionAlgorithm::CkmRsaPkcsOaep => CryptographicAlgorithm::RSA,
-            EncryptionAlgorithm::RsaOaepAes128Gcm => CryptographicAlgorithm::AES,
+impl Display for EncryptionAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncryptionAlgorithm::CkmRsaPkcsOaep => write!(f, "ckm-rsa-pkcs-oaep"),
+            EncryptionAlgorithm::CkmRsaAesKeyWrap => write!(f, "ckm-rsa-aes-key-wrap"),
+            #[cfg(not(feature = "fips"))]
+            EncryptionAlgorithm::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
         }
     }
 }
@@ -59,6 +69,22 @@ pub enum HashFn {
     Sha3_512,
 }
 
+impl Display for HashFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HashFn::Sha1 => write!(f, "sha1"),
+            HashFn::Sha224 => write!(f, "sha224"),
+            HashFn::Sha256 => write!(f, "sha256"),
+            HashFn::Sha384 => write!(f, "sha384"),
+            HashFn::Sha512 => write!(f, "sha512"),
+            HashFn::Sha3_224 => write!(f, "sha3-224"),
+            HashFn::Sha3_256 => write!(f, "sha3-256"),
+            HashFn::Sha3_384 => write!(f, "sha3-384"),
+            HashFn::Sha3_512 => write!(f, "sha3-512"),
+        }
+    }
+}
+
 impl From<HashFn> for HashingAlgorithm {
     fn from(value: HashFn) -> Self {
         match value {
@@ -72,5 +98,32 @@ impl From<HashFn> for HashingAlgorithm {
             HashFn::Sha3_384 => HashingAlgorithm::SHA3384,
             HashFn::Sha3_512 => HashingAlgorithm::SHA3512,
         }
+    }
+}
+
+fn to_cryptographic_parameters(
+    alg: EncryptionAlgorithm,
+    hash_fn: HashFn,
+) -> CryptographicParameters {
+    match alg {
+        #[cfg(not(feature = "fips"))]
+        EncryptionAlgorithm::CkmRsaPkcs => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: None,
+            ..Default::default()
+        },
+        EncryptionAlgorithm::CkmRsaPkcsOaep => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(hash_fn.into()),
+            ..Default::default()
+        },
+        EncryptionAlgorithm::CkmRsaAesKeyWrap => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(hash_fn.into()),
+            ..Default::default()
+        },
     }
 }

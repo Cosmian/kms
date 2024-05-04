@@ -1,7 +1,11 @@
 [package]
 name = "ckms_pkcs11"
-version = "4.15.2"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "ckms_pkcs11"
@@ -11,14 +15,11 @@ crate-type = ["rlib", "dylib"]
 doctest = false
 
 [dependencies]
-cosmian_kmip = { path = "../kmip" }
-cosmian_kms_client = { path = "../client" }
-cosmian_logger = { path = "../logger" }
+cosmian_kmip = { path = "../../kmip" }
+cosmian_kms_client = { path = "../../client" }
+cosmian_logger = { path = "../../logger" }
+cosmian_pkcs11_module = { path = "../module" }
 etcetera = "0.8.0"
-native-pkcs11 = { git = "https://github.com/Cosmian/native-pkcs11.git", rev = "114c93de2e32c2b943578f0aad1c0f43d69e7726", features = [
-  "custom-function-list",
-] }
-native-pkcs11-traits = { git = "https://github.com/Cosmian/native-pkcs11.git", rev = "114c93de2e32c2b943578f0aad1c0f43d69e7726" }
 serde_json = { workspace = true }
 sha3 = "0.10.8"
 thiserror = { workspace = true }
@@ -26,7 +27,11 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+x509-cert = { version = "0.2.5", default-features = false }
 zeroize = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+tracing-journald = "0.3.0"
+
 [dev-dependencies]
-kms_test_server = { path = "../test_server" }
+kms_test_server = { path = "../../test_server" }

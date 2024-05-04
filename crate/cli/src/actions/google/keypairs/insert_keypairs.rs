@@ -105,7 +105,7 @@ impl InsertKeypairsAction {
         email: &str,
         key_file: &PathBuf,
     ) -> Result<(), CliError> {
-        println!("Processing {:?}.", email);
+        println!("Processing {email:?}.");
 
         let read_to_string = |path: &PathBuf| -> Result<String, CliError> {
             let mut f = File::open(path)?;
@@ -131,8 +131,8 @@ impl InsertKeypairsAction {
             .await?;
         let res = GmailClient::handle_response(response).await;
         match res {
-            Ok(_) => println!("Keypairs inserted for {:?}.", email),
-            Err(error) => println!("Error inserting keypairs for {:?} : {:?}", email, error),
+            Ok(()) => println!("Keypairs inserted for {email:?}."),
+            Err(error) => println!("Error inserting keypairs for {email:?} : {error:?}"),
         }
         Ok(())
     }
@@ -146,15 +146,15 @@ impl InsertKeypairsAction {
         let email_key_file_map = Self::get_email_to_file(&wrapped_key_files, "wrap")?;
         let email_cert_file_map = Self::get_email_to_file(&p7_cert_files, "p7pem")?;
 
-        println!("wrapped_key_files: {:?}.", wrapped_key_files);
-        println!("p7_cert_files: {:?}.", p7_cert_files);
+        println!("wrapped_key_files: {wrapped_key_files:?}.");
+        println!("p7_cert_files: {p7_cert_files:?}.");
 
         for (email, key_file) in &email_key_file_map {
             if !email_cert_file_map.contains_key(email) {
-                println!("Skipping {:?}, missing cert file.", email);
+                println!("Skipping {email:?}, missing cert file.");
                 continue;
             }
-            Self::post_keypairs(&gmail_client, &email_cert_file_map, email, key_file).await?
+            Self::post_keypairs(&gmail_client, &email_cert_file_map, email, key_file).await?;
         }
         Ok(())
     }

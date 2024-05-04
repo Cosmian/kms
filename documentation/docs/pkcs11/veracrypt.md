@@ -8,6 +8,8 @@ formal security evaluation from BSI.
 Using the Cosmian KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
 encrypt and decrypt volumes.
 
+![Veracrypt-ckms](./images/veracrypt_ckms.svg)
+
 ## Installing the PKCS#11 provider library on Veracrypt
 
 Go to Veracrypt `Settings > Security Tokens` and use the `Select Library...`
@@ -18,18 +20,10 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md),
-and authentication to the KMS is done using the same mechanisms (certificates, JWT tokens, none).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md#configuration).
 
-Authentication of the machine to the KMS is likely to be done using a PKCS#12 file.
-The path to the PKCS#12 file and its password should be set in the configuration file.
-
-The `Common Name` of the certificate in the PKCS#12 file will be used as the
-username to authenticate the machine to the KMS and fetch the corresponding key.
-
-See
-[Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
-to learn how to configure the KMS to use certificate authentication (please note that the KMS can
+See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to learn how to configure the
+KMS to use Open ID connect or certificate authentication (please note that the KMS can
 also manage the machines certificates).
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a
@@ -42,6 +36,9 @@ PKCS#12 file for authentication.
   "ssl_client_pkcs12_password": "machine123_pkcs12_password"
 }
 ```
+
+To use Open ID connect, install the `ckms` CLI from https://package.cosmian.com/kms/ and
+use the `ckms login` command to authenticate to the KMS first.
 
 ## Creating keys to use with Veracrypt
 

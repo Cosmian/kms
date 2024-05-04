@@ -46,7 +46,7 @@ pub fn ckm_rsa_aes_key_wrap(
     // Encapsulate it using RSA-OAEP.
     let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, &kek)?;
 
-    // Wrap key according to RFC 5649 as recommended.
+    // Wrap key according to RFC 5649 (CKM_AES_KEY_WRAP_PAD) as recommended.
     let wk = rfc5649_wrap(plaintext, &kek)?;
 
     Ok([encapsulation, wk].concat())

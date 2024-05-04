@@ -622,7 +622,7 @@ async fn post_process_pkcs12_for_private_key(
         .key_wrapping_specification
         .as_ref()
         .and_then(|kws| kws.encryption_key_information.as_ref())
-        .and_then(|eki| eki.unique_identifier.to_string())
+        .map(|eki| eki.unique_identifier.to_string())
         .unwrap_or_default();
     // Create the PKCS12
     let pkcs12 = openssl::pkcs12::Pkcs12::builder()

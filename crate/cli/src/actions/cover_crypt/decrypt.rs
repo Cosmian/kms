@@ -6,6 +6,7 @@ use cosmian_kms_client::{
         crypto::generic::kmip_requests::build_decryption_request,
         kmip::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
     },
+    kmip::kmip_types::CryptographicParameters,
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data, KmsClient,
 };
@@ -80,8 +81,10 @@ impl DecryptAction {
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            Some(cryptographic_algorithm),
-            None,
+            Some(CryptographicParameters {
+                cryptographic_algorithm: Some(cryptographic_algorithm),
+                ..Default::default()
+            }),
         );
 
         tracing::debug!("{decrypt_request:?}");

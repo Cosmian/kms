@@ -7,15 +7,24 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::rsa::{EncryptionAlgorithm, HashFn},
+    actions::rsa::{to_cryptographic_parameters, EncryptionAlgorithm, HashFn},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
 
 /// Encrypt a file with the given public key using either
+///  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
 ///  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-///  - `RSA_OAEP` `AES_128_GCM`
-/// By default the hashing function used with RSA OAEP is set to SHA-256
+///  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
+///
+/// `CKM_RSA_PKCS` is deprecated in FIPS 140-3 and is therefore not available in FIPS mode.
+/// `CKM_RSA_AES_KEY_WRAP` is meant be used to wrap/unwrap keys with RSA keys although,
+/// since it is using `AES_KEY_WRAP_PAD` (a.k.a RFC 5649), encrypt/decrypt operations of text
+/// with arbitrary length should be possible as specified in PKCS#11 v2.40 2.14.
+///
+/// When using `CKM_RSA_PKCS`:
+///  - the maximum plaintext length is k-11 where k is the length in octets of the RSA modulus
+///  - the output length is the same as the RSA modulus length.
 ///
 /// When using `CKM_RSA_PKCS_OAEP`:
 ///  - the authentication data is ignored
@@ -23,6 +32,9 @@ use crate::{
 ///     - k is the length in octets of the RSA modulus
 ///     - hLen is the length in octets of the hash function output
 ///  - the output length is the same as the RSA modulus length.
+///
+/// When using `CKM_RSA_AES_KEY_WRAP`:
+///  - the plaintext length is unlimited
 ///
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
 #[derive(Parser, Debug)]
@@ -57,11 +69,6 @@ pub struct EncryptAction {
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]
     output_file: Option<PathBuf>,
-
-    /// Optional authentication data.
-    /// This data needs to be provided back for decryption.
-    #[clap(required = false, long, short = 'a')]
-    authentication_data: Option<String>,
 }
 
 impl EncryptAction {
@@ -85,11 +92,11 @@ impl EncryptAction {
             None,
             data,
             None,
-            self.authentication_data
-                .as_deref()
-                .map(|s| s.as_bytes().to_vec()),
-            Some(self.encryption_algorithm.into()),
-            Some(self.hash_fn.into()),
+            None,
+            Some(to_cryptographic_parameters(
+                self.encryption_algorithm,
+                self.hash_fn,
+            )),
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids

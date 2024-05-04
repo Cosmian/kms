@@ -22,7 +22,6 @@ use cosmian_kmip::{
         kmip_operations::Get,
         kmip_types::{CryptographicAlgorithm, RevocationReason},
     },
-    KmipResultHelper,
 };
 use cosmian_kms_client::KmsClient as RustKmsClient;
 use openssl::x509::X509;
@@ -48,14 +47,8 @@ macro_rules! rekey_keypair {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok((
-                response
-                    .public_key_unique_identifier
-                    .to_string()
-                    .context("The server did not return the public key uid as a string")?,
-                response
-                    .private_key_unique_identifier
-                    .to_string()
-                    .context("The server did not return the private key uid as a string")?,
+                response.public_key_unique_identifier.to_string(),
+                response.private_key_unique_identifier.to_string(),
             ))
         })
     }};
@@ -175,14 +168,8 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok((
-                response
-                    .public_key_unique_identifier
-                    .to_string()
-                    .context("The server did not return the public key uid as a string")?,
-                response
-                    .private_key_unique_identifier
-                    .to_string()
-                    .context("The server did not return the private key uid as a string")?,
+                response.public_key_unique_identifier.to_string(),
+                response.private_key_unique_identifier.to_string(),
             ))
         })
     }
@@ -237,10 +224,7 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the key uid as a string")?)
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -286,10 +270,7 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the public key uid as a string")?)
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -484,10 +465,7 @@ impl KmsClient {
                 .create(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .expect("The server did not return the user secret key uid as a string"))
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -536,10 +514,7 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .expect("The server did not return the user secret key uid as a string"))
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -573,7 +548,6 @@ impl KmsClient {
             data,
             header_metadata,
             authentication_data,
-            None,
             None,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
@@ -613,7 +587,6 @@ impl KmsClient {
             encrypted_data,
             None,
             authentication_data,
-            None,
             None,
         );
 
@@ -690,10 +663,7 @@ impl KmsClient {
                 .revoke(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the revoked key uid as a string")?)
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -720,10 +690,7 @@ impl KmsClient {
                 .destroy(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the destroyed key uid as a string")?)
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -770,10 +737,7 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
 
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the key uid as a string")?)
+            Ok(response.unique_identifier.to_string())
         })
     }
 
@@ -792,9 +756,8 @@ impl KmsClient {
         key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request =
-            build_encryption_request(&key_identifier.0, None, data, None, None, None, None)
-                .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request = build_encryption_request(&key_identifier.0, None, data, None, None, None)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
@@ -829,7 +792,6 @@ impl KmsClient {
             iv_counter_nonce,
             encrypted_data,
             authentication_encryption_tag,
-            None,
             None,
             None,
         );

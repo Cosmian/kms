@@ -1,5 +1,5 @@
 [workspace]
-default-members = ["crate/cli", "crate/server", "crate/pkcs11"]
+default-members = ["crate/cli", "crate/server", "crate/pkcs11/provider"]
 members = [
   "crate/cli",
   "crate/client",
@@ -7,8 +7,10 @@ members = [
   "crate/server",
   "crate/logger",
   "crate/pyo3",
-  "crate/pkcs11",
   "crate/test_server",
+  "crate/pkcs11/sys",
+  "crate/pkcs11/module",
+  "crate/pkcs11/provider",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -16,9 +18,14 @@ members = [
 resolver = "2"
 
 [workspace.package]
+version = "4.16.0"
 edition = "2021"
 rust-version = "1.71.0"
-authors = ["Bruno Grieder <bruno.grieder@cosmian.com>", "Emmanuel Coste <emmanuel.coste@cosmian.com>"]
+authors = [
+  "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"
+]
 license = "Business Source License 1.1"
 repository = "https://github.com/Cosmian/kms"
 

@@ -1112,17 +1112,15 @@ Manage RSA keys
 
 **`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
+ - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
- - `RSA_OAEP` `AES_128_GCM`
-
-By default the hashing function used with RSA OAEP is set to SHA-256
+ - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
 **`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
 
+ - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
- - `RSA_OAEP` `AES_128_GCM`
-
-By default the hashing function used with RSA OAEP is set to SHA-256
+ - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
 ---
 
@@ -1285,10 +1283,9 @@ Destroy a public or private key
 
 Encrypt a file with the given public key using either
 
+ - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
- - `RSA_OAEP` `AES_128_GCM`
-
-By default the hashing function used with RSA OAEP is set to SHA-256
+ - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
 ### Usage
 `ckms rsa encrypt [options] <FILE>
@@ -1302,15 +1299,13 @@ By default the hashing function used with RSA OAEP is set to SHA-256
 
 `--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "rsa-oaep-aes128-gcm"` [default: `"ckm-rsa-pkcs-oaep"`]
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
 
 `--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm
 
 Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
-
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
 
 
 
@@ -1320,10 +1315,9 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 Decrypt a file with the given public key using either
 
+ - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
- - `RSA_OAEP` `AES_128_GCM`
-
-By default the hashing function used with RSA OAEP is set to SHA-256
+ - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
 ### Usage
 `ckms rsa decrypt [options] <FILE>
@@ -1337,15 +1331,13 @@ By default the hashing function used with RSA OAEP is set to SHA-256
 
 `--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "rsa-oaep-aes128-gcm"` [default: `"ckm-rsa-pkcs-oaep"`]
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
 
 `--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm
 
 Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
-
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
 
 
 
@@ -1647,13 +1639,22 @@ Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
 
 **`list`** [[14.1.2]](#1412-ckms-google-keypairs-list)  Lists client-side encryption key pairs for a user.
 
-**`insert`** [[14.1.3]](#1413-ckms-google-keypairs-insert)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key metadata for a user.
+**`insert`** [[14.1.3]](#1413-ckms-google-keypairs-insert)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
 
-**`enable`** [[14.1.4]](#1414-ckms-google-keypairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active again for any associated client-side encryption identities.
+**`enable`** [[14.1.4]](#1414-ckms-google-keypairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+again for any associated client-side encryption identities.
 
-**`disable`** [[14.1.5]](#1415-ckms-google-keypairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair by using the keypairs.obliterate method.
+**`disable`** [[14.1.5]](#1415-ckms-google-keypairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
+keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the keypairs.obliterate method.
 
-**`obliterate`** [[14.1.6]](#1416-ckms-google-keypairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by an obliterated key. Authenticated users and Google Workspace administrators lose access to reading the encrypted messages.
+**`obliterate`** [[14.1.6]](#1416-ckms-google-keypairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
+the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+an obliterated key. Authenticated users and Google Workspace administrators lose access to
+reading the encrypted messages.
 
 ---
 
@@ -1688,7 +1689,8 @@ Lists client-side encryption key pairs for a user.
 
 ## 14.1.3 ckms google keypairs insert
 
-Creates and uploads a client-side encryption S/MIME public key certificate chain and private key metadata for a user.
+Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
 
 ### Usage
 `ckms google keypairs insert [options]`
@@ -1705,7 +1707,8 @@ Creates and uploads a client-side encryption S/MIME public key certificate chain
 
 ## 14.1.4 ckms google keypairs enable
 
-Turns on a client-side encryption key pair that was turned off. The key pair becomes active again for any associated client-side encryption identities.
+Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+again for any associated client-side encryption identities.
 
 ### Usage
 `ckms google keypairs enable [options] <KEYPAIRS_ID>
@@ -1721,7 +1724,10 @@ Turns on a client-side encryption key pair that was turned off. The key pair bec
 
 ## 14.1.5 ckms google keypairs disable
 
-Turns off a client-side encryption key pair. The authenticated user can no longer use the key pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair by using the keypairs.obliterate method.
+Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
+keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the keypairs.obliterate method.
 
 ### Usage
 `ckms google keypairs disable [options] <KEYPAIRS_ID>
@@ -1737,7 +1743,11 @@ Turns off a client-side encryption key pair. The authenticated user can no longe
 
 ## 14.1.6 ckms google keypairs obliterate
 
-Deletes a client-side encryption key pair permanently and immediately. You can only permanently delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by an obliterated key. Authenticated users and Google Workspace administrators lose access to reading the encrypted messages.
+Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
+the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+an obliterated key. Authenticated users and Google Workspace administrators lose access to
+reading the encrypted messages.
 
 ### Usage
 `ckms google keypairs obliterate [options] <KEYPAIRS_ID>
@@ -1765,11 +1775,16 @@ Insert, get, list, patch and delete identities from Gmail API
 
 **`list`** [[14.2.2]](#1422-ckms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
 
-**`insert`** [[14.2.3]](#1423-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that people within a Google Workspace organization can encrypt and send mail to the identity.
+**`insert`** [[14.2.3]](#1423-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
+user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
+people within a Google Workspace organization can encrypt and send mail to the identity.
 
-**`delete`** [[14.2.4]](#1424-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity to send encrypted messages. You cannot restore the identity after you delete it. Instead, use the identities.create method to create another identity with the same configuration.
+**`delete`** [[14.2.4]](#1424-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
+to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
+the identities.create method to create another identity with the same configuration.
 
-**`patch`** [[14.2.5]](#1425-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated key pair must validate against Google's S/MIME certificate profiles.
+**`patch`** [[14.2.5]](#1425-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
+key pair must validate against Google's S/MIME certificate profiles.
 
 ---
 
@@ -1801,7 +1816,9 @@ Lists the client-side encrypted identities for an authenticated user.
 
 ## 14.2.3 ckms google identities insert
 
-Creates and configures a client-side encryption identity that's authorized to send mail from the user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that people within a Google Workspace organization can encrypt and send mail to the identity.
+Creates and configures a client-side encryption identity that's authorized to send mail from the
+user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
+people within a Google Workspace organization can encrypt and send mail to the identity.
 
 ### Usage
 `ckms google identities insert [options] <KEYPAIRS_ID>
@@ -1817,7 +1834,9 @@ Creates and configures a client-side encryption identity that's authorized to se
 
 ## 14.2.4 ckms google identities delete
 
-Deletes a client-side encryption identity. The authenticated user can no longer use the identity to send encrypted messages. You cannot restore the identity after you delete it. Instead, use the identities.create method to create another identity with the same configuration.
+Deletes a client-side encryption identity. The authenticated user can no longer use the identity
+to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
+the identities.create method to create another identity with the same configuration.
 
 ### Usage
 `ckms google identities delete [options]`
@@ -1830,7 +1849,8 @@ Deletes a client-side encryption identity. The authenticated user can no longer 
 
 ## 14.2.5 ckms google identities patch
 
-Associates a different key pair with an existing client-side encryption identity. The updated key pair must validate against Google's S/MIME certificate profiles.
+Associates a different key pair with an existing client-side encryption identity. The updated
+key pair must validate against Google's S/MIME certificate profiles.
 
 ### Usage
 `ckms google identities patch [options] <KEYPAIRS_ID>
