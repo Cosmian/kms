@@ -26,7 +26,8 @@ authors = [
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
   "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"
 ]
-license = "Business Source License 1.1"
+license = "BUSL-1.1" # "Business Source License 1.1"
+license-file = "LICENSE"
 repository = "https://github.com/Cosmian/kms"
 
 [profile.release]
