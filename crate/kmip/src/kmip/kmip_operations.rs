@@ -1,6 +1,5 @@
 use std::fmt;
 
-use chrono::{DateTime, Local};
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{
     de::{self, MapAccess, Visitor},
@@ -1355,7 +1354,7 @@ pub struct Validate {
     /// A Date-Time object indicating when the certificate chain needs to be
     /// valid. If omitted, the current date and time SHALL be assumed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub validity_time: Option<DateTime<Local>>,
+    pub validity_time: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

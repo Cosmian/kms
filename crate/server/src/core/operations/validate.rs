@@ -3,7 +3,7 @@ use std::{
     fmt::Error,
 };
 
-use chrono::{DateTime, Local};
+use chrono::Local;
 use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
@@ -266,11 +266,11 @@ async fn certificate_by_uid(
 
 fn validate_chain_date(
     certificates: &mut [Vec<u8>],
-    date: Option<DateTime<Local>>,
+    date: Option<String>,
 ) -> KResult<ValidityIndicator> {
     let current_date = {
         if let Some(date) = date {
-            Asn1Time::from_str(&date.to_string())
+            Asn1Time::from_str(&date)
         } else {
             Asn1Time::from_str(&Local::now().to_string())
         }

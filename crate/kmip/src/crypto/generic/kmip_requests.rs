@@ -1,6 +1,3 @@
-use std::str::FromStr;
-
-use chrono::{DateTime, Local};
 use zeroize::Zeroizing;
 
 use super::data_to_encrypt::DataToEncrypt;
@@ -53,16 +50,7 @@ pub fn build_validate_certificate_request(
             )
         }
     };
-    let date = {
-        if date.is_empty() {
-            None
-        } else {
-            Some(
-                DateTime::<Local>::from_str(date.as_str())
-                    .expect("date and time have the wrong format"),
-            )
-        }
-    };
+    let date = { if date.is_empty() { None } else { Some(date) } };
     Ok(Validate {
         certificate: certificates,
         unique_identifier: unique_identifiers,
