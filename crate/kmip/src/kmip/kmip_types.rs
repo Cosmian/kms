@@ -2583,4 +2583,12 @@ impl ValidityIndicator {
             _ => ValidityIndicator::Unknown,
         }
     }
+
+    pub fn from_bool(b: bool) -> ValidityIndicator {
+        if b {
+            ValidityIndicator::Valid
+        } else {
+            ValidityIndicator::Invalid
+        }
+    }
 }

@@ -10,15 +10,13 @@ use cosmian_kmip::{
         kmip_operations::{Validate, ValidateResponse},
         kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
-    //openssl::kmip_certificate_to_openssl,
-    //openssl::{kmip_certificate_to_openssl, openssl_certificate_to_kmip},
     KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use futures::future::join_all;
 use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
-    x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509CrlRef, X509},
+    x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
 use tracing::trace;
 
@@ -28,19 +26,19 @@ use crate::{
     error::KmsError,
     result::KResult,
 };
-struct IndexedCertificateChain {
+struct _IndexedCertificateChain {
     pub head: u8,
     pub map: HashMap<Vec<u8>, u8>,
     pub vec: Vec<Vec<u8>>,
     pub current: u8,
 }
 
-impl IndexedCertificateChain {
-    pub fn reset(&mut self) {
+impl _IndexedCertificateChain {
+    pub fn _reset(&mut self) {
         self.current = self.head;
     }
 
-    pub fn next(&mut self) -> Result<Option<Vec<u8>>, Error> {
+    pub fn _next(&mut self) -> Result<Option<Vec<u8>>, Error> {
         let current_cert = self
             .vec
             .get(self.current as usize)
@@ -77,7 +75,7 @@ impl IndexedCertificateChain {
 // - date
 // - check serial number not revoked, following the chain order in CRL.
 
-pub async fn validate(
+pub(crate) async fn validate(
     kms: &KMS,
     request: Validate,
     user: &str,
@@ -125,10 +123,9 @@ pub async fn validate(
         })
     };
 
-    // Checking structural validity. The chain is valid, is well signed,
-    // and returning the size of the chain. Result is a ValidityIndicator,
-    // representing the validity of the chain, and a u8, representing the
-    // length of the chain
+    // Checking structural validity. The chain is valid, and is well signed.
+    // The result is a ValidityIndicator, representing the validity of the chain,
+    // and a u8, representing the length of the chain
     let (structural_validity, count) =
         validate_chain_structure(root_cert, &certificates, hm_certificates, 0)?;
     if certificates.len() != count as usize {
@@ -141,10 +138,12 @@ pub async fn validate(
     let date_validation = validate_chain_date(&mut certificates.clone(), request.validity_time)?;
 
     // Checking if the certificate chain has revocked elements
-    let crl_validation = ValidityIndicator::Unknown;
+    let uri_list = get_crl_uris_from_certificate_chain(&mut certificates.clone())?;
+    let mut crl_list = get_crl_objects(uri_list).await?;
+    let revocation_status = chain_revocation_status(certificates.as_slice(), &mut crl_list)?;
 
     KResult::Ok(ValidateResponse {
-        validity_indicator: crl_validation.and(structural_validity.and(date_validation)),
+        validity_indicator: revocation_status.and(structural_validity.and(date_validation)),
     })
 }
 
@@ -168,7 +167,7 @@ fn index_certificates(
     KResult::Ok(head)
 }
 
-// _validate_chain_structure searches for the issuer certificate
+// validate_chain_structure searches for the issuer certificate
 // of the certificate to be checked and carries out a complete certificate check
 // of this certificate.
 // Start of the check is the root certificate. Iteratively, the offspring
@@ -201,7 +200,7 @@ fn validate_chain_structure(
     let validity = son_x509.verify(&root_pkey)?;
     let (res, count) =
         validate_chain_structure(son_cert.unwrap(), certificates, hm_certificates, _count + 1)?;
-    if map_bool_to_validity_indicator(validity).and(res) == ValidityIndicator::Valid {
+    if ValidityIndicator::from_bool(validity).and(res) == ValidityIndicator::Valid {
         KResult::Ok((ValidityIndicator::Valid, count))
     } else {
         KResult::Ok((ValidityIndicator::Invalid, count))
@@ -220,7 +219,7 @@ async fn certificates_by_uid(
         join_all(unique_identifiers.iter().map(|unique_identifier| async {
             let unique_identifier = unique_identifier
                 .as_str()
-                .expect("The unique identifier must be Some");
+                .expect("as_str returned None in certificates_by_uid");
             certificate_by_uid(unique_identifier, kms, user, params)
                 .await
                 .unwrap()
@@ -247,6 +246,7 @@ async fn certificate_by_uid(
     match uid_own {
         Err(e) => KResult::Err(e),
         Ok(kms_object) => {
+            // maybe I can find revocation information on the kms_object
             if let Object::Certificate {
                 certificate_type: _,
                 certificate_value,
@@ -278,13 +278,24 @@ fn validate_chain_date(
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
-            let validation = _validate_date(certificate, &current_date)?;
+            let validation = validate_date(certificate, &current_date)?;
             KResult::Ok(acc.and(validation))
         })
 }
 
+fn validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicator> {
+    let certificate = X509::from_der(certificate)?;
+    let (certificate_validity_start, certificate_validity_end) =
+        (certificate.not_before(), certificate.not_after());
+    if date.as_ref() <= certificate_validity_end && certificate_validity_start <= date.as_ref() {
+        KResult::Ok(ValidityIndicator::Valid)
+    } else {
+        KResult::Ok(ValidityIndicator::Invalid)
+    }
+}
+
 // getting crl uri for all the chain.
-fn _get_crl_uris_from_certificate_chain(certificates: &mut [Vec<u8>]) -> KResult<Vec<String>> {
+fn get_crl_uris_from_certificate_chain(certificates: &mut [Vec<u8>]) -> KResult<Vec<String>> {
     let init = &mut Vec::<String>::new();
     let res = certificates.iter().try_fold(init, |acc, certificate| {
         let res = &mut _get_crl_uri_from_certificate(certificate)?;
@@ -308,21 +319,21 @@ fn _crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
     }
 }
 
-fn _chain_revocation_status(
-    certificates: &mut [Vec<u8>],
-    crls: &mut [X509CrlRef],
+fn chain_revocation_status(
+    certificates: &[Vec<u8>],
+    crls: &mut [X509Crl],
 ) -> KResult<ValidityIndicator> {
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
-            let res = _certificate_revocation_status(certificate, crls)?;
+            let res = certificate_revocation_status(certificate, crls)?;
             KResult::Ok(acc.and(res))
         })
 }
 
-fn _certificate_revocation_status(
+fn certificate_revocation_status(
     certificate: &[u8],
-    crls: &mut [X509CrlRef],
+    crls: &mut [X509Crl],
 ) -> KResult<ValidityIndicator> {
     let res = crls.iter().try_fold(ValidityIndicator::Valid, |acc, crl| {
         let certificate = X509::from_der(certificate)?;
@@ -359,7 +370,7 @@ fn _get_crl_uri_from_certificate(certificate: &[u8]) -> KResult<Vec<String>> {
 }
 
 // request and receive crl objects. Input: uri.
-async fn _get_crl_objects(uri_crls: Vec<String>) -> KResult<Vec<X509Crl>> {
+async fn get_crl_objects(uri_crls: Vec<String>) -> KResult<Vec<X509Crl>> {
     let responses = join_all(uri_crls.iter().map(|uri: &String| async {
         let response = reqwest::get(uri.clone())
             .await
@@ -373,23 +384,4 @@ async fn _get_crl_objects(uri_crls: Vec<String>) -> KResult<Vec<X509Crl>> {
     .await;
 
     KResult::Ok(responses)
-}
-
-fn _validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicator> {
-    let certificate = X509::from_der(certificate)?;
-    let (certificate_validity_start, certificate_validity_end) =
-        (certificate.not_before(), certificate.not_after());
-    if date.as_ref() <= certificate_validity_end && certificate_validity_start <= date.as_ref() {
-        KResult::Ok(ValidityIndicator::Valid)
-    } else {
-        KResult::Ok(ValidityIndicator::Invalid)
-    }
-}
-
-fn map_bool_to_validity_indicator(b: bool) -> ValidityIndicator {
-    if b {
-        ValidityIndicator::Valid
-    } else {
-        ValidityIndicator::Invalid
-    }
 }
