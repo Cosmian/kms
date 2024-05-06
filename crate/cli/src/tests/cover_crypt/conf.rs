@@ -29,7 +29,8 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
     cmd.arg("ec").args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Configuration file \"notfound.json\" from env var does not exist",
+        "Configuration file \"notfound.json\" specified in KMS_CLI_CONF environment variable does \
+         not exist",
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;

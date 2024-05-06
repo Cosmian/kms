@@ -1,12 +1,14 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kmip::{
     crypto::{
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt,
-            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
+            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
         symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
         EncryptionSystem,
@@ -15,8 +17,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
-            HashingAlgorithm, KeyFormatType, PaddingMethod, StateEnumeration, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+            PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::kmip_public_key_to_openssl,
@@ -103,7 +105,7 @@ async fn get_key(
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
             "get: too many objects for key {uid_or_tags}",
-        )))
+        )));
     }
 
     // the key must be active
@@ -244,7 +246,6 @@ fn encrypt_with_pkey(
             public_key,
             request.cryptographic_parameters.as_ref(),
             plaintext,
-            request.authenticated_encryption_additional_data.as_deref(),
         )?,
         #[cfg(not(feature = "fips"))]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
@@ -265,36 +266,24 @@ fn encrypt_with_rsa(
     public_key: &PKey<Public>,
     cryptographic_parameters: Option<&CryptographicParameters>,
     plaintext: &[u8],
-    aad: Option<&[u8]>,
 ) -> KResult<Vec<u8>> {
-    let (algorithm, padding, hashing_fn) = cryptographic_parameters
-        .map(|cp| {
-            (
-                cp.cryptographic_algorithm
-                    .unwrap_or(CryptographicAlgorithm::RSA),
-                cp.padding_method.unwrap_or(PaddingMethod::OAEP),
-                cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                // default to CKM_RSA_PKCS_OAEP_KEY_WRAP
-                CryptographicAlgorithm::RSA,
-                PaddingMethod::OAEP,
-                HashingAlgorithm::SHA256,
-            )
-        });
+    let (algorithm, padding, hashing_fn) =
+        default_cryptographic_parameters(cryptographic_parameters);
 
-    if padding != PaddingMethod::OAEP {
-        kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}")
-    }
     let ciphertext = match algorithm {
-        CryptographicAlgorithm::AES => {
-            rsa_oaep_aes_gcm_encrypt(public_key, hashing_fn, plaintext, aad)?
-        }
-        CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?
-        }
+        CryptographicAlgorithm::AES => match padding {
+            PaddingMethod::OAEP => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
+            _ => kms_bail!(
+                "Unable to encrypt with RSA AES KEY WRAP: padding method not supported: \
+                 {padding:?}"
+            ),
+        },
+        CryptographicAlgorithm::RSA => match padding {
+            PaddingMethod::OAEP => ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?,
+            #[cfg(not(feature = "fips"))]
+            PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_encrypt(public_key, plaintext)?,
+            _ => kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}"),
+        },
         x => {
             kms_bail!("Unable to encrypt with RSA: algorithm not supported for encrypting: {x:?}")
         }

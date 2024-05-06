@@ -49,7 +49,7 @@ impl KmsEncryptResponse {
     /// Returns:
     ///     String
     pub fn unique_identifier(&self) -> String {
-        self.0.unique_identifier.to_string().unwrap_or_default()
+        self.0.unique_identifier.to_string()
     }
 
     /// Retrieves data bytes

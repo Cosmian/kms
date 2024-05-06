@@ -10,14 +10,14 @@
 exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v2.1.1
+    rev: v3.2.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.0-alpha.4
+    rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
         stages: [commit]
@@ -27,7 +27,7 @@ repos:
         exclude: documentation/theme_overrides/assets
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.32.2
+    rev: v0.40.0
     hooks:
       - id: markdownlint-fix
         args:
@@ -50,27 +50,27 @@ repos:
       - id: markdown-toc
 
   - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.11.2
+    rev: v3.12.1
     hooks:
       - id: markdown-link-check
         args: [-q]
         exclude: documentation/docs/ms_dke/ms_dke.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-    rev: 0.2.2
+    rev: 0.2.3
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
         exclude: ansible
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.13.1
+    rev: v1.21.0
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|crate/pkcs11/sys/src/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.3.1
+    rev: v1.5.5
     hooks:
       - id: forbid-crlf
       - id: remove-crlf
@@ -80,7 +80,7 @@ repos:
         exclude: ^.git/
 
   - repo: https://github.com/sirosen/texthooks
-    rev: 0.4.0
+    rev: 0.6.6
     hooks:
       - id: fix-smartquotes
       - id: fix-ligatures
@@ -94,7 +94,7 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.6.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -128,29 +128,11 @@ repos:
         exclude: crate/kmip/src/kmip/extra/x509_extensions.rs
 
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 24.4.2
     hooks:
       - id: black
         # avoid clash with `double-quote-string-fixer`
         args: [--skip-string-normalization]
-
-  - repo: https://github.com/Cube707/mkdocs
-    rev: e8733d1373c1543d6052925d3272b2ff51dbb140
-    hooks:
-      - id: mkdocs-build
-        additional_dependencies:
-          - mkdocs-plugin-progress
-          - mkdocs-kroki-plugin
-          - mkdocs-material
-          - mkdocs-meta-descriptions-plugin
-          - markdown-katex
-        entry: bash -c 'cd documentation && mkdocs build --strict'
-
-  - repo: https://github.com/cisagov/pre-commit-packer
-    rev: v0.0.2
-    hooks:
-      - id: packer_fmt
-      - id: packer_validate
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.25

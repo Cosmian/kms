@@ -25,7 +25,7 @@ impl DisableKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let endpoint = [KEYPAIRS_ENDPOINT, &self.keypairs_id, ":disable"].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
-        let response = gmail_client.await?.post(&endpoint, "".to_string()).await?;
+        let response = gmail_client.await?.post(&endpoint, String::new()).await?;
         GmailClient::handle_response(response).await
     }
 }

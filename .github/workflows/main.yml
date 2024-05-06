@@ -10,14 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-audit-v0.15.2
-      - uses: rustsec/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
     uses: ./.github/workflows/clippy.yml
@@ -61,7 +54,7 @@ jobs:
             kms_path: .
             os: macos-12
           - archive_name: windows_tests
-            kms_path: .
+            kms_path: debug
             os: windows-2019
 
     steps:

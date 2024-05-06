@@ -95,12 +95,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(
-            response
-                .public_key_unique_identifier
-                .to_string()
-                .context("no string for the public_key_unique_identifier")?
-        )
+        LinkedObjectIdentifier::TextString(response.public_key_unique_identifier.to_string())
     );
 
     // check public key
@@ -154,12 +149,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(
-            response
-                .private_key_unique_identifier
-                .to_string()
-                .context("no string for the private_key_unique_identifier")?
-        )
+        LinkedObjectIdentifier::TextString(response.private_key_unique_identifier.to_string())
     );
     // test import of public key
     let pk_bytes = pk.key_block()?.key_bytes()?;

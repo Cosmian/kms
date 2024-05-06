@@ -18,7 +18,7 @@ and an application-level encrypted database indexed with Findex.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.15.2
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.16.0
     ```
 
     Check the Cosmian KMS server version
@@ -27,7 +27,7 @@ and an application-level encrypted database indexed with Findex.
     curl http://localhost:9998/version
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.15.2/).
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.16.0/).
 
 <!-- toc -->
 
@@ -36,7 +36,7 @@ and an application-level encrypted database indexed with Findex.
 - [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
 - [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
 - [FIPS Mode](#fips-mode)
-- [PKCS11 provider support for Veracrypt](#pkcs11-provider-support-for-veracrypt)
+- [Veracrypt and LUKS disk encryption support](#veracrypt-and-luks-disk-encryption-support)
 - [State-of-the-art authentication](#state-of-the-art-authentication)
 - [High-availability and databases](#high-availability-and-databases)
 - [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
@@ -86,11 +86,11 @@ In this mode, the server is only built with FIPS 140-2 validated cryptographic l
 cryptographic
 operations are performed in a FIPS 140-2 validated mode.
 
-#### PKCS11 provider support for Veracrypt
+#### Veracrypt and LUKS disk encryption support
 
-The KMS server can be used as a PKCS#11 provider for Veracrypt and provide keys on the fly to mount
-encrypted volumes.
-Check the [Veracrypt Disk Encryption](./veracrypt/veracrypt.md) page for details.
+The KMS server can provide keys on the fly to mount LUKS and Veracrypt encrypted volumes using
+its PKCS#11 module. With LUKS, the decryption key never leaves the KMS server.
+Check the [Veracrypt](./pkcs11/veracrypt.md) and [LUKS](./pkcs11/luks.md) pages for details.
 
 #### State-of-the-art authentication
 
@@ -154,7 +154,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.15.2/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.16.0/)
 
 #### Integrated with Cloudproof libraries
 
@@ -176,7 +176,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.15.2 --help
+docker run --rm ghcr.io/cosmian/kms:4.16.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the

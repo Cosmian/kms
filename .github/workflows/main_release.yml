@@ -5,10 +5,10 @@ on:
   push:
     # any tags, including tags with / like v1.0/alpha
     tags:
-      - "**"
+      - '**'
   schedule:
     # every day at 3 AM
-    - cron: "00 3 * * *"
+    - cron: 00 3 * * *
 
 jobs:
   cargo-audit:
@@ -16,14 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-audit-v0.15.2
-      - uses: rustsec/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
     uses: ./.github/workflows/clippy.yml

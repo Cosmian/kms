@@ -18,7 +18,7 @@ openssl req -new -key kmserver.acme.com.key -subj "/C=FR/ST=IdF/L=Paris/O=AcmeTe
 # Generate certificate for kmserver.acme.com signed by our own CA
 openssl x509 -req -days 3650 -in kmserver.acme.com.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out kmserver.acme.com.crt
 
-# Generate a PKCS12 file 
+# Generate a PKCS12 file
 openssl pkcs12 -export -out kmserver.acme.com.p12 -inkey kmserver.acme.com.key -in kmserver.acme.com.crt -certfile ca.crt -password pass:password
 
 
@@ -33,7 +33,7 @@ openssl req -new -key owner.client.acme.com.key -subj "/C=FR/ST=IdF/L=Paris/O=Ac
 # Generate certificate for owner.client.acme.com signed by our own CA
 openssl x509 -req -days 3650 -in owner.client.acme.com.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out owner.client.acme.com.crt
 
-# Generate a PKCS12 file 
+# Generate a PKCS12 file
 openssl pkcs12 -export -out owner.client.acme.com.p12 -inkey owner.client.acme.com.key -in owner.client.acme.com.crt -certfile ca.crt -password pass:password
 
 
@@ -48,5 +48,5 @@ openssl req -new -key user.client.acme.com.key -subj "/C=FR/ST=IdF/L=Paris/O=Acm
 # Generate certificate for user.client.acme.com signed by our own CA
 openssl x509 -req -days 3650 -in user.client.acme.com.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out user.client.acme.com.crt
 
-# Generate a PKCS12 file 
+# Generate a PKCS12 file
 openssl pkcs12 -export -out user.client.acme.com.p12 -inkey user.client.acme.com.key -in user.client.acme.com.crt -certfile ca.crt -password pass:password

@@ -1,9 +1,11 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.15.2"
-authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
-edition = "2021"
-license-file = "../../LICENSE"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 description = "Cosmian Key Management Service"
 
 [[bin]]
@@ -114,8 +116,8 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.6"
-pem = "3.0.3"
 cosmian_logger = { path = "../logger" }
+pem = "3.0.3"
 
 [build-dependencies]
 actix-http = "3.6"

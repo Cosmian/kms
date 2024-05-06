@@ -21,9 +21,9 @@ jobs:
         cargo build
         cd ../server
         cargo build
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -47,9 +47,9 @@ jobs:
         cargo build
         cd ../server
         cargo build
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -73,9 +73,9 @@ jobs:
         cargo build --features fips
         cd ../server
         cargo build --features fips
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -101,9 +101,9 @@ jobs:
         cargo build
         cd ../server
         cargo build
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -128,9 +128,9 @@ jobs:
         cargo build --features fips
         cd ../server
         cargo build --features fips
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -157,9 +157,9 @@ jobs:
         ldd ../../target/debug/ckms | grep ssl && exit 1
         cd ../server
         cargo build
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build
-        cd ../..
+        cd ../../..
 
         # Check binaries
         target/debug/ckms -h
@@ -185,12 +185,10 @@ jobs:
         cd crate/cli
         cargo build --target x86_64-pc-windows-gnu
 
-        # The `pkcs11` crate build FAILS on debug with:
-        # /usr/bin/x86_64-w64-mingw32-ld: error: export ordinal too large: 85394
         # build pkcs11 provider
-        # cd ../pkcs11
-        # cargo build --target x86_64-pc-windows-gnu
-        cd ../..
+        cd ../pkcs11/provider
+        cargo build --release --target x86_64-pc-windows-gnu
+        cd ../../..
 
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
@@ -201,7 +199,7 @@ jobs:
       artifacts: |
         target/x86_64-pc-windows-gnu/debug/ckms.exe
         target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
-        # target/x86_64-pc-windows-gnu/debug/ckms_pkcs11.dll
+        target/x86_64-pc-windows-gnu/release/ckms_pkcs11.dll
 
   mac-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -217,9 +215,9 @@ jobs:
         cd crate/cli
         cargo build --target x86_64-apple-darwin
         otool -L ../../target/x86_64-apple-darwin/debug/ckms | grep openssl && exit 1
-        cd ../pkcs11
+        cd ../pkcs11/provider
         cargo build --target x86_64-apple-darwin
-        cd ../server
+        cd ../../server
         cargo build --target x86_64-apple-darwin
         cd ../..
 

@@ -1,9 +1,11 @@
 [package]
 name = "cosmian_logger"
-version = "4.15.2"
-authors = ["Emmanuel Coste <emmanuel.coste@cosmian.com>"]
-edition = "2021"
-license-file = "../../LICENSE"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 tracing = { workspace = true }
