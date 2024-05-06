@@ -258,7 +258,7 @@ code,
     }
 
     .md-sidebar--primary .md-nav__item {
-        padding-right: 2em;
+        padding-right: 0.25em;
     }
 }
 
@@ -296,7 +296,7 @@ code,
 
 .md-nav--primary .md-nav__list .md-nav__list .md-nav__item {
     font-size: 0.875rem;
-    padding-left: 2.2em;
+    padding-left: 0.25em;
     margin: 1em 0;
 }
 
