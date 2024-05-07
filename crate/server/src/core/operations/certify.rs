@@ -1,5 +1,6 @@
 use std::{cmp::min, collections::HashSet};
 
+use cloudproof::reexport::crypto_core::reexport::x509_cert::request;
 use cosmian_kmip::{
     kmip::{
         extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
@@ -75,14 +76,32 @@ pub async fn certify(
         params,
     )
     .await?;
-    
-    if let Some()
 
     // There are 3 possibles cases:
     // 1. A certificate creation and a CSR is provided
     // 2. A certificate creation and a public key id is provided, a subject is provided and a validity days is provided
     // 3. A certificate renewal: the certificate id is provided and the certificate exists,
     // the validity days are provided, the subject is not provided
+
+    if request.certificate_request_value.is_some() {
+        return create_certificate_from_csr(request)
+    }
+    if let Some(certificate_id) = certificate_id {
+        match retrieve_object_for_operation(
+            &certificate_id.to_string(),
+            ObjectOperationType::Certify,
+            kms,
+            user,
+            params,
+        )
+        .await?
+        {
+            Ok(object) => {}
+            Err(_) => {}
+        }
+
+        return renew_certificate(request, issuer_private_key, issuer_certificate)
+    }
 
     // convert to openssl
     let issuer_pkey = kmip_private_key_to_openssl(&issuer_private_key.object)?;
