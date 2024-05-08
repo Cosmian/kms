@@ -172,7 +172,7 @@ pub trait Database {
     /// (typically in a transaction)
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;

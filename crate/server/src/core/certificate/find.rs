@@ -16,7 +16,7 @@ use crate::{
 /// If none are provided, an error is returned.
 ///
 /// Retrieval is done by following links through the public key when necessary.
-pub(crate) async fn retrieve_matching_private_key_and_certificate(
+pub(crate) async fn retrieve_issuer_private_key_and_certificate(
     private_key_id: Option<String>,
     certificate_id: Option<String>,
     kms: &KMS,
