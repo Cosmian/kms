@@ -676,7 +676,7 @@ pub enum UniqueIdentifierEnumeration {
     //Extensions 8XXXXXXX
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display)]
 #[serde(untagged)]
 pub enum LinkedObjectIdentifier {
     /// Unique Identifier of a Managed Object.
@@ -1047,7 +1047,7 @@ impl Attributes {
 
     /// Get the link to the object.
     #[must_use]
-    pub fn get_link(&self, link_type: LinkType) -> Option<String> {
+    pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
         if let Some(links) = &self.link {
             links
                 .iter()

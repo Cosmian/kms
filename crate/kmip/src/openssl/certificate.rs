@@ -9,20 +9,17 @@ use crate::{
     error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_objects::Object::{self, Certificate},
-        kmip_types::{CertificateAttributes, CertificateType},
+        kmip_types::{CertificateAttributes, CertificateType, UniqueIdentifier},
     },
 };
 
-/// Generate a KMIP certificate from an OpenSSL certificate and a unique ID
-pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<(String, Object), KmipError> {
+/// Generate a KMIP certificate from an OpenSSL certificate
+pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<Object, KmipError> {
     let der_bytes = certificate.to_der()?;
-    Ok((
-        Uuid::new_v4().to_string(),
-        Certificate {
-            certificate_type: CertificateType::X509,
-            certificate_value: der_bytes,
-        },
-    ))
+    Ok(Certificate {
+        certificate_type: CertificateType::X509,
+        certificate_value: der_bytes,
+    })
 }
 
 pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipError> {
