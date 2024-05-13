@@ -52,6 +52,7 @@ mod from_subject;
 
 mod from_existing;
 mod issuer;
+mod subject;
 
 const X509_VERSION3: i32 = 2;
 
@@ -65,6 +66,8 @@ pub async fn certify(
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
+
+    // sign((get_issuer(generate_x509))
 
     // There are 3 possibles cases:
     // 1. A certificate creation: a CSR is provided
@@ -102,6 +105,102 @@ pub async fn certify(
     // Create a self-signed certificate with a random UUID
     let certificate_id = UniqueIdentifier::TextString(Uuid::new_v4().to_string());
     create_certificate_from_subject(certificate_id, kms, request, user, params).await
+}
+
+async fn generate_x509(
+    issuer: Option<Issuer>,
+    kms: &KMS,
+    request: Certify,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<X509> {
+    // Did the user provide a CSR?
+    if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
+        let x509_req = match &request
+            .certificate_request_type
+            .as_ref()
+            .unwrap_or(&CertificateRequestType::PEM)
+        {
+            CertificateRequestType::PEM => X509Req::from_pem(pkcs10_bytes),
+            CertificateRequestType::PKCS10 => X509Req::from_der(pkcs10_bytes),
+            CertificateRequestType::CRMF => kms_bail!(KmsError::InvalidRequest(
+                "Certificate Request Type CRMF not supported".to_string()
+            )),
+        }?;
+        
+        
+        return Ok(x509_req)
+    }
+
+    // no CSR provided. Was the reference to an existing certificate provided?
+    if let Some(certificate_id) = &request.unique_identifier {
+        if let Ok(owm) = retrieve_object_for_operation(
+            &certificate_id.to_string(),
+            ObjectOperationType::Certify,
+            kms,
+            user,
+            params,
+        )
+            .await
+        {
+            let object_type = owm.object.object_type();
+            return match object_type {
+                // If the user passed a certificate, attempt to renew it
+                ObjectType::Certificate => {
+                    let kmip_certificate_to_openssl(&owm.object).map_err(KmsError::from)
+                    renew_certificate(owm, kms, request, user, params).await,  
+                } 
+                //If the user passed a public key, it is a new certificate
+                ObjectType::PublicKey => {
+                    create_certificate_from_public_key(owm, kms, request, user, params).await
+                }
+                // Invalid reauest
+                x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
+            };
+        }
+        // self-signed certificate with the given id
+        return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
+    }
+
+    todo!("Handle self-signed certificates")
+}
+
+async fn get_issuer(
+    kms: &KMS,
+    request: Certify,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<Option<Issuer>> {
+    let attributes = match request.attributes {
+        Some(attributes) => attributes,
+        None => {
+            return Ok(None)
+        }
+    };
+    // Retrieve the issuer certificate id if provided
+    let issuer_certificate_id =  attributes.get_link(LinkType::CertificateLink);
+    // Retrieve the issuer private key id if provided
+    let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
+    // Retrieve the issuer certificate and the issuer private key
+    if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
+        todo!("Handle self-signed certificates")
+    }
+    let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
+        issuer_private_key_id.map(|id| id.to_string()),
+        issuer_certificate_id.map(|id| id.to_string()),
+        kms,
+        user,
+        params,
+    )
+    .await?;
+    // convert to openssl
+    let issuer_pkey = kmip_private_key_to_openssl(&issuer_private_key.object)?;
+    let issuer_x509 = kmip_certificate_to_openssl(&issuer_certificate.object)?;
+    Ok(Some(Issuer::from_x509(
+        UniqueIdentifier::TextString(issuer_certificate.id),
+        issuer_pkey,
+        issuer_x509,
+    )))
 }
 
 // Helper method
