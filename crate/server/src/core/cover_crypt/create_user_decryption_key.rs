@@ -10,7 +10,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Create, CreateKeyPair, ErrorReason, Get},
-        kmip_types::{Attributes, KeyFormatType, StateEnumeration},
+        kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
@@ -53,12 +53,15 @@ async fn create_user_decryption_key_(
     let access_policy = access_policy_from_attributes(create_attributes)?;
 
     // Recover private key
-    let msk_uid_or_tag = create_attributes.get_parent_id().ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "there should be a reference to the master private key in the creation attributes"
-                .to_string(),
-        )
-    })?;
+    let msk_uid_or_tag = create_attributes
+        .get_parent_id()
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "there should be a reference to the master private key in the creation attributes"
+                    .to_string(),
+            )
+        })?
+        .to_string();
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kmip_server
@@ -158,7 +161,11 @@ pub async fn create_user_decryption_key_pair(
         )
     })?;
     let gr_public_key = kmip_server
-        .get(Get::from(master_public_key_uid), owner, params)
+        .get(
+            Get::from(UniqueIdentifier::from(master_public_key_uid)),
+            owner,
+            params,
+        )
         .await?;
 
     Ok(KeyPair((private_key, gr_public_key.object)))

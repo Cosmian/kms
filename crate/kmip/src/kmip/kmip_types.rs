@@ -676,7 +676,7 @@ pub enum UniqueIdentifierEnumeration {
     //Extensions 8XXXXXXX
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum LinkedObjectIdentifier {
     /// Unique Identifier of a Managed Object.
@@ -687,6 +687,26 @@ pub enum LinkedObjectIdentifier {
     /// negative the count is backwards from the beginning
     /// of the current operation's batch item.
     Index(i64),
+}
+
+impl Display for LinkedObjectIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            LinkedObjectIdentifier::TextString(s) => write!(f, "{s}"),
+            LinkedObjectIdentifier::Enumeration(e) => write!(f, "{e}"),
+            LinkedObjectIdentifier::Index(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+impl From<UniqueIdentifier> for LinkedObjectIdentifier {
+    fn from(value: UniqueIdentifier) -> Self {
+        match value {
+            UniqueIdentifier::TextString(s) => LinkedObjectIdentifier::TextString(s),
+            UniqueIdentifier::Enumeration(e) => LinkedObjectIdentifier::Enumeration(e),
+            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i as i64),
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -1052,11 +1072,7 @@ impl Attributes {
             links
                 .iter()
                 .find(|&l| l.link_type == link_type)
-                .and_then(|l| match &l.linked_object_identifier {
-                    LinkedObjectIdentifier::TextString(s) => Some(s.clone()),
-                    LinkedObjectIdentifier::Enumeration(_e) => None,
-                    LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
-                })
+                .map(|l| l.linked_object_identifier.clone())
         } else {
             None
         }
@@ -1074,7 +1090,7 @@ impl Attributes {
 
     /// Get the parent id of the object.
     #[must_use]
-    pub fn get_parent_id(&self) -> Option<String> {
+    pub fn get_parent_id(&self) -> Option<LinkedObjectIdentifier> {
         self.get_link(LinkType::ParentLink)
     }
 
@@ -1967,6 +1983,16 @@ impl UniqueIdentifier {
         match self {
             UniqueIdentifier::TextString(s) => Some(s),
             _ => None,
+        }
+    }
+}
+
+impl From<LinkedObjectIdentifier> for UniqueIdentifier {
+    fn from(value: LinkedObjectIdentifier) -> Self {
+        match value {
+            LinkedObjectIdentifier::TextString(s) => UniqueIdentifier::TextString(s),
+            LinkedObjectIdentifier::Enumeration(e) => UniqueIdentifier::Enumeration(e),
+            LinkedObjectIdentifier::Index(i) => UniqueIdentifier::Integer(i as i32),
         }
     }
 }
