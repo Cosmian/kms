@@ -1,4 +1,7 @@
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::LinkType};
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{LinkType, LinkedObjectIdentifier},
+};
 use cosmian_kms_client::access::ObjectOperationType;
 
 use crate::{
@@ -130,15 +133,17 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     };
 
     // retrieve the certificate
-    let cert_owm =
-        retrieve_object_for_operation(&certificate_id, operation_type, kms, user, params)
-            .await
-            .with_context(|| {
-                format!(
-                    "could not retrieve the certificate: {certificate_id}, attached to the \
-                     private key"
-                )
-            })?;
+    let cert_owm = retrieve_object_for_operation(
+        &certificate_id.to_string(),
+        operation_type,
+        kms,
+        user,
+        params,
+    )
+    .await
+    .with_context(|| {
+        format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
+    })?;
     Ok(cert_owm)
 }
 
@@ -187,24 +192,36 @@ pub(crate) async fn retrieve_private_key_for_certificate(
         .await?
     };
     // retrieve the private key
-    retrieve_object_for_operation(&private_key_id, operation_type, kms, user, params)
-        .await
-        .with_context(|| {
-            format!("could not retrieve the private key: {private_key_id} for the certificate")
-        })
+    retrieve_object_for_operation(
+        &private_key_id.to_string(),
+        operation_type,
+        kms,
+        user,
+        params,
+    )
+    .await
+    .with_context(|| {
+        format!("could not retrieve the private key: {private_key_id} for the certificate")
+    })
 }
 
 async fn find_link_in_public_key(
     link_type: LinkType,
-    public_key_id: &str,
+    public_key_id: &LinkedObjectIdentifier,
     operation_type: ObjectOperationType,
     kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> Result<String, KmsError> {
+) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
-    let public_key_owm =
-        retrieve_object_for_operation(public_key_id, operation_type, kms, user, params).await?;
+    let public_key_owm = retrieve_object_for_operation(
+        &public_key_id.to_string(),
+        operation_type,
+        kms,
+        user,
+        params,
+    )
+    .await?;
     let public_key_attributes = public_key_owm.object.attributes().with_context(|| {
         format!("could not retrieve the public key attributes: {public_key_id}")
     })?;

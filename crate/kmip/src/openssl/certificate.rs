@@ -3,13 +3,12 @@ use openssl::{
     sha::Sha1,
     x509::{X509Name, X509NameBuilder, X509},
 };
-use uuid::Uuid;
 
 use crate::{
     error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_objects::Object::{self, Certificate},
-        kmip_types::{CertificateAttributes, CertificateType, UniqueIdentifier},
+        kmip_types::{CertificateAttributes, CertificateType},
     },
 };
 
