@@ -110,7 +110,7 @@ pub(crate) async fn validate(
     }?;
     let hm_certificates = &mut HashMap::<Vec<u8>, u8>::new();
     index_certificates(&mut certificates.clone(), hm_certificates)?;
-    let root_idx = *hm_certificates.get(&HEAD.to_vec()).unwrap();
+    let root_idx = *hm_certificates.get(&HEAD.to_vec()).unwrap(); // to be modified
     let root_cert = certificates
         .get(root_idx as usize)
         .expect("root must exist");
@@ -140,7 +140,7 @@ pub(crate) async fn validate(
 
     // Checking if the certificate chain has revocked elements
     let uri_list = get_crl_uris_from_certificate_chain(&mut certificates.clone())?;
-    let mut crl_bytes_list = get_crl_bytes(uri_list, hm_certificates, &certificates).await?;
+    let mut crl_bytes_list = get_crl_bytes(uri_list, hm_certificates, certificates.clone()).await?;
 
     let revocation_status = chain_revocation_status(certificates.as_slice(), &mut crl_bytes_list)?;
 
@@ -399,7 +399,7 @@ fn certificate_revocation_status(
 async fn get_crl_bytes(
     uri_crls: Vec<(String, Vec<u8>)>,
     hm_certificates: &mut HashMap<Vec<u8>, u8>,
-    certificates: &Vec<Vec<u8>>,
+    certificates: Vec<Vec<u8>>,
 ) -> KResult<Vec<Vec<u8>>> {
     let mut responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
         let response = reqwest::get(uri.clone()).await;
@@ -409,7 +409,7 @@ async fn get_crl_bytes(
         let certificate = certificates
             .get(*certificate_idx as usize)
             .expect("certificate index must be valid");
-        let certificate = X509::from_der(&certificate.as_slice())?;
+        let certificate = X509::from_der(certificate.as_slice())?;
         // missing error conversion
         if response.is_err() {
             return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
