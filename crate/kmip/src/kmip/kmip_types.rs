@@ -20,6 +20,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
+use uuid::Uuid;
 
 use super::kmip_objects::ObjectType;
 #[cfg(feature = "openssl")]
@@ -1973,6 +1974,12 @@ impl Display for UniqueIdentifier {
             UniqueIdentifier::Enumeration(e) => write!(f, "{e}"),
             UniqueIdentifier::Integer(i) => write!(f, "{i}"),
         }
+    }
+}
+
+impl Default for UniqueIdentifier {
+    fn default() -> Self {
+        Self::TextString(Uuid::new_v4().to_string())
     }
 }
 

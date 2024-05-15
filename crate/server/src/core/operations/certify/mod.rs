@@ -126,6 +126,7 @@ async fn get_subject(
                 "Certificate Request Type CRMF not supported".to_string()
             )),
         }?;
+        let certificate
         return Ok(Subject::from_x509_req(x509_req))
     }
 
