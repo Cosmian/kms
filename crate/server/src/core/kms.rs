@@ -744,6 +744,6 @@ impl KMS {
         user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ValidateResponse> {
-        operations::validate(self, request, user, params).await
+        operations::validate_operation(self, request, user, params).await
     }
 }

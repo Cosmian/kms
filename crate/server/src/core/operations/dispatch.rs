@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes,
-        Import, Locate, Operation, ReKeyKeyPair, Revoke,
+        Import, Locate, Operation, ReKeyKeyPair, Revoke, Validate,
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
@@ -85,6 +85,11 @@ pub async fn dispatch(
             let req = from_ttlv::<Revoke>(ttlv)?;
             let resp = kms.revoke(req, user, database_params).await?;
             Operation::RevokeResponse(resp)
+        }
+        "Validate" => {
+            let req = from_ttlv::<Validate>(ttlv)?;
+            let resp = kms.validate(req, user, database_params).await?;
+            Operation::ValidateResponse(resp)
         }
         x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
     })
