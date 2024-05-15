@@ -1,3 +1,4 @@
+use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
 use openssl::{
     pkey::{PKey, PKeyRef, Private, Public},
     x509::{X509Extension, X509Name, X509NameRef, X509Req, X509},
@@ -6,38 +7,51 @@ use openssl::{
 use crate::{kms_bail, result::KResult};
 
 /// The party that gets signed by the issuer and gets the certificate
-#[derive(Default)]
 pub struct Subject {
+    unique_identifier: UniqueIdentifier,
     x509_req: Option<X509Req>,
     x509: Option<X509>,
     subject_name: Option<X509Name>,
     public_key: Option<PKey<Public>>,
+    /// Cache for a private key when one is created on the fly
     private_key: Option<PKey<Private>>,
-    extensions: Option<Vec<X509Extension>>,
+    extensions: Vec<X509Extension>,
 }
 
 impl Subject {
-    pub fn from_x509_req(req: X509Req) -> Self {
+    pub fn from_x509_req(unique_identifier: UniqueIdentifier, req: X509Req) -> Self {
         Self {
+            unique_identifier,
             x509_req: Some(req),
-            ..Default::default()
+            x509: None,
+            subject_name: None,
+            public_key: None,
+            private_key: None,
+            extensions: vec![],
         }
     }
 
-    pub fn from_x509(x509: X509) -> Self {
+    pub fn from_x509(unique_identifier: UniqueIdentifier, x509: X509) -> Self {
         Self {
+            unique_identifier,
             x509: Some(x509),
-            ..Default::default()
+            x509_req: None,
+            subject_name: None,
+            public_key: None,
+            private_key: None,
+            extensions: vec![],
         }
     }
 
     pub fn from_subject_name_and_public_key(
+        unique_identifier: UniqueIdentifier,
         subject_name: X509Name,
         public_key: PKey<Public>,
         private_key: Option<PKey<Private>>,
-        extensions: Option<Vec<X509Extension>>,
+        extensions: Vec<X509Extension>,
     ) -> Self {
         Self {
+            unique_identifier,
             x509_req: None,
             x509: None,
             subject_name: Some(subject_name),
@@ -84,7 +98,7 @@ impl Subject {
         )
     }
 
-    pub fn extensions(&self) -> KResult<Option<&[X509Extension]>> {
-        Ok(self.extensions.as_ref().map(|exts| exts.as_slice()))
+    pub fn extensions(&self) -> KResult<&[X509Extension]> {
+        Ok(self.extensions.as_slice())
     }
 }
