@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs, path};
 
 use chrono::Local;
 use cosmian_kmip::{
@@ -63,17 +63,19 @@ struct _IndexedCertificateChain {
 //         }
 //     }
 // }
-// validation has to change :
-// vectors to certificates.
-// uids to certificates.
-// build an ordered certificate chain :
-// - issuer has a subject
-// - a subject is the next issuer
-// - iterate and build a chain
-// check, for each element :
-// - date
-// - check serial number not revoked, following the chain order in CRL.
 
+/// This operation requests the server to validate a certificate chain and return
+/// information on its validity.
+/// Only a single certificate chain SHALL be included in each request.
+/// The request MAY contain a list of certificate objects, and/or a list of
+/// Unique Identifiers that identify Managed Certificate objects.
+/// Together, the two lists compose a certificate chain to be validated.
+/// The request MAY also contain a date for which all certificates in the
+/// certificate chain are REQUIRED to be valid.
+/// The method or policy by which validation is conducted is a decision of the
+/// server and is outside of the scope of this protocol. Likewise, the order in
+/// which the supplied certificate chain is validated and the specification of
+/// trust anchors used to terminate validation are also controlled by the server.
 pub(crate) async fn validate(
     kms: &KMS,
     request: Validate,
@@ -108,16 +110,25 @@ pub(crate) async fn validate(
             KResult::Ok(certificates.clone())
         }
     }?;
+    // Indexing Certificate Chain
     let hm_certificates = &mut HashMap::<Vec<u8>, u8>::new();
     index_certificates(&mut certificates.clone(), hm_certificates)?;
-    let root_idx = *hm_certificates.get(&HEAD.to_vec()).unwrap(); // to be modified
+
+    // Getting root certificate from indexing
+    let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
+        *root_idx
+    } else {
+        return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
+            "The certificate chain has no root".to_string(),
+        )))
+    };
     let root_cert = certificates
         .get(root_idx as usize)
         .expect("root must exist");
     let root_x509 = X509::from_der(root_cert)?;
+
+    // Verifying that the root certificate is auto-signed
     let root_pkey = root_x509.public_key()?;
-    // Checking if the root certificate is is well signed.
-    // A root certificate signes itself.
     if !root_x509.verify(&root_pkey)? {
         return KResult::Ok(ValidateResponse {
             validity_indicator: ValidityIndicator::Invalid,
@@ -395,6 +406,84 @@ fn certificate_revocation_status(
     KResult::Ok(res)
 }
 
+enum UriType {
+    Url(String),
+    Path(String),
+}
+
+async fn test_and_get_resource_from_uri(
+    uri: &String,
+    hm_certificates: &mut HashMap<Vec<u8>, u8>,
+    certificates: Vec<Vec<u8>>,
+    certificate_id: Vec<u8>,
+) -> KResult<Vec<u8>> {
+    let uri_parsed = match url::Url::parse(uri) {
+        Err(_) => {
+            let path = path::Path::new(uri);
+            let path_buf = path.canonicalize()?;
+            let path = path_buf.as_path();
+            if let Some(s) = path.to_str() {
+                Some(UriType::Path(s.to_string()))
+            } else {
+                return KResult::Err(KmsError::from(KmipError::InvalidKmipValue(
+                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Illegal_Object_Type,
+                    "The uri provided is ill defined".to_string(),
+                )))
+            }
+        }
+        Ok(_) => Some(UriType::Url(uri.to_string())),
+    };
+    let crl_bytes = match uri_parsed {
+        Some(UriType::Url(url)) => {
+            let response = reqwest::get(&url).await;
+            // missing error conversion
+            if response.is_err() {
+                return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
+                    "No certificate found at the following uri ".to_string() + uri,
+                )))
+            };
+            let text = response.expect("Response must be Ok").text().await;
+            //missing error conversion
+            if text.is_err() {
+                return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
+                    "Error in getting the body of the response for the following uri ".to_string()
+                        + url.as_str(),
+                )))
+            };
+            let body = text.expect("The body retrieval must not return errors");
+            KResult::Ok(body.as_bytes().to_vec())
+        }
+        Some(UriType::Path(path)) => {
+            // path should be already canonic
+            let der = fs::read(path::Path::new(&path))?;
+            KResult::Ok(der)
+        }
+        _ => {
+            return KResult::Err(KmsError::KmipError(
+                cosmian_kmip::kmip::kmip_operations::ErrorReason::General_Failure,
+                "Error that should not manifest".to_string(),
+            ))
+        }
+    }?;
+    let certificate_idx = hm_certificates
+        .get(&certificate_id)
+        .expect("The certificate must be in the hashmap");
+    let certificate = certificates
+        .get(*certificate_idx as usize)
+        .expect("certificate index must be valid");
+    let certificate = X509::from_der(certificate.as_slice())?;
+    // verifying that the CRL is well signed by its issuer
+    let crl = X509Crl::from_der(crl_bytes.as_slice())?;
+    let cert_key = &certificate.public_key()?;
+    if crl.verify(cert_key)? {
+        return KResult::Err(KmsError::from(KmipError::OpenSSL(
+            "The CRL is not well-signed".to_string(),
+        )))
+    };
+
+    KResult::Ok(crl_bytes)
+}
+
 // request and receive crl objects. Input: uri.
 async fn get_crl_bytes(
     uri_crls: Vec<(String, Vec<u8>)>,
@@ -402,39 +491,13 @@ async fn get_crl_bytes(
     certificates: Vec<Vec<u8>>,
 ) -> KResult<Vec<Vec<u8>>> {
     let mut responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
-        let response = reqwest::get(uri.clone()).await;
-        let certificate_idx = hm_certificates
-            .get(certificate_id)
-            .expect("The certificate must be in the hashmap");
-        let certificate = certificates
-            .get(*certificate_idx as usize)
-            .expect("certificate index must be valid");
-        let certificate = X509::from_der(certificate.as_slice())?;
-        // missing error conversion
-        if response.is_err() {
-            return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
-                "No certificate found at the following uri ".to_string() + uri,
-            )))
-        };
-        let text = response.expect("Response must be Ok").text().await;
-        //missing error conversion
-        if text.is_err() {
-            return KResult::Err(KmsError::from(KmipError::ObjectNotFound(
-                "Error in getting the body of the response for the following uri ".to_string()
-                    + uri,
-            )))
-        };
-        let body = text.expect("The body retrieval must not return errors");
-        let der_bytes = body.as_bytes().to_vec();
-        // verifying that the CRL is well signed by its issuer
-        let crl = X509Crl::from_der(der_bytes.as_slice())?;
-        let cert_key = &certificate.public_key()?;
-        if crl.verify(cert_key)? {
-            return KResult::Err(KmsError::from(KmipError::OpenSSL(
-                "The CRL is not well-signed".to_string(),
-            )))
-        };
-        KResult::Ok(der_bytes)
+        test_and_get_resource_from_uri(
+            uri,
+            &mut hm_certificates.clone(),
+            certificates.clone(),
+            certificate_id.clone(),
+        )
+        .await
     }))
     .await;
 
