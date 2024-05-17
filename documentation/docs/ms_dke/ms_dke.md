@@ -186,7 +186,7 @@ $Setting.Values
 ```
 
 Note: `Get-AzureADDirectorySetting` is part of the `AzureADPreview` module. If you don't have it
-installed,you can install it with the following command:
+installed, you can install it with the following command:
 
 ```powershell
 Install-Module -Name AzureADPreview
@@ -196,11 +196,12 @@ Connect-AzureAD
 
 #### Enable sensitivity labels for MS 365 groups
 
-If the `EnableMIPLabels` parameter is set to or not present,
+If the `EnableMIPLabels` parameter is set to or not present, you will need to enable sensitivity labels
+for MS 365 Groups.
 [See this doc](https://learn.microsoft.com/en-gb/purview/sensitivity-labels-teams-groups-sites#using-sensitivity-labels-for-microsoft-teams-microsoft-365-groups-and-sharepoint-sites)
-for more information on Sensititvity labels.
+for more information on sensitivity labels.
 
-To enable them, follow these instructions:
+To enable sensitivity labels, follow these instructions:
 [Enable sensitivity label support in PowerShell](https://learn.microsoft.com/en-us/entra/identity/users/groups-assign-sensitivity-labels#enable-sensitivity-label-support-in-powershell)
 
 ... which will probably
