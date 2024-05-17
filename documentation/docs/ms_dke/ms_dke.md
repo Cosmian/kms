@@ -1,9 +1,9 @@
 Microsoft Double Key Encryption (DKE) is a feature of Microsoft 365 that allows you to protect your
 most sensitive
-data by encrypting data on the client computer before sending it to Microsoft servers.
+data by encrypting data on the client's computer before sending it to Microsoft servers.
 One of the keys used to encrypt remains under your control and makes the data unreadable by
 Microsoft. This key is kept
-inside your instance of Cosmian KMS which exposes the required API to integrate with Microsoft DKE.
+inside your instance of Cosmian KMS, which exposes the required API to integrate with Microsoft DKE.
 
 See [How it works](#how-it-works) for details on the cryptographic process.
 
@@ -11,12 +11,12 @@ See [How it works](#how-it-works) for details on the cryptographic process.
 
 The DKE feature is currently only available for the Office Windows clients. In addition, to use
 Microsoft
-Double Key Encryption (DKE) you must have a Microsoft 365 E5 license and must have access to the
+Double Key Encryption (DKE): you must have a Microsoft 365 E5 license and must have access to the
 Microsoft Purview compliance portal.
 
 ## How it works
 
-Once DKE is configured, the whole process consists in assigning a
+Once DKE is configured, the whole process consists of assigning a
 specific [sensitivity label](https://learn.microsoft.com/en-gb/purview/create-sensitivity-labels#create-and-configure-sensitivity-labels)
 to a document. The label will indicate that the document is encrypted and that the key to decrypt it
 is stored in your
@@ -38,12 +38,12 @@ Before saving an encrypted document, the Office client will:
    algorithm is set to SHA-256 (see [the list of supported algorithms](../algorithms.md) for
    details)
 4. Send the wrapped AES key and the encrypted document to Microsoft servers, where Azure RMS will
-   also wrap the
+   also, wrap the
    wrapped AES key with their own key (hence the "double key" acronym)
 
-Retrieving an encrypted document works as follows, the Office client will:
+Retrieving an encrypted document works as follows: the Office client will:
 
-1. Request Azure RMS to perform the first unwrapping using their key, to recover the wrapped AES key
+1. Request Azure RMS to perform the first unwrapping using their key to recover the wrapped AES key
 2. Download the encrypted document and the wrapped AES key
 3. Call your Cosmian KMS to unwrap the AES key using your private RSA key. Please note
    that the private RSA key never leaves the Cosmian KMS.
@@ -58,24 +58,24 @@ API is therefore available on the Cosmian server running in [FIPS mode](../fips.
 The Cosmian KMS server needs to be started with the `--ms-dke-service-url <MS_DKE_SERVICE_URL>`
 option.
 
-The `<MS_DKE_SERVICE_URL>`should contain the external URL of this server as configured
+The `<MS_DKE_SERVICE_URL>` should contain the external URL of this server as configured
 in [Azure App Registrations
 for the DKE Service](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
 
 The URL should be something like <https://kms.my_domain.com/ms_dke>
 
-Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to the same value, or
+Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to the same value or
 set the
 corresponding entry in the server TOML configuration file.
 
-!!! warning "No authentication => firewalling is critical"
+!!! warning "No authentication => firewalling is critical."
 The Office client does not send any authentication information when calling the Cosmian KMS.
 Firewalling the
 Cosmian KMS server to only accept requests from valid Office clients is critical.
 
 !!! important "Running the KMS server in the cloud for DKE"
 It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-Cosmian VM](../zero_trust.md). However, due to the lack of authentication, and thus the need to
+Cosmian VM](../zero_trust.md). However, due to the lack of authentication and thus the need to
 firewall the server,
 one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling
 capabilities,
@@ -200,7 +200,7 @@ If the `EnableMIPLabels` parameter is set to or not present,
 [See this doc](https://learn.microsoft.com/en-gb/purview/sensitivity-labels-teams-groups-sites#using-sensitivity-labels-for-microsoft-teams-microsoft-365-groups-and-sharepoint-sites)
 for more information on Sensititvity labels.
 
-To enable them follow tese instructions:
+To enable them, follow these instructions:
 [Enable sensitivity label support in PowerShell](https://learn.microsoft.com/en-us/entra/identity/users/groups-assign-sensitivity-labels#enable-sensitivity-label-support-in-powershell)
 
 ... which will probably
@@ -211,7 +211,7 @@ first.
 
 Do NOT click the box
 on [this page](https://compliance.microsoft.com/compliancesettings/co-authoring_for_files_with_sensitivity_labels),
-doing so will prevent the use of DKE in Sensitivity Labels.
+doing so will prevent using DKE in Sensitivity Labels.
 
 If you need to deactivate co-authoring, you can do so by running the following commands:
 
