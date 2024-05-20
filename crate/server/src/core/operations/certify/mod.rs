@@ -1,11 +1,11 @@
-use std::{cmp::min, collections::HashSet};
+use std::{cmp::min, collections::HashSet, default::Default};
 
 use cloudproof::reexport::crypto_core::reexport::x509_cert::request;
 use cosmian_kmip::{
     kmip::{
         extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Certify, CertifyResponse},
+        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
         kmip_types::{
             Attributes, CertificateAttributes, CertificateRequestType, LinkType,
             LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
@@ -15,7 +15,6 @@ use cosmian_kmip::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_certificate_to_kmip,
     },
-    KmipError::Default,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
@@ -31,10 +30,13 @@ use crate::{
     core::{
         certificate::retrieve_issuer_private_key_and_certificate,
         extra_database_params::ExtraDatabaseParams,
-        operations::certify::{
-            from_csr::create_certificate_from_csr, from_existing::renew_certificate,
-            from_public_key::create_certificate_from_public_key,
-            from_subject::create_certificate_from_subject, issuer::Issuer, subject::Subject,
+        operations::{
+            certify::{
+                from_csr::create_certificate_from_csr, from_existing::renew_certificate,
+                from_public_key::create_certificate_from_public_key,
+                from_subject::create_certificate_from_subject, issuer::Issuer, subject::Subject,
+            },
+            create_key_pair::generate_key_pair_and_tags,
         },
         KMS,
     },
@@ -68,43 +70,46 @@ pub async fn certify(
     }
 
     // sign(generate_x509(get_issuer(get_subject))
+    let subject = get_subject(kms, request, user, params).await?;
 
-    // There are 3 possibles cases:
-    // 1. A certificate creation: a CSR is provided
-    // 2. A certificate renewal: the certificate id is provided and the certificate exists
-    // 2. A certificate creation: all other cases
-
-    if request.certificate_request_value.is_some() {
-        return create_certificate_from_csr(kms, request, user, params).await;
-    }
-    if let Some(certificate_id) = &request.unique_identifier {
-        if let Ok(owm) = retrieve_object_for_operation(
-            &certificate_id.to_string(),
-            ObjectOperationType::Certify,
-            kms,
-            user,
-            params,
-        )
-        .await
-        {
-            let object_type = owm.object.object_type();
-            return match object_type {
-                // If the user passed a certificate, attempt to renew it
-                ObjectType::Certificate => renew_certificate(owm, kms, request, user, params).await,
-                //If the user passed a public key, it is a new certificate
-                ObjectType::PublicKey => {
-                    create_certificate_from_public_key(owm, kms, request, user, params).await
-                }
-                // Invalid reauest
-                x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
-            };
-        }
-        // self-signed certificate with the given id
-        return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
-    }
-    // Create a self-signed certificate with a random UUID
-    let certificate_id = UniqueIdentifier::TextString(Uuid::new_v4().to_string());
-    create_certificate_from_subject(certificate_id, kms, request, user, params).await
+    // // There are 3 possibles cases:
+    // // 1. A certificate creation: a CSR is provided
+    // // 2. A certificate renewal: the certificate id is provided and the certificate exists
+    // // 2. A certificate creation: all other cases
+    //
+    // if request.certificate_request_value.is_some() {
+    //     return create_certificate_from_csr(kms, request, user, params).await;
+    // }
+    // if let Some(certificate_id) = &request.unique_identifier {
+    //     if let Ok(owm) = retrieve_object_for_operation(
+    //         &certificate_id.to_string(),
+    //         ObjectOperationType::Certify,
+    //         kms,
+    //         user,
+    //         params,
+    //     )
+    //     .await
+    //     {
+    //         let object_type = owm.object.object_type();
+    //         return match object_type {
+    //             // If the user passed a certificate, attempt to renew it
+    //             ObjectType::Certificate => renew_certificate(owm, kms, request, user, params).await,
+    //             //If the user passed a public key, it is a new certificate
+    //             ObjectType::PublicKey => {
+    //                 create_certificate_from_public_key(owm, kms, request, user, params).await
+    //             }
+    //             // Invalid reauest
+    //             x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
+    //         };
+    //     }
+    //     // self-signed certificate with the given id
+    //     return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
+    // }
+    // // Create a self-signed certificate with a random UUID
+    // let certificate_id = UniqueIdentifier::TextString(Uuid::new_v4().to_string());
+    // create_certificate_from_subject(certificate_id, kms, request, user, params).await
+    //
+    todo!()
 }
 
 async fn get_subject(
@@ -126,11 +131,12 @@ async fn get_subject(
                 "Certificate Request Type CRMF not supported".to_string()
             )),
         }?;
-        let certificate
-        return Ok(Subject::from_x509_req(x509_req))
+        let certificate_id = request.unique_identifier.unwrap_or_default();
+        return Ok(Subject::from_x509_req(certificate_id, x509_req))
     }
 
-    if let Some(certificate_id) = &request.unique_identifier {
+    // no CSR provided. Was the reference to an existing certificate or public key provided?
+    let publick_key = if let Some(certificate_id) = &request.unique_identifier {
         if let Ok(owm) = retrieve_object_for_operation(
             &certificate_id.to_string(),
             ObjectOperationType::Certify,
@@ -141,32 +147,29 @@ async fn get_subject(
         .await
         {
             let object_type = owm.object.object_type();
-            return match object_type {
+            match object_type {
                 // If the user passed a certificate, attempt to renew it
                 ObjectType::Certificate => {
                     let x509_cert =
                         kmip_certificate_to_openssl(&owm.object).map_err(KmsError::from)?;
-                    let subject_name = x509_cert.subject_name();
-                    let public_key = x509_cert.public_key().map_err(KmsError::from)?;
-                    return Ok(Subject::from_subject_name_and_public_key(
-                        subject_name,
-                        public_key,
-                        None,
-                        None,
-                    ))
+                    return Ok(Subject::from_x509(certificate_id.clone(), x509_cert))
                 }
-                //If the user passed a public key, it is a new certificate
+                //If the user passed a public key, it is a new certificate signing this publick key
                 ObjectType::PublicKey => {
-                    create_certificate_from_public_key(owm, kms, request, user, params).await
+                    let public_key = kmip_public_key_to_openssl(&owm.object)?;
+                    Some(public_key)
                 }
                 // Invalid reauest
-                x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
-            };
+                x => kms_bail!("Invalid Certify request for object type {x:?}"),
+            }
+        } else {
+            None
         }
-        // self-signed certificate with the given id
-        return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
-    }
+    } else {
+        None
+    };
 
+    // This is a request based on a Subject Name
     let attributes = request.attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Certify from Subject: the attributes specifying the the subject name are missing"
@@ -183,11 +186,38 @@ async fn get_subject(
         })?
         .subject_name()?;
 
-    Ok(Subject::from_subject_name_and_public_key(
+    if let Some(public_key) = publick_key {
+        return Ok(Subject::from_subject_name_and_public_key(
+            request.unique_identifier.unwrap_or_default(),
+            subject_name,
+            public_key,
+        ))
+    }
+
+    // If we do not have a public key, we need to create a key pair
+    let sk_uid = UniqueIdentifier::default();
+    let pk_uid = UniqueIdentifier::default();
+    // We expect the attributes to contain the cryptographic algorithm and parameters
+    let create_key_pair_request = CreateKeyPair {
+        common_attributes: Some(attributes.to_owned()),
+        private_key_attributes: None,
+        common_protection_storage_masks: None,
+        private_protection_storage_masks: None,
+        public_protection_storage_masks: None,
+        public_key_attributes: None,
+    };
+    let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
+        create_key_pair_request,
+        &sk_uid.to_string(),
+        &pk_uid.to_string(),
+    )?;
+
+    Ok(Subject::from_subject_name_and_key_pair(
+        request.unique_identifier.unwrap_or_default(),
         subject_name,
-        kmip_public_key_to_openssl(&public_key.object)?,
-        None,
-        None,
+        key_pair,
+        sk_tags,
+        pk_tags,
     ))
 }
 
@@ -382,54 +412,54 @@ async fn issuer_from_attributes<'a>(
     )))
 }
 
-fn build_and_sign_certificate(
-    tags: &mut HashSet<String>,
-    attributes: &mut Attributes,
-    issuer: &Issuer,
-    not_before: Asn1Time,
-    number_of_days: usize,
-    subject_name: X509Name,
-    certificate_public_key: PKey<Public>,
-) -> Result<Object, KmsError> {
-    // Create an X509 struct with the desired certificate information.
-    let mut x509_builder = X509::builder().unwrap();
-    x509_builder.set_version(X509_VERSION3)?;
-    x509_builder.set_subject_name(subject_name.as_ref())?;
-    x509_builder.set_pubkey(certificate_public_key.as_ref())?;
-    x509_builder.set_not_before(not_before.as_ref())?;
-    // Sign the X509 struct with the PKey struct.
-    x509_builder.set_not_after(
-        Asn1Time::days_from_now(number_of_days as u32)
-            .context("could not get a date in ASN.1")?
-            .as_ref(),
-    )?;
-    x509_builder.set_issuer_name(&issuer.subject_name)?;
-    x509_builder.sign(&*issuer.private_key, MessageDigest::sha256())?;
-
-    // Extensions
-    if let Some(extensions) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
-    {
-        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
-        let issuer_x509 = issuer.x509.as_ref().map(|x509| x509.as_ref());
-        let context = x509_builder.x509v3_context(issuer_x509, None);
-        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
-            .into_iter()
-            .try_for_each(|extension| x509_builder.append_extension(extension))?;
-    }
-
-    let x509 = x509_builder.build();
-
-    // link the certificate to the issuer certificate
-    attributes.add_link(
-        LinkType::CertificateLink,
-        issuer.certificate_id.clone().into(),
-    );
-
-    // add the certificate "system" tag
-    tags.insert("_cert".to_string());
-    let certificate_attributes = CertificateAttributes::from(&x509);
-    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
-
-    openssl_certificate_to_kmip(&x509).map_err(KmsError::from)
-}
+// fn build_and_sign_certificate(
+//     tags: &mut HashSet<String>,
+//     attributes: &mut Attributes,
+//     issuer: &Issuer,
+//     not_before: Asn1Time,
+//     number_of_days: usize,
+//     subject_name: X509Name,
+//     certificate_public_key: PKey<Public>,
+// ) -> Result<Object, KmsError> {
+//     // Create an X509 struct with the desired certificate information.
+//     let mut x509_builder = X509::builder().unwrap();
+//     x509_builder.set_version(X509_VERSION3)?;
+//     x509_builder.set_subject_name(subject_name.as_ref())?;
+//     x509_builder.set_pubkey(certificate_public_key.as_ref())?;
+//     x509_builder.set_not_before(not_before.as_ref())?;
+//     // Sign the X509 struct with the PKey struct.
+//     x509_builder.set_not_after(
+//         Asn1Time::days_from_now(number_of_days as u32)
+//             .context("could not get a date in ASN.1")?
+//             .as_ref(),
+//     )?;
+//     x509_builder.set_issuer_name(&issuer.subject_name)?;
+//     x509_builder.sign(&*issuer.private_key, MessageDigest::sha256())?;
+//
+//     // Extensions
+//     if let Some(extensions) =
+//         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
+//     {
+//         let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+//         let issuer_x509 = issuer.x509.as_ref().map(|x509| x509.as_ref());
+//         let context = x509_builder.x509v3_context(issuer_x509, None);
+//         x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
+//             .into_iter()
+//             .try_for_each(|extension| x509_builder.append_extension(extension))?;
+//     }
+//
+//     let x509 = x509_builder.build();
+//
+//     // link the certificate to the issuer certificate
+//     attributes.add_link(
+//         LinkType::CertificateLink,
+//         issuer.certificate_id.clone().into(),
+//     );
+//
+//     // add the certificate "system" tag
+//     tags.insert("_cert".to_string());
+//     let certificate_attributes = CertificateAttributes::from(&x509);
+//     attributes.certificate_attributes = Some(Box::new(certificate_attributes));
+//
+//     openssl_certificate_to_kmip(&x509).map_err(KmsError::from)
+// }
