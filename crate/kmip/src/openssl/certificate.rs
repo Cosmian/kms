@@ -1,8 +1,10 @@
 use openssl::{
+    asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
     sha::Sha1,
-    x509::{X509Name, X509NameBuilder, X509},
+    x509::{X509Extension, X509Name, X509NameBuilder, X509},
 };
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{
     error::{result::KmipResultHelper, KmipError},
@@ -36,6 +38,29 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
             "expected a certificate".to_string(),
         )),
     }
+}
+
+/// Extract the X509Extensions of an openssl X509 certificate
+/// This is still an open issue in the openssl crate: https://github.com/sfackler/rust-openssl/pull/1095
+/// (The PR was closed)
+/// If this is ever fixed, this method should be replaced by the one in the openssl crate
+pub fn openssl_certificate_extensions(certificate: &X509) -> Result<Vec<X509Extension>, KmipError> {
+    let der_bytes = certificate.to_der()?;
+    let (_, certificate) = X509Certificate::from_der(der_bytes.as_slice()).map_err(|e| {
+        KmipError::InvalidKmipValue(
+            crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
+            format!("failed to parse certificate: {e}"),
+        )
+    })?;
+    certificate
+        .iter_extensions()
+        .map(|ext| {
+            let oid = Asn1Object::from_str(ext.oid.to_string().as_str())?;
+            let value = Asn1OctetString::new_from_bytes(ext.value)?;
+            X509Extension::new_from_der(oid.as_ref(), ext.critical, value.as_ref())
+                .map_err(Into::into)
+        })
+        .collect()
 }
 
 impl CertificateAttributes {
