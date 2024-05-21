@@ -6,6 +6,7 @@ use openssl::{
 };
 
 use crate::{
+    database::object_with_metadata::ObjectWithMetadata,
     kms_bail,
     result::{KResult, KResultHelper},
 };
@@ -13,13 +14,8 @@ use crate::{
 /// A certificate Issuer is constructed from
 ///  - either a private key and a certificate.
 ///  - or a private key, subject name and expiry days.
-pub struct Issuer {
-    unique_identifier: UniqueIdentifier,
-    private_key: PKey<Private>,
-    subject_name: Option<X509Name>,
-    expiry_days: Option<usize>,
-    /// the X509 is required to support v3 extensions if the certificate is not sel-signed
-    x509: Option<X509>,
+pub enum Issuer {
+    PrivateKeyAndCertificate(UniqueIdentifier, ObjectWithMetadata, ObjectWithMetadata),
 }
 
 impl Issuer {
