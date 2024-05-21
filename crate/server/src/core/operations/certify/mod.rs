@@ -244,7 +244,7 @@ async fn get_issuer(
 
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
-        return issuer_for_self_signed_certificate(subject, kms, request, user, params).await;
+        return issuer_for_self_signed_certificate(&subject, kms, request, user, params).await;
     }
     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
         issuer_private_key_id.map(|id| id.to_string()),
@@ -291,7 +291,7 @@ async fn issuer_for_self_signed_certificate(
 ) -> KResult<Issuer> {
     match subject {
         Subject::X509Req(_, _) => {
-            // the case where the private key is is specified in the attributes is already covered
+            // the case where the private key is specified in the attributes is already covered
             kms_bail!(
                 "Invalid request: a self-signed certificate cannot be created from a CSR without \
                  specifying the private key id"
@@ -301,11 +301,11 @@ async fn issuer_for_self_signed_certificate(
             // the user is renewing a self-signed certificate. See if we can find
             // a linked private key
             let private_key =
-                fetch_private_key_from_attributes(kms, &owm.object.attributes, user, params)
+                fetch_object_from_attributes(LinkType::PrivateKeyLink, kms, &certificate.attributes, user, params)
                     .await?
                     .ok_or_else(|| {
                         KmsError::InvalidRequest(
-                            "No private key link found to renew the self-signed certificate"
+                            "No private key linked to the certificate found to renew it as self-signed"
                                 .to_string(),
                         )
                     })?;
