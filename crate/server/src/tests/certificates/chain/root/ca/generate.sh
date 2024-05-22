@@ -128,4 +128,11 @@ cp certs/ca.cert.pem ../../
 cp intermediate/certs/intermediate.cert.pem ../../
 cp intermediate/certs/leaf1.cert.pem ../../
 cp intermediate/certs/leaf2.cert.pem ../../
+
+
+openssl x509 -outform der -in ../../ca.cert.pem -out ../../ca.cert.der
+openssl x509 -outform der -in ../../intermediate.cert.pem -out ../../intermediate.cert.der
+openssl x509 -outform der -in ../../leaf1.cert.pem -out ../../leaf1.cert.der
+openssl x509 -outform der -in ../../leaf2.cert.pem -out ../../leaf2.cert.der
+
 scp intermediate/crl/intermediate.crl.pem cosmian@package.cosmian.com:/mnt/package/kms/crl_tests

@@ -43,7 +43,7 @@ struct _IndexedCertificateChain {
 //             .expect("existing element")
 //             .as_slice()
 //             .to_vec();
-//         let current_x509 = X509::from_pem(&current_cert)?;
+//         let current_x509 = X509::from_der(&current_cert)?;
 //         let son_issuer_id = current_x509
 //             .subject_key_id()
 //             .expect("existing subject key id")
@@ -128,7 +128,7 @@ pub(crate) async fn validate_operation(
         .get(root_idx as usize)
         .expect("root must exist");
     println!("got root certificate");
-    let root_x509 = X509::from_pem(root_cert)?;
+    let root_x509 = X509::from_der(root_cert)?;
     println!("converted root certificate to X509");
 
     // Verifying that the root certificate is auto-signed
@@ -191,7 +191,7 @@ fn index_certificates(
     hm_certificates: &mut HashMap<Vec<u8>, u8>,
 ) -> KResult<HashMap<Vec<u8>, u8>> {
     let _ = certificates.iter().try_fold(0, |i, cert| {
-        let cert = X509::from_pem(cert)?;
+        let cert = X509::from_der(cert)?;
         let aki = cert.authority_key_id();
         let ski = cert.subject_key_id();
         let is_root = match (aki, ski) {
@@ -228,7 +228,7 @@ fn validate_chain_structure(
     hm_certificates: &mut HashMap<Vec<u8>, u8>,
     _count: u8,
 ) -> KResult<(ValidityIndicator, u8)> {
-    let root_x509 = X509::from_pem(root)?;
+    let root_x509 = X509::from_der(root)?;
     let son_issuer_id = root_x509
         .subject_key_id()
         .expect("mandatory information")
@@ -252,7 +252,7 @@ fn validate_chain_structure(
     };
     let son_cert = son_cert.expect("The son certificate must exist");
     println!("Parsing X509 certificate");
-    let son_x509 = X509::from_pem(son_cert)?;
+    let son_x509 = X509::from_der(son_cert)?;
     let root_pkey = root_x509.public_key()?;
     let validity = son_x509.verify(&root_pkey)?;
     let (res, count) =
@@ -358,7 +358,7 @@ fn validate_chain_date(
 }
 
 fn validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicator> {
-    let certificate = X509::from_pem(certificate)?;
+    let certificate = X509::from_der(certificate)?;
     let (certificate_validity_start, certificate_validity_end) =
         (certificate.not_before(), certificate.not_after());
     if date.as_ref() <= certificate_validity_end && certificate_validity_start <= date.as_ref() {
@@ -386,7 +386,7 @@ fn get_crl_uris_from_certificate_chain(
 
 fn get_crl_uri_from_certificate(certificate: &[u8]) -> KResult<Vec<(String, Vec<u8>)>> {
     /* and vec<u8> */
-    let certificate = X509::from_pem(certificate)?;
+    let certificate = X509::from_der(certificate)?;
     let certificate_hash = certificate.authority_key_id();
     let certificate_hash = if let Some(auth_id) = certificate_hash {
         auth_id.as_slice().to_vec()
@@ -453,7 +453,7 @@ fn certificate_revocation_status(
     crls: &mut [Vec<u8>],
 ) -> KResult<ValidityIndicator> {
     let res = crls.iter().try_fold(ValidityIndicator::Valid, |acc, crl| {
-        let certificate = X509::from_pem(certificate)?;
+        let certificate = X509::from_der(certificate)?;
         let crl = X509Crl::from_pem(crl.as_slice())?;
         let certificate_name = certificate.to_text()?;
         let certificate_name = String::from_utf8(certificate_name).unwrap();
@@ -536,7 +536,7 @@ async fn test_and_get_resource_from_uri(
     let certificate = certificates
         .get(*certificate_idx as usize)
         .expect("certificate index must be valid");
-    let certificate = X509::from_pem(certificate.as_slice())?;
+    let certificate = X509::from_der(certificate.as_slice())?;
 
     // Verifying that the CRL is well signed by its issuer
     let crl = X509Crl::from_pem(crl_bytes.as_slice())?;
