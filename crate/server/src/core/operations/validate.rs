@@ -421,9 +421,18 @@ fn get_crl_uri_from_certificate(certificate: &[u8]) -> KResult<Vec<(String, Vec<
 
 fn crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
     match status {
-        CrlStatus::NotRevoked => ValidityIndicator::Valid,
-        CrlStatus::RemoveFromCrl(_) => ValidityIndicator::Invalid,
-        CrlStatus::Revoked(_) => ValidityIndicator::Invalid,
+        CrlStatus::NotRevoked => {
+            println!("Valid");
+            ValidityIndicator::Valid
+        }
+        CrlStatus::RemoveFromCrl(_) => {
+            println!("Unknown");
+            ValidityIndicator::Invalid
+        }
+        CrlStatus::Revoked(_) => {
+            println!("Invalid");
+            ValidityIndicator::Invalid
+        }
     }
 }
 
@@ -446,7 +455,10 @@ fn certificate_revocation_status(
     let res = crls.iter().try_fold(ValidityIndicator::Valid, |acc, crl| {
         let certificate = X509::from_pem(certificate)?;
         let crl = X509Crl::from_pem(crl.as_slice())?;
-        let res = crl_status_to_validity_indicator(crl.get_by_serial(certificate.serial_number()));
+        let certificate_name = certificate.to_text()?;
+        let certificate_name = String::from_utf8(certificate_name).unwrap();
+        print!("Certificate: {}", certificate_name);
+        let res = crl_status_to_validity_indicator(crl.get_by_cert(&certificate));
         KResult::Ok(acc.and(res))
     })?;
     KResult::Ok(res)
@@ -502,6 +514,7 @@ async fn test_and_get_resource_from_uri(
                 )))
             };
             let body = text.expect("The body retrieval must not return errors");
+            print!("{}", body);
             KResult::Ok(body.as_bytes().to_vec())
         }
         Some(UriType::Path(path)) => {
@@ -533,7 +546,7 @@ async fn test_and_get_resource_from_uri(
             "The CRL is not well-signed".to_string(),
         )))
     };
-
+    println!("returning crl bytes");
     KResult::Ok(crl_bytes)
 }
 
