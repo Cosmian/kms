@@ -300,22 +300,27 @@ async fn issuer_for_self_signed_certificate(
         Subject::Certificate(unique_identifier, certificate) => {
             // the user is renewing a self-signed certificate. See if we can find
             // a linked private key
-            let private_key =
-                fetch_object_from_attributes(LinkType::PrivateKeyLink, kms, &certificate.attributes, user, params)
-                    .await?
-                    .ok_or_else(|| {
-                        KmsError::InvalidRequest(
-                            "No private key linked to the certificate found to renew it as self-signed"
-                                .to_string(),
-                        )
-                    })?;
+            let private_key = fetch_object_from_attributes(
+                LinkType::PrivateKeyLink,
+                kms,
+                &certificate.attributes,
+                user,
+                params,
+            )
+            .await?
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "No private key linked to the certificate found to renew it as self-signed"
+                        .to_string(),
+                )
+            })?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
                 private_key,
                 certificate.clone(),
             ))
         }
-        Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subjec_name) => {
+        Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subject_name) => {
             // the user is creating a self-signed certificate from a public key
             // try fetching the corresponding private key to sign it
             let private_key = fetch_object_from_attributes(
@@ -340,11 +345,13 @@ async fn issuer_for_self_signed_certificate(
                 &public_key.attributes,
                 user,
                 params,
-            ))?;
-            Ok(Issuer::PrivateKeyAndCertificate(
+            )
+            .await?;
+            Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 private_key,
-                public_key.clone(),
+                subject_name.clone(),
+                certificate,
             ))
         }
         Subject::KeypairAndSubjectName(_, _, _) => {}

@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::{kmip::kmip_types::UniqueIdentifier, openssl::kmip_certificate_to_openssl};
 use openssl::{
     asn1::Asn1Time,
     pkey::{PKey, PKeyRef, Private},
@@ -14,42 +14,22 @@ use crate::{
 /// A certificate Issuer is constructed from
 ///  - either a private key and a certificate.
 ///  - or a private key, subject name and expiry days.
-pub enum Issuer {
+pub enum Issuer<'a> {
     PrivateKeyAndCertificate(UniqueIdentifier, ObjectWithMetadata, ObjectWithMetadata),
+    PrivateKeyAndSubjectName(
+        UniqueIdentifier,
+        ObjectWithMetadata,
+        &'a X509NameRef,
+        Option<ObjectWithMetadata>,
+    ),
 }
 
-impl Issuer {
-    pub fn from_x509(
-        unique_identifier: UniqueIdentifier,
-        private_key: PKey<Private>,
-        x509: X509,
-    ) -> Self {
-        Self {
-            unique_identifier,
-            private_key,
-            subject_name: None,
-            expiry_days: None,
-            x509: Some(x509),
-        }
-    }
-
-    pub fn from_subject_name_and_expiry_days(
-        unique_identifier: UniqueIdentifier,
-        private_key: PKey<Private>,
-        subject_name: X509Name,
-        expiry_days: usize,
-    ) -> Self {
-        Self {
-            unique_identifier,
-            private_key,
-            subject_name: Some(subject_name),
-            expiry_days: Some(expiry_days),
-            x509: None,
-        }
-    }
-
+impl<'a> Issuer<'a> {
     pub fn unique_identifier(&self) -> &UniqueIdentifier {
-        &self.unique_identifier
+        match self {
+            Issuer::PrivateKeyAndCertificate(unique_identifier, _, _) => unique_identifier,
+            Issuer::PrivateKeyAndSubjectName(unique_identifier, _, _, _) => unique_identifier,
+        }
     }
 
     pub fn private_key(&self) -> &PKeyRef<Private> {
@@ -57,15 +37,12 @@ impl Issuer {
     }
 
     pub fn subject_name(&self) -> KResult<&X509NameRef> {
-        self.x509.as_ref().map_or_else(
-            || {
-                self.subject_name
-                    .as_ref()
-                    .map(|sn| sn.as_ref())
-                    .context("Invalid Issuer Subect Name")
-            },
-            |x509| Ok(x509.subject_name()),
-        )
+        match self {
+            Issuer::PrivateKeyAndCertificate(_, _, certificate) => {
+                Ok(kmip_certificate_to_openssl(&certificate.object)?.subject_name())
+            }
+            Issuer::PrivateKeyAndSubjectName(_, _, subject_name, _) => Ok(subject_name),
+        }
     }
 
     pub fn expiry_days(&self) -> KResult<usize> {
