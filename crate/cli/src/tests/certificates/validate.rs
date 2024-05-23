@@ -125,7 +125,7 @@ async fn test_validate() -> Result<(), CliError> {
     let root_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        "../server/src/tests/certificates/chain/root/ca/ca.cert.pem",
+        "test_data/certificates/chain/ca.cert.pem",
         CertificateInputFormat::Pem,
         None,
         None,
@@ -141,7 +141,7 @@ async fn test_validate() -> Result<(), CliError> {
     let intermediate_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        "../server/src/tests/certificates/chain/root/ca/intermediate.cert.pem",
+        "test_data/certificates/chain/intermediate.cert.pem",
         CertificateInputFormat::Pem,
         None,
         None,
@@ -158,7 +158,7 @@ async fn test_validate() -> Result<(), CliError> {
     let leaf1_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        "../server/src/tests/certificates/chain/root/ca/leaf1.cert.pem",
+        "test_data/certificates/chain/leaf1.cert.pem",
         CertificateInputFormat::Pem,
         None,
         None,
@@ -175,7 +175,7 @@ async fn test_validate() -> Result<(), CliError> {
     let leaf2_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        "../server/src/tests/certificates/chain/root/ca/leaf2.cert.pem",
+        "test_data/certificates/chain/leaf2.cert.pem",
         CertificateInputFormat::Pem,
         None,
         None,
