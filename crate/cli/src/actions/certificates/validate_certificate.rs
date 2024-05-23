@@ -11,15 +11,15 @@ use crate::{actions::shared::utils::validate, error::CliError};
 #[derive(Parser, Debug)]
 pub struct ValidateCertificatesAction {
     /// One or more Certificates.
-    #[clap(long = "certificate-id", short = 'v', group = "certificate-tags")]
+    #[clap(long = "certificate", short = 'v', group = "certificate-tags")]
     pub certificate: Vec<String>,
     /// One or more Unique Identifiers of Certificate Objects.
-    #[clap(long = "unique_identifier", short = 'k', group = "certificate-tags")]
+    #[clap(long = "unique-identifier", short = 'k', group = "certificate-tags")]
     pub unique_identifier: Vec<String>,
     /// A Date-Time object indicating when the certificate chain needs to be
     /// valid. If omitted, the current date and time SHALL be assumed.
     #[clap(
-        long = "validity_time",
+        long = "validity-time",
         short = 't',
         value_name = "DATE",
         group = "certificate-tags"
