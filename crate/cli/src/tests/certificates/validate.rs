@@ -95,13 +95,17 @@ async fn validate_certificate(
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    let mut args: Vec<Vec<String>> = vec![["validate".to_owned()].to_vec()];
-    args.push(["--certificate".to_owned()].to_vec());
-    args.push(certificates);
-    args.push(["--unique-identifier".to_owned()].to_vec());
-    args.push(uids);
-    args.push(["--validity-time".to_owned()].to_vec());
-    args.push([date].to_vec());
+    let mut args: Vec<String> = vec!["validate".to_owned()];
+    for certificate in certificates {
+        args.push("--certificate".to_owned());
+        args.push(certificate);
+    }
+    for uid in uids {
+        args.push("--unique-identifier".to_owned());
+        args.push(uid);
+    }
+    args.push("--validity-time".to_owned());
+    args.push(date.to_owned());
 
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
