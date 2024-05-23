@@ -342,7 +342,7 @@ fn validate_chain_date(
     let current_date = {
         if let Some(date) = date {
             println!("Converting date from input");
-            Asn1Time::from_str(&date)
+            Asn1Time::from_str(date.as_str())
         } else {
             println!("Getting current date");
             Asn1Time::days_from_now(0)
