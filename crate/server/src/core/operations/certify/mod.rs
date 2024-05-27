@@ -75,48 +75,130 @@ pub async fn certify(
     // To generate the certificate, we really want to compose the following functions
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
-    // but this would require manipulating some sort of a Monad Transformer
+    // but this would require manipulating some sort of Monad Transformer
     let subject = get_subject(kms, &request, user, params).await?;
     let issuer = get_issuer(&subject, kms, &request, user, params).await?;
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
-    // // There are 3 possibles cases:
-    // // 1. A certificate creation: a CSR is provided
-    // // 2. A certificate renewal: the certificate id is provided and the certificate exists
-    // // 2. A certificate creation: all other cases
-    //
-    // if request.certificate_request_value.is_some() {
-    //     return create_certificate_from_csr(kms, request, user, params).await;
-    // }
-    // if let Some(certificate_id) = &request.unique_identifier {
-    //     if let Ok(owm) = retrieve_object_for_operation(
-    //         &certificate_id.to_string(),
-    //         ObjectOperationType::Certify,
-    //         kms,
-    //         user,
-    //         params,
-    //     )
-    //     .await
-    //     {
-    //         let object_type = owm.object.object_type();
-    //         return match object_type {
-    //             // If the user passed a certificate, attempt to renew it
-    //             ObjectType::Certificate => renew_certificate(owm, kms, request, user, params).await,
-    //             //If the user passed a public key, it is a new certificate
-    //             ObjectType::PublicKey => {
-    //                 create_certificate_from_public_key(owm, kms, request, user, params).await
-    //             }
-    //             // Invalid reauest
-    //             x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
-    //         };
-    //     }
-    //     // self-signed certificate with the given id
-    //     return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
-    // }
-    // // Create a self-signed certificate with a random UUID
-    // let certificate_id = UniqueIdentifier::TextString(Uuid::new_v4().to_string());
-    // create_certificate_from_subject(certificate_id, kms, request, user, params).await
-    //
+    let operations = match subject {
+        Subject::X509Req(unique_identifier, _) => {
+            vec![
+                // upsert the certificate
+                AtomicOperation::Upsert((
+                    unique_identifier.to_string(),
+                    certificate,
+                    attributes,
+                    Some(tags),
+                    StateEnumeration::Active,
+                )),
+            ]
+        }
+        Subject::Certificate(unique_identifier, _) => {
+            vec![
+                // upsert the certificate
+                AtomicOperation::Upsert((
+                    unique_identifier.to_string(),
+                    certificate,
+                    attributes,
+                    Some(tags),
+                    StateEnumeration::Active,
+                )),
+            ]
+        }
+        Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
+            // update the public key attributes with a link to the certificate
+            let public_key_attributes = &mut from_public_key.attributes.clone();
+            public_key_attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::from(unique_identifier.clone()),
+            );
+            // update the certificate attributes with a link to the public key
+            let certificate_attributes = &mut attributes.clone();
+            certificate_attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
+            );
+            vec![
+                // upsert the certificate
+                AtomicOperation::Upsert((
+                    unique_identifier.to_string(),
+                    certificate,
+                    attributes,
+                    Some(tags),
+                    StateEnumeration::Active,
+                )),
+                // update the public key
+                AtomicOperation::UpdateObject((
+                    from_public_key.id.clone(),
+                    from_public_key.object,
+                    from_public_key.attributes.clone(),
+                    None,
+                )),
+            ]
+        }
+        Subject::KeypairAndSubjectName(unique_identifier, keypair_data, _) => {
+            // update the private key attributes with the public key identifier
+            let mut private_key_attributes = keypair_data.private_key_object.attributes()?.clone();
+            private_key_attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
+            );
+            // update the private key attributes with a link to the certificate
+            private_key_attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::from(unique_identifier.clone()),
+            );
+            // update the public key attributes with a link to the private key
+            let mut public_key_attributes = keypair_data.public_key_object.attributes()?.clone();
+            public_key_attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
+            );
+            // update the public key attributes with a link to the certificate
+            public_key_attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::from(unique_identifier.clone()),
+            );
+            // update the certificate attributes with a link to the public key
+            let certificate_attributes = &mut attributes.clone();
+            certificate_attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
+            );
+            // update the certificate attributes with a link to the private key
+            certificate_attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
+            );
+            vec![
+                // upsert the private key
+                AtomicOperation::Upsert((
+                    keypair_data.private_key_id.to_string(),
+                    keypair_data.private_key_object,
+                    private_key_attributes,
+                    Some(keypair_data.private_key_tags.clone()),
+                    StateEnumeration::Active,
+                )),
+                // upsert the public key
+                AtomicOperation::Upsert((
+                    keypair_data.public_key_id.to_string(),
+                    keypair_data.public_key_object,
+                    public_key_attributes,
+                    Some(keypair_data.public_key_tags.clone()),
+                    StateEnumeration::Active,
+                )),
+                // upsert the certificate
+                AtomicOperation::Upsert((
+                    unique_identifier.to_string(),
+                    certificate,
+                    attributes,
+                    Some(tags),
+                    StateEnumeration::Active,
+                )),
+            ]
+        }
+    };
+
     todo!()
 }
 
@@ -190,6 +272,7 @@ async fn get_subject(
         })?
         .subject_name()?;
 
+    // If we have a public key, we can create a certificate from it
     if let Some(public_key) = public_key {
         return Ok(Subject::PublicKeyAndSubjectName(
             request.unique_identifier.to_owned().unwrap_or_default(),
@@ -219,10 +302,11 @@ async fn get_subject(
     Ok(Subject::KeypairAndSubjectName(
         request.unique_identifier.to_owned().unwrap_or_default(),
         KeyPairData {
-            key_pair,
-            secret_key_id: sk_uid,
-            secret_key_tags: sk_tags,
+            private_key_id: sk_uid,
+            private_key_object: key_pair.private_key().to_owned(),
+            private_key_tags: sk_tags,
             public_key_id: pk_uid,
+            public_key_object: key_pair.public_key().to_owned(),
             public_key_tags: pk_tags,
         },
         subject_name,
@@ -368,7 +452,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             // the user is creating a self-signed certificate from a key pair
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
-                kmip_private_key_to_openssl(keypair_data.key_pair.private_key())?,
+                kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
                 subject_name.clone(),
             ))
         }
