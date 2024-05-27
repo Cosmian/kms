@@ -195,7 +195,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     let exported_intermediate_cert_file = tmp_path.join("exported_intermediate_cert.json");
     export_certificate(
         &ctx.owner_client_conf_path,
-        &certificate_link,
+        &certificate_link.to_string(),
         exported_intermediate_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
@@ -206,7 +206,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         read_from_json_file(&tmp_path.join("exported_intermediate_cert.attributes.json")).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
-    assert_eq!(private_key_link, issuer_private_key_id);
+    assert_eq!(private_key_link.to_string(), issuer_private_key_id);
     Ok(())
 }
 
@@ -479,7 +479,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     // export the intermediate certificate
     export_certificate(
         &ctx.owner_client_conf_path,
-        &certificate_link,
+        &certificate_link.to_string(),
         tmp_exported_intermediate.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
@@ -493,7 +493,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     export_key(
         &ctx.owner_client_conf_path,
         "ec",
-        &public_key_link,
+        &public_key_link.to_string(),
         tmp_exported_pubkey.to_str().unwrap(),
         None,
         false,
@@ -506,7 +506,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         .attributes()?
         .get_link(LinkType::CertificateLink)
         .unwrap();
-    assert_eq!(certificate_link, certificate_id);
+    assert_eq!(certificate_link.to_string(), certificate_id);
 
     Ok(())
 }
