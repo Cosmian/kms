@@ -92,7 +92,7 @@ async fn test_import_export_p12_25519() {
     // export the certificate
     export_certificate(
         &ctx.owner_client_conf_path,
-        &certificate_id,
+        &certificate_id.to_string(),
         tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
@@ -117,7 +117,7 @@ async fn test_import_export_p12_25519() {
     // export the chain - there should be only one certificate in the chain
     export_certificate(
         &ctx.owner_client_conf_path,
-        &issuer_id,
+        &issuer_id.to_string(),
         tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
