@@ -1,6 +1,5 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
-use cloudproof::reexport::crypto_core::reexport::x509_cert::request;
 use cosmian_kmip::{
     kmip::{
         extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
@@ -12,19 +11,16 @@ use cosmian_kmip::{
         },
     },
     openssl::{
-        kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
-        openssl_certificate_to_kmip,
+        kmip_certificate_to_openssl, kmip_private_key_to_openssl, openssl_certificate_to_kmip,
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
-    asn1::{Asn1Time, Asn1TimeRef},
+    asn1::Asn1Time,
     hash::MessageDigest,
-    pkey::{PKey, Private, Public},
-    x509::{X509Name, X509NameRef, X509Ref, X509Req, X509},
+    x509::{X509Req, X509},
 };
 use tracing::trace;
-use uuid::Uuid;
 
 use crate::{
     core::{
@@ -32,10 +28,6 @@ use crate::{
         extra_database_params::ExtraDatabaseParams,
         operations::{
             certify::{
-                from_csr::create_certificate_from_csr,
-                from_existing::renew_certificate,
-                from_public_key::create_certificate_from_public_key,
-                from_subject::create_certificate_from_subject,
                 issuer::Issuer,
                 subject::{KeyPairData, Subject},
             },
@@ -47,7 +39,7 @@ use crate::{
         object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation, AtomicOperation,
     },
     error::KmsError,
-    kms_bail, kms_error,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -80,30 +72,36 @@ pub async fn certify(
     let issuer = get_issuer(&subject, kms, &request, user, params).await?;
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
-    let operations = match subject {
+    let (unique_identifier, operations) = match subject {
         Subject::X509Req(unique_identifier, _) => {
-            vec![
-                // upsert the certificate
-                AtomicOperation::Upsert((
-                    unique_identifier.to_string(),
-                    certificate,
-                    attributes,
-                    Some(tags),
-                    StateEnumeration::Active,
-                )),
-            ]
+            (
+                unique_identifier.clone(),
+                vec![
+                    // upsert the certificate
+                    AtomicOperation::Upsert((
+                        unique_identifier.to_string(),
+                        certificate,
+                        attributes,
+                        Some(tags),
+                        StateEnumeration::Active,
+                    )),
+                ],
+            )
         }
         Subject::Certificate(unique_identifier, _) => {
-            vec![
-                // upsert the certificate
-                AtomicOperation::Upsert((
-                    unique_identifier.to_string(),
-                    certificate,
-                    attributes,
-                    Some(tags),
-                    StateEnumeration::Active,
-                )),
-            ]
+            (
+                unique_identifier.clone(),
+                vec![
+                    // upsert the certificate
+                    AtomicOperation::Upsert((
+                        unique_identifier.to_string(),
+                        certificate,
+                        attributes,
+                        Some(tags),
+                        StateEnumeration::Active,
+                    )),
+                ],
+            )
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             // update the public key attributes with a link to the certificate
@@ -118,23 +116,26 @@ pub async fn certify(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
             );
-            vec![
-                // upsert the certificate
-                AtomicOperation::Upsert((
-                    unique_identifier.to_string(),
-                    certificate,
-                    attributes,
-                    Some(tags),
-                    StateEnumeration::Active,
-                )),
-                // update the public key
-                AtomicOperation::UpdateObject((
-                    from_public_key.id.clone(),
-                    from_public_key.object,
-                    from_public_key.attributes.clone(),
-                    None,
-                )),
-            ]
+            (
+                unique_identifier.clone(),
+                vec![
+                    // upsert the certificate
+                    AtomicOperation::Upsert((
+                        unique_identifier.to_string(),
+                        certificate,
+                        attributes,
+                        Some(tags),
+                        StateEnumeration::Active,
+                    )),
+                    // update the public key
+                    AtomicOperation::UpdateObject((
+                        from_public_key.id.clone(),
+                        from_public_key.object,
+                        from_public_key.attributes.clone(),
+                        None,
+                    )),
+                ],
+            )
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, _) => {
             // update the private key attributes with the public key identifier
@@ -170,36 +171,42 @@ pub async fn certify(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
-            vec![
-                // upsert the private key
-                AtomicOperation::Upsert((
-                    keypair_data.private_key_id.to_string(),
-                    keypair_data.private_key_object,
-                    private_key_attributes,
-                    Some(keypair_data.private_key_tags.clone()),
-                    StateEnumeration::Active,
-                )),
-                // upsert the public key
-                AtomicOperation::Upsert((
-                    keypair_data.public_key_id.to_string(),
-                    keypair_data.public_key_object,
-                    public_key_attributes,
-                    Some(keypair_data.public_key_tags.clone()),
-                    StateEnumeration::Active,
-                )),
-                // upsert the certificate
-                AtomicOperation::Upsert((
-                    unique_identifier.to_string(),
-                    certificate,
-                    attributes,
-                    Some(tags),
-                    StateEnumeration::Active,
-                )),
-            ]
+            (
+                unique_identifier.clone(),
+                vec![
+                    // upsert the private key
+                    AtomicOperation::Upsert((
+                        keypair_data.private_key_id.to_string(),
+                        keypair_data.private_key_object,
+                        private_key_attributes,
+                        Some(keypair_data.private_key_tags.clone()),
+                        StateEnumeration::Active,
+                    )),
+                    // upsert the public key
+                    AtomicOperation::Upsert((
+                        keypair_data.public_key_id.to_string(),
+                        keypair_data.public_key_object,
+                        public_key_attributes,
+                        Some(keypair_data.public_key_tags.clone()),
+                        StateEnumeration::Active,
+                    )),
+                    // upsert the certificate
+                    AtomicOperation::Upsert((
+                        unique_identifier.to_string(),
+                        certificate,
+                        attributes,
+                        Some(tags),
+                        StateEnumeration::Active,
+                    )),
+                ],
+            )
         }
     };
 
-    todo!()
+    // perform DB operations
+    kms.db.atomic(user, &operations, params).await?;
+
+    Ok(CertifyResponse { unique_identifier })
 }
 
 async fn get_subject(
@@ -243,7 +250,7 @@ async fn get_subject(
                 ObjectType::Certificate => {
                     return Ok(Subject::Certificate(certificate_id.clone(), owm))
                 }
-                //If the user passed a public key, it is a new certificate signing this publick key
+                //If the user passed a public key, it is a new certificate signing this public key
                 ObjectType::PublicKey => Some(owm),
                 // Invalid request
                 x => kms_bail!("Invalid Certify request for object type {x:?}"),
@@ -540,158 +547,3 @@ fn build_and_sign_certificate(
         attributes,
     ))
 }
-
-// async fn generate_x509(
-//     issuer: Option<Issuer>,
-//     kms: &KMS,
-//     request: Certify,
-//     user: &str,
-//     params: Option<&ExtraDatabaseParams>,
-// ) -> KResult<X509> {
-//     // Did the user provide a CSR?
-//     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
-//         let x509_req = match &request
-//             .certificate_request_type
-//             .as_ref()
-//             .unwrap_or(&CertificateRequestType::PEM)
-//         {
-//             CertificateRequestType::PEM => X509Req::from_pem(pkcs10_bytes),
-//             CertificateRequestType::PKCS10 => X509Req::from_der(pkcs10_bytes),
-//             CertificateRequestType::CRMF => kms_bail!(KmsError::InvalidRequest(
-//                 "Certificate Request Type CRMF not supported".to_string()
-//             )),
-//         }?;
-//
-//
-//         return Ok(x509_req)
-//     }
-//
-//     // no CSR provided. Was the reference to an existing certificate provided?
-//     if let Some(certificate_id) = &request.unique_identifier {
-//         if let Ok(owm) = retrieve_object_for_operation(
-//             &certificate_id.to_string(),
-//             ObjectOperationType::Certify,
-//             kms,
-//             user,
-//             params,
-//         )
-//             .await
-//         {
-//             let object_type = owm.object.object_type();
-//             return match object_type {
-//                 // If the user passed a certificate, attempt to renew it
-//                 ObjectType::Certificate => {
-//                     let kmip_certificate_to_openssl(&owm.object).map_err(KmsError::from)
-//                     renew_certificate(owm, kms, request, user, params).await,
-//                 }
-//                 //If the user passed a public key, it is a new certificate
-//                 ObjectType::PublicKey => {
-//                     create_certificate_from_public_key(owm, kms, request, user, params).await
-//                 }
-//                 // Invalid reauest
-//                 x => Err(kms_error!("Invalid Certify request for object type {x:?}")),
-//             };
-//         }
-//         // self-signed certificate with the given id
-//         return create_certificate_from_subject(certificate_id, kms, request, user, params).await;
-//     }
-//
-//     todo!("Handle self-signed certificates")
-// }
-
-// // Helper method
-// async fn certificate_from_subject_and_pk(
-//     subject_name: X509Name,
-//     public_key: PKey<Public>,
-//     kms: &KMS,
-//     request: Certify,
-//     user: &str,
-//     params: Option<&ExtraDatabaseParams>,
-// ) -> KResult<(UniqueIdentifier, Object)> {
-//     let mut attributes = request.attributes.ok_or_else(|| {
-//         KmsError::InvalidRequest(
-//             "Certify with CSR: the attributes specifying the issuer private key is (and/or \
-//              certificate is) are missing"
-//                 .to_string(),
-//         )
-//     })?;
-//
-//     // Retrieve and remove tags from attributes
-//     // They will be added again later
-//     let mut tags = attributes.remove_tags().unwrap_or_default();
-//     if !tags.is_empty() {
-//         Attributes::check_user_tags(&tags)?;
-//     }
-//
-//     let issuer = issuer_from_attributes(&attributes, kms, user, params)
-//         .await?
-//         .unwrap_or_else(|| {
-//             // Self -sign cer: the issuer is itself
-//             Issuer::from_subject_name_and_expiry_days(
-//                 subject_name.clone(),
-//                 Asn1TimeRef::default(),
-//                 36500,
-//             )
-//         });
-//
-//     // Handle expiration dates
-//     // Create a new Asn1Time object for the current time
-//     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
-//     // retrieve the number of days for the validity of the certificate
-//     // the number of days cannot exceed that of the issuer certificate
-//     let number_of_days = min(
-//         issuer_not_after.diff(&now)?.days as usize,
-//         attributes
-//             .extract_requested_validity_days()?
-//             .unwrap_or(3650),
-//     );
-//
-//     let issued_certificate = build_and_sign_certificate(
-//         &mut tags,
-//         &mut attributes,
-//         &issuer,
-//         now,
-//         number_of_days,
-//         subject_name,
-//         public_key,
-//     )?;
-//
-//     // Use provided certificate id if any
-//     let issued_certificate_id = request
-//         .unique_identifier
-//         .unwrap_or(UniqueIdentifier::TextString(Uuid::new_v4().to_string()));
-//
-//     Ok((issued_certificate_id, issued_certificate))
-// }
-
-// async fn issuer_from_attributes<'a>(
-//     attributes: &Attributes,
-//     kms: &KMS,
-//     user: &str,
-//     params: Option<&ExtraDatabaseParams>,
-// ) -> KResult<Option<Issuer>> {
-//     // Retrieve the issuer certificate id if provided
-//     let issuer_certificate_id = attributes.get_link(LinkType::CertificateLink);
-//     // Retrieve the issuer private key id if provided
-//     let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
-//     // Retrieve the issuer certificate and the issuer private key
-//     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
-//         return Ok(None);
-//     }
-//     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
-//         issuer_private_key_id.map(|id| id.to_string()),
-//         issuer_certificate_id.map(|id| id.to_string()),
-//         kms,
-//         user,
-//         params,
-//     )
-//     .await?;
-//     // convert to openssl
-//     let issuer_pkey = kmip_private_key_to_openssl(&issuer_private_key.object)?;
-//     let issuer_x509 = kmip_certificate_to_openssl(&issuer_certificate.object)?;
-//     Ok(Some(Issuer::from_x509(
-//         UniqueIdentifier::TextString(issuer_certificate.id),
-//         issuer_pkey,
-//         issuer_x509,
-//     )))
-// }

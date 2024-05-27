@@ -58,6 +58,15 @@ pub enum Subject {
 }
 
 impl Subject {
+    pub fn unique_identifier(&self) -> &UniqueIdentifier {
+        match self {
+            Subject::X509Req(uid, _) => uid,
+            Subject::Certificate(uid, _) => uid,
+            Subject::PublicKeyAndSubjectName(uid, _, _) => uid,
+            Subject::KeypairAndSubjectName(uid, _, _) => uid,
+        }
+    }
+
     pub fn subject_name(&self) -> KResult<&X509NameRef> {
         match self {
             Subject::X509Req(_uid, req) => Ok(req.subject_name()),
