@@ -72,8 +72,13 @@ pub async fn certify(
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
 
-    // sign(generate_x509(add_extensions(get_issuer(get_subject)))
-    let subject = get_subject(kms, request, user, params).await?;
+    // To generate the certificate, we really want to compose the following functions
+    // generate_x509(get_issuer(get_subject)))
+    // The code below could be rewritten in a more functional way
+    // but this would require manipulating some sort of a Monad Transformer
+    let subject = get_subject(kms, &request, user, params).await?;
+    let issuer = get_issuer(&subject, kms, &request, user, params).await?;
+    let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
     // // There are 3 possibles cases:
     // // 1. A certificate creation: a CSR is provided
@@ -117,7 +122,7 @@ pub async fn certify(
 
 async fn get_subject(
     kms: &KMS,
-    request: Certify,
+    request: &Certify,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Subject> {
@@ -187,7 +192,7 @@ async fn get_subject(
 
     if let Some(public_key) = public_key {
         return Ok(Subject::PublicKeyAndSubjectName(
-            request.unique_identifier.unwrap_or_default(),
+            request.unique_identifier.to_owned().unwrap_or_default(),
             public_key,
             subject_name,
         ))
@@ -212,7 +217,7 @@ async fn get_subject(
     )?;
 
     Ok(Subject::KeypairAndSubjectName(
-        request.unique_identifier.unwrap_or_default(),
+        request.unique_identifier.to_owned().unwrap_or_default(),
         KeyPairData {
             key_pair,
             secret_key_id: sk_uid,
@@ -224,13 +229,13 @@ async fn get_subject(
     ))
 }
 
-async fn get_issuer(
-    subject: Subject,
+async fn get_issuer<'a>(
+    subject: &'a Subject,
     kms: &KMS,
-    request: Certify,
+    request: &Certify,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<Issuer> {
+) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) = match &request.attributes {
         Some(attributes) => {
             // Retrieve the issuer certificate id if provided
@@ -244,7 +249,7 @@ async fn get_issuer(
 
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
-        return issuer_for_self_signed_certificate(&subject, kms, request, user, params).await;
+        return issuer_for_self_signed_certificate(subject, kms, user, params).await;
     }
     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
         issuer_private_key_id.map(|id| id.to_string()),
@@ -256,8 +261,8 @@ async fn get_issuer(
     .await?;
     Ok(Issuer::PrivateKeyAndCertificate(
         UniqueIdentifier::TextString(issuer_certificate.id.clone()),
-        issuer_private_key,
-        issuer_certificate,
+        kmip_private_key_to_openssl(&issuer_private_key.object)?,
+        kmip_certificate_to_openssl(&issuer_certificate.object)?,
     ))
 }
 
@@ -282,13 +287,12 @@ async fn fetch_object_from_attributes(
     Ok(None)
 }
 
-async fn issuer_for_self_signed_certificate(
-    subject: &Subject,
+async fn issuer_for_self_signed_certificate<'a>(
+    subject: &'a Subject,
     kms: &KMS,
-    request: Certify,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<Issuer> {
+) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {
             // the case where the private key is specified in the attributes is already covered
@@ -316,8 +320,8 @@ async fn issuer_for_self_signed_certificate(
             })?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
-                private_key,
-                certificate.clone(),
+                kmip_private_key_to_openssl(&private_key.object)?,
+                kmip_certificate_to_openssl(&certificate.object)?,
             ))
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subject_name) => {
@@ -347,15 +351,110 @@ async fn issuer_for_self_signed_certificate(
                 params,
             )
             .await?;
+            match certificate {
+                Some(certificate) => Ok(Issuer::PrivateKeyAndCertificate(
+                    unique_identifier.clone(),
+                    kmip_private_key_to_openssl(&private_key.object)?,
+                    kmip_certificate_to_openssl(&certificate.object)?,
+                )),
+                None => Ok(Issuer::PrivateKeyAndSubjectName(
+                    unique_identifier.clone(),
+                    kmip_private_key_to_openssl(&private_key.object)?,
+                    subject_name.clone(),
+                )),
+            }
+        }
+        Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
+            // the user is creating a self-signed certificate from a key pair
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
-                private_key,
+                kmip_private_key_to_openssl(keypair_data.key_pair.private_key())?,
                 subject_name.clone(),
-                certificate,
             ))
         }
-        Subject::KeypairAndSubjectName(_, _, _) => {}
     }
+}
+
+fn build_and_sign_certificate(
+    issuer: &Issuer,
+    subject: &Subject,
+    request: Certify,
+) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
+    // recover the attributes
+    let mut attributes = request.attributes.clone().unwrap_or_default();
+
+    // Create an X509 struct with the desired certificate information.
+    let mut x509_builder = X509::builder().unwrap();
+
+    // Handle the subject name and public key
+    x509_builder.set_version(X509_VERSION3)?;
+    x509_builder.set_subject_name(subject.subject_name()?)?;
+    x509_builder.set_pubkey(subject.public_key()?)?;
+
+    // Handle expiration dates
+    // Create a new Asn1Time object for the current time
+    let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
+    // retrieve the number of days for the validity of the certificate
+    let mut number_of_days = attributes.extract_requested_validity_days()?.unwrap_or(365) as u32;
+    // the number of days cannot exceed that of the issuer certificate
+    if let Some(issuer_not_after) = issuer.not_after() {
+        number_of_days = min(issuer_not_after.diff(&now)?.days as u32, number_of_days);
+    }
+    x509_builder.set_not_before(now.as_ref())?;
+    x509_builder.set_not_after(
+        Asn1Time::days_from_now(number_of_days)
+            .context("could not get a date in ASN.1")?
+            .as_ref(),
+    )?;
+
+    // Set the issuer name and private key
+    x509_builder.set_issuer_name(issuer.subject_name())?;
+    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
+
+    // add subject extensions
+    subject
+        .extensions()?
+        .into_iter()
+        .try_for_each(|extension| x509_builder.append_extension(extension))?;
+
+    // Extensions supplied using an extension attribute
+    // This requires knowing the issuer certificate
+    if let Some(extensions) =
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
+    {
+        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+        let context = x509_builder.x509v3_context(issuer.certificate(), None);
+        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))?;
+    }
+
+    let x509 = x509_builder.build();
+
+    // Process the tags
+    let mut tags = attributes.remove_tags().unwrap_or_default();
+    if !tags.is_empty() {
+        Attributes::check_user_tags(&tags)?;
+    }
+    // add subject tags if any
+    tags.extend(subject.tags().iter().cloned());
+    // add the certificate "system" tag
+    tags.insert("_cert".to_string());
+
+    // link the certificate to the issuer certificate
+    attributes.add_link(
+        LinkType::CertificateLink,
+        issuer.unique_identifier().clone().into(),
+    );
+
+    let certificate_attributes = CertificateAttributes::from(&x509);
+    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
+
+    Ok((
+        openssl_certificate_to_kmip(&x509).map_err(KmsError::from)?,
+        tags,
+        attributes,
+    ))
 }
 
 // async fn generate_x509(
@@ -512,55 +611,3 @@ async fn issuer_for_self_signed_certificate(
 //         issuer_x509,
 //     )))
 // }
-
-fn build_and_sign_certificate(
-    tags: &mut HashSet<String>,
-    attributes: &mut Attributes,
-    issuer: &Issuer,
-    not_before: Asn1Time,
-    number_of_days: usize,
-    subject_name: X509Name,
-    certificate_public_key: PKey<Public>,
-) -> Result<Object, KmsError> {
-    // Create an X509 struct with the desired certificate information.
-    let mut x509_builder = X509::builder().unwrap();
-    x509_builder.set_version(X509_VERSION3)?;
-    x509_builder.set_subject_name(subject_name.as_ref())?;
-    x509_builder.set_pubkey(certificate_public_key.as_ref())?;
-    x509_builder.set_not_before(not_before.as_ref())?;
-    // Sign the X509 struct with the PKey struct.
-    x509_builder.set_not_after(
-        Asn1Time::days_from_now(number_of_days as u32)
-            .context("could not get a date in ASN.1")?
-            .as_ref(),
-    )?;
-    x509_builder.set_issuer_name(&issuer.subject_name)?;
-    x509_builder.sign(&*issuer.private_key, MessageDigest::sha256())?;
-
-    // Extensions
-    if let Some(extensions) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
-    {
-        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
-        let issuer_x509 = issuer.x509.as_ref().map(|x509| x509.as_ref());
-        let context = x509_builder.x509v3_context(issuer_x509, None);
-        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
-            .into_iter()
-            .try_for_each(|extension| x509_builder.append_extension(extension))?;
-    }
-
-    let x509 = x509_builder.build();
-
-    // link the certificate to the issuer certificate
-    attributes.add_link(
-        LinkType::CertificateLink,
-        issuer.certificate_id.clone().into(),
-    );
-
-    // add the certificate "system" tag
-    tags.insert("_cert".to_string());
-    let certificate_attributes = CertificateAttributes::from(&x509);
-    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
-
-    openssl_certificate_to_kmip(&x509).map_err(KmsError::from)
-}

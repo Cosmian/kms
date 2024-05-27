@@ -66,18 +66,26 @@ impl Subject {
         }
     }
 
-    pub fn extensions(&self) -> KResult<&[X509Extension]> {
+    pub fn extensions(&self) -> KResult<Vec<X509Extension>> {
         match self {
             Subject::X509Req(_uid, req) => req
                 .extensions()
-                .map(|stack| stack.into_iter().collect::<Vec<_>>().as_ref())
+                .map(|stack| stack.into_iter().collect::<Vec<_>>())
                 .map_err(|e| kms_error!("No extensions: {e}")),
             Subject::Certificate(_uid, owm) => {
                 openssl_certificate_extensions(&kmip_certificate_to_openssl(&owm.object)?)
-                    .map(|exts| exts.as_ref())
                     .map_err(Into::into)
             }
-            _ => Ok(&[]),
+            _ => Ok(vec![]),
+        }
+    }
+
+    pub fn tags(&self) -> HashSet<String> {
+        match self {
+            Subject::Certificate(_uid, owm) => owm.attributes.get_tags(),
+            // It is an open question whether the tags form an existing public key should be
+            // added to those of the certificate. For now, we return an empty set.
+            _ => HashSet::new(),
         }
     }
 }
