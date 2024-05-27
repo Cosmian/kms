@@ -1,8 +1,7 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::{
-    crypto::KeyPair,
-    kmip::kmip_types::UniqueIdentifier,
+    kmip::{kmip_objects::Object, kmip_types::UniqueIdentifier},
     openssl::{
         kmip_certificate_to_openssl, kmip_public_key_to_openssl, openssl_certificate_extensions,
     },
@@ -18,19 +17,44 @@ use crate::{
 
 /// This holds KeyPair information when one is created for the subject
 pub struct KeyPairData {
-    pub(crate) key_pair: KeyPair,
-    pub(crate) secret_key_id: UniqueIdentifier,
-    pub(crate) secret_key_tags: HashSet<String>,
+    pub(crate) private_key_id: UniqueIdentifier,
+    pub(crate) private_key_object: Object,
+    pub(crate) private_key_tags: HashSet<String>,
     pub(crate) public_key_id: UniqueIdentifier,
+    pub(crate) public_key_object: Object,
     pub(crate) public_key_tags: HashSet<String>,
 }
 
 /// The party that gets signed by the issuer and gets the certificate
 pub enum Subject {
-    X509Req(UniqueIdentifier, X509Req),
-    Certificate(UniqueIdentifier, ObjectWithMetadata),
-    PublicKeyAndSubjectName(UniqueIdentifier, ObjectWithMetadata, X509Name),
-    KeypairAndSubjectName(UniqueIdentifier, KeyPairData, X509Name),
+    X509Req(
+        /// Unique identifier of the certificate to create
+        UniqueIdentifier,
+        /// Certificate request PKCS#10
+        X509Req,
+    ),
+    Certificate(
+        /// Unique identifier of the certificate to renew
+        UniqueIdentifier,
+        /// Certificate to renew
+        ObjectWithMetadata,
+    ),
+    PublicKeyAndSubjectName(
+        /// Unique identifier of the certificate to create
+        UniqueIdentifier,
+        /// Public key of the certificate
+        ObjectWithMetadata,
+        /// Subject name of the certificate
+        X509Name,
+    ),
+    KeypairAndSubjectName(
+        /// Unique identifier of the certificate to create
+        UniqueIdentifier,
+        /// Generated KeyPair from which the certificate is created
+        KeyPairData,
+        /// Subject name of the certificate
+        X509Name,
+    ),
 }
 
 impl Subject {
@@ -59,7 +83,7 @@ impl Subject {
                     .map_err(Into::into)
             }
             Subject::KeypairAndSubjectName(_uid, keypair, _sn) => {
-                kmip_public_key_to_openssl(keypair.key_pair.public_key())
+                kmip_public_key_to_openssl(&keypair.public_key_object)
                     .map(|p_key| p_key.as_ref())
                     .map_err(Into::into)
             }
