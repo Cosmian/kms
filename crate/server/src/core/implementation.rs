@@ -3,15 +3,13 @@ use std::collections::HashSet;
 use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
 use cosmian_kmip::{
     crypto::{
-        rsa::operation::create_rsa_key_pair,
         secret::Secret,
         symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
-        KeyPair,
     },
     kmip::{
         kmip_objects::Object,
-        kmip_operations::{Create, CreateKeyPair},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_operations::Create,
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
     },
 };
 use openssl::rand::rand_bytes;

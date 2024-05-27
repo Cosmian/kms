@@ -43,11 +43,6 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-mod from_csr;
-mod from_public_key;
-mod from_subject;
-
-mod from_existing;
 mod issuer;
 mod subject;
 
@@ -88,7 +83,7 @@ pub async fn certify(
                 ],
             )
         }
-        Subject::Certificate(unique_identifier, _) => {
+        Subject::Certificate(unique_identifier, _, _) => {
             (
                 unique_identifier.clone(),
                 vec![
@@ -248,7 +243,11 @@ async fn get_subject(
             match object_type {
                 // If the user passed a certificate, attempt to renew it
                 ObjectType::Certificate => {
-                    return Ok(Subject::Certificate(certificate_id.clone(), owm))
+                    return Ok(Subject::Certificate(
+                        certificate_id.clone(),
+                        kmip_certificate_to_openssl(&owm.object)?,
+                        owm.attributes,
+                    ))
                 }
                 //If the user passed a public key, it is a new certificate signing this public key
                 ObjectType::PublicKey => Some(owm),
@@ -392,13 +391,13 @@ async fn issuer_for_self_signed_certificate<'a>(
                  specifying the private key id"
             )
         }
-        Subject::Certificate(unique_identifier, certificate) => {
+        Subject::Certificate(unique_identifier, certificate, certificate_attributes) => {
             // the user is renewing a self-signed certificate. See if we can find
             // a linked private key
             let private_key = fetch_object_from_attributes(
                 LinkType::PrivateKeyLink,
                 kms,
-                &certificate.attributes,
+                certificate_attributes,
                 user,
                 params,
             )
@@ -412,7 +411,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&private_key.object)?,
-                kmip_certificate_to_openssl(&certificate.object)?,
+                certificate.clone(),
             ))
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subject_name) => {
@@ -451,7 +450,7 @@ async fn issuer_for_self_signed_certificate<'a>(
                 None => Ok(Issuer::PrivateKeyAndSubjectName(
                     unique_identifier.clone(),
                     kmip_private_key_to_openssl(&private_key.object)?,
-                    subject_name.clone(),
+                    subject_name,
                 )),
             }
         }
@@ -460,7 +459,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
-                subject_name.clone(),
+                subject_name,
             ))
         }
     }
@@ -479,8 +478,8 @@ fn build_and_sign_certificate(
 
     // Handle the subject name and public key
     x509_builder.set_version(X509_VERSION3)?;
-    x509_builder.set_subject_name(subject.subject_name()?)?;
-    x509_builder.set_pubkey(subject.public_key()?)?;
+    x509_builder.set_subject_name(subject.subject_name())?;
+    x509_builder.set_pubkey(subject.public_key()?.as_ref())?;
 
     // Handle expiration dates
     // Create a new Asn1Time object for the current time
