@@ -45,7 +45,8 @@ pub struct CertifyAction {
     #[clap(long ="certificate-signing-request-format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
     certificate_signing_request_format: String,
 
-    /// If not using a CSR, the id of the public key to certify
+    /// If not using a CSR, or renewing a certificate,
+    /// the id of the public key to certify
     #[clap(
         long = "public-key-id-to-certify",
         short = 'p',
@@ -53,6 +54,11 @@ pub struct CertifyAction {
         requires = "subject_name"
     )]
     public_key_id_to_certify: Option<String>,
+
+    /// If not using a CSR, or certifying the public key,
+    /// the id of the certificate to re-certify
+    #[clap(long = "certificate-id-to-re-certify", short = 'n', group = "csr_pk")]
+    certificate_id_to_re_certify: Option<String>,
 
     /// When certifying a public key, the subject name to use
     ///
@@ -94,20 +100,20 @@ pub struct CertifyAction {
 
 impl CertifyAction {
     pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
-        if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
-            return Err(CliError::Default(
-                "Either a certificate signing request or a public key to certify must be provided"
-                    .to_string(),
-            ))
-        }
+        // if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
+        //     return Err(CliError::Default(
+        //         "Either a certificate signing request or a public key to certify must be provided"
+        //             .to_string(),
+        //     ))
+        // }
 
-        if self.issuer_certificate_id.is_none() && self.issuer_private_key_id.is_none() {
-            return Err(CliError::Default(
-                "Either an issuer certificate id or an issuer private key id or both must be \
-                 provided"
-                    .to_string(),
-            ))
-        }
+        // if self.issuer_certificate_id.is_none() && self.issuer_private_key_id.is_none() {
+        //     return Err(CliError::Default(
+        //         "Either an issuer certificate id or an issuer private key id or both must be \
+        //          provided"
+        //             .to_string(),
+        //     ))
+        // }
 
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
@@ -170,6 +176,10 @@ impl CertifyAction {
                 )?));
             Some(UniqueIdentifier::TextString(
                 public_key_to_certify.to_string(),
+            ))
+        } else if let Some(certificate_id_to_renew) = &self.certificate_id_to_re_certify {
+            Some(UniqueIdentifier::TextString(
+                certificate_id_to_renew.clone(),
             ))
         } else {
             None
