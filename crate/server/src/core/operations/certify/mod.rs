@@ -156,7 +156,13 @@ pub async fn certify(
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
-            let certificate_attributes = &mut attributes.clone();
+            let mut certificate_attributes = attributes.clone();
+            // remove cryptographic information from the certificate attributes
+            certificate_attributes.cryptographic_algorithm = None;
+            certificate_attributes.cryptographic_length = None;
+            certificate_attributes.cryptographic_parameters = None;
+            certificate_attributes.cryptographic_usage_mask = None;
+            certificate_attributes.cryptographic_domain_parameters = None;
             certificate_attributes.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
@@ -189,7 +195,7 @@ pub async fn certify(
                     AtomicOperation::Upsert((
                         unique_identifier.to_string(),
                         certificate,
-                        attributes,
+                        certificate_attributes,
                         Some(tags),
                         StateEnumeration::Active,
                     )),

@@ -17,7 +17,7 @@ use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
 use crate::{
-    actions::certificates::{CertificateExportFormat, CertificateInputFormat},
+    actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
@@ -35,7 +35,9 @@ pub struct CertifyOp {
     csr_file: Option<String>,
     public_key_id_to_certify: Option<String>,
     certificate_id_to_re_certify: Option<String>,
+    generate_keypair: bool,
     subject_name: Option<String>,
+    algorithm: Option<Algorithm>,
     certificate_id: Option<String>,
     days: Option<u32>,
     certificate_extensions: Option<PathBuf>,
@@ -67,9 +69,16 @@ pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, Cli
         args.push("--certificate-id-to-re-certify".to_owned());
         args.push(certificate_id_to_re_certify);
     }
+    if certify_op.generate_keypair {
+        args.push("--generate-key-pair".to_owned());
+    }
     if let Some(subject_name) = certify_op.subject_name {
         args.push("--subject-name".to_owned());
         args.push(subject_name);
+    }
+    if let Some(algorithm) = certify_op.algorithm {
+        args.push("--algorithm".to_owned());
+        args.push(algorithm.to_string());
     }
     if let Some(certificate_id) = certify_op.certificate_id {
         args.push("--certificate-id".to_owned());
@@ -284,8 +293,7 @@ fn check_certificate_and_public_key_linked(
     ctx: &TestsContext,
     certificate_id: &str,
     certificate_attributes: &Attributes,
-) {
-    println!("certificate_attributes: {:?}", certificate_attributes.link);
+) -> (String, Attributes) {
     // check that the certificate contains a link to the public key
     let public_key_link = certificate_attributes
         .get_link(LinkType::PublicKeyLink)
@@ -307,12 +315,47 @@ fn check_certificate_and_public_key_linked(
     .unwrap();
     let public_key = read_object_from_json_ttlv_file(&tmp_exported_pubkey).unwrap();
     //check that the public key contains a link to the certificate
-    let certificate_link = public_key
-        .attributes()
-        .unwrap()
+    let public_key_attributes = public_key.attributes().unwrap();
+    let certificate_link = public_key_attributes
         .get_link(LinkType::CertificateLink)
         .unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
+    (public_key_link.to_string(), public_key_attributes.clone())
+}
+
+fn check_public_and_private_key_linked(
+    ctx: &TestsContext,
+    public_key_id: &str,
+    public_key_attributes: &Attributes,
+) -> String {
+    // check that the certificate contains a link to the public key
+    let private_key_link = public_key_attributes
+        .get_link(LinkType::PrivateKeyLink)
+        .unwrap();
+    // export the public key
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_path = tmp_dir.path();
+    let tmp_exported_privkey = tmp_path.join("exported_privkey.json");
+    export_key(
+        &ctx.owner_client_conf_path,
+        "rsa",
+        &private_key_link.to_string(),
+        tmp_exported_privkey.to_str().unwrap(),
+        None,
+        false,
+        None,
+        false,
+    )
+    .unwrap();
+    let private_key = read_object_from_json_ttlv_file(&tmp_exported_privkey).unwrap();
+    //check that the private key contains a link to the public key
+    let public_key_link = private_key
+        .attributes()
+        .unwrap()
+        .get_link(LinkType::PublicKeyLink)
+        .unwrap();
+    assert_eq!(public_key_link.to_string(), public_key_id);
+    private_key_link.to_string()
 }
 
 #[tokio::test]
@@ -487,5 +530,39 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
     let num_days = x509.not_before().diff(x509.not_after()).unwrap().days;
     assert_eq!(num_days, 42);
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_issue_with_subject_name() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes, _) =
+        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    println!("{:?}", attributes);
+
+    // check links to public key
+    let (public_key_id, public_key_attributes) =
+        check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
+    let _ = check_public_and_private_key_linked(ctx, &public_key_id, &public_key_attributes);
     Ok(())
 }

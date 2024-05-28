@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub(crate) use certify::Algorithm;
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 pub use export_certificate::CertificateExportFormat;
