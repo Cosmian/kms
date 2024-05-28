@@ -229,15 +229,19 @@ async fn get_subject(
                 "Certificate Request Type CRMF not supported".to_string()
             )),
         }?;
-        let certificate_id = request.unique_identifier.clone().unwrap_or_default();
+        let certificate_id = request
+            .attributes
+            .as_ref()
+            .and_then(|attributes| attributes.unique_identifier.clone())
+            .unwrap_or_default();
         // see if there is a link to a private key (in case of self-signed cert)
         return Ok(Subject::X509Req(certificate_id, x509_req))
     }
 
     // no CSR provided. Was the reference to an existing certificate or public key provided?
-    let public_key = if let Some(certificate_id) = &request.unique_identifier {
+    let public_key = if let Some(request_id) = &request.unique_identifier {
         if let Ok(owm) = retrieve_object_for_operation(
-            &certificate_id.to_string(),
+            &request_id.to_string(),
             ObjectOperationType::Certify,
             kms,
             user,
@@ -249,8 +253,13 @@ async fn get_subject(
             match object_type {
                 // If the user passed a certificate, attempt to renew it
                 ObjectType::Certificate => {
+                    let certificate_id = request
+                        .attributes
+                        .as_ref()
+                        .and_then(|attributes| attributes.unique_identifier.clone())
+                        .unwrap_or(request_id.clone()); //overwrite the current certificate
                     return Ok(Subject::Certificate(
-                        certificate_id.clone(),
+                        certificate_id,
                         kmip_certificate_to_openssl(&owm.object)?,
                         owm.attributes,
                     ))
@@ -287,8 +296,7 @@ async fn get_subject(
     // If we have a public key, we can create a certificate from it
     if let Some(public_key) = public_key {
         return Ok(Subject::PublicKeyAndSubjectName(
-            // generate a fresh unique identifier for the certificate
-            UniqueIdentifier::default(),
+            attributes.unique_identifier.clone().unwrap_or_default(),
             public_key,
             subject_name,
         ))
@@ -313,7 +321,7 @@ async fn get_subject(
     )?;
 
     Ok(Subject::KeypairAndSubjectName(
-        request.unique_identifier.to_owned().unwrap_or_default(),
+        attributes.unique_identifier.clone().unwrap_or_default(),
         KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
@@ -479,6 +487,12 @@ fn build_and_sign_certificate(
 ) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
     // recover the attributes
     let mut attributes = request.attributes.clone().unwrap_or_default();
+
+    // remove any link that helped identify the issuer
+    // these will be properly re-added later
+    attributes.remove_link(LinkType::CertificateLink);
+    attributes.remove_link(LinkType::PrivateKeyLink);
+    attributes.remove_link(LinkType::PublicKeyLink);
 
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();

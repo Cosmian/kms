@@ -9,6 +9,7 @@ use cosmian_kms_client::{
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
@@ -33,6 +34,7 @@ pub struct CertifyOp {
     issuer_private_key_id: Option<String>,
     csr_file: Option<String>,
     public_key_id_to_certify: Option<String>,
+    certificate_id_to_re_certify: Option<String>,
     subject_name: Option<String>,
     certificate_id: Option<String>,
     days: Option<u32>,
@@ -61,11 +63,16 @@ pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, Cli
         args.push("--public-key-id-to-certify".to_owned());
         args.push(public_key_id_to_certify);
     }
+    if let Some(certificate_id_to_re_certify) = certify_op.certificate_id_to_re_certify {
+        args.push("--certificate-id-to-re-certify".to_owned());
+        args.push(certificate_id_to_re_certify);
+    }
     if let Some(subject_name) = certify_op.subject_name {
         args.push("--subject-name".to_owned());
         args.push(subject_name);
     }
     if let Some(certificate_id) = certify_op.certificate_id {
+        args.push("--certificate-id".to_owned());
         args.push(certificate_id);
     }
     if let Some(days) = certify_op.days {
@@ -208,11 +215,6 @@ fn check_certificate_added_extensions(cert_x509_der: &Vec<u8>) {
     let (_, cert_x509) = X509Certificate::from_der(&cert_x509_der).unwrap();
     let exts_with_x509_parser = cert_x509.extensions();
 
-    for ext in exts_with_x509_parser {
-        println!("\n\next: {ext:?}");
-        println!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
-    }
-
     // BasicConstraints
     let bc = exts_with_x509_parser
         .iter()
@@ -338,7 +340,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=info");
     // Create a test server
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // import signers
@@ -368,7 +370,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn certify_a_public_key_test() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=info");
     // Create a test server
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
@@ -397,7 +399,93 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
 
     // check links to public key
-    check_certificate_and_public_key_linked(&ctx, &certificate_id, &attributes);
+    check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=info");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // create an RSA key pair
+    let (_private_key_id, public_key_id) =
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+
+    // Certify the public key with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            public_key_id_to_certify: Some(public_key_id.clone()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            certificate_extensions: Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
+            ..Default::default()
+        },
+    )?;
+
+    // check the certificate
+    let (_, attributes, cert_x509_der) =
+        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+
+    // check the added extensions
+    check_certificate_added_extensions(&cert_x509_der);
+
+    // check links to public key
+    check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_renew_a_certificate() -> Result<(), CliError> {
+    log_init("cosmian_kms_server=info");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, _, der) = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let x509 = X509::from_der(&der).unwrap();
+    let num_days = x509.not_before().diff(x509.not_after()).unwrap().days;
+    assert_eq!(num_days, 365);
+
+    // renew the certificate
+    let renewed_certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            certificate_id_to_re_certify: Some(certificate_id.clone()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["renew_a_certificate_test".to_owned()]),
+            days: Some(42),
+            ..Default::default()
+        },
+    )?;
+
+    assert_eq!(renewed_certificate_id, certificate_id);
+
+    let (_, _, der) = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let x509 = X509::from_der(&der).unwrap();
+    let num_days = x509.not_before().diff(x509.not_after()).unwrap().days;
+    assert_eq!(num_days, 42);
 
     Ok(())
 }
