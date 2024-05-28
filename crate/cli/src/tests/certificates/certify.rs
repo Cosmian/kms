@@ -1,4 +1,7 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::{
@@ -9,73 +12,75 @@ use cosmian_kms_client::{
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
 #[cfg(not(feature = "fips"))]
-use crate::tests::{elliptic_curve::create_key_pair::create_ec_key_pair, shared::export_key};
+use crate::tests::shared::export_key;
 use crate::{
     actions::certificates::{CertificateExportFormat, CertificateInputFormat},
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
+        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
     },
 };
 
-#[allow(clippy::too_many_arguments)]
-pub fn certify(
-    cli_conf_path: &str,
+#[derive(Debug, Default)]
+pub struct CertifyOp {
+    issuer_certificate_key_id: Option<String>,
+    issuer_private_key_id: Option<String>,
     csr_file: Option<String>,
     public_key_id_to_certify: Option<String>,
     subject_name: Option<String>,
-    issuer_private_key_id: Option<String>,
-    issuer_certificate_key_id: Option<String>,
     certificate_id: Option<String>,
-    days: Option<usize>,
+    days: Option<u32>,
     certificate_extensions: Option<PathBuf>,
-    tags: Option<&[&str]>,
-) -> Result<String, CliError> {
+    tags: Option<Vec<String>>,
+}
+
+pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec!["certify".to_owned()];
-    if let Some(issuer_certificate_key_id) = issuer_certificate_key_id {
+    if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_key_id {
         args.push("--issuer-certificate-id".to_owned());
         args.push(issuer_certificate_key_id);
     }
-    if let Some(issuer_private_key_id) = issuer_private_key_id {
+    if let Some(issuer_private_key_id) = certify_op.issuer_private_key_id {
         args.push("--issuer-private-key-id".to_owned());
         args.push(issuer_private_key_id);
     }
-    if let Some(csr_file) = csr_file {
+    if let Some(csr_file) = certify_op.csr_file {
         args.push("--certificate-signing-request".to_owned());
         args.push(csr_file);
     }
-    if let Some(public_key_id_to_certify) = public_key_id_to_certify {
+    if let Some(public_key_id_to_certify) = certify_op.public_key_id_to_certify {
         args.push("--public-key-id-to-certify".to_owned());
         args.push(public_key_id_to_certify);
     }
-    if let Some(subject_name) = subject_name {
+    if let Some(subject_name) = certify_op.subject_name {
         args.push("--subject-name".to_owned());
         args.push(subject_name);
     }
-    if let Some(certificate_id) = certificate_id {
+    if let Some(certificate_id) = certify_op.certificate_id {
         args.push(certificate_id);
     }
-    if let Some(days) = days {
+    if let Some(days) = certify_op.days {
         args.push("--days".to_owned());
         args.push(days.to_string());
     }
-    if let Some(certificate_extensions) = certificate_extensions {
+    if let Some(certificate_extensions) = certify_op.certificate_extensions {
         args.push("--certificate-extensions".to_owned());
         args.push(certificate_extensions.to_string_lossy().to_string());
     }
-    if let Some(tags) = tags {
+    if let Some(tags) = certify_op.tags {
         for tag in tags {
             args.push("--tag".to_owned());
             args.push((*tag).to_string());
@@ -100,16 +105,9 @@ pub fn extract_certificate_id(text: &str) -> Option<&str> {
     extract_uid(text, ".*? was issued with id")
 }
 
-#[tokio::test]
-async fn test_certify_a_csr() -> Result<(), CliError> {
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // log_init("cosmian_kms_server=debug");
-    // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
-
+fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String), CliError> {
     // import Root CA
-    import_certificate(
+    let root_ca_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/ca.crt",
@@ -125,7 +123,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     )?;
 
     // import Intermediate p12
-    let issuer_private_key_id = import_certificate(
+    let intermediate_ca_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
@@ -140,25 +138,22 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         true,
     )?;
 
-    // Certify the CSR with the intermediate CA
-    let certificate_id = certify(
-        &ctx.owner_client_conf_path,
-        Some("test_data/certificates/csr/leaf.csr".to_owned()),
-        None,
-        None,
-        Some(issuer_private_key_id.clone()),
-        None,
-        None,
-        None,
-        None,
-        Some(&["certify_a_csr_test"]),
-    )?;
+    Ok((root_ca_id, intermediate_ca_id))
+}
 
+/// Check a generated certificate and return its Object, attributes and der bytes
+fn check_generated_certificate(
+    ctx: &TestsContext,
+    issuer_private_key_id: &str,
+    certificate_id: &str,
+) -> (Object, Attributes, Vec<u8>) {
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_path = tmp_dir.path();
     // export the certificate
     let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
         &ctx.owner_client_conf_path,
-        &certificate_id,
+        certificate_id,
         exported_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
@@ -171,9 +166,10 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
             certificate_value, ..
         } => certificate_value,
         _ => panic!("wrong object type"),
-    };
+    }
+    .to_vec();
     // check that the certificate is valid by parsing it using openssl
-    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
+    let cert_x509 = X509::from_der(&cert_x509_der).unwrap();
     // print the subject name
     assert_eq!(
         "Test Leaf",
@@ -200,106 +196,20 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         Some(CertificateExportFormat::Pem),
         None,
         true,
-    )?;
+    )
+    .unwrap();
     // check that the attributes contain a certificate link to the private key
     let ttlv: TTLV =
         read_from_json_file(&tmp_path.join("exported_intermediate_cert.attributes.json")).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
     assert_eq!(private_key_link.to_string(), issuer_private_key_id);
-    Ok(())
+    (cert, attributes, cert_x509_der)
 }
 
-#[tokio::test]
-async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // log_init("cosmian_kms_server=debug");
-    // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
-
-    // import Root CA
-    import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/ca.crt",
-        CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
-
-    // import Intermediate p12
-    let issuer_private_key_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["intermediate_ca"]),
-        None,
-        false,
-        true,
-    )?;
-
-    // Certify the CSR with the intermediate CA
-    let certificate_id = certify(
-        &ctx.owner_client_conf_path,
-        Some("test_data/certificates/csr/leaf.csr".to_owned()),
-        None,
-        None,
-        Some(issuer_private_key_id.clone()),
-        None,
-        None,
-        None,
-        Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
-        Some(&["certify_a_csr_test"]),
-    )?;
-
-    // export the certificate
-    let exported_cert_file = tmp_path.join("exported_cert.json");
-    export_certificate(
-        &ctx.owner_client_conf_path,
-        &certificate_id,
-        exported_cert_file.to_str().unwrap(),
-        Some(CertificateExportFormat::JsonTtlv),
-        None,
-        true,
-    )
-    .unwrap();
-    let cert = read_object_from_json_ttlv_file(&exported_cert_file).unwrap();
-    let cert_x509_der = match &cert {
-        Object::Certificate {
-            certificate_value, ..
-        } => certificate_value,
-        _ => panic!("wrong object type"),
-    };
-    // check that the certificate is valid by parsing it using openssl
-    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
-    // print the subject name
-    assert_eq!(
-        "Test Leaf",
-        cert_x509
-            .subject_name()
-            .entries_by_nid(Nid::COMMONNAME)
-            .next()
-            .unwrap()
-            .data()
-            .as_utf8()
-            .unwrap()
-            .to_string()
-    );
-
+fn check_certificate_added_extensions(cert_x509_der: &Vec<u8>) {
     // check X509 extensions
-    let (_, cert_x509) = X509Certificate::from_der(cert_x509_der).unwrap();
+    let (_, cert_x509) = X509Certificate::from_der(&cert_x509_der).unwrap();
     let exts_with_x509_parser = cert_x509.extensions();
 
     for ext in exts_with_x509_parser {
@@ -370,65 +280,87 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
             }]
         })
     );
+}
+
+#[tokio::test]
+async fn test_certify_a_csr() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..Default::default()
+        },
+    )?;
+
+    let _ = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            certificate_extensions: Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
+            ..Default::default()
+        },
+    )?;
+
+    // check the certificate
+    let (_, _, cert_x509_der) =
+        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+
+    // check the added extensions
+    check_certificate_added_extensions(&cert_x509_der);
 
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn certify_a_public_key_test() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
-    // import Root CA
-    import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/ca.crt",
-        CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    // import signers
+    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
-    // import Intermediate p12
-    let issuer_private_key_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["intermediate_ca"]),
-        None,
-        false,
-        true,
-    )?;
-
-    // create a Ed25519 Key Pair
+    // create an RSA key pair
     let (_private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "ed25519", &[])?;
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
         &ctx.owner_client_conf_path,
-        None,
-        Some(public_key_id),
-        Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string()),
-        Some(issuer_private_key_id.clone()),
-        None,
-        None,
-        None,
-        None,
-        None,
+        CertifyOp {
+            public_key_id_to_certify: Some(public_key_id.clone()),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string(),
+            ),
+            ..Default::default()
+        },
     )?;
 
     let tmp_dir = TempDir::new()?;
