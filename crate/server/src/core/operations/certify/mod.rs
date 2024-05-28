@@ -100,13 +100,13 @@ pub async fn certify(
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             // update the public key attributes with a link to the certificate
-            let public_key_attributes = &mut from_public_key.attributes.clone();
+            let mut public_key_attributes = from_public_key.attributes.clone();
             public_key_attributes.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
-            let certificate_attributes = &mut attributes.clone();
+            let mut certificate_attributes = attributes.clone();
             certificate_attributes.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
@@ -118,7 +118,7 @@ pub async fn certify(
                     AtomicOperation::Upsert((
                         unique_identifier.to_string(),
                         certificate,
-                        attributes,
+                        certificate_attributes,
                         Some(tags),
                         StateEnumeration::Active,
                     )),
@@ -126,7 +126,7 @@ pub async fn certify(
                     AtomicOperation::UpdateObject((
                         from_public_key.id.clone(),
                         from_public_key.object,
-                        from_public_key.attributes.clone(),
+                        public_key_attributes,
                         None,
                     )),
                 ],
@@ -204,6 +204,12 @@ pub async fn certify(
     Ok(CertifyResponse { unique_identifier })
 }
 
+/// Determine the subject of the issued certificate
+/// The subject can be recovered from different sources:
+/// - a public key and a subject name
+/// - a certificate
+/// - a key pair and a subject name
+/// - a CSR
 async fn get_subject(
     kms: &KMS,
     request: &Certify,
@@ -281,7 +287,8 @@ async fn get_subject(
     // If we have a public key, we can create a certificate from it
     if let Some(public_key) = public_key {
         return Ok(Subject::PublicKeyAndSubjectName(
-            request.unique_identifier.to_owned().unwrap_or_default(),
+            // generate a fresh unique identifier for the certificate
+            UniqueIdentifier::default(),
             public_key,
             subject_name,
         ))
@@ -537,6 +544,7 @@ fn build_and_sign_certificate(
         issuer.unique_identifier().clone().into(),
     );
 
+    // Add certificate attributes
     let certificate_attributes = CertificateAttributes::from(&x509);
     attributes.certificate_attributes = Some(Box::new(certificate_attributes));
 
