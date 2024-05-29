@@ -544,7 +544,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_issue_with_subject_name() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // import signers

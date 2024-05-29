@@ -1,13 +1,22 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+#[cfg(feature = "fips")]
+use cosmian_kmip::crypto::{
+    elliptic_curves::{
+        FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+        FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+    },
+    rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+};
 use cosmian_kmip::{
     kmip::{
         extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
         kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
+            Attributes, CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
+            CryptographicUsageMask, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -20,7 +29,7 @@ use openssl::{
     hash::MessageDigest,
     x509::{X509Req, X509},
 };
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{
     core::{
@@ -207,6 +216,42 @@ pub async fn certify(
     Ok(CertifyResponse { unique_identifier })
 }
 
+#[cfg(feature = "fips")]
+fn cryptographic_usage_mask_private_key(
+    cryptographic_algorithm: CryptographicAlgorithm,
+) -> KResult<CryptographicUsageMask> {
+    Ok(match cryptographic_algorithm {
+        CryptographicAlgorithm::RSA => FIPS_PRIVATE_RSA_MASK,
+        CryptographicAlgorithm::ECDH => FIPS_PRIVATE_ECC_MASK_ECDH,
+        CryptographicAlgorithm::ECDSA
+        | CryptographicAlgorithm::Ed25519
+        | CryptographicAlgorithm::Ed448 => FIPS_PRIVATE_ECC_MASK_SIGN,
+        CryptographicAlgorithm::EC => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+        c => kms_bail!(KmsError::InvalidRequest(format!(
+            "Cryptographic algorithm not supported for private key in FIPS mode: {}",
+            c
+        ))),
+    })
+}
+
+#[cfg(feature = "fips")]
+fn cryptographic_usage_mask_public_key(
+    cryptographic_algorithm: CryptographicAlgorithm,
+) -> KResult<CryptographicUsageMask> {
+    Ok(match cryptographic_algorithm {
+        CryptographicAlgorithm::RSA => FIPS_PUBLIC_RSA_MASK,
+        CryptographicAlgorithm::ECDH => FIPS_PUBLIC_ECC_MASK_ECDH,
+        CryptographicAlgorithm::ECDSA
+        | CryptographicAlgorithm::Ed25519
+        | CryptographicAlgorithm::Ed448 => FIPS_PUBLIC_ECC_MASK_SIGN,
+        CryptographicAlgorithm::EC => FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        c => kms_bail!(KmsError::InvalidRequest(format!(
+            "Cryptographic algorithm not supported for private key in FIPS mode: {}",
+            c
+        ))),
+    })
+}
+
 /// Determine the subject of the issued certificate
 /// The subject can be recovered from different sources:
 /// - a public key and a subject name
@@ -309,19 +354,44 @@ async fn get_subject(
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();
     // We expect the attributes to contain the cryptographic algorithm and parameters
+    #[cfg(feature = "fips")]
+    let (private_attributes, public_attributes) = {
+        let cryptographic_algorithm = attributes.cryptographic_algorithm.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Keypair creation: the cryptographic algorithm is missing".to_string(),
+            )
+        })?;
+        let private_attributes = Attributes {
+            cryptographic_usage_mask: Some(cryptographic_usage_mask_private_key(
+                cryptographic_algorithm,
+            )?),
+            ..Default::default()
+        };
+        let public_attributes = Attributes {
+            cryptographic_usage_mask: Some(cryptographic_usage_mask_public_key(
+                cryptographic_algorithm,
+            )?),
+            ..Default::default()
+        };
+        (Some(private_attributes), Some(public_attributes))
+    };
+    #[cfg(not(feature = "fips"))]
+    let (private_attributes, public_attributes) = (None, None);
     let create_key_pair_request = CreateKeyPair {
         common_attributes: Some(attributes.to_owned()),
-        private_key_attributes: None,
+        private_key_attributes: private_attributes,
         common_protection_storage_masks: None,
         private_protection_storage_masks: None,
         public_protection_storage_masks: None,
-        public_key_attributes: None,
+        public_key_attributes: public_attributes,
     };
+    info!("Creating key pair for certification");
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
     )?;
+    info!("Key pair created for certification");
 
     Ok(Subject::KeypairAndSubjectName(
         attributes.unique_identifier.clone().unwrap_or_default(),
