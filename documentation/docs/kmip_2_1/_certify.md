@@ -1,42 +1,77 @@
 #### Specifications
 
-This request is used to generate a Certificate object for a public key. This request supports the certification of a new
-public key, as well as the certification of a public key that has already been certified (i.e., certificate update).
+This request is used to generate a Certificate object for a public key. This request supports the
+certification of a new
+public key, as well as the certification of a public key that has already been certified (i.e.,
+certificate update).
 Only a single certificate SHALL be requested at a time.
 
-The Certificate Request object MAY be omitted, in which case the public key for which a Certificate object is generated
-SHALL be specified by its Unique Identifier only. If the Certificate Request Type and the Certificate Request objects
-are omitted from the request, then the Certificate Type SHALL be specified using the Attributes object.
+The Certificate Request object MAY be omitted, in which case the public key for which a Certificate
+object is generated
+SHALL be specified by its Unique Identifier only. If the Certificate Request Type and the
+Certificate Request objects
+are omitted from the request, then the Certificate Type SHALL be specified using the Attributes
+object.
 
-The Certificate Request is passed as a Byte String, which allows multiple certificate request types for X.509
+The Certificate Request is passed as a Byte String, which allows multiple certificate request types
+for X.509
 certificates (e.g., PKCS#10, PEM, etc.) to be submitted to the server.
 
-The generated Certificate object whose Unique Identifier is returned MAY be obtained by the client via a Get operation
+The generated Certificate object whose Unique Identifier is returned MAY be obtained by the client
+via a Get operation
 in the same batch, using the ID Placeholder mechanism.
 
-For the public key, the server SHALL create a Link attribute of Link Type Certificate pointing to the generated
-certificate. For the generated certificate, the server SHALL create a Link attribute of Link Type Public Key pointing to
+For the public key, the server SHALL create a Link attribute of Link Type Certificate pointing to
+the generated
+certificate. For the generated certificate, the server SHALL create a Link attribute of Link Type
+Public Key pointing to
 the Public Key.
 
-The server SHALL copy the Unique Identifier of the generated certificate returned by this operation into the ID
+The server SHALL copy the Unique Identifier of the generated certificate returned by this operation
+into the ID
 Placeholder variable.
 
-If the information in the Certificate Request conflicts with the attributes specified in the Attributes, then the
+If the information in the Certificate Request conflicts with the attributes specified in the
+Attributes, then the
 information in the Certificate Request takes precedence.
 
 #### Implementation
 
-To certify a Certificate Signing Request or a Public Key, one must provide:
+The KMIP implementation does not:
 
-- either the unique identifier of the issuer private key which must have a link to a certificate with the
-   corresponding public key
-- or the issuer certificate unique identifier which must have a link to the corresponding issuer private key
+- specify how the signer is selected and whther self-signing is allowed
+- specify how the certificate extensions are provided
+- and only supports Certificate Signing Request (CSR) and certifying public keys
+
+Cosmian has extended the specifications and offers 4 possibilities to generate a
+certificate
+
+1. Providing a Certificate Signing Request (CSR)
+2. Providiong a public key id to certify as well as a subject name
+3. Providing an existing certificate id to re-certify
+4. Generating a keypair then signing the public key to generate a certificate
+   specifying a subject name and an algorithm
+
+The signer is specified by providing an issuer private key id
+and/or an issuer certificate via the Links in the attributes of the request. If only
+one of this parameter is specified, the other one will be inferred
+from the links of the cryptographic object behind the provided parameter.
+
+If no signer is provided, the certificate will be self-signed.
+It is not possible to self-sign a CSR.
+
+When re-certifying a certificate, if no certificate unique identifier is provided,
+the original certificate id will be used and the original certificate will
+be replaced by the new one. In all other cases, a random certificate id
+will be generated.
 
 #### Supply X509 extensions (optional)
 
 Specify X509 extensions for a `Certify` operation is possible using the `ckms` CLI.
 
-The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file written in `ini` format (roughly the same format as [OpenSSL X509 v3 cert extension cnf format](https://www.openssl.org/docs/man1.1.1/man5/x509v3_config.html)).
+The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file
+written in `ini` format (roughly the same format
+as [OpenSSL X509 v3 cert extension cnf format](https://www.openssl.org/docs/man1.1.1/man5/x509v3_config.html)).
 
 The extensions may be part of a paragraph called `v3_ca`.
 
@@ -63,7 +98,8 @@ ckms certificates certify \
 #### Example - PKCS#10 Certificate Signing Request
 
 Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier
-`854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and the tag to `MyCert`.
+`854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and
+the tag to `MyCert`.
 
 The corresponding `ckms` CLI command is:
 
@@ -71,7 +107,8 @@ The corresponding `ckms` CLI command is:
 ckms certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
 
-Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending it to the
+Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending
+it to the
 server.
 
 === "Request"
@@ -198,9 +235,11 @@ server.
 
 #### Example - Public key
 
-Certify a public key with unique id `45e56e67-d813-468f-9116-4d1e611a1828` using the issuer private key
+Certify a public key with unique id `45e56e67-d813-468f-9116-4d1e611a1828` using the issuer private
+key
 `45e56e67-d813-468f-9116-4d1e611a1828`.
-Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, CN=bob@acme.com`, the tag to `Bob` and
+Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, CN=bob@acme.com`, the
+tag to `Bob` and
 the certificate requested validity to 365 days.
 
 The corresponding `ckms` CLI command is
@@ -213,7 +252,8 @@ ckms certificates certify -p 45e56e67-d813-468f-9116-4d1e611a1828 -k 854d7914-3b
 Please note the following in the JSON TTLV of the request:
 
 - the various Subject Name fields that are set for the certificate
-- the Subject Name issuer fields are ignored: they will be copied from the certificate linked to the issuer private key
+- the Subject Name issuer fields are ignored: they will be copied from the certificate linked to the
+  issuer private key
 
 === "Request"
 

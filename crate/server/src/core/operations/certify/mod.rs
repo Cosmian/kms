@@ -48,6 +48,9 @@ mod subject;
 
 const X509_VERSION3: i32 = 2;
 
+/// Certify a certificate
+/// This operation is used to issue a certificate based on a public key, a CSR or a key pair
+/// The certificate can be self-signed or signed by another certificate
 pub async fn certify(
     kms: &KMS,
     request: Certify,
@@ -334,6 +337,9 @@ async fn get_subject(
     ))
 }
 
+/// Determine the issuer of the issued certificate.
+/// The issuer
+/// The issuer can be recovered from different sources
 async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,

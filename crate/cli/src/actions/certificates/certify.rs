@@ -73,18 +73,31 @@ impl Display for Algorithm {
 
 /// Issue or renew a X509 certificate
 ///
-/// To issue a certificate
-///  - either provide a Certificate Signing Request (CSR)
-///  - or create a CSR on the fly using an existing Public key
-///    and providing additional parameters
+/// There are 4 possibilities to generate a certificate
+/// 1. Provide a Certificate Signing Request (CSR)
+///    using -certificate-signing-request
+/// 2. Provide a public key id to certify
+///    using -public-key-id-to-certify as well as a subject name
+/// 3. Provide an existing certificate id to re-certify
+///    using -certificate-id-to-re-certify
+/// 4. Generate a keypair then sign the public key to generate a certificate
+///    using -generate-key-pair as well as a subject name and an algorithm
 ///
-/// To issue a self-signed certificate,
-/// do not provide an issuer certificate id or an issuer private key id.
+/// The signer (issuer) is specified by providing an issuer private key id
+/// using -issuer-private-key-id and/or
+/// an issuer certificate id using -issuer-certificate-id. If only
+/// one of this parameter is specified, the other one will be inferred
+/// from the links of the cryptographic object behind the provided parameter.
 ///
-/// To renew a certificate, only provide an existing certificate id.
-/// A certificate with a new id and validity period will be issued.
+/// If no signer is provided, the certificate will be self-signed.
+/// It is not possible to self-sign a CSR.
 ///
-/// Tags can be later used to retrieve the key. Tags are optional.
+/// When re-certifying a certificate, if no --certificate-id is provided,
+/// the original certificate id will be used and the original certificate will
+/// be replaced by the new one. In all other cases, a random certificate id
+/// will be generated.
+///
+/// Tags can be later used to retrieve the certificate. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CertifyAction {
