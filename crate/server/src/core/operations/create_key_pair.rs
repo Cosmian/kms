@@ -19,7 +19,9 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
     },
 };
-use tracing::{debug, trace, warn};
+#[cfg(not(feature = "fips"))]
+use tracing::warn;
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{

@@ -290,7 +290,7 @@ fn check_certificate_added_extensions(cert_x509_der: &Vec<u8>) {
         &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
             points: vec![CRLDistributionPoint {
                 distribution_point: Some(DistributionPointName::FullName(vec![GeneralName::URI(
-                    "https://cse.example.com/crl.pem"
+                    "http://cse.example.com/crl.pem"
                 )])),
                 reasons: None,
                 crl_issuer: None
