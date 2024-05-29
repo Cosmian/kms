@@ -411,8 +411,7 @@ async fn get_subject(
 }
 
 /// Determine the issuer of the issued certificate.
-/// The issuer
-/// The issuer can be recovered from different sources
+/// The issuer can be recovered from different sources or be self-signed:
 async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,
