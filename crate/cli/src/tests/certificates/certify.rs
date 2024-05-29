@@ -229,9 +229,9 @@ fn check_certificate_chain(
     (cert, cert_attributes, cert_x509_der)
 }
 
-fn check_certificate_added_extensions(cert_x509_der: &Vec<u8>) {
+fn check_certificate_added_extensions(cert_x509_der: &[u8]) {
     // check X509 extensions
-    let (_, cert_x509) = X509Certificate::from_der(&cert_x509_der).unwrap();
+    let (_, cert_x509) = X509Certificate::from_der(cert_x509_der).unwrap();
     let exts_with_x509_parser = cert_x509.extensions();
 
     // BasicConstraints
@@ -601,9 +601,6 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
     // since the certificate is self signed, the Certificate Link should point back to itself
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
-
-    // write der_bytes to /tmp/cert.der
-    std::fs::write("/tmp/cert.der", &der_bytes).expect("Unable to write file");
 
     Ok(())
 }

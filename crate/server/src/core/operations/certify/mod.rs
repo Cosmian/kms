@@ -1,12 +1,16 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
 #[cfg(feature = "fips")]
-use cosmian_kmip::crypto::{
-    elliptic_curves::{
-        FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
-        FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+use cosmian_kmip::{
+    crypto::{
+        elliptic_curves::{
+            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
+            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        },
+        rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
     },
-    rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+    kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask},
 };
 use cosmian_kmip::{
     kmip::{
@@ -14,9 +18,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
         kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
-            CryptographicUsageMask, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            StateEnumeration, UniqueIdentifier,
+            Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
+            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
