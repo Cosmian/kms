@@ -153,12 +153,7 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String), 
     Ok((root_ca_id, intermediate_ca_id))
 }
 
-/// Check a generated certificate and return its Object, attributes and der bytes
-fn check_generated_certificate(
-    ctx: &TestsContext,
-    issuer_private_key_id: &str,
-    certificate_id: &str,
-) -> (Object, Attributes, Vec<u8>) {
+fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attributes, Vec<u8>) {
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     // export the certificate
@@ -197,24 +192,39 @@ fn check_generated_certificate(
     );
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("exported_cert.attributes.json")).unwrap();
     let cert_attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    (cert, cert_attributes, cert_x509_der)
+}
+
+/// Check a generated certificate chain
+/// and return its Object, attributes and DER bytes
+fn check_certificate_chain(
+    ctx: &TestsContext,
+    issuer_private_key_id: &str,
+    certificate_id: &str,
+) -> (Object, Attributes, Vec<u8>) {
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_path = tmp_dir.path();
+    // fetch generated certificate
+    let (cert, cert_attributes, cert_x509_der) = fetch_certificate(ctx, certificate_id);
     // check that the attributes contain a certificate link to the intermediate
     let certificate_link = cert_attributes.get_link(LinkType::CertificateLink).unwrap();
     // export the intermediate certificate
-    let exported_intermediate_cert_file = tmp_path.join("exported_intermediate_cert.json");
+    let signer_cert_file = tmp_path.join("signer_cert.json");
     export_certificate(
         &ctx.owner_client_conf_path,
         &certificate_link.to_string(),
-        exported_intermediate_cert_file.to_str().unwrap(),
+        signer_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
         true,
     )
     .unwrap();
     // check that the attributes contain a certificate link to the private key
-    let ttlv: TTLV =
-        read_from_json_file(&tmp_path.join("exported_intermediate_cert.attributes.json")).unwrap();
-    let int_attributes: Attributes = from_ttlv(&ttlv).unwrap();
-    let private_key_link = int_attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+    let ttlv: TTLV = read_from_json_file(&tmp_path.join("signer_cert.attributes.json")).unwrap();
+    let signer_attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let private_key_link = signer_attributes
+        .get_link(LinkType::PrivateKeyLink)
+        .unwrap();
     assert_eq!(private_key_link.to_string(), issuer_private_key_id);
     (cert, cert_attributes, cert_x509_der)
 }
@@ -280,7 +290,7 @@ fn check_certificate_added_extensions(cert_x509_der: &Vec<u8>) {
         &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
             points: vec![CRLDistributionPoint {
                 distribution_point: Some(DistributionPointName::FullName(vec![GeneralName::URI(
-                    "http://cse.example.com/crl.pem"
+                    "https://cse.example.com/crl.pem"
                 )])),
                 reasons: None,
                 crl_issuer: None
@@ -377,7 +387,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         },
     )?;
 
-    let _ = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let _ = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
     Ok(())
 }
 
@@ -403,7 +413,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 
     // check the certificate
     let (_, _, cert_x509_der) =
-        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+        check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
 
     // check the added extensions
     check_certificate_added_extensions(&cert_x509_der);
@@ -438,8 +448,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     )?;
 
     // check the certificate
-    let (_, attributes, _) =
-        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let (_, attributes, _) = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
 
     // check links to public key
     check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
@@ -476,7 +485,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
 
     // check the certificate
     let (_, attributes, cert_x509_der) =
-        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+        check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
 
     // check the added extensions
     check_certificate_added_extensions(&cert_x509_der);
@@ -506,7 +515,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
         },
     )?;
 
-    let (_, _, der) = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let (_, _, der) = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
     let x509 = X509::from_der(&der).unwrap();
     let num_days = x509.not_before().diff(x509.not_after()).unwrap().days;
     assert_eq!(num_days, 365);
@@ -525,7 +534,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
 
     assert_eq!(renewed_certificate_id, certificate_id);
 
-    let (_, _, der) = check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let (_, _, der) = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
     let x509 = X509::from_der(&der).unwrap();
     let num_days = x509.not_before().diff(x509.not_after()).unwrap().days;
     assert_eq!(num_days, 42);
@@ -556,13 +565,73 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
         },
     )?;
 
-    let (_, attributes, _) =
-        check_generated_certificate(ctx, &issuer_private_key_id, &certificate_id);
+    let (_, attributes, _) = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
     println!("{:?}", attributes);
 
     // check links to public key
     let (public_key_id, public_key_attributes) =
         check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
     let _ = check_public_and_private_key_linked(ctx, &public_key_id, &public_key_attributes);
+    Ok(())
+}
+
+#[tokio::test]
+async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=info");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+
+    // create an RSA key pair
+    let (_private_key_id, public_key_id) =
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+
+    // Certify the public key with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            public_key_id_to_certify: Some(public_key_id.clone()),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes, der_bytes) = fetch_certificate(ctx, &certificate_id);
+    // since the certificate is self signed, the Certificate Link should point back to itself
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(certificate_link.to_string(), certificate_id);
+
+    // write der_bytes to /tmp/cert.der
+    std::fs::write("/tmp/cert.der", &der_bytes).expect("Unable to write file");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_issue_with_subject_name_self_signed() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+
+    // Certify the CSR without issuer i.e. self signed
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
+    // since the certificate is self signed, the Certificate Link should point back to itself
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(certificate_link.to_string(), certificate_id);
+
     Ok(())
 }
