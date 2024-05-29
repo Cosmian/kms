@@ -611,7 +611,7 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 ### Subcommands
 
-**`certify`** [[3.1]](#31-ckms-certificates-certify)  Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+**`certify`** [[3.1]](#31-ckms-certificates-certify)  Issue or renew a X509 certificate
 
 **`decrypt`** [[3.2]](#32-ckms-certificates-decrypt)  Decrypt a file using the private key of a certificate
 
@@ -634,12 +634,12 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 ## 3.1 ckms certificates certify
 
-Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+Issue or renew a X509 certificate
 
 ### Usage
 `ckms certificates certify [options]`
 ### Arguments
-`--certificate-id [-i] <CERTIFICATE_ID>` The certificate unique identifier. A random one will be generated if not provided
+`--certificate-id [-i] <CERTIFICATE_ID>` The unique identifier of the certificate to issue or renew. If not provided, a random one will be generated when issuing a certificate, or the original one will be used when renewing a certificate
 
 `--certificate-signing-request [-r] <CERTIFICATE_SIGNING_REQUEST>` The path to a certificate signing request
 
@@ -647,9 +647,20 @@ Certify a Certificate Signing Request or a Public key to create a X509 certifica
 
 Possible values:  `"pem", "der"` [default: `"pem"`]
 
-`--public-key-id-to-certify [-p] <PUBLIC_KEY_ID_TO_CERTIFY>` If not using a CSR, the id of the public key to certify
+`--public-key-id-to-certify [-p] <PUBLIC_KEY_ID_TO_CERTIFY>` The id of a public key to certify
 
-`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, the subject name to use
+`--certificate-id-to-re-certify [-n] <CERTIFICATE_ID_TO_RE_CERTIFY>` The id of a certificate to re-certify
+
+`--generate-key-pair [-g] <GENERATE_KEY_PAIR>` Generate a keypair then sign the public key and generate a certificate
+
+Possible values:  `"true", "false"`
+
+`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
+the subject name to use.
+
+`--algorithm [-a] <ALGORITHM>` The algorithm to use for the keypair generation
+
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
