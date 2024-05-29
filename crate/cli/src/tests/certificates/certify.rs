@@ -597,7 +597,7 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
         },
     )?;
 
-    let (_, attributes, der_bytes) = fetch_certificate(ctx, &certificate_id);
+    let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
     // since the certificate is self signed, the Certificate Link should point back to itself
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
