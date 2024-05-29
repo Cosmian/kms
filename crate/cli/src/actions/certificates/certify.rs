@@ -21,6 +21,7 @@ use cosmian_kms_client::{
 
 use crate::error::CliError;
 
+/// The algorithm to use for the keypair generation
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 pub enum Algorithm {
     #[cfg(not(feature = "fips"))]

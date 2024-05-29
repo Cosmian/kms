@@ -6,7 +6,7 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
         kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
+            Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
             LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
     },
@@ -157,12 +157,6 @@ pub async fn certify(
             );
             // update the certificate attributes with a link to the public key
             let mut certificate_attributes = attributes.clone();
-            // remove cryptographic information from the certificate attributes
-            certificate_attributes.cryptographic_algorithm = None;
-            certificate_attributes.cryptographic_length = None;
-            certificate_attributes.cryptographic_parameters = None;
-            certificate_attributes.cryptographic_usage_mask = None;
-            certificate_attributes.cryptographic_domain_parameters = None;
             certificate_attributes.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
@@ -563,6 +557,15 @@ fn build_and_sign_certificate(
         LinkType::CertificateLink,
         issuer.unique_identifier().clone().into(),
     );
+
+    // remove cryptographic information from the certificate attributes
+    attributes.cryptographic_algorithm = None;
+    attributes.cryptographic_length = None;
+    attributes.cryptographic_parameters = None;
+    attributes.cryptographic_usage_mask = None;
+    attributes.cryptographic_domain_parameters = None;
+    // Set the key format type to X509
+    attributes.key_format_type = Some(KeyFormatType::X509);
 
     // Add certificate attributes
     let certificate_attributes = CertificateAttributes::from(&x509);
