@@ -34,6 +34,7 @@ use crate::{
     core::attribute::{Attribute, AttributeType, Attributes},
     traits::{
         backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
+        RemoteObjectType,
     },
 };
 
@@ -235,6 +236,12 @@ impl Object {
                 AttributeType::Id => Some(Attribute::Id(
                     remote_object_id.remote_id().as_bytes().to_vec(),
                 )),
+                AttributeType::Decrypt => match remote_object_id.remote_type() {
+                    RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
+                        Some(Attribute::Decrypt(true))
+                    }
+                    _ => Some(Attribute::Decrypt(false)),
+                },
                 _ => {
                     debug!("Remote object id: type_ unimplemented: {:?}", type_);
                     None
