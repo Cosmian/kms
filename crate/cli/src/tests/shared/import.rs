@@ -9,6 +9,8 @@ use cosmian_kms_client::{
 use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
+use crate::tests::symmetric::create_key::SymKeyOptions;
+#[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
     elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -155,6 +157,7 @@ pub(crate) async fn test_generate_export_import() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     export_import_test(
         &ctx.owner_client_conf_path,
@@ -165,7 +168,7 @@ pub(crate) async fn test_generate_export_import() -> CliResult<()> {
 
     // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
     export_import_test(
         &ctx.owner_client_conf_path,
         "ec",

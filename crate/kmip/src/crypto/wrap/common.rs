@@ -13,7 +13,7 @@ pub(crate) fn rsa_parameters(
         .map_or_else(
             || {
                 (
-                    CryptographicAlgorithm::AES,
+                    CryptographicAlgorithm::RSA,
                     PaddingMethod::OAEP,
                     HashingAlgorithm::SHA256,
                 )
@@ -21,7 +21,7 @@ pub(crate) fn rsa_parameters(
             |cp| {
                 (
                     cp.cryptographic_algorithm
-                        .unwrap_or(CryptographicAlgorithm::AES),
+                        .unwrap_or(CryptographicAlgorithm::RSA),
                     cp.padding_method.unwrap_or(PaddingMethod::OAEP),
                     cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
                 )

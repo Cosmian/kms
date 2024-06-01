@@ -18,7 +18,6 @@ pub mod password_derivation;
 pub mod rsa;
 pub mod secret;
 pub mod symmetric;
-
 pub mod wrap;
 
 pub trait EncryptionSystem {

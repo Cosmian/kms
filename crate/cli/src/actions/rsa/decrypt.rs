@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::{
         console,
-        rsa::{to_cryptographic_parameters, EncryptionAlgorithm, HashFn},
+        rsa::{HashFn, RsaEncryptionAlgorithm},
     },
     cli_bail,
     error::result::{CliResult, CliResultHelper},
@@ -64,9 +64,9 @@ pub struct DecryptAction {
         short = 'e',
         default_value = "ckm-rsa-pkcs-oaep"
     )]
-    encryption_algorithm: EncryptionAlgorithm,
+    encryption_algorithm: RsaEncryptionAlgorithm,
 
-    /// The hashing algorithm
+    /// The hashing algorithm (for OAEP and AES key wrap)
     #[clap(long = "hashing-algorithm", short = 's', default_value = "sha256")]
     hash_fn: HashFn,
 
@@ -97,10 +97,10 @@ impl DecryptAction {
             data,
             None,
             None,
-            Some(to_cryptographic_parameters(
-                self.encryption_algorithm,
-                self.hash_fn,
-            )),
+            Some(
+                self.encryption_algorithm
+                    .to_cryptographic_parameters(self.hash_fn),
+            ),
         );
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -116,7 +116,7 @@ impl DecryptAction {
         let output_file = self
             .output_file
             .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
+            .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
         let mut buffer =
             File::create(&output_file).with_context(|| "Fail to write the plain file")?;
         buffer

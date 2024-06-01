@@ -129,6 +129,7 @@ jobs:
           DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
           KMS_TEST_DB: ${{ inputs.database }}
           FEATURES: ${{ inputs.features }}
+          SKIP_SERVICES_TEST: --skip hsm
         run: |
           bash .github/scripts/cargo_build.sh
 

@@ -8,18 +8,18 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
 /// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
 #[derive(Debug)]
-pub(crate) struct Pkcs11DataObject {
+pub struct Pkcs11DataObject {
+    remote_id: String,
     value: Zeroizing<Vec<u8>>,
-    label: String,
 }
 
 impl TryFrom<KmsObject> for Pkcs11DataObject {
     type Error = Pkcs11Error;
 
     fn try_from(kms_object: KmsObject) -> Result<Self, Self::Error> {
-        Ok(Self {
+        Ok(Pkcs11DataObject {
+            remote_id: kms_object.remote_id.clone(),
             value: kms_object.object.key_block()?.key_bytes()?,
-            label: kms_object.other_tags.join(","),
         })
     }
 }
@@ -31,6 +31,10 @@ impl Zeroize for Pkcs11DataObject {
 }
 
 impl DataObject for Pkcs11DataObject {
+    fn remote_id(&self) -> String {
+        self.remote_id.clone()
+    }
+
     fn value(&self) -> Zeroizing<Vec<u8>> {
         self.value.clone()
     }
@@ -47,9 +51,5 @@ impl DataObject for Pkcs11DataObject {
         hasher.update(self.value.as_slice());
         let result = hasher.finalize();
         result.to_vec()
-    }
-
-    fn label(&self) -> String {
-        self.label.clone()
     }
 }

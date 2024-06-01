@@ -95,12 +95,12 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)?
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES, false)?
         } else if let Some(key_id) = &self.unwrap_key_id {
             trace!("unwrap using the KMS server with the unique identifier of the unwrapping key");
             export_object(kms_rest_client, key_id, ExportObjectParams::default())
                 .await?
-                .0
+                .1
         } else if let Some(key_file) = &self.unwrap_key_file {
             trace!("unwrap using a key file path");
             read_object_from_json_ttlv_file(key_file)?

@@ -7,7 +7,10 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::console,
+    actions::{
+        console,
+        rsa::{HashFn, RsaEncryptionAlgorithm},
+    },
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
@@ -38,6 +41,12 @@ pub struct DecryptCertificateAction {
     /// Optional authentication data that was supplied during encryption.
     #[clap(required = false, long, short)]
     authentication_data: Option<String>,
+
+    /// Optional encryption algorithm.
+    /// This is only available for RSA keys for now.
+    /// The default for RSA is PKCS_OAEP.
+    #[clap(long, short = 'e', verbatim_doc_comment)]
+    encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 }
 
 impl DecryptCertificateAction {
@@ -62,6 +71,9 @@ impl DecryptCertificateAction {
                 .authentication_data
                 .clone()
                 .map(|s| s.as_bytes().to_vec()),
+            cryptographic_parameters: self
+                .encryption_algorithm
+                .map(|alg| alg.to_cryptographic_parameters(HashFn::Sha256)),
             ..Decrypt::default()
         };
 
@@ -78,7 +90,7 @@ impl DecryptCertificateAction {
         let output_file = self
             .output_file
             .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
+            .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
         let mut buffer =
             File::create(&output_file).with_context(|| "Fail to write the plaintext file")?;
         buffer

@@ -80,7 +80,7 @@ impl DecryptAction {
         let output_file = self
             .output_file
             .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
+            .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
         let mut buffer =
             File::create(&output_file).with_context(|| "Fail to write the plain file")?;
         buffer

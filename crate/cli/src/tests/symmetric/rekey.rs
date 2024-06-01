@@ -11,7 +11,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         shared::{export_key, ExportKeyParams},
-        symmetric::create_key::create_symmetric_key,
+        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
     },

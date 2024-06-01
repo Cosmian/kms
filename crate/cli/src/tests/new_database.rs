@@ -5,7 +5,7 @@ use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
 use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
-    AuthenticationOptions, DBConfig, DEFAULT_SQLITE_PATH,
+    AuthenticationOptions, MainDBConfig, DEFAULT_SQLITE_PATH,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -16,7 +16,7 @@ use crate::{
     error::result::CliResult,
     tests::{
         shared::{export_key, ExportKeyParams},
-        symmetric::create_key::create_symmetric_key,
+        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -121,11 +121,11 @@ async fn test_multiple_databases() -> CliResult<()> {
     // init the test server
     // since we are going to rewrite the conf, use a different port
     let ctx = start_test_server_with_options(
-        DBConfig {
+        MainDBConfig {
             database_type: Some("sqlite-enc".to_owned()),
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
             clear_database: true,
-            ..DBConfig::default()
+            ..MainDBConfig::default()
         },
         9997,
         AuthenticationOptions {

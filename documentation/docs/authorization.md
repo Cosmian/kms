@@ -9,7 +9,7 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
    that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
 !!!important  "The Wildcard User: *"
-    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
+In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
 objects to all users.
 
 To manage access rights, the user can call the following endpoints or use
@@ -188,7 +188,6 @@ or `Import` KMIP operations).
             "object_id": "the object unique identifier",
             "state": "<state>",
             "attributes": "<attributes>",
-            "is_wrapped": "<wrapped_state>"
          }
       ]
       ```
@@ -232,7 +231,6 @@ A user can list all the access rights that have been granted to it by object own
             "state": "<state>",
             "operations": [ <operation type> ]
             "attributes": "<attributes>",
-            "is_wrapped": "<wrapped_state>"
             }
       ]
       ```

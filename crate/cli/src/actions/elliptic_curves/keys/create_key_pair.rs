@@ -60,7 +60,7 @@ impl From<Curve> for RecommendedCurve {
 ///      and must be kept secret.
 ///
 /// Run this subcommand with --help to see the list of supported curves.
-/// Defaults to NIST P256
+/// Default to NIST P256
 ///
 /// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
@@ -79,6 +79,10 @@ pub struct CreateKeyPairAction {
     /// is generated if not specified.
     #[clap(required = false)]
     private_key_id: Option<String>,
+
+    /// Sensitive: if set, the key will not be exportable
+    #[clap(long = "sensitive", default_value = "false")]
+    sensitive: bool,
 }
 
 impl CreateKeyPairAction {
@@ -87,9 +91,12 @@ impl CreateKeyPairAction {
             .private_key_id
             .as_ref()
             .map(|id| UniqueIdentifier::TextString(id.clone()));
-        let create_key_pair_request =
-            create_ec_key_pair_request(private_key_id, &self.tags, self.curve.into())?;
-
+        let create_key_pair_request = create_ec_key_pair_request(
+            private_key_id,
+            &self.tags,
+            self.curve.into(),
+            self.sensitive,
+        )?;
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client
             .create_key_pair(create_key_pair_request)

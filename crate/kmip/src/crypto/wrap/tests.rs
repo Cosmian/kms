@@ -6,7 +6,7 @@ use openssl::{
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(feature = "fips")]
-use crate::crypto::rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
+use crate::crypto::rsa::FIPS_PUBLIC_RSA_MASK;
 #[cfg(not(feature = "fips"))]
 use crate::kmip::{
     kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
@@ -39,18 +39,20 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
     // the symmetric wrapping key
 
     let mut sym_wrapping_key_bytes = vec![0; 32];
-    rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
+    rand_bytes(&mut sym_wrapping_key_bytes)?;
     let sym_wrapping_key = create_symmetric_key_kmip_object(
         sym_wrapping_key_bytes.as_slice(),
         CryptographicAlgorithm::AES,
+        false,
     )?;
 
     // the key to wrap
     let mut sym_key_to_wrap_bytes = vec![0; 32];
-    rand_bytes(&mut sym_key_to_wrap_bytes).unwrap();
+    rand_bytes(&mut sym_key_to_wrap_bytes)?;
     let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
         sym_key_to_wrap_bytes.as_slice(),
         CryptographicAlgorithm::AES,
+        false,
     )?;
 
     let algorithm = Some(CryptographicAlgorithm::EC);
@@ -66,6 +68,7 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
         algorithm,
         private_key_mask_wp,
         public_key_mask_wp,
+        false,
     )?;
     let mut key_pair_to_wrap = create_x25519_key_pair(
         "private_key_to_wrap_uid",
@@ -73,6 +76,7 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
         algorithm,
         private_key_mask,
         public_key_mask,
+        false,
     )?;
 
     // wrap the symmetric key with a symmetric key
@@ -120,7 +124,7 @@ fn wrap_test(
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
-            Some(Box::default())
+            Some(KeyWrappingData::default())
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
@@ -142,10 +146,10 @@ fn wrap_test(
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
-            Some(Box::new(KeyWrappingData {
+            Some(KeyWrappingData {
                 encoding_option: Some(EncodingOption::TTLVEncoding),
                 ..Default::default()
-            }))
+            })
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
@@ -163,14 +167,16 @@ fn test_encrypt_decrypt_rfc_5649() -> KmipResult<()> {
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let mut symmetric_key = vec![0; 32];
-    rand_bytes(&mut symmetric_key).unwrap();
-    let wrap_key =
-        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES)?;
+    rand_bytes(&mut symmetric_key)?;
+    let wrap_key = create_symmetric_key_kmip_object(
+        symmetric_key.as_slice(),
+        CryptographicAlgorithm::AES,
+        false,
+    )?;
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, None).unwrap();
-    let decrypted_plaintext =
-        unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext, None).unwrap();
+    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, None)?;
+    let decrypted_plaintext = unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext, None)?;
     assert_eq!(plaintext, &decrypted_plaintext[..]);
     Ok(())
 }
@@ -187,6 +193,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() {
         algorithm,
         private_key_mask,
         public_key_mask,
+        false,
     )
     .unwrap();
 
@@ -220,23 +227,23 @@ fn test_encrypt_decrypt_rsa() {
         rsa_privkey.e().to_owned().unwrap(),
     )
     .unwrap();
+
+    #[cfg(feature = "fips")]
+    let crypto_usage_mask = Some(FIPS_PUBLIC_RSA_MASK);
+    #[cfg(not(feature = "fips"))]
+    let crypto_usage_mask = Some(CryptographicUsageMask::Unrestricted);
+
     let mut wrap_key_pair_pub = openssl_public_key_to_kmip(
         &PKey::from_rsa(rsa_pubkey).unwrap(),
         KeyFormatType::TransparentRSAPublicKey,
-        #[cfg(feature = "fips")]
-        Some(FIPS_PUBLIC_RSA_MASK),
-        #[cfg(not(feature = "fips"))]
-        Some(CryptographicUsageMask::Unrestricted),
+        crypto_usage_mask,
     )
     .unwrap();
 
     let mut wrap_key_pair_priv = openssl_private_key_to_kmip(
         &PKey::from_rsa(rsa_privkey).unwrap(),
         KeyFormatType::TransparentRSAPrivateKey,
-        #[cfg(feature = "fips")]
-        Some(FIPS_PRIVATE_RSA_MASK),
-        #[cfg(not(feature = "fips"))]
-        Some(CryptographicUsageMask::Unrestricted),
+        crypto_usage_mask,
     )
     .unwrap();
 

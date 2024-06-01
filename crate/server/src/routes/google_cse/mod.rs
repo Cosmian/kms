@@ -8,7 +8,7 @@ use actix_web::{
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, trace};
 
-use crate::{error::KmsError, result::KResult, KMSServer};
+use crate::{core::KMS, error::KmsError, result::KResult};
 
 mod jwt;
 pub mod operations;
@@ -59,7 +59,7 @@ impl From<CseErrorReply> for HttpResponse {
 #[get("/status")]
 pub(crate) async fn get_status(
     req: HttpRequest,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
     cse_config: Data<Option<GoogleCseConfig>>,
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
@@ -76,7 +76,7 @@ pub(crate) async fn get_status(
 pub(crate) async fn digest(
     request: Json<DigestRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/digest");
 
@@ -97,7 +97,7 @@ pub(crate) async fn digest(
 pub(crate) async fn privileged_private_key_decrypt(
     request: Json<PrivilegedPrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedprivatekeydecrypt");
 
@@ -119,7 +119,7 @@ pub(crate) async fn privileged_private_key_decrypt(
 pub(crate) async fn privileged_unwrap(
     request: Json<PrivilegedUnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedunwrap");
 
@@ -140,7 +140,7 @@ pub(crate) async fn privileged_unwrap(
 pub(crate) async fn privileged_wrap(
     request: Json<PrivilegedWrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedwrap");
 
@@ -161,7 +161,7 @@ pub(crate) async fn privileged_wrap(
 pub(crate) async fn rewrap(
     request: Json<RewrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/rewrap");
 
@@ -189,7 +189,7 @@ pub(crate) async fn wrapprivatekey(
     _req_http: HttpRequest,
     _request: Json<WrapPrivateKeyRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
-    _kms: Data<Arc<KMSServer>>,
+    _kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrapprivatekey: not implemented yet");
     HttpResponse::Ok().finish()
@@ -203,7 +203,7 @@ pub(crate) async fn wrapprivatekey(
 pub(crate) async fn wrap(
     request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrap");
 
@@ -226,7 +226,7 @@ pub(crate) async fn wrap(
 pub(crate) async fn unwrap(
     request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/unwrap");
 
@@ -251,7 +251,7 @@ pub(crate) async fn unwrap(
 pub(crate) async fn private_key_sign(
     request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeysign");
 
@@ -276,7 +276,7 @@ pub(crate) async fn private_key_sign(
 pub(crate) async fn private_key_decrypt(
     request: Json<operations::PrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeydecrypt");
 

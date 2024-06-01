@@ -18,6 +18,5 @@
 // limitations under the License.
 
 pub mod attribute;
-pub mod compoundid;
 pub mod mechanism;
 pub mod object;

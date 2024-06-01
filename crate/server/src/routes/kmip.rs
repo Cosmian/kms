@@ -9,11 +9,11 @@ use cosmian_kmip::kmip::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
+use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::info;
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, operations::dispatch, KMS},
-    database::KMSServer,
+    core::{operations::dispatch, KMS},
     result::KResult,
 };
 
@@ -22,7 +22,7 @@ use crate::{
 pub(crate) async fn kmip(
     req_http: HttpRequest,
     body: String,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<TTLV>> {
     let span = tracing::span!(tracing::Level::INFO, "kmip_2_1");
     let _enter = span.enter();
@@ -33,6 +33,7 @@ pub(crate) async fn kmip(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
+    #[allow(clippy::large_futures)]
     let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
     Ok(Json(ttlv))
 }
@@ -48,13 +49,14 @@ async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraDatabaseParams>,
+    database_params: Option<&ExtraStoreParams>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
         let req = from_ttlv::<Message>(ttlv)?;
         let resp = kms.message(req, user, database_params).await?;
         Ok(to_ttlv(&resp)?)
     } else {
+        #[allow(clippy::large_futures)]
         let operation = dispatch(kms, ttlv, user, database_params).await?;
         Ok(to_ttlv(&operation)?)
     }

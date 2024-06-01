@@ -17,34 +17,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{any::Any, hash::Hash, sync::Arc};
+use std::hash::Hash;
+
+use zeroize::Zeroizing;
 
 use crate::{
-    traits::{Backend, KeyAlgorithm, PublicKey, SearchOptions, SignatureAlgorithm},
+    traits::{KeyAlgorithm, SignatureAlgorithm},
     MResult,
 };
 
 pub trait PrivateKey: Send + Sync {
-    fn public_key_id(&self) -> Vec<u8>;
-    fn label(&self) -> String;
+    /// The unique identifier of the key (in the KMS)
+    fn remote_id(&self) -> String;
+
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
+
+    /// Returns the algorithm of the key; will fail if only the remote part is known
     fn algorithm(&self) -> KeyAlgorithm;
-    fn find_public_key(&self, backend: &dyn Backend) -> MResult<Option<Arc<dyn PublicKey>>> {
-        backend.find_public_key(SearchOptions::Id(self.public_key_id()))
-    }
+
+    /// Return the key size in bits
+    fn key_size(&self) -> usize;
+
+    /// Return the DER bytes of the private key
+    /// This is a lazy loaded value
+    fn pkcs8_der_bytes(&self) -> MResult<Zeroizing<Vec<u8>>>;
+
+    /// Return the RSA public exponent if the key is an RSA key
+    /// In big endian
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>>;
 }
 
 impl std::fmt::Debug for dyn PrivateKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrivateKey")
-            .field("label", &self.label())
+            .field("remote id", &self.remote_id())
             .finish_non_exhaustive()
     }
 }
 
 impl PartialEq for dyn PrivateKey {
     fn eq(&self, other: &Self) -> bool {
-        self.public_key_id() == other.public_key_id() && self.label() == other.label()
+        self.remote_id() == other.remote_id()
     }
 }
 
@@ -52,8 +65,6 @@ impl Eq for dyn PrivateKey {}
 
 impl Hash for dyn PrivateKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.public_key_id().hash(state);
-        self.label().hash(state);
+        self.remote_id().hash(state);
     }
 }

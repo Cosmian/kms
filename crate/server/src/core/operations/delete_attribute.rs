@@ -1,13 +1,13 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
     kmip_types::{Attribute, AttributeReference, Tag, UniqueIdentifier},
+    KmipOperation,
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    database::retrieve_object_for_operation,
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -16,7 +16,7 @@ pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("Delete attribute: {}", serde_json::to_string(&request)?);
 
@@ -28,20 +28,12 @@ pub(crate) async fn delete_attribute(
         .as_str()
         .context("Delete Attribute: the unique identifier must be a string")?;
 
-    let mut owm = retrieve_object_for_operation(
-        uid_or_tags,
-        ObjectOperationType::GetAttributes,
-        kms,
-        user,
-        params,
-    )
-    .await?;
-    trace!(
-        "Delete Attribute: Retrieved object for: {:?}",
-        serde_json::to_string(&owm)
-    );
+    let mut owm =
+        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
+            .await?;
+    trace!("Delete Attribute: Retrieved object for: {}", owm.object());
 
-    let mut attributes = owm.attributes;
+    let mut attributes = owm.attributes().to_owned();
 
     if let Some(attribute) = request.current_attribute {
         match attribute {
@@ -126,17 +118,17 @@ pub(crate) async fn delete_attribute(
         }
     }
 
-    let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
 
-    if let Ok(object_attributes) = owm.object.attributes_mut() {
+    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         *object_attributes = attributes.clone();
     }
 
-    kms.db
-        .update_object(&owm.id, &owm.object, &attributes, Some(&tags), params)
+    kms.database
+        .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
         .await?;
 
     Ok(DeleteAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
     })
 }

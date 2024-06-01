@@ -16,7 +16,7 @@ use crate::{
             KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         },
     },
-    kmip_bail,
+    kmip_bail, KmipResultHelper,
 };
 
 #[cfg(feature = "fips")]
@@ -33,7 +33,7 @@ fn check_rsa_mask_against_flags(
     }
 
     let Some(mask) = mask else {
-        // Mask is `None` but FIPS mode is restrictive so it's considered too
+        // Mask is `None` but FIPS mode is restrictive, so it's considered too
         // permissive.
         kmip_bail!(
             "RSA: forbidden CryptographicUsageMask value, got None but expected among {:#010X} in \
@@ -72,8 +72,9 @@ pub fn to_rsa_public_key(
     pkey_bits_number: u32,
     private_key_uid: &str,
     public_key_mask: Option<CryptographicUsageMask>,
-) -> Object {
-    let cryptographic_length_in_bits = private_key.n().num_bits();
+) -> Result<Object, KmipError> {
+    let cryptographic_length_in_bits =
+        i32::try_from(pkey_bits_number).context("Invalid key size")?;
 
     trace!(
         "to_rsa_public_key: bytes len: {}, bits: {}",
@@ -91,7 +92,7 @@ pub fn to_rsa_public_key(
                     modulus: Box::new(BigUint::from_bytes_be(&private_key.n().to_vec())),
                     public_exponent: Box::new(BigUint::from_bytes_be(&private_key.e().to_vec())),
                 },
-                attributes: Some(Box::new(Attributes {
+                attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(cryptographic_length_in_bits),
@@ -110,14 +111,14 @@ pub fn to_rsa_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                })),
+                }),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
     };
     trace!("to_rsa_public_key: output object: {output}");
-    output
+    Ok(output)
 }
 
 /// Convert to RSA KMIP Private Key.
@@ -126,8 +127,10 @@ pub fn to_rsa_private_key(
     pkey_bits_number: u32,
     public_key_uid: &str,
     private_key_mask: Option<CryptographicUsageMask>,
-) -> Object {
-    let cryptographic_length_in_bits = private_key.d().num_bits();
+    sensitive: bool,
+) -> Result<Object, KmipError> {
+    let cryptographic_length_in_bits =
+        i32::try_from(pkey_bits_number).context("Invalid private key size")?;
 
     trace!(
         "to_rsa_private_key: bytes len: {}, bits: {}",
@@ -135,7 +138,7 @@ pub fn to_rsa_private_key(
         pkey_bits_number
     );
 
-    Object::PrivateKey {
+    Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
@@ -165,7 +168,7 @@ pub fn to_rsa_private_key(
                         Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec())))
                     }),
                 },
-                attributes: Some(Box::new(Attributes {
+                attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(cryptographic_length_in_bits),
@@ -183,13 +186,14 @@ pub fn to_rsa_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
+                    sensitive,
                     ..Attributes::default()
-                })),
+                }),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 pub fn create_rsa_key_pair(
@@ -199,6 +203,7 @@ pub fn create_rsa_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     if key_size_in_bits < FIPS_MIN_RSA_MODULUS_LENGTH {
@@ -221,13 +226,14 @@ pub fn create_rsa_key_pair(
         key_size_in_bits,
         public_key_uid,
         private_key_mask,
-    );
+        sensitive,
+    )?;
     let public_key = to_rsa_public_key(
         &rsa_private,
         key_size_in_bits,
         private_key_uid,
         public_key_mask,
-    );
+    )?;
 
     Ok(KeyPair::new(private_key, public_key))
 }
@@ -249,6 +255,7 @@ fn test_create_rsa_incorrect_mask() {
         Some(CryptographicAlgorithm::RSA),
         private_key_mask,
         public_key_mask,
+        false,
     );
 
     assert!(res.is_err());
@@ -263,6 +270,7 @@ fn test_create_rsa_incorrect_mask() {
         Some(CryptographicAlgorithm::RSA),
         private_key_mask,
         public_key_mask,
+        false,
     );
 
     assert!(res.is_err());
@@ -285,6 +293,7 @@ fn test_create_rsa_incorrect_mask_unrestricted() {
         Some(CryptographicAlgorithm::RSA),
         private_key_mask,
         public_key_mask,
+        false,
     );
 
     assert!(res.is_err());
@@ -299,6 +308,7 @@ fn test_create_rsa_incorrect_mask_unrestricted() {
         Some(CryptographicAlgorithm::RSA),
         private_key_mask,
         public_key_mask,
+        false,
     );
 
     assert!(res.is_err());
@@ -320,6 +330,7 @@ fn test_create_rsa_fips_mask() {
         algorithm,
         Some(FIPS_PRIVATE_RSA_MASK),
         Some(FIPS_PUBLIC_RSA_MASK),
+        false,
     );
 
     res.unwrap();
@@ -342,6 +353,7 @@ fn test_create_rsa_incorrect_algorithm() {
         Some(CryptographicAlgorithm::AES),
         private_key_mask,
         public_key_mask,
+        false,
     );
 
     assert!(res.is_err());

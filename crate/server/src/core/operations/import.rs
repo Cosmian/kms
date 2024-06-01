@@ -20,6 +20,7 @@ use cosmian_kmip::{
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
+use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -27,10 +28,8 @@ use openssl::{
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use super::wrapping::unwrap_key;
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    database::AtomicOperation,
+    core::{wrapping::unwrap_key, KMS},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -41,7 +40,7 @@ pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
@@ -69,7 +68,7 @@ pub(crate) async fn import(
         }
     };
     // execute the operations
-    kms.db.atomic(owner, &operations, params).await?;
+    kms.database.atomic(owner, &operations, params).await?;
     // return the uid
     debug!("Imported object with uid: {}", uid);
     Ok(ImportResponse {
@@ -81,7 +80,7 @@ pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -112,7 +111,7 @@ pub(crate) async fn process_symmetric_key(
         unwrap_key(object_key_block, kms, owner, params).await?;
     }
     // Replace attributes in object structure.
-    object_key_block.key_value.attributes = Some(Box::new(attributes.clone()));
+    object_key_block.key_value.attributes = Some(attributes.clone());
 
     let uid = match request.unique_identifier.to_string() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
@@ -199,7 +198,7 @@ async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -252,7 +251,7 @@ async fn process_public_key(
             .key_block_mut()?
             .key_value
             .attributes
-            .get_or_insert(Box::default()),
+            .get_or_insert(Attributes::default()),
         &attributes,
     );
 
@@ -277,7 +276,7 @@ async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Recover user tags.
     let mut attributes = request.attributes;
@@ -316,7 +315,7 @@ async fn process_private_key(
             object_key_block
                 .key_value
                 .attributes
-                .get_or_insert(Box::default()),
+                .get_or_insert(Attributes::default()),
         );
 
         let uid = match request.unique_identifier.to_string() {
@@ -401,7 +400,7 @@ fn private_key_from_openssl(
         sk_key_block
             .key_value
             .attributes
-            .get_or_insert(Box::default()),
+            .get_or_insert(Attributes::default()),
     );
 
     let sk_tags = user_tags.map(|mut tags| {
@@ -542,7 +541,7 @@ fn process_pkcs12(
         .key_block_mut()?
         .key_value
         .attributes
-        .get_or_insert(Box::default())
+        .get_or_insert(Attributes::default())
         .set_link(
             //Note: it is unclear what link type should be used here according to KMIP
             // CertificateLink seems to be for public key only and there is not description

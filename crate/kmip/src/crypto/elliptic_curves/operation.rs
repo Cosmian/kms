@@ -144,7 +144,7 @@ pub fn to_ec_public_key(
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
                 },
-                attributes: Some(Box::new(Attributes {
+                attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length,
@@ -166,7 +166,7 @@ pub fn to_ec_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                })),
+                }),
             },
             cryptographic_length,
             key_wrapping_data: None,
@@ -190,6 +190,7 @@ pub fn to_ec_private_key(
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> KmipResult<Object> {
     let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
 
@@ -210,7 +211,7 @@ pub fn to_ec_private_key(
                     recommended_curve: curve,
                     d: Box::new(SafeBigUint::from_bytes_be(bytes)),
                 },
-                attributes: Some(Box::new(Attributes {
+                attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length,
@@ -231,8 +232,9 @@ pub fn to_ec_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
+                    sensitive,
                     ..Attributes::default()
-                })),
+                }),
             },
             cryptographic_length,
             key_wrapping_data: None,
@@ -248,6 +250,7 @@ pub fn create_x25519_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x25519()?;
 
@@ -267,6 +270,7 @@ pub fn create_x25519_key_pair(
         RecommendedCurve::CURVE25519,
         algorithm,
         private_key_mask,
+        sensitive,
     )?;
 
     Ok(KeyPair::new(private_key, public_key))
@@ -280,6 +284,7 @@ pub fn create_x448_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x448()?;
 
@@ -299,6 +304,7 @@ pub fn create_x448_key_pair(
         RecommendedCurve::CURVE448,
         algorithm,
         private_key_mask,
+        sensitive,
     )?;
 
     Ok(KeyPair::new(private_key, public_key))
@@ -316,6 +322,7 @@ pub fn create_ed25519_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
@@ -346,6 +353,7 @@ pub fn create_ed25519_key_pair(
         RecommendedCurve::CURVEED25519,
         algorithm,
         private_key_mask,
+        sensitive,
     )?;
     trace!("create_ed25519_key_pair: private_key OK");
 
@@ -364,6 +372,7 @@ pub fn create_ed448_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
@@ -394,6 +403,7 @@ pub fn create_ed448_key_pair(
         RecommendedCurve::CURVEED448,
         algorithm,
         private_key_mask,
+        sensitive,
     )?;
     trace!("create_ed448_key_pair: private_key OK");
 
@@ -407,6 +417,7 @@ pub fn create_approved_ecc_key_pair(
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
+    sensitive: bool,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithms and mask.
@@ -444,6 +455,7 @@ pub fn create_approved_ecc_key_pair(
         curve,
         algorithm,
         private_key_mask,
+        sensitive,
     )?;
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
@@ -513,6 +525,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .unwrap();
         let keypair2 = create_ed25519_key_pair(
@@ -521,6 +534,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .unwrap();
 
@@ -556,6 +570,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .expect("failed to create x25519 key pair in test_x25519_conversions");
 
@@ -609,6 +624,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .unwrap();
         let keypair2 = create_approved_ecc_key_pair(
@@ -618,6 +634,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .unwrap();
 
@@ -672,6 +689,7 @@ mod tests {
             algorithm,
             private_key_mask,
             public_key_mask,
+            false,
         )
         .expect("failed to create x25519 key pair in test_x448_conversions");
 
@@ -1005,6 +1023,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1019,6 +1038,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1032,6 +1052,7 @@ mod tests {
             Some(algorithm),
             None,
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1045,6 +1066,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             None,
+            false,
         );
 
         assert!(res.is_err());
@@ -1058,6 +1080,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1079,6 +1102,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1093,6 +1117,7 @@ mod tests {
             None,
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1106,6 +1131,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1132,6 +1158,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1154,6 +1181,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1175,6 +1203,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());
@@ -1196,6 +1225,7 @@ mod tests {
             Some(algorithm),
             Some(private_key_mask),
             Some(public_key_mask),
+            false,
         );
 
         assert!(res.is_err());

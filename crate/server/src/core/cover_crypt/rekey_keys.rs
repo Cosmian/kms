@@ -15,14 +15,12 @@ use cosmian_kmip::{
         kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
     },
 };
+use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;
 
 use super::KMS;
 use crate::{
-    core::{cover_crypt::locate_user_decryption_keys, extra_database_params::ExtraDatabaseParams},
-    error::KmsError,
-    kms_bail,
-    result::KResult,
+    core::cover_crypt::locate_user_decryption_keys, error::KmsError, kms_bail, result::KResult,
 };
 
 /// KMIP `Re_key` for `CoverCrypt` master keys can be one of these actions:
@@ -39,7 +37,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     msk_uid: String,
     owner: &str,
     action: RekeyEditAction,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
 
@@ -138,7 +136,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 pub(crate) async fn update_master_keys(
     server: &KMS,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
     msk_uid: String,
     mutator: impl Fn(&mut Policy, &mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
 ) -> KResult<((String, Object), (String, Object))> {
@@ -159,7 +157,7 @@ async fn get_master_keys_and_policy(
     kmip_server: &KMS,
     msk_uid: String,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
     let msk = kmip_server
@@ -206,7 +204,7 @@ async fn get_master_keys_and_policy(
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
 ) -> KResult<()> {
@@ -241,7 +239,7 @@ async fn update_all_active_usk(
     cover_crypt: Covercrypt,
     msk_obj: &KmipKeyUidObject,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<()> {
     // Search the user decryption keys that need to be refreshed
     let locate_response = locate_user_decryption_keys(
@@ -281,7 +279,7 @@ async fn update_usk(
     user_decryption_key_uid: &str,
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<()> {
     //fetch the user decryption key
     let get_response = kmip_server

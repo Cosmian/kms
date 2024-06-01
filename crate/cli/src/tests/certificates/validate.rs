@@ -67,6 +67,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
             &certificate_id,
             Some(output_file.to_str().unwrap()),
             None,
+            None
         )
         .is_err()
     );

@@ -19,26 +19,22 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
     },
 };
+use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    database::AtomicOperation,
-    error::KmsError,
-    kms_bail,
-    result::KResult,
-};
+use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
+
     if request.common_protection_storage_masks.is_some()
         || request.private_protection_storage_masks.is_some()
         || request.public_protection_storage_masks.is_some()
@@ -55,7 +51,7 @@ pub(crate) async fn create_key_pair(
             || Uuid::new_v4().to_string(),
             std::string::ToString::to_string,
         );
-    let pk_uid = Uuid::new_v4().to_string();
+    let pk_uid = sk_uid.clone() + "_pk";
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
@@ -77,12 +73,18 @@ pub(crate) async fn create_key_pair(
             pk_tags,
         )),
     ];
-    kms.db.atomic(owner, &operations, params).await?;
+    let ids = kms.database.atomic(owner, &operations, params).await?;
 
-    debug!("Created key pair: {}/{}", &sk_uid, &pk_uid);
+    let sk_uid = ids
+        .get(0)
+        .ok_or_else(|| KmsError::ServerError("Private key id not available".to_owned()))?;
+    let pk_uid = ids
+        .get(1)
+        .ok_or_else(|| KmsError::ServerError("Public key id not available".to_owned()))?;
+    debug!("Created key pair: sk: {sk_uid}, pk: {pk_uid}");
     Ok(CreateKeyPairResponse {
-        private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid),
-        public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid),
+        private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid.to_owned()),
+        public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid.to_owned()),
     })
 }
 
@@ -116,7 +118,12 @@ pub(crate) fn generate_key_pair_and_tags(
     sk_tags.insert("_sk".to_owned());
     let mut pk_tags = tags;
     pk_tags.insert("_pk".to_owned());
-
+    // determine if the key is sensitive
+    let sensitive = request
+        .private_key_attributes
+        .as_ref()
+        .map_or(false, |attr| attr.sensitive)
+        || common_attributes.sensitive;
     // Grab whatever attributes were supplied on the  create request.
     let any_attributes = Some(&common_attributes)
         .or(request.private_key_attributes.as_ref())
@@ -126,24 +133,22 @@ pub(crate) fn generate_key_pair_and_tags(
                 "Attributes must be provided in a CreateKeyPair request".to_owned(),
             )
         })?;
-
+    // Cryptographic Usage Masks
     let private_key_mask = request
         .private_key_attributes
         .as_ref()
         .and_then(|attr| attr.cryptographic_usage_mask);
-
     let public_key_mask = request
         .public_key_attributes
         .as_ref()
         .and_then(|attr| attr.cryptographic_usage_mask);
-
     // Check that the cryptographic algorithm is specified.
     let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
         KmsError::InvalidRequest(
             "the cryptographic algorithm must be specified for key pair creation".to_owned(),
         )
     })?;
-
+    // Generate the key pair based on the cryptographic algorithm.
     let key_pair = match cryptographic_algorithm {
         // EC, ECDSA and ECDH possess the same FIPS restrictions for curves.
         CryptographicAlgorithm::EC
@@ -168,6 +173,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     any_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
+                    sensitive,
                 ),
                 RecommendedCurve::P224
                 | RecommendedCurve::P256
@@ -179,6 +185,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     any_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
+                    sensitive,
                 ),
                 #[cfg(not(feature = "fips"))]
                 RecommendedCurve::CURVE25519 => create_x25519_key_pair(
@@ -187,6 +194,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     any_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
+                    sensitive,
                 ),
                 #[cfg(not(feature = "fips"))]
                 RecommendedCurve::CURVE448 => create_x448_key_pair(
@@ -195,6 +203,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     any_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
+                    sensitive,
                 ),
                 #[cfg(not(feature = "fips"))]
                 RecommendedCurve::CURVEED25519 => {
@@ -215,6 +224,7 @@ pub(crate) fn generate_key_pair_and_tags(
                         any_attributes.cryptographic_algorithm,
                         private_key_mask,
                         public_key_mask,
+                        sensitive,
                     )
                 }
                 #[cfg(feature = "fips")]
@@ -246,6 +256,7 @@ pub(crate) fn generate_key_pair_and_tags(
                         any_attributes.cryptographic_algorithm,
                         private_key_mask,
                         public_key_mask,
+                        sensitive,
                     )
                 }
                 #[cfg(feature = "fips")]
@@ -269,7 +280,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     .cryptographic_length
                     .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_owned()))?,
             )?;
-            trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
+            debug!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
             create_rsa_key_pair(
                 key_size_in_bits,
@@ -278,6 +289,7 @@ pub(crate) fn generate_key_pair_and_tags(
                 any_attributes.cryptographic_algorithm,
                 private_key_mask,
                 public_key_mask,
+                sensitive,
             )
         }
         CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
@@ -286,6 +298,7 @@ pub(crate) fn generate_key_pair_and_tags(
             any_attributes.cryptographic_algorithm,
             private_key_mask,
             public_key_mask,
+            sensitive,
         ),
         CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
             private_key_uid,
@@ -293,6 +306,7 @@ pub(crate) fn generate_key_pair_and_tags(
             any_attributes.cryptographic_algorithm,
             private_key_mask,
             public_key_mask,
+            sensitive,
         ),
         CryptographicAlgorithm::CoverCrypt => create_master_keypair(
             &Covercrypt::default(),

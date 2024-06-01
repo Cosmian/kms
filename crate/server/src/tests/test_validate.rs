@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
 use tracing::debug;
 
 use crate::{
-    config::ServerParams, error::KmsError, tests::test_utils::https_clap_config, KMSServer,
+    config::ServerParams, core::KMS, error::KmsError, tests::test_utils::https_clap_config,
 };
 
 #[tokio::test]
@@ -26,7 +26,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     let leaf2_cert = fs::read(leaf2_path)?;
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     let request = Validate {
         certificate: Some([root_cert.clone()].to_vec()),
@@ -116,7 +116,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     let leaf2_cert = fs::read(leaf2_path)?;
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     // add certificates to kms
     // root

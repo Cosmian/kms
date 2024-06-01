@@ -9,17 +9,14 @@ use cosmian_kmip::{
     },
     kmip::{
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, CreateKeyPair, ErrorReason, Get},
+        kmip_operations::{Create, CreateKeyPair, Get},
         kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
     },
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::ExtraStoreParams;
 
 use super::KMS;
-use crate::{
-    core::extra_database_params::ExtraDatabaseParams,
-    database::object_with_metadata::ObjectWithMetadata, error::KmsError, kms_bail, result::KResult,
-};
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 /// Create a User Decryption Key in the KMS
 ///
@@ -30,7 +27,7 @@ pub(crate) async fn create_user_decryption_key(
     cover_crypt: Covercrypt,
     create_request: &Create,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Object> {
     create_user_decryption_key_(
         kmip_server,
@@ -43,17 +40,17 @@ pub(crate) async fn create_user_decryption_key(
 }
 
 async fn create_user_decryption_key_(
-    kmip_server: &KMS,
+    kms: &KMS,
     cover_crypt: Covercrypt,
     create_attributes: &Attributes,
-    user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    _user: &str,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Object> {
     // Recover the access policy
     let access_policy = access_policy_from_attributes(create_attributes)?;
 
     // Recover private key
-    let msk_uid_or_tag = create_attributes
+    let msk_uid_or_tags = create_attributes
         .get_parent_id()
         .ok_or_else(|| {
             KmsError::InvalidRequest(
@@ -64,53 +61,50 @@ async fn create_user_decryption_key_(
         .to_string();
 
     // retrieve from tags or use passed identifier
-    let mut owm_s = kmip_server
-        .db
-        .retrieve(&msk_uid_or_tag, user, ObjectOperationType::Get, params)
+    for owm in kms
+        .database
+        .retrieve_objects(&msk_uid_or_tags, params)
         .await?
-        .into_values()
-        .filter(|owm| {
-            if owm.state != StateEnumeration::Active {
-                return false
-            }
-            if owm.object.object_type() != ObjectType::PrivateKey {
-                return false
-            }
+        .values()
+    {
+        if owm.state() != StateEnumeration::Active {
+            continue;
+        }
 
-            let Ok(attributes) = owm.object.attributes() else {
-                return false
-            };
+        if owm.object().object_type() != ObjectType::PrivateKey {
+            continue
+        }
 
-            if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
-                return false
-            }
-            // a master key should have policies in the attributes
-            policy_from_attributes(attributes).is_ok()
-        })
-        .collect::<Vec<ObjectWithMetadata>>();
+        // The master key should have attributes
+        let Ok(attributes) = owm.object().attributes() else {
+            continue;
+        };
 
-    // there can only be one object
-    let owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, msk_uid_or_tag.clone()))?;
+        // The master key should be a CoverCrypt secret key
+        if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
+            continue;
+        }
+        // a master key should have policies in the attributes
+        if policy_from_attributes(attributes).is_err() {
+            continue;
+        }
 
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for master private key {msk_uid_or_tag}",
-        )))
+        let master_private_key = owm.object();
+        if master_private_key.key_wrapping_data().is_some() {
+            kms_bail!(KmsError::InconsistentOperation(
+                "The server can't create a decryption key: the master private key is wrapped"
+                    .to_owned()
+            ));
+        }
+
+        return UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
+            .create_user_decryption_key_object(&access_policy, Some(create_attributes), owm.id())
+            .map_err(Into::into)
     }
 
-    let master_private_key = &owm.object;
-    if master_private_key.key_wrapping_data().is_some() {
-        kms_bail!(KmsError::InconsistentOperation(
-            "The server can't create a decryption key: the master private key is wrapped"
-                .to_owned()
-        ));
-    }
-
-    UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
-        .create_user_decryption_key_object(&access_policy, Some(create_attributes), &owm.id)
-        .map_err(Into::into)
+    Err(KmsError::InvalidRequest(format!(
+        "get: no Covercrypt master private key found for: {msk_uid_or_tags}",
+    )))
 }
 
 #[allow(unused)]
@@ -121,7 +115,7 @@ pub(crate) async fn create_user_decryption_key_pair(
     cover_crypt: Covercrypt,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<KeyPair> {
     // create user decryption key
     let private_key_attributes = create_key_pair_request

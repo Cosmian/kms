@@ -19,6 +19,12 @@ cosmian_kmip = { path = "../../kmip" }
 cosmian_kms_client = { path = "../../client" }
 cosmian_pkcs11_module = { path = "../module" }
 etcetera = "0.8.0"
+p256 = { version = "0.13.2", default-features = false, features = [
+    "arithmetic",
+    "pkcs8",
+    "std",
+] }
+pkcs1 = "0.7.5"
 serde_json = { workspace = true }
 sha3 = "0.10.8"
 thiserror = { workspace = true }

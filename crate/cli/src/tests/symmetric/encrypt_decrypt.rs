@@ -1,3 +1,5 @@
+#[cfg(not(feature = "fips"))]
+use std::collections::HashSet;
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
@@ -12,7 +14,11 @@ use crate::{
         DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
     },
     error::{result::CliResult, CliError},
-    tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
+    tests::{
+        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        utils::recover_cmd_logs,
+        PROG_NAME,
+    },
 };
 
 const fn dek_algorithm_to_string(alg: DataEncryptionAlgorithm) -> &'static str {

@@ -143,12 +143,14 @@ impl KmsClient {
     /// Args:
     ///     - `policy` (bytes): policy used to generate the keys
     ///     - `tags`: optional tags to use with the keys
+    ///    - `sensitive` (bool): whether the private key is sensitive (non-exportable)
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
         policy: &[u8],
+        sensitive: bool,
         tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
@@ -156,8 +158,9 @@ impl KmsClient {
         let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
-        let request = build_create_master_keypair_request(&policy, tags.unwrap_or_default())
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request =
+            build_create_master_keypair_request(&policy, tags.unwrap_or_default(), sensitive)
+                .map_err(|e| PyException::new_err(e.to_string()))?;
 
         // Clone client to avoid lifetime error
         let client = self.0.clone();
@@ -439,6 +442,7 @@ impl KmsClient {
     ///         - `access_policy` (str): user access policy
     ///         - `master_secret_key_identifier` (str): master secret key UID
     ///         - `tags`: optional tags to use with the keys
+    ///         - `sensitive` (bool): whether the key is sensitive (non-exportable)
     ///
     ///     Returns:
     ///         Future[str]: User secret key UID
@@ -446,6 +450,7 @@ impl KmsClient {
         &'p self,
         access_policy: &str,
         master_secret_key_identifier: &str,
+        sensitive: bool,
         tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
@@ -457,6 +462,7 @@ impl KmsClient {
                 .map(String::from)
                 .collect::<Vec<String>>()
                 .as_slice(),
+            sensitive,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -702,19 +708,24 @@ impl KmsClient {
     ///     - `key_len_in_bits` - The length of the key in bits.
     ///     - `algorithm` (str) - The cryptographic algorithm to be used, supported values are "AES" and "ChaCha20".
     ///     - `tags` - Optional tags associated with the key.
+    ///      - `sensitive` (bool) - Whether the key is sensitive (non-exportable).
     ///
     /// Returns:
     ///     Future[str]: uid of the created key.
     #[pyo3(signature = (
         key_len_in_bits,
         algorithm = "AES",
+        sensitive = false,
         tags = None,
+        wrapping_key_id = None
     ))]
     pub fn create_symmetric_key<'p>(
         &'p self,
         key_len_in_bits: usize,
         algorithm: &str,
+        sensitive: bool,
         tags: Option<Vec<String>>,
+        wrapping_key_id: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let cryptographic_algorithm = match algorithm {
@@ -727,6 +738,8 @@ impl KmsClient {
             key_len_in_bits,
             cryptographic_algorithm,
             tags.unwrap_or_default(),
+            sensitive,
+            wrapping_key_id.as_ref(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 

@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{collections::HashSet, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
@@ -16,18 +16,39 @@ use crate::{
     },
 };
 
-pub(crate) fn create_rsa_4096_bits_key_pair(
+#[derive(Default)]
+pub(crate) struct RsaKeyPairOptions {
+    pub(crate) number_of_bits: Option<usize>,
+    pub(crate) tags: HashSet<String>,
+    pub(crate) sensitive: bool,
+    pub(crate) key_id: Option<String>,
+}
+
+pub(crate) fn create_rsa_key_pair(
     cli_conf_path: &str,
-    tags: &[&str],
+    options: &RsaKeyPairOptions,
 ) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["keys", "create"];
+
+    let num_s;
+    if let Some(size_in_bits) = options.number_of_bits {
+        args.push("--size_in_bits");
+        num_s = size_in_bits.to_string();
+        args.push(&num_s);
+    }
     // add tags
-    for tag in tags {
+    for tag in &options.tags {
         args.push("--tag");
         args.push(tag);
+    }
+    if options.sensitive {
+        args.push("--sensitive");
+    }
+    if let Some(key_id) = options.key_id.as_ref() {
+        args.push(key_id);
     }
     cmd.arg(SUB_COMMAND).args(args);
 
@@ -54,6 +75,12 @@ pub(crate) fn create_rsa_4096_bits_key_pair(
 pub(crate) async fn test_rsa_create_key_pair() -> CliResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
-    create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag1", "tag2"])?;
+    create_rsa_key_pair(
+        &ctx.owner_client_conf_path,
+        &RsaKeyPairOptions {
+            tags: HashSet::from_iter(vec!["tag1".to_owned(), "tag2".to_owned()]),
+            ..Default::default()
+        },
+    )?;
     Ok(())
 }

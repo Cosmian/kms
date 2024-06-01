@@ -11,14 +11,14 @@ use cosmian_kms_client::access::{
 };
 use tracing::{debug, info};
 
-use crate::{database::KMSServer, result::KResult};
+use crate::{core::KMS, result::KResult};
 
 /// List objects owned by the current user
 /// i.e. objects for which the user has full access
 #[get("/access/owned")]
 pub(crate) async fn list_owned_objects(
     req: HttpRequest,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
     let span = tracing::span!(tracing::Level::INFO, "list_owned_objects");
     let _enter = span.enter();
@@ -39,7 +39,7 @@ pub(crate) async fn list_owned_objects(
 #[get("/access/obtained")]
 pub(crate) async fn list_access_rights_obtained(
     req: HttpRequest,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
     let span = tracing::span!(tracing::Level::INFO, "list_access_rights_obtained");
     let _enter = span.enter();
@@ -60,7 +60,7 @@ pub(crate) async fn list_access_rights_obtained(
 pub(crate) async fn list_accesses(
     req: HttpRequest,
     object_id: Path<(String,)>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
     let span = tracing::span!(tracing::Level::INFO, "list_accesses");
     let _enter = span.enter();
@@ -82,7 +82,7 @@ pub(crate) async fn list_accesses(
 pub(crate) async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "grant_access");
     let _enter = span.enter();
@@ -113,7 +113,7 @@ pub(crate) async fn grant_access(
 pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "revoke_access");
     let _enter = span.enter();

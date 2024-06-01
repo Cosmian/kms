@@ -17,7 +17,7 @@ use crate::{
     tests::{
         attributes::{delete::delete_attributes, get::get_attributes, set::set_attributes},
         certificates::certify::{certify, CertifyOp},
-        symmetric::create_key::create_symmetric_key,
+        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
     },
 };
 

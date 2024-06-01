@@ -53,7 +53,7 @@ pub fn wrapped_secret_key(
     let cryptographic_length = Some(i32::try_from(sk.encrypted_symmetric_key.len())? * 8);
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(sk.encrypted_symmetric_key)),
-        attributes: Some(Box::new(wrapped_key_attributes)),
+        attributes: Some(wrapped_key_attributes),
     };
     let key_wrapping_data = KeyWrappingData {
         wrapping_method: WrappingMethod::Encrypt,
@@ -68,7 +68,7 @@ pub fn wrapped_secret_key(
             key_compression_type: None,
             key_value,
             cryptographic_length,
-            key_wrapping_data: Some(Box::new(key_wrapping_data)),
+            key_wrapping_data: Some(key_wrapping_data),
         },
     })
 }

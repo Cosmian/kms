@@ -1,7 +1,6 @@
 use clap::Parser;
 use cosmian_kms_client::{
-    access::{Access, ObjectOperationType},
-    cosmian_kmip::kmip::kmip_types::UniqueIdentifier,
+    access::Access, cosmian_kmip::kmip::kmip_types::UniqueIdentifier, kmip::KmipOperation,
     KmsClient,
 };
 
@@ -63,7 +62,7 @@ pub struct GrantAccess {
 
     /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
     #[clap(required = true)]
-    operations: Vec<ObjectOperationType>,
+    operations: Vec<KmipOperation>,
 }
 
 impl GrantAccess {
@@ -90,8 +89,9 @@ impl GrantAccess {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         let stdout = format!(
-            "The following access right were successfully granted to `{}`: {:?}",
-            self.user, self.operations,
+            "The following kmip operations: {:?}, were successfully granted to user `{}` on \
+             object `{}`",
+            self.operations, self.user, self.object_uid
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -119,7 +119,7 @@ pub struct RevokeAccess {
 
     /// The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
     #[clap(required = true)]
-    operations: Vec<ObjectOperationType>,
+    operations: Vec<KmipOperation>,
 }
 
 impl RevokeAccess {
@@ -146,8 +146,8 @@ impl RevokeAccess {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         let stdout = format!(
-            "The following permissions have been properly removed for `{}`: {:?}",
-            self.user, self.operations
+            "The following kmip operations: {:?}, have been removed for user `{}` on object `{}`",
+            self.operations, self.user, self.object_uid
         );
         console::Stdout::new(&stdout).write()?;
 

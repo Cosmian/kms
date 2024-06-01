@@ -4,10 +4,11 @@ use cosmian_kmip::kmip::{
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
 };
+use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, operations::dispatch, KMS},
+    core::{operations::dispatch, KMS},
     error::KmsError,
     result::KResult,
 };
@@ -23,7 +24,7 @@ pub(crate) async fn message(
     kms: &KMS,
     request: Message,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<MessageResponse> {
     trace!("Entering message KMIP operation: {request}");
 
@@ -33,6 +34,7 @@ pub(crate) async fn message(
         // conversion for `dispatch` call convenience
         let ttlv = to_ttlv(&operation)?;
 
+        #[allow(clippy::large_futures)]
         let (result_status, result_reason, result_message, response_payload) =
             match dispatch(kms, &ttlv, owner, params).await {
                 Ok(operation) => (

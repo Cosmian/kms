@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{collections::HashSet, process::Command};
 
 use assert_cmd::prelude::*;
 use base64::{engine::general_purpose, Engine as _};
@@ -18,6 +18,17 @@ use crate::{
         PROG_NAME,
     },
 };
+
+#[derive(Default)]
+pub(crate) struct SymKeyOptions {
+    pub(crate) number_of_bits: Option<usize>,
+    pub(crate) wrap_key_b64: Option<String>,
+    pub(crate) algorithm: Option<String>,
+    pub(crate) tags: HashSet<String>,
+    pub(crate) sensitive: bool,
+    pub(crate) wrapping_key_id: Option<String>,
+    pub(crate) key_id: Option<String>,
+}
 
 /// Create a symmetric key via the CLI
 pub(crate) fn create_symmetric_key(
@@ -45,6 +56,15 @@ pub(crate) fn create_symmetric_key(
     for tag in action.tags {
         args.push("--tag".to_owned());
         args.push(tag);
+    }
+    if options.sensitive {
+        args.push("--sensitive");
+    }
+    if let Some(wrapping_key_id) = options.wrapping_key_id.as_ref() {
+        args.extend(vec!["--wrapping-key-id", wrapping_key_id]);
+    }
+    if let Some(key_id) = options.key_id.as_ref() {
+        args.push(key_id);
     }
     cmd.arg(SUB_COMMAND).args(args);
 
@@ -183,5 +203,23 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             },
         )?;
     }
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_create_wrapped_symmetric_key() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    let wrapping_key_id =
+        create_symmetric_key(&ctx.owner_client_conf_path, &SymKeyOptions::default())?;
+    // AES 128 bit key
+    let _wrapped_symmetric_key = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        &SymKeyOptions {
+            number_of_bits: Some(128),
+            wrapping_key_id: Some(wrapping_key_id),
+            ..Default::default()
+        },
+    )?;
     Ok(())
 }

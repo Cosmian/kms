@@ -7,7 +7,7 @@ use std::{
 use pkcs11_sys::{
     CKA_CLASS, CKM_DSA, CKO_PRIVATE_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
     CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_MECHANISM_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_SESSION_HANDLE_INVALID,
     CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID, CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS,
     CK_FALSE, CK_INVALID_HANDLE,
 };
@@ -19,11 +19,11 @@ use zeroize::Zeroizing;
 use super::*;
 use crate::traits::{
     register_backend, Backend, Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm,
-    PrivateKey, PublicKey, RemoteObjectId, SearchOptions, Version,
+    PrivateKey, PublicKey, SearchOptions, Version,
 };
 
 static TRACING_INIT: Once = Once::new();
-pub(crate) fn initialize_logging() {
+pub fn initialize_logging() {
     TRACING_INIT.call_once(|| {
         let subscriber = FmtSubscriber::builder()
             .with_max_level(Level::INFO) // Adjust the level as needed
@@ -69,15 +69,15 @@ impl Backend for TestBackend {
         Ok(vec![])
     }
 
-    fn find_private_key(&self, _query: SearchOptions) -> MResult<Option<Arc<dyn RemoteObjectId>>> {
-        Ok(None)
+    fn find_private_key(&self, query: SearchOptions) -> MResult<Arc<dyn PrivateKey>> {
+        Err(MError::FunctionNotSupported)
     }
 
-    fn find_public_key(&self, _query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>> {
-        Ok(None)
+    fn find_public_key(&self, _query: SearchOptions) -> MResult<Arc<dyn PublicKey>> {
+        Err(MError::FunctionNotSupported)
     }
 
-    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>> {
+    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn PrivateKey>>> {
         Ok(vec![])
     }
 
@@ -103,7 +103,7 @@ impl Backend for TestBackend {
 
     fn decrypt(
         &self,
-        _remote_object: Arc<dyn RemoteObjectId>,
+        _remote_object_id: String,
         _algorithm: EncryptionAlgorithm,
         _data: Vec<u8>,
     ) -> MResult<Zeroizing<Vec<u8>>> {
@@ -120,10 +120,12 @@ cryptoki_fn!(
     }
 );
 
-pub(crate) fn test_init() {
+pub fn test_init() {
     initialize_logging();
     if !INITIALIZED.load(Ordering::SeqCst) {
-        let mut func_list: &mut CK_FUNCTION_LIST = &mut Default::default();
+        let mut func_list: &mut CK_FUNCTION_LIST = &mut CK_FUNCTION_LIST {
+            ..Default::default()
+        };
         // Update the function list with this PKCS#11 entry function
         func_list.C_GetFunctionList = Some(C_GetFunctionList);
         unsafe { C_GetFunctionList(std::ptr::addr_of_mut!(func_list) as *mut _) };
@@ -486,7 +488,7 @@ fn get_attribute_value() {
                 template.len() as CK_ULONG,
             )
         },
-        CKR_OPERATION_NOT_INITIALIZED
+        CKR_OBJECT_HANDLE_INVALID
     );
     assert_eq!({ C_Finalize(ptr::null_mut()) }, CKR_OK);
     assert_eq!(

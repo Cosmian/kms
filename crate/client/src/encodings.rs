@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{CertificateType, KeyFormatType},
+    kmip_types::{Attributes, CertificateType, KeyFormatType},
 };
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
@@ -114,7 +114,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
-            attributes: Some(Box::default()),
+            attributes: Some(Attributes::default()),
         },
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.

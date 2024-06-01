@@ -17,6 +17,7 @@ use crate::{
 pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
+    sensitive: bool,
 ) -> KmipResult<Object> {
     // this length is in bits
     let cryptographic_length = Some(i32::try_from(key_bytes.len())? * 8);
@@ -33,6 +34,7 @@ pub fn create_symmetric_key_kmip_object(
                 | CryptographicUsageMask::KeyAgreement,
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        sensitive,
         ..Attributes::default()
     };
 
@@ -50,7 +52,7 @@ pub fn create_symmetric_key_kmip_object(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes.to_vec()),
                 },
-                attributes: Some(Box::new(attributes)),
+                attributes: Some(attributes),
             },
             cryptographic_length,
             key_wrapping_data: None,
@@ -64,6 +66,8 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,
     tags: T,
+    sensitive: bool,
+    wrap_key_id: Option<&String>,
 ) -> Result<Create, KmipError> {
     let cryptographic_length = Some(i32::try_from(key_len_in_bits)?);
     let mut attributes = Attributes {
@@ -80,9 +84,13 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,
+        sensitive,
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
+    if let Some(wrap_key_id) = wrap_key_id {
+        attributes.set_wrapping_key_id(wrap_key_id);
+    }
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes,

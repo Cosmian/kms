@@ -2,12 +2,13 @@ use std::{convert::TryFrom, fmt::Display};
 
 use clap::ValueEnum;
 use num_bigint_dig::BigUint;
+use openssl::sha::sha256;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::KeyBlock,
         kmip_operations::ErrorReason,
@@ -231,7 +232,7 @@ impl Object {
     #[must_use]
     pub fn key_wrapping_data(&self) -> Option<&KeyWrappingData> {
         match self.key_block() {
-            Ok(kb) => kb.key_wrapping_data.as_deref(),
+            Ok(kb) => kb.key_wrapping_data.as_ref(),
             // only keys can be wrapped
             Err(_e) => None,
         }
@@ -290,6 +291,13 @@ impl Object {
             },
             _ => object,
         }
+    }
+
+    /// Return the key signature if this is a Key
+    /// The value is the sha256 of the key block key bytes
+    pub fn key_signature(&self) -> KmipResult<[u8; 32]> {
+        self.key_block()
+            .and_then(|kb| kb.key_bytes().map(|kb| sha256(&kb)))
     }
 }
 

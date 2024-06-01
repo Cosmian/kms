@@ -17,7 +17,7 @@ use crate::{
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export_key, revoke::revoke, ExportKeyParams},
-        symmetric::create_key::create_symmetric_key,
+        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -115,7 +115,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_client_conf_path, "ec", &private_key_id).is_err());
@@ -139,7 +139,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id).is_err());
@@ -181,6 +181,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -188,12 +189,14 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked
@@ -223,6 +226,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -230,12 +234,14 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked
@@ -265,6 +271,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -272,6 +279,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
@@ -279,6 +287,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked

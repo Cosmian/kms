@@ -1,11 +1,15 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use base64::Engine;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
-    der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper,
-    ExportObjectParams, KmsClient,
+    der_to_pem, export_object,
+    kmip::kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+    },
+    write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper, ExportObjectParams,
+    KmsClient,
 };
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
@@ -23,6 +27,33 @@ pub enum ExportKeyFormat {
     SpkiDer,
     Base64,
     Raw,
+}
+
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WrappingAlgorithm {
+    NistKeyWrap,
+    AesGCM,
+    RsaPkcsV15,
+    RsaOaep,
+    RsaAesKeyWrap,
+}
+
+impl WrappingAlgorithm {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            WrappingAlgorithm::NistKeyWrap => "nist-key-wrap",
+            WrappingAlgorithm::AesGCM => "aes-gcm",
+            WrappingAlgorithm::RsaPkcsV15 => "rsa-pkcs-v15",
+            WrappingAlgorithm::RsaOaep => "rsa-oaep",
+            WrappingAlgorithm::RsaAesKeyWrap => "rsa-aes-key-wrap",
+        }
+    }
+}
+
+impl Display for WrappingAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 /// Export a key from the KMS
@@ -106,15 +137,20 @@ pub struct ExportKeyAction {
     )]
     allow_revoked: bool,
 
-    /// Block cipher mode
+    /// Wrapping algorithm to use when exporting the key
+    /// By default, the algorithm used is
+    /// - `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
+    /// - `RsaPkcsOaep` for RSA keys
     #[clap(
-        long = "block-cipher-mode",
+        long = "wrapping-algorithm",
         short = 'm',
-        default_value = None
+        default_value = None,
+        verbatim_doc_comment
     )]
-    block_cipher_mode: Option<BlockCipherMode>,
+    wrapping_algorithm: Option<WrappingAlgorithm>,
 
     /// Authenticated encryption additional data
+    /// Only available for AES GCM wrapping
     #[clap(
         long = "authenticated-additional-data",
         short = 'd',
@@ -134,33 +170,12 @@ impl ExportKeyAction {
     /// - There is a server error while exporting the object.
     ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let id = if let Some(key_id) = &self.key_id {
+        let id_or_tags = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
             cli_bail!("Either --key-id or one or more --tag must be specified")
-        };
-
-        let (block_mode, aad) = match self.block_cipher_mode {
-            Some(BlockCipherMode::NISTKeyWrap) | None => {
-                if self.authenticated_additional_data.is_some() {
-                    cli_bail!(
-                        "Authenticated encryption additional data can't be provided using {}",
-                        BlockCipherMode::NISTKeyWrap
-                    )
-                }
-                (None, None)
-            }
-            Some(BlockCipherMode::GCM) => self
-                .authenticated_additional_data
-                .as_ref()
-                .map_or((Some(BlockCipherMode::GCM), None), |aad| {
-                    (Some(BlockCipherMode::GCM), Some(aad))
-                }),
-            Some(mode) => {
-                cli_bail!("Block cipher mode {} is not yet supported", mode)
-            }
         };
 
         let (key_format_type, encode_to_pem) = match self.key_format {
@@ -180,17 +195,58 @@ impl ExportKeyAction {
             }
         };
 
+        let encode_to_ttlv = self.key_format == ExportKeyFormat::JsonTtlv;
+
+        let wrapping_cryptographic_parameters =
+            if let Some(wrapping_algorithm) = &self.wrapping_algorithm {
+                Some(match wrapping_algorithm {
+                    WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
+                        ..CryptographicParameters::default()
+                    },
+                    WrappingAlgorithm::AesGCM => CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        block_cipher_mode: Some(BlockCipherMode::GCM),
+                        ..CryptographicParameters::default()
+                    },
+                    WrappingAlgorithm::RsaPkcsV15 => CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                        padding_method: Some(PaddingMethod::PKCS1v15),
+                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                        ..CryptographicParameters::default()
+                    },
+                    WrappingAlgorithm::RsaOaep => CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                        padding_method: Some(PaddingMethod::OAEP),
+                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                        ..CryptographicParameters::default()
+                    },
+                    WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        padding_method: Some(PaddingMethod::OAEP),
+                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                        ..CryptographicParameters::default()
+                    },
+                })
+            } else {
+                None
+            };
+
         // export the object
-        let (object, _) = export_object(
+        let (id, object, _) = export_object(
             kms_rest_client,
-            &id,
+            &id_or_tags,
             ExportObjectParams {
                 unwrap: self.unwrap,
                 wrapping_key_id: self.wrap_key_id.as_deref(),
                 allow_revoked: self.allow_revoked,
                 key_format_type,
-                block_cipher_mode: block_mode,
-                authenticated_encryption_additional_data: aad.cloned(),
+                encode_to_ttlv,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data: self
+                    .authenticated_additional_data
+                    .clone(),
             },
         )
         .await?;

@@ -17,10 +17,11 @@ use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
 use crate::{
-    config::{ClapConfig, DBConfig, HttpConfig, ServerParams},
+    config::{ClapConfig, HttpConfig, MainDBConfig, ServerParams},
+    core::KMS,
     kms_bail,
     result::KResult,
-    routes, KMSServer,
+    routes,
 };
 
 #[allow(dead_code)]
@@ -42,7 +43,7 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
             https_p12_password: Some("password".to_owned()),
             ..Default::default()
         },
-        db: DBConfig {
+        db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
             database_url: None,
             sqlite_path,
@@ -62,7 +63,7 @@ pub(crate) async fn test_app(
     let server_params = ServerParams::try_from(clap_config).unwrap();
 
     let kms_server = Arc::new(
-        KMSServer::instantiate(server_params)
+        KMS::instantiate(server_params)
             .await
             .expect("cannot instantiate KMS server"),
     );

@@ -267,7 +267,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -292,7 +292,7 @@ fn build_public_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -316,7 +316,7 @@ fn build_symmetric_key_from_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),

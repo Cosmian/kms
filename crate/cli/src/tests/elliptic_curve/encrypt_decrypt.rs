@@ -91,7 +91,7 @@ async fn test_encrypt_decrypt_using_ids() -> CliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
     encrypt(
         &ctx.owner_client_conf_path,
@@ -133,7 +133,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     assert!(!output_file.exists());
 
     let (_private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["tag_ec"])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["tag_ec"], false)?;
 
     encrypt(
         &ctx.owner_client_conf_path,

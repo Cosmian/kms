@@ -21,6 +21,7 @@ pub(crate) fn create_cc_master_key_pair(
     policy_option: &str,
     file: &str,
     tags: &[&str],
+    sensitive: bool,
 ) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -30,6 +31,10 @@ pub(crate) fn create_cc_master_key_pair(
     for tag in tags {
         args.push("--tag");
         args.push(tag);
+    }
+    // add sensitive
+    if sensitive {
+        args.push("--sensitive");
     }
     cmd.arg(SUB_COMMAND).args(args);
 
@@ -63,6 +68,7 @@ pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     //from binary
     create_cc_master_key_pair(
@@ -70,6 +76,7 @@ pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
         "--policy-binary",
         "test_data/policy.bin",
         &[],
+        false,
     )?;
     Ok(())
 }
@@ -83,6 +90,7 @@ pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
         "--policy-specifications",
         "test_data/notfound.json",
         &[],
+        false,
     )
     .err()
     .unwrap();
@@ -93,6 +101,7 @@ pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
         "--policy-binary",
         "test_data/policy.bad",
         &[],
+        false,
     )
     .err()
     .unwrap();

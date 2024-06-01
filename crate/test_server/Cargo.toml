@@ -22,8 +22,9 @@ base64 = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client", default-features = false }
 cosmian_kms_server = { path = "../server", features = [
-  "insecure",
+    "insecure",
 ], default-features = false }
+cosmian_kms_server_database = { path = "../server_database" }
 cosmian_logger = { path = "../logger" }
 serde_json = { workspace = true }
 tempfile = "3.1"
@@ -32,7 +33,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = [
-  "html_reports",
-  "async_tokio",
+    "html_reports",
+    "async_tokio",
 ], default-features = false }
 zeroize = { workspace = true }

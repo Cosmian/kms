@@ -2,22 +2,20 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
 use cloudproof_findex::Label;
+use cosmian_kms_server_database::{redis_master_key_from_password, MainDbParams};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
-use crate::{
-    config::params::DbParams, database::redis::RedisWithFindex, kms_bail, kms_error,
-    result::KResult,
-};
+use crate::{kms_bail, kms_error, result::KResult};
 
 pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
 /// Configuration for the database
 #[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct DBConfig {
-    /// The database type of the KMS server
+pub struct MainDBConfig {
+    /// The main database of the KMS server that holds default cryptographic objects and permissions.
     /// - postgresql: `PostgreSQL`. The database url must be provided
     /// - mysql: `MySql` or `MariaDB`. The database url must be provided
     /// - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
@@ -73,7 +71,7 @@ pub struct DBConfig {
     pub clear_database: bool,
 }
 
-impl Default for DBConfig {
+impl Default for MainDBConfig {
     fn default() -> Self {
         Self {
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
@@ -86,7 +84,7 @@ impl Default for DBConfig {
     }
 }
 
-impl Display for DBConfig {
+impl Display for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(database_type) = &self.database_type {
             match database_type.as_str() {
@@ -130,13 +128,13 @@ impl Display for DBConfig {
     }
 }
 
-impl std::fmt::Debug for DBConfig {
+impl std::fmt::Debug for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
     }
 }
 
-impl DBConfig {
+impl MainDBConfig {
     /// Initialize the DB parameters based on the command-line parameters
     ///
     /// # Parameters
@@ -148,24 +146,24 @@ impl DBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
     /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
-    pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
-        Ok(if let Some(database_type) = &self.database_type {
-            Some(match database_type.as_str() {
+    pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<MainDbParams> {
+        if let Some(database_type) = &self.database_type {
+            return Ok(match database_type.as_str() {
                 "postgresql" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")?;
-                    DbParams::Postgres(url)
+                    MainDbParams::Postgres(url)
                 }
                 "mysql" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_MYSQL_URL")?;
-                    DbParams::Mysql(url)
+                    MainDbParams::Mysql(url)
                 }
                 "sqlite" => {
                     let path = workspace.finalize_directory(&self.sqlite_path)?;
-                    DbParams::Sqlite(path)
+                    MainDbParams::Sqlite(path)
                 }
                 "sqlite-enc" => {
                     let path = workspace.finalize_directory(&self.sqlite_path)?;
-                    DbParams::SqliteEnc(path)
+                    MainDbParams::SqliteEnc(path)
                 }
                 "redis-findex" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")?;
@@ -176,26 +174,24 @@ impl DBConfig {
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
                     // Generate the symmetric key from the master password
-                    let master_key =
-                        RedisWithFindex::master_key_from_password(&redis_master_password)?;
+                    let master_key = redis_master_key_from_password(&redis_master_password)?;
                     let redis_findex_label = ensure_value(
                         self.redis_findex_label.as_deref(),
                         "redis-findex-label",
                         "KMS_REDIS_FINDEX_LABEL",
                     )?;
-                    DbParams::RedisFindex(
+                    MainDbParams::RedisFindex(
                         url,
                         master_key,
                         Label::from(redis_findex_label.into_bytes()),
                     )
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
-            })
-        } else {
-            // No database configuration provided; use the default config
-            let path = workspace.finalize_directory(&self.sqlite_path)?;
-            Some(DbParams::Sqlite(path))
-        })
+            });
+        }
+        // No database configuration provided; use the default config
+        let path = workspace.finalize_directory(&self.sqlite_path)?;
+        Ok(MainDbParams::Sqlite(path))
     }
 }
 

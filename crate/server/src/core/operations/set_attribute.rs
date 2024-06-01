@@ -2,13 +2,13 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{SetAttribute, SetAttributeResponse},
     kmip_types::{Attribute, UniqueIdentifier},
+    KmipOperation,
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use tracing::{debug, trace};
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    database::retrieve_object_for_operation,
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -17,7 +17,7 @@ pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<SetAttributeResponse> {
     trace!("Set attribute: {}", serde_json::to_string(&request)?);
 
@@ -29,21 +29,12 @@ pub(crate) async fn set_attribute(
         .as_str()
         .context("Set Attribute: the unique identifier must be a string")?;
 
-    let mut owm: crate::database::object_with_metadata::ObjectWithMetadata =
-        retrieve_object_for_operation(
-            uid_or_tags,
-            ObjectOperationType::GetAttributes,
-            kms,
-            user,
-            params,
-        )
-        .await?;
-    trace!(
-        "Set Attribute: Retrieved object for: {:?}",
-        serde_json::to_string(&owm)
-    );
+    let mut owm: ObjectWithMetadata =
+        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
+            .await?;
+    trace!("Set Attribute: Retrieved object for: {}", owm.object());
 
-    let mut attributes = owm.attributes;
+    let mut attributes = owm.attributes_mut().clone();
 
     match request.new_attribute {
         Attribute::ActivationDate(activation_date) => {
@@ -94,33 +85,33 @@ pub(crate) async fn set_attribute(
         }
     }
 
-    let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
 
-    match owm.object.object_type() {
+    match owm.object().object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
         | ObjectType::SplitKey
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object.attributes_mut()?;
+            let object_attributes = owm.object_mut().attributes_mut()?;
             *object_attributes = attributes.clone();
             debug!("Set Object Attribute: {:?}", object_attributes);
         }
         _ => {
             trace!(
                 "Set Attribute: Object type {:?} does not have attributes (nor key block)",
-                owm.object.object_type()
+                owm.object().object_type()
             );
         }
     }
 
     debug!("Set Attribute: {:?}", attributes);
-    kms.db
-        .update_object(&owm.id, &owm.object, &attributes, Some(&tags), params)
+    kms.database
+        .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
         .await?;
 
     Ok(SetAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
     })
 }

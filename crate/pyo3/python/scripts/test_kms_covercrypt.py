@@ -41,7 +41,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         (
             self.pub_key_uid,
             self.priv_key_uid,
-        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_bytes())
+        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_bytes(), False)
 
     async def test_master_keys(self) -> None:
         # Query public key from KMS
@@ -86,6 +86,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             'Department::MKG && Security Level::Confidential',
             self.priv_key_uid,
+            False,
         )
 
         # Query private key from KMS
@@ -135,6 +136,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             'Department::MKG && Security Level::Confidential',
             self.priv_key_uid,
+            False,
         )
 
         # Successful decryption
@@ -166,6 +168,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             'Department::FIN && Security Level::Protected',
             self.priv_key_uid,
+            False,
         )
 
         # Successful decryption
@@ -198,6 +201,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             user_access_policy,
             self.priv_key_uid,
+            False,
         )
 
         # Rekey all keys related to `Department::HR`
@@ -260,6 +264,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         fin_user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             'Department::FIN && Security Level::Top Secret',
             self.priv_key_uid,
+            False,
         )
         message = b'My secret data'
 
@@ -298,6 +303,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         rd_user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
             'Department::R&D && Security Level::Protected',
             self.priv_key_uid,
+            False,
         )
 
         # Decryption with finance user
