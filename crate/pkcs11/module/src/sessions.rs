@@ -216,16 +216,39 @@ impl Session {
     }
 }
 
+fn ignore_sessions() -> bool {
+    std::env::var("COSMIAN_PKCS11_IGNORE_SESSIONS")
+        .unwrap_or("false".to_string())
+        .to_lowercase()
+        == "true"
+}
+
 pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
-    let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
-    SESSIONS.lock().unwrap().insert(
-        handle,
-        Session {
-            flags,
-            ..Default::default()
-        },
-    );
-    handle
+    if ignore_sessions() {
+        {
+            let mut session_map = SESSIONS.lock().unwrap();
+            if session_map.is_empty() {
+                session_map.insert(
+                    0_u32,
+                    Session {
+                        flags,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        0_u32
+    } else {
+        let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
+        SESSIONS.lock().unwrap().insert(
+            handle,
+            Session {
+                flags,
+                ..Default::default()
+            },
+        );
+        handle
+    }
 }
 
 pub fn exists(handle: CK_SESSION_HANDLE) -> bool {
@@ -246,7 +269,10 @@ where
 }
 
 pub fn close(handle: CK_SESSION_HANDLE) -> bool {
-    SESSIONS.lock().unwrap().remove(&handle).is_some()
+    if !ignore_sessions() {
+        SESSIONS.lock().unwrap().remove(&handle);
+    }
+    true
 }
 
 pub fn close_all() {
