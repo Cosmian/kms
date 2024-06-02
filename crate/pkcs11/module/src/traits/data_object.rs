@@ -9,6 +9,8 @@ use std::{any::Any, ffi::CString, hash::Hash};
 
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::core::compoundid::Id;
+
 pub trait DataObject: Zeroize + Send + Sync {
     /// The value of the object which may be a secret
     fn value(&self) -> Zeroizing<Vec<u8>>;
@@ -16,6 +18,14 @@ pub trait DataObject: Zeroize + Send + Sync {
     fn application(&self) -> CString;
     fn data_hash(&self) -> Vec<u8>;
     fn label(&self) -> String;
+
+    /// ID used as CKA_ID when searching objects by ID
+    fn id(&self) -> Id {
+        Id {
+            label: self.label(),
+            hash: self.data_hash(),
+        }
+    }
 }
 
 impl std::fmt::Debug for dyn DataObject {

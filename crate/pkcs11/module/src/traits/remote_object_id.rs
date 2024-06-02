@@ -4,6 +4,8 @@
 
 use std::hash::Hash;
 
+use crate::core::compoundid::Id;
+
 #[derive(Debug, Clone)]
 pub enum RemoteObjectType {
     PublicKey,
@@ -18,6 +20,14 @@ pub trait RemoteObjectId: Send + Sync {
     fn remote_id(&self) -> String;
 
     fn remote_type(&self) -> RemoteObjectType;
+
+    /// ID used as CKA_ID when searching objects by ID
+    fn id(&self) -> Id {
+        Id {
+            label: "RemoteObject".to_string(),
+            hash: self.remote_id().as_bytes().to_vec(),
+        }
+    }
 }
 
 impl std::fmt::Debug for dyn RemoteObjectId {

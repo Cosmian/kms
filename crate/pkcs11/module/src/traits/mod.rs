@@ -29,7 +29,10 @@ pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
 pub use signature_algorithm::SignatureAlgorithm;
 
 use crate::{
-    core::attribute::{Attribute, AttributeType, Attributes},
+    core::{
+        attribute::{Attribute, AttributeType, Attributes},
+        compoundid::Id,
+    },
     MError, MResult,
 };
 
@@ -72,6 +75,14 @@ pub trait PublicKey: Send + Sync + std::fmt::Debug {
     fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()>;
     fn delete(self: Arc<Self>);
     fn algorithm(&self) -> KeyAlgorithm;
+
+    /// ID used as CKA_ID when searching objects by ID
+    fn id(&self) -> Id {
+        Id {
+            label: Some(self.label()),
+            hash: self.public_key_hash(),
+        }
+    }
 }
 
 impl PartialEq for dyn PublicKey {
@@ -100,7 +111,7 @@ pub enum SearchOptions {
 impl TryFrom<&Attributes> for SearchOptions {
     type Error = MError;
 
-    fn try_from(attributes: &Attributes) -> std::result::Result<Self, Self::Error> {
+    fn try_from(attributes: &Attributes) -> Result<Self, Self::Error> {
         if attributes.is_empty() {
             return Ok(SearchOptions::All);
         }
