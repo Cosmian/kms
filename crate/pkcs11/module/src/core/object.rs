@@ -84,13 +84,7 @@ impl Object {
                 )),
                 AttributeType::CertificateType => Some(Attribute::CertificateType(CKC_X_509)),
                 AttributeType::Class => Some(Attribute::Class(CKO_CERTIFICATE)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(cert.label()),
-                        hash: cert.public_key().public_key_hash(),
-                    })
-                    .ok()?,
-                )),
+                AttributeType::Id => Some(Attribute::Id(cert.id().encode()?)),
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label(cert.label())),
                 AttributeType::Token => Some(Attribute::Token(true)),
@@ -114,13 +108,7 @@ impl Object {
                     Some(Attribute::EcParams(p256::NistP256::OID.to_der().ok()?))
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(private_key.label()),
-                        hash: private_key.public_key_id(),
-                    })
-                    .ok()?,
-                )),
+                AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
                 AttributeType::KeyType => Some(Attribute::KeyType(match private_key.algorithm() {
                     KeyAlgorithm::Rsa => CKK_RSA,
                     KeyAlgorithm::Ecc => CKK_EC,
@@ -191,13 +179,7 @@ impl Object {
                     KeyAlgorithm::Rsa => CKK_RSA,
                     KeyAlgorithm::Ecc => CKK_EC,
                 })),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(pk.label()),
-                        hash: pk.public_key_hash(),
-                    })
-                    .ok()?,
-                )),
+                AttributeType::Id => Some(Attribute::Id(pk.id().encode()?)),
                 AttributeType::EcPoint => {
                     if pk.algorithm() != KeyAlgorithm::Ecc {
                         return None;
@@ -215,14 +197,8 @@ impl Object {
             },
             Object::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(data.label()),
-                        hash: data.data_hash(),
-                    })
-                    .ok()?,
-                )),
-                // TODO(BGR) we should hold zeroizable values here
+                AttributeType::Id => Some(Attribute::Id(data.id().encode()?)),
+                // TODO(BGR) should we hold zeroizable values here
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
                 AttributeType::Private => Some(Attribute::Private(true)),
@@ -233,15 +209,18 @@ impl Object {
                 }
             },
             Object::RemoteObjectId(remote_object_id) => match type_ {
-                AttributeType::Id => Some(Attribute::Id(
-                    remote_object_id.remote_id().as_bytes().to_vec(),
-                )),
+                AttributeType::Id => Some(Attribute::Id(remote_object_id.id().encode()?)),
                 AttributeType::Decrypt => match remote_object_id.remote_type() {
                     RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
                         Some(Attribute::Decrypt(true))
                     }
                     _ => Some(Attribute::Decrypt(false)),
                 },
+                AttributeType::Modulus => Some(Attribute::Modulus(2048_u32.to_be_bytes().to_vec())),
+                AttributeType::PublicExponent => {
+                    Some(Attribute::Modulus(65537_u32.to_be_bytes().to_vec()))
+                }
+
                 _ => {
                     debug!("Remote object id: type_ unimplemented: {:?}", type_);
                     None

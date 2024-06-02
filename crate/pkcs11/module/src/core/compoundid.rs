@@ -17,27 +17,55 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Debug, Display};
+
 use bincode::Options;
 
 use crate::MResult;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Hash)]
 pub struct Id {
-    pub label: Option<String>,
+    pub label: String,
     pub hash: Vec<u8>,
 }
 
-fn bincode_opts() -> impl bincode::Options {
+impl Id {
+    pub fn encode(&self) -> MResult<Vec<u8>> {
+        Ok(bincode_opts().serialize(self)?)
+    }
+
+    pub fn decode(data: &[u8]) -> MResult<Id> {
+        Ok(bincode_opts().deserialize(data)?)
+    }
+}
+
+fn bincode_opts() -> impl Options {
     bincode::options()
         .with_limit(2048)
         .reject_trailing_bytes()
         .with_fixint_encoding()
 }
 
-pub fn encode(id: &Id) -> MResult<Vec<u8>> {
-    Ok(bincode_opts().serialize(id)?)
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {:x?}", self.label, self.hash)
+    }
 }
 
-pub fn decode(data: &[u8]) -> MResult<Id> {
-    Ok(bincode_opts().deserialize(data)?)
+impl Debug for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
 }
+
+fn hex_string(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// pub fn encode(id: &Id) -> MResult<Vec<u8>> {
+//     Ok(bincode_opts().serialize(id)?)
+// }
+//
+// pub fn decode(data: &[u8]) -> MResult<Id> {
+//     Ok(bincode_opts().deserialize(data)?)
+// }

@@ -1,6 +1,7 @@
 use std::{any::Any, hash::Hash};
 
 use crate::{
+    core::compoundid::Id,
     traits::{KeyAlgorithm, PublicKey},
     MResult,
 };
@@ -15,6 +16,14 @@ pub trait Certificate: Send + Sync + std::fmt::Debug {
     fn issuer(&self) -> MResult<Vec<u8>>;
     fn serial_number(&self) -> MResult<Vec<u8>>;
     fn subject(&self) -> MResult<Vec<u8>>;
+
+    /// ID used as CKA_ID when searching objects by ID
+    fn id(&self) -> Id {
+        Id {
+            label: self.label(),
+            hash: self.public_key().public_key_hash(),
+        }
+    }
 }
 
 impl PartialEq for dyn Certificate {

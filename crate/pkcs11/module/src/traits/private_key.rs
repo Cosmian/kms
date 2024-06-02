@@ -20,6 +20,7 @@
 use std::{any::Any, hash::Hash, sync::Arc};
 
 use crate::{
+    core::compoundid::Id,
     traits::{Backend, KeyAlgorithm, PublicKey, SearchOptions, SignatureAlgorithm},
     MResult,
 };
@@ -31,6 +32,13 @@ pub trait PrivateKey: Send + Sync {
     fn algorithm(&self) -> KeyAlgorithm;
     fn find_public_key(&self, backend: &dyn Backend) -> MResult<Option<Arc<dyn PublicKey>>> {
         backend.find_public_key(SearchOptions::Id(self.public_key_id()))
+    }
+    /// ID used as CKA_ID when searching objects by ID
+    fn id(&self) -> Id {
+        Id {
+            label: self.label(),
+            hash: self.public_key_id(),
+        }
     }
 }
 

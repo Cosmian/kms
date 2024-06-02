@@ -29,7 +29,7 @@ use pkcs11_sys::{
 use tracing::{debug, error, info};
 
 use crate::{
-    core::{attribute::Attributes, object::Object},
+    core::{attribute::Attributes, compoundid::Id, object::Object},
     traits::{backend, EncryptionAlgorithm, RemoteObjectId, SearchOptions},
 };
 use crate::{
@@ -53,8 +53,8 @@ static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 #[derive(Debug)]
 pub struct FindContext {
     /// The PKCS#11 objects manipulated by this context.
-    pub objects: Vec<Object>,
-    /// The indexes that have not yet been read by `C_FindObjects`
+    pub objects: HashMap<Id, Object>,
+    /// The indexes that have not yet been read by C_FindObjects
     pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
 }
 
@@ -161,34 +161,36 @@ impl Session {
             "load_find_context: loading for class: {:?} and options: {:?} from template {:?}",
             search_class, search_options, template
         );
+        let mut objects = self.find_ctx.as_ref().map(|ctx| ctx.objects.clone()).unwrap_or_default();
+        let mut ids = vec![];
         match search_options {
             SearchOptions::All => {
-                let objects: Vec<Object> = match search_class {
+                match search_class {
                     pkcs11_sys::CKO_CERTIFICATE => {
                         template.ensure_X509_or_none()?;
                         backend()
                             .find_all_certificates()?
                             .into_iter()
-                            .map(Object::Certificate)
-                            .collect()
+                            .for_each(|c|{
+                                let id = c.id();
+                                ids.push(id.clone());
+                                let _ = objects.insert(id,Object::Certificate(c));
+                            });
                     }
                     pkcs11_sys::CKO_PUBLIC_KEY => backend()
                         .find_all_public_keys()?
                         .into_iter()
-                        .map(Object::PublicKey)
-                        .collect(),
+                        .for_each(|c| {let _ = objects.insert(c.id(),Object::PublicKey(c));}),
                     pkcs11_sys::CKO_PRIVATE_KEY => backend()
                         .find_all_private_keys()?
-                        .into_iter()
-                        .map(Object::RemoteObjectId)
-                        .collect(),
+                        .into_iter().
+                        for_each(|c| {let _ =  objects.insert(c.id(),Object::RemoteObjectId(c));}),
                     pkcs11_sys::CKO_DATA => backend()
                         .find_all_data_objects()?
                         .into_iter()
-                        .map(Object::DataObject)
-                        .collect(),
+                        .for_each(|c| {let _ = objects.insert(c.id(),Object::DataObject(c));}),
                     o => return Err(MError::Todo(format!("Object not supported: {o}"))),
-                };
+                }
                 info!(
                     "load_find_context: found {} objects for search class {}",
                     objects.len(),
@@ -204,10 +206,14 @@ impl Session {
                     unread_indexes: indexes,
                 });
             }
-            SearchOptions::Label(_) => {
+            SearchOptions::Label(label) => {
+                info!("load_find_context: search by label: {}", label);
                 todo!("load_find_context: search by label")
             }
-            SearchOptions::Id(_) => {
+            SearchOptions::Id(data) => {
+                let id = Id::decode(data.as_slice())?;
+                debug!("load_find_context: search by id: {}", id);
+                self.find_ctx.
                 todo!("load_find_context: search by id")
             }
         }
