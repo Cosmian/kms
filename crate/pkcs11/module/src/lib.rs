@@ -566,12 +566,11 @@ cryptoki_fn!(
             hObject
         );
         sessions::session(hSession, |session| -> MResult<()> {
-            let object_store = &session
+            let find_ctx = session
                 .find_ctx
                 .as_ref()
-                .ok_or_else(|| MError::OperationNotInitialized)?
-                .objects;
-            let object = match object_store.get(hObject as usize) {
+                .ok_or_else(|| MError::OperationNotInitialized)?;
+            let object = match find_ctx.get_using_handle(hObject) {
                 Some(object) => object,
                 None => {
                     return Err(MError::ObjectHandleInvalid(hObject));
@@ -590,7 +589,7 @@ cryptoki_fn!(
                     .type_
                     .try_into()
                     .map_err(|_| MError::AttributeTypeInvalid(attribute.type_))?;
-                if let Some(value) = object.attribute(type_) {
+                if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
                     attribute.ulValueLen = value.len() as CK_ULONG;
                     if attribute.pValue.is_null() {
@@ -754,12 +753,11 @@ cryptoki_fn!(
         not_null!(pMechanism);
         sessions::session(hSession, |session| -> MResult<()> {
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            let object_store = &session
+            let find_ctx = session
                 .find_ctx
                 .as_ref()
-                .ok_or(MError::OperationNotInitialized)?
-                .objects;
-            match object_store.get(hKey as usize) {
+                .ok_or(MError::OperationNotInitialized)?;
+            match find_ctx.get_using_handle(hKey).as_deref() {
                 Some(Object::RemoteObjectId(remote_object)) => match remote_object.remote_type() {
                     RemoteObjectType::PublicKey | RemoteObjectType::Certificate => {
                         Err(MError::KeyHandleInvalid(hKey))
@@ -897,12 +895,12 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism);
         sessions::session(hSession, |session| -> MResult<()> {
-            let object_store = &session
+            let find_ctx = &session
                 .find_ctx
                 .as_ref()
-                .ok_or(MError::OperationNotInitialized)?
-                .objects;
-            let private_key = match object_store.get(hKey as usize) {
+                .ok_or(MError::OperationNotInitialized)?;
+            let object = find_ctx.get_using_handle(hKey);
+            let private_key = match object.as_deref() {
                 Some(Object::PrivateKey(private_key)) => private_key,
                 Some(_) | None => return Err(MError::KeyHandleInvalid(hKey)),
             };
