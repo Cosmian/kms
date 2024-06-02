@@ -19,7 +19,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{self, atomic::Ordering, Arc},
+    sync::{self, atomic::Ordering, Arc, Weak},
 };
 
 use once_cell::sync::Lazy;
@@ -50,12 +50,47 @@ type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
 static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 // pub static OBJECT_STORE: Lazy<sync::Mutex<ObjectStore>> = Lazy::new(Default::default);
 
-#[derive(Debug)]
+#[derive(Default)]
 pub struct FindContext {
     /// The PKCS#11 objects manipulated by this context.
-    pub objects: HashMap<Id, Object>,
+    pub objects: HashMap<Id, (Arc<Object>, CK_OBJECT_HANDLE)>,
+    pub ids: HashMap<CK_OBJECT_HANDLE, Weak<Object>>,
     /// The indexes that have not yet been read by C_FindObjects
     pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
+}
+
+impl FindContext {
+    /// Insert the object and add it to the unread
+    pub fn insert(&mut self, object: Arc<Object>) -> CK_OBJECT_HANDLE {
+        let handle = self.ids.len() as CK_OBJECT_HANDLE;
+        self.ids.insert(handle, Arc::downgrade(&object));
+        self.objects.insert(object.id(), (object, handle));
+        self.unread_indexes.push(handle);
+        handle
+    }
+
+    pub fn get_using_handle(&self, handle: CK_OBJECT_HANDLE) -> Option<Arc<Object>> {
+        self.ids.get(&handle).and_then(|weak| weak.upgrade())
+    }
+
+    pub fn get_using_id(&self, id: &Id) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
+        self.objects.get(id).cloned()
+    }
+
+    /// The number of objects in the find context
+    pub fn len(&self) -> usize {
+        self.objects.len()
+    }
+
+    /// Clear the unread index
+    fn clear_unread(&mut self) {
+        self.unread_indexes.clear();
+    }
+
+    /// Add to the unread index
+    fn add_to_unread(&mut self, handle: CK_OBJECT_HANDLE) {
+        self.unread_indexes.push(handle);
+    }
 }
 
 #[derive(Debug)]
@@ -141,7 +176,7 @@ impl Session {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Session {
     flags: CK_FLAGS,
     pub find_ctx: Option<FindContext>,
@@ -161,8 +196,9 @@ impl Session {
             "load_find_context: loading for class: {:?} and options: {:?} from template {:?}",
             search_class, search_options, template
         );
-        let mut objects = self.find_ctx.as_ref().map(|ctx| ctx.objects.clone()).unwrap_or_default();
-        let mut ids = vec![];
+        // initialize empty find context
+        let find_ctx = self.find_ctx.get_or_insert_with(Default::default);
+        let initial_size = find_ctx.len();
         match search_options {
             SearchOptions::All => {
                 match search_class {
@@ -171,40 +207,34 @@ impl Session {
                         backend()
                             .find_all_certificates()?
                             .into_iter()
-                            .for_each(|c|{
-                                let id = c.id();
-                                ids.push(id.clone());
-                                let _ = objects.insert(id,Object::Certificate(c));
+                            .for_each(|c| {
+                                find_ctx.insert(Arc::new(Object::Certificate(c)));
                             });
                     }
-                    pkcs11_sys::CKO_PUBLIC_KEY => backend()
-                        .find_all_public_keys()?
-                        .into_iter()
-                        .for_each(|c| {let _ = objects.insert(c.id(),Object::PublicKey(c));}),
+                    pkcs11_sys::CKO_PUBLIC_KEY => {
+                        backend().find_all_public_keys()?.into_iter().for_each(|c| {
+                            find_ctx.insert(Arc::new(Object::PublicKey(c)));
+                        })
+                    }
                     pkcs11_sys::CKO_PRIVATE_KEY => backend()
                         .find_all_private_keys()?
-                        .into_iter().
-                        for_each(|c| {let _ =  objects.insert(c.id(),Object::RemoteObjectId(c));}),
+                        .into_iter()
+                        .for_each(|c| {
+                            find_ctx.insert(Arc::new(Object::RemoteObjectId(c)));
+                        }),
                     pkcs11_sys::CKO_DATA => backend()
                         .find_all_data_objects()?
                         .into_iter()
-                        .for_each(|c| {let _ = objects.insert(c.id(),Object::DataObject(c));}),
+                        .for_each(|c| {
+                            find_ctx.insert(Arc::new(Object::DataObject(c)));
+                        }),
                     o => return Err(MError::Todo(format!("Object not supported: {o}"))),
                 }
                 info!(
-                    "load_find_context: found {} objects for search class {}",
-                    objects.len(),
+                    "load_find_context: added {} objects for search class {}",
+                    find_ctx.len() - initial_size,
                     search_class
                 );
-                let indexes = objects
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| i as CK_OBJECT_HANDLE)
-                    .collect();
-                self.find_ctx = Some(FindContext {
-                    objects,
-                    unread_indexes: indexes,
-                });
             }
             SearchOptions::Label(label) => {
                 info!("load_find_context: search by label: {}", label);
@@ -213,8 +243,14 @@ impl Session {
             SearchOptions::Id(data) => {
                 let id = Id::decode(data.as_slice())?;
                 debug!("load_find_context: search by id: {}", id);
-                self.find_ctx.
-                todo!("load_find_context: search by id")
+                let find_ctx = self
+                    .find_ctx
+                    .as_mut()
+                    .ok_or(MError::OperationNotInitialized)?;
+                let (_, handle) = find_ctx
+                    .get_using_id(&id)
+                    .ok_or_else(|| MError::ArgumentsBad)?;
+                find_ctx.add_to_unread(handle);
             }
         }
 

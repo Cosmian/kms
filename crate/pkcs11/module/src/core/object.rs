@@ -19,6 +19,7 @@
 
 use std::{fmt::Debug, sync::Arc};
 
+use log::error;
 use p256::pkcs8::{
     der::{asn1::OctetString, Encode},
     AssociatedOid,
@@ -31,11 +32,15 @@ use pkcs11_sys::{
 use tracing::debug;
 
 use crate::{
-    core::attribute::{Attribute, AttributeType, Attributes},
+    core::{
+        attribute::{Attribute, AttributeType},
+        compoundid::Id,
+    },
     traits::{
         backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
         RemoteObjectType,
     },
+    MError, MResult,
 };
 
 // TODO(bweeks): resolve by improving the ObjectStore implementation.
@@ -48,6 +53,22 @@ pub enum Object {
     PublicKey(Arc<dyn PublicKey>),
     DataObject(Arc<dyn DataObject>),
     RemoteObjectId(Arc<dyn RemoteObjectId>),
+}
+
+impl Object {
+    pub fn id(&self) -> Id {
+        match self {
+            Object::Certificate(cert) => cert.id(),
+            Object::PrivateKey(private_key) => private_key.id(),
+            Object::Profile(id) => Id {
+                label: "Profile".to_string(),
+                hash: id.to_be_bytes().to_vec(),
+            },
+            Object::PublicKey(public_key) => public_key.id(),
+            Object::DataObject(data) => data.id(),
+            Object::RemoteObjectId(remote_object_id) => remote_object_id.id(),
+        }
+    }
 }
 
 //  #[derive(PartialEq)] fails to compile because it tries to move the Box<_>ed
@@ -76,7 +97,7 @@ impl PartialEq for Object {
 }
 
 impl Object {
-    pub fn attribute(&self, type_: AttributeType) -> Option<Attribute> {
+    pub fn attribute(&self, type_: AttributeType) -> MResult<Option<Attribute>> {
         let attribute = match self {
             Object::Certificate(cert) => match type_ {
                 AttributeType::CertificateCategory => Some(Attribute::CertificateCategory(
@@ -95,7 +116,7 @@ impl Object {
                 AttributeType::Subject => cert.subject().map(Attribute::Subject).ok(),
                 AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
                 _ => {
-                    debug!("certificate: type_ unimplemented: {:?}", type_);
+                    error!("certificate: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
@@ -104,9 +125,11 @@ impl Object {
                 AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
                 AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
-                AttributeType::EcParams => {
-                    Some(Attribute::EcParams(p256::NistP256::OID.to_der().ok()?))
-                }
+                AttributeType::EcParams => Some(Attribute::EcParams(
+                    p256::NistP256::OID
+                        .to_der()
+                        .map_err(|_| MError::ArgumentsBad)?,
+                )),
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
                 AttributeType::KeyType => Some(Attribute::KeyType(match private_key.algorithm() {
@@ -148,7 +171,7 @@ impl Object {
                 AttributeType::Token => Some(Attribute::Token(true)),
                 AttributeType::Unwrap => Some(Attribute::Unwrap(false)),
                 _ => {
-                    debug!("private_key: type_ unimplemented: {:?}", type_);
+                    error!("private_key: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
@@ -158,7 +181,7 @@ impl Object {
                 AttributeType::Token => Some(Attribute::Token(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
                 _ => {
-                    debug!("profile: type_ unimplemented: {:?}", type_);
+                    error!("profile: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
@@ -182,16 +205,21 @@ impl Object {
                 AttributeType::Id => Some(Attribute::Id(pk.id().encode()?)),
                 AttributeType::EcPoint => {
                     if pk.algorithm() != KeyAlgorithm::Ecc {
-                        return None;
+                        return Ok(None);
                     }
-                    let wrapped = OctetString::new(pk.to_der()).ok()?;
-                    Some(Attribute::EcPoint(wrapped.to_der().ok()?))
+                    let wrapped =
+                        OctetString::new(pk.to_der()).map_err(|_| MError::ArgumentsBad)?;
+                    Some(Attribute::EcPoint(
+                        wrapped.to_der().map_err(|_| MError::ArgumentsBad)?,
+                    ))
                 }
-                AttributeType::EcParams => {
-                    Some(Attribute::EcParams(p256::NistP256::OID.to_der().ok()?))
-                }
+                AttributeType::EcParams => Some(Attribute::EcParams(
+                    p256::NistP256::OID
+                        .to_der()
+                        .map_err(|_| MError::ArgumentsBad)?,
+                )),
                 _ => {
-                    debug!("public_key: type_ unimplemented: {:?}", type_);
+                    error!("public_key: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
@@ -204,7 +232,7 @@ impl Object {
                 AttributeType::Private => Some(Attribute::Private(true)),
                 AttributeType::Label => Some(Attribute::Label(data.label())),
                 _ => {
-                    debug!("Data object: type_ unimplemented: {:?}", type_);
+                    error!("Data object: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
@@ -222,31 +250,31 @@ impl Object {
                 }
 
                 _ => {
-                    debug!("Remote object id: type_ unimplemented: {:?}", type_);
+                    error!("Remote object id: type_ unimplemented: {:?}", type_);
                     None
                 }
             }
         };
         debug!("attribute: {:?} => {:?}", type_, attribute);
-        attribute
+        Ok(attribute)
     }
 
-    #[must_use]
-    pub fn matches(&self, others: &Attributes) -> bool {
-        if let Some(class) = others.get(AttributeType::Class) {
-            if *class != self.attribute(AttributeType::Class).unwrap() {
-                return false;
-            }
-        }
-        for other in &**others {
-            if let Some(attr) = self.attribute(other.attribute_type()) {
-                if *other != attr {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        true
-    }
+    // #[must_use]
+    // pub fn matches(&self, others: &Attributes) -> bool {
+    //     if let Some(class) = others.get(AttributeType::Class) {
+    //         if *class != self.attribute(AttributeType::Class).unwrap() {
+    //             return false;
+    //         }
+    //     }
+    //     for other in &**others {
+    //         if let Some(attr) = self.attribute(other.attribute_type()) {
+    //             if *other != attr {
+    //                 return false;
+    //             }
+    //         } else {
+    //             return false;
+    //         }
+    //     }
+    //     true
+    // }
 }

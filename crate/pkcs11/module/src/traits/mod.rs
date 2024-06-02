@@ -79,7 +79,7 @@ pub trait PublicKey: Send + Sync + std::fmt::Debug {
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
         Id {
-            label: Some(self.label()),
+            label: self.label(),
             hash: self.public_key_hash(),
         }
     }

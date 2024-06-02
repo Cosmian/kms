@@ -23,7 +23,7 @@ use bincode::Options;
 
 use crate::MResult;
 
-#[derive(serde::Serialize, serde::Deserialize, Hash)]
+#[derive(serde::Serialize, serde::Deserialize, Hash, Clone, PartialEq, Eq)]
 pub struct Id {
     pub label: String,
     pub hash: Vec<u8>,
