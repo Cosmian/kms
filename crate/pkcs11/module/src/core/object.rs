@@ -45,7 +45,7 @@ use crate::{
 
 // TODO(bweeks): resolve by improving the ObjectStore implementation.
 #[allow(clippy::derived_hash_with_manual_eq)]
-#[derive(Debug, Hash, Eq, Clone)]
+#[derive(Hash, Eq, Clone)]
 pub enum Object {
     Certificate(Arc<dyn Certificate>),
     PrivateKey(Arc<dyn PrivateKey>),

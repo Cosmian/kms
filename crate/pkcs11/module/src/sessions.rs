@@ -22,6 +22,7 @@ use std::{
     sync::{self, atomic::Ordering, Arc, Weak},
 };
 
+use log::trace;
 use once_cell::sync::Lazy;
 use pkcs11_sys::{
     CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG, CK_ULONG_PTR,
@@ -64,8 +65,11 @@ impl FindContext {
     pub fn insert(&mut self, object: Arc<Object>) -> CK_OBJECT_HANDLE {
         let handle = self.ids.len() as CK_OBJECT_HANDLE;
         self.ids.insert(handle, Arc::downgrade(&object));
+        trace!("object ID: {}", object.id());
         self.objects.insert(object.id(), (object, handle));
+        trace!("inserted object with id");
         self.unread_indexes.push(handle);
+        trace!("inserted object with handle: {}", handle);
         handle
     }
 
@@ -208,7 +212,9 @@ impl Session {
                             .find_all_certificates()?
                             .into_iter()
                             .for_each(|c| {
+                                info!("load_find_context: adding certificate");
                                 find_ctx.insert(Arc::new(Object::Certificate(c)));
+                                info!("load_find_context: added certificate");
                             });
                     }
                     pkcs11_sys::CKO_PUBLIC_KEY => {
