@@ -22,7 +22,7 @@ pub trait Certificate: Send + Sync + std::fmt::Debug {
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
         trace!("Certificate::id label = {:?}", self.label());
-        trace!("Certificate::id public key = {:?}", self.public_key());
+        trace!("Certificate::id public key = {:?}", self.public_key().unwrap().fingerprint());
         trace!(
             "Certificate::id hash = {:?}",
             self.public_key().public_key_hash()

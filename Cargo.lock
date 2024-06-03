@@ -1360,6 +1360,7 @@ name = "cosmian_pkcs11_module"
 version = "4.16.0"
 dependencies = [
  "bincode",
+ "const-oid",
  "hex",
  "log",
  "once_cell",
