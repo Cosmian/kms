@@ -15,17 +15,22 @@ pub struct Pkcs11PublicKey {
     /// SHA 256 fingerprint of the public key
     fingerprint: Vec<u8>,
     /// DER bytes of the algorithm OID
-    algorithm_identifier: KeyAlgorithm,
+    algorithm: KeyAlgorithm,
 }
 
 impl Pkcs11PublicKey {
     pub fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> MResult<Self> {
-        let (oid, params_oid) = spki.algorithm.oids()?;
+        let algorithm = match spki.algorithm.oids()? {
+            [oid, params_oid] => (oid, Some(params_oid)),
+            [oid] => (oid, None),
+            _ => {
+                return Err("Invalid number of OIDs in SubjectPublicKeyInfo".into());
+            }
+        };
         Ok(Self {
             der_bytes: spki.to_der()?,
             fingerprint: spki.fingerprint_bytes()?.to_vec(),
-            algorithm_identifier: oid.to_der(),
-            algorithm_identifier_params: params_oid.map(|oid| oid.to_der()),
+            algorithm,
         })
     }
 }

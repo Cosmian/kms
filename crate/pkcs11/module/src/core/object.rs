@@ -17,14 +17,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, str::FromStr, sync::Arc};
 
 use log::error;
 use p256::pkcs8::{
     der::{asn1::OctetString, Encode},
     AssociatedOid,
 };
-use pkcs1::{der::Decode, RsaPublicKey};
+use pkcs1::{der::Decode, ObjectIdentifier, RsaPublicKey};
 use pkcs11_sys::{
     CKC_X_509, CKK_EC, CKK_RSA, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE,
     CKO_PUBLIC_KEY, CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
@@ -126,16 +126,13 @@ impl Object {
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
                 AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
                 AttributeType::EcParams => Some(Attribute::EcParams(
-                    p256::NistP256::OID
-                        .to_der()
-                        .map_err(|_| MError::ArgumentsBad)?,
+                    private_key.algorithm().to_oid()?.to_der()?,
                 )),
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
-                AttributeType::KeyType => Some(Attribute::KeyType(match private_key.algorithm() {
-                    KeyAlgorithm::Rsa => CKK_RSA,
-                    KeyAlgorithm::Ecc => CKK_EC,
-                })),
+                AttributeType::KeyType => {
+                    Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
+                }
                 AttributeType::Label => Some(Attribute::Label(private_key.label())),
                 AttributeType::Modulus => {
                     let modulus = private_key
@@ -198,26 +195,21 @@ impl Object {
                     let key = RsaPublicKey::from_der(&key).unwrap();
                     Some(Attribute::Modulus(key.public_exponent.as_bytes().to_vec()))
                 }
-                AttributeType::KeyType => Some(Attribute::KeyType(match pk.algorithm() {
-                    KeyAlgorithm::Rsa => CKK_RSA,
-                    KeyAlgorithm::Ecc => CKK_EC,
-                })),
+                AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
                 AttributeType::Id => Some(Attribute::Id(pk.id().encode()?)),
                 AttributeType::EcPoint => {
-                    if pk.algorithm() != KeyAlgorithm::Ecc {
+                    if !pk.algorithm().is_ecc() {
                         return Ok(None);
                     }
-                    let wrapped =
-                        OctetString::new(pk.to_der()).map_err(|_| MError::ArgumentsBad)?;
-                    Some(Attribute::EcPoint(
-                        wrapped.to_der().map_err(|_| MError::ArgumentsBad)?,
-                    ))
+                    let wrapped = OctetString::new(pk.to_der())?;
+                    Some(Attribute::EcPoint(wrapped.to_der()?))
                 }
-                AttributeType::EcParams => Some(Attribute::EcParams(
-                    p256::NistP256::OID
-                        .to_der()
-                        .map_err(|_| MError::ArgumentsBad)?,
-                )),
+                AttributeType::EcParams => {
+                    if !pk.algorithm().is_ecc() {
+                        return Ok(None);
+                    }
+                    Some(Attribute::EcParams(pk.algorithm().to_oid()?.to_der()?))
+                }
                 _ => {
                     error!("public_key: type_ unimplemented: {:?}", type_);
                     None

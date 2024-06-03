@@ -113,6 +113,15 @@ pub enum MError {
     Bincode(#[from] Box<bincode::ErrorKind>),
 
     #[error("{0}")]
+    Pkcs1(String),
+
+    #[error("{0}")]
+    Encoding(String),
+
+    #[error("{0}")]
+    Oid(#[from] const_oid::Error),
+
+    #[error("{0}")]
     Todo(String),
 }
 
@@ -145,7 +154,22 @@ impl From<MError> for CK_RV {
             | MError::NullPtr
             | MError::Todo(_)
             | MError::TryFromInt(_)
+            | MError::Pkcs1(_)
+            | MError::Encoding(_)
+            | MError::Oid(_)
             | MError::TryFromSlice(_) => CKR_GENERAL_ERROR,
         }
+    }
+}
+
+impl From<pkcs1::Error> for MError {
+    fn from(value: pkcs1::Error) -> Self {
+        MError::Pkcs1(value.to_string())
+    }
+}
+
+impl From<pkcs1::der::Error> for MError {
+    fn from(value: pkcs1::der::Error) -> Self {
+        MError::Pkcs1(value.to_string())
     }
 }

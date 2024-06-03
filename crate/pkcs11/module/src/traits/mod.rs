@@ -23,6 +23,7 @@ pub use backend::{backend, register_backend, Backend};
 pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
+pub use key_algorithm::KeyAlgorithm;
 pub use once_cell;
 pub use private_key::PrivateKey;
 pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
@@ -40,6 +41,7 @@ mod backend;
 mod certificate;
 mod data_object;
 mod encryption_algorithms;
+mod key_algorithm;
 mod private_key;
 mod remote_object_id;
 mod signature_algorithm;
@@ -124,21 +126,6 @@ impl TryFrom<&Attributes> for SearchOptions {
             Ok(SearchOptions::All)
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyAlgorithm {
-    Rsa1024,
-    Rsa2048,
-    Rsa3072,
-    Rsa4096,
-    EccP256,
-    EccP384,
-    EccP521,
-    Ed25519,
-    X25519,
-    X448,
-    Ed448,
 }
 
 pub struct Version {
