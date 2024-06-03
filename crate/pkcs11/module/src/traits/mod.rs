@@ -68,8 +68,8 @@ impl DigestType {
     }
 }
 
-pub trait PublicKey: Send + Sync + std::fmt::Debug {
-    fn public_key_hash(&self) -> Vec<u8>;
+pub trait PublicKey: Send + Sync {
+    fn fingerprint(&self) -> &[u8];
     fn label(&self) -> String;
     fn to_der(&self) -> Vec<u8>;
     fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()>;
@@ -80,14 +80,14 @@ pub trait PublicKey: Send + Sync + std::fmt::Debug {
     fn id(&self) -> Id {
         Id {
             label: self.label(),
-            hash: self.public_key_hash(),
+            hash: self.fingerprint().to_vec(),
         }
     }
 }
 
 impl PartialEq for dyn PublicKey {
     fn eq(&self, other: &Self) -> bool {
-        self.public_key_hash() == other.public_key_hash() && self.label() == other.label()
+        self.fingerprint() == other.fingerprint() && self.label() == other.label()
     }
 }
 
@@ -96,7 +96,7 @@ impl Eq for dyn PublicKey {}
 impl Hash for dyn PublicKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.type_id().hash(state);
-        self.public_key_hash().hash(state);
+        self.fingerprint().hash(state);
         self.label().hash(state);
     }
 }
@@ -128,8 +128,17 @@ impl TryFrom<&Attributes> for SearchOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyAlgorithm {
-    Rsa,
-    Ecc,
+    Rsa1024,
+    Rsa2048,
+    Rsa3072,
+    Rsa4096,
+    EccP256,
+    EccP384,
+    EccP521,
+    Ed25519,
+    X25519,
+    X448,
+    Ed448,
 }
 
 pub struct Version {

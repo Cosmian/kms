@@ -1,5 +1,7 @@
 use std::{any::Any, hash::Hash};
 
+use log::trace;
+
 use crate::{
     core::compoundid::Id,
     traits::{KeyAlgorithm, PublicKey},
@@ -9,9 +11,9 @@ use crate::{
 pub trait Certificate: Send + Sync + std::fmt::Debug {
     fn label(&self) -> String;
     fn to_der(&self) -> MResult<Vec<u8>>;
-    fn public_key(&self) -> &dyn PublicKey;
-    fn algorithm(&self) -> KeyAlgorithm {
-        self.public_key().algorithm()
+    fn public_key(&self) -> MResult<&dyn PublicKey>;
+    fn algorithm(&self) -> MResult<KeyAlgorithm> {
+        Ok(self.public_key()?.algorithm())
     }
     fn issuer(&self) -> MResult<Vec<u8>>;
     fn serial_number(&self) -> MResult<Vec<u8>>;
@@ -19,9 +21,15 @@ pub trait Certificate: Send + Sync + std::fmt::Debug {
 
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
+        trace!("Certificate::id label = {:?}", self.label());
+        trace!("Certificate::id public key = {:?}", self.public_key());
+        trace!(
+            "Certificate::id hash = {:?}",
+            self.public_key().public_key_hash()
+        );
         Id {
             label: self.label(),
-            hash: self.public_key().public_key_hash(),
+            hash: self.serial_number(),
         }
     }
 }
