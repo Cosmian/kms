@@ -54,8 +54,8 @@ jobs:
             kms_path: .
             os: macos-12
           - archive_name: windows_tests
-            kms_path: debug
-            os: windows-2019
+            kms_path: .
+            os: windows-2022
 
     steps:
       - uses: actions/download-artifact@v3

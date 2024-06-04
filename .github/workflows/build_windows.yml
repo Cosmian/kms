@@ -1,0 +1,68 @@
+---
+name: KMS cargo build - windows
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+      commands:
+        required: true
+        type: string
+      artifacts:
+        required: true
+        type: string
+
+jobs:
+  kms-build:
+    name: ${{ inputs.archive-name }}
+    runs-on: windows-2022
+    steps:
+      - name: Print ENV
+        run: printenv
+
+      - uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            $VCPKG_INSTALLATION_ROOT
+          key: ${{ runner.os }}-cargo-windows-2022-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-windows-2022-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Build
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ${{ inputs.commands }}
+        env:
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+      - name: Upload KMS for windows-2022
+        if: inputs.artifacts != ''
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}
+          path: ${{ inputs.artifacts }}
+          retention-days: 1
+          if-no-files-found: error
