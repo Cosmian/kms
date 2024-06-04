@@ -11,7 +11,7 @@ if [[ ! "${1}" = /* ]]; then
     exit 1
 fi
 
-echo "Setup for OpenSSL version 3.1.0 with FIPS module"
+echo "Setup for OpenSSL version 3.2.0 with FIPS module"
 echo "Installing OpenSSL to ${1}..."
 
 OPENSSL_DIR="${1}"
@@ -20,7 +20,7 @@ OPENSSL_DIR="${1}"
 rm -rf "${OPENSSL_DIR}/ssl"
 mkdir -p "${OPENSSL_DIR}/ssl"
 
-# Downloading and installing OpenSSL 3.1.0.
+# Downloading and installing OpenSSL 3.2.0.
 cd "$(mktemp -d)"
 VERSION=openssl-3.2.0
 URL_PREFIX=${VERSION}

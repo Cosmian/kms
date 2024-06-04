@@ -172,34 +172,36 @@ jobs:
         target/debug/libckms_pkcs11.so
 
   windows-tests:
-    uses: ./.github/workflows/build_generic.yml
+    uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-20.04
       archive-name: windows_tests
       commands: |
-        sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
-        rustup target add x86_64-pc-windows-gnu
+        rustup target add x86_64-pc-windows-msvc
 
         # build only `ckms`
         cd crate/cli
-        cargo build --target x86_64-pc-windows-gnu
+        cargo build --target x86_64-pc-windows-msvc
 
         # build pkcs11 provider
         cd ../pkcs11/provider
-        cargo build --release --target x86_64-pc-windows-gnu
+        cargo build --target x86_64-pc-windows-msvc
         cd ../../..
 
-        sudo mkdir -p /usr/local/openssl
-        sudo chown -R $USER /usr/local/openssl
-        bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
+        $env:VCPKG_INSTALLATION_ROOT
+        dir $env:VCPKG_INSTALLATION_ROOT
+        vcpkg install openssl[fips]
+
+        vcpkg integrate install
+        set VCPKGRS_DYNAMIC=1
+        $env:OPENSSL_DIR="$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows"
 
         cd crate/server
-        cargo build --target x86_64-pc-windows-gnu
+        cargo build --target x86_64-pc-windows-msvc
       artifacts: |
-        target/x86_64-pc-windows-gnu/debug/ckms.exe
-        target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
-        target/x86_64-pc-windows-gnu/release/ckms_pkcs11.dll
+        target/x86_64-pc-windows-msvc/debug/ckms.exe
+        target/x86_64-pc-windows-msvc/debug/cosmian_kms_server.exe
+        target/x86_64-pc-windows-msvc/debug/ckms_pkcs11.dll
 
   mac-tests:
     uses: ./.github/workflows/build_generic.yml
