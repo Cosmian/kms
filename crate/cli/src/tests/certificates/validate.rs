@@ -187,7 +187,7 @@ async fn test_validate() -> Result<(), CliError> {
         true,
     )?;
 
-    println!("validating chain with leaf1: Result supposed to be invalid");
+    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
 
     validate_certificate(
         &ctx.owner_client_conf_path,
@@ -202,7 +202,9 @@ async fn test_validate() -> Result<(), CliError> {
     )
     .await?;
 
-    println!("validating chain with leaf2: Result supposed to be valid");
+    println!(
+        "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
+    );
 
     validate_certificate(
         &ctx.owner_client_conf_path,
@@ -214,6 +216,25 @@ async fn test_validate() -> Result<(), CliError> {
         ]
         .to_vec(),
         "".to_string(),
+    )
+    .await?;
+
+    println!(
+        "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
+         leaf2's expiration date"
+    );
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ]
+        .to_vec(),
+        // Date: 15/04/2048
+        "4804152030Z".to_string(),
     )
     .await?;
 

@@ -54,18 +54,11 @@ pub(crate) async fn validate_operation(
         (Some(unique_identifiers), None) => {
             certificates_by_uid(unique_identifiers, kms, user, params).await
         }
-        (Some(unique_identifiers), Some(certificates)) => {
-            // let mut certificates_uid =
-            //     certificates_by_uid(unique_identifiers, kms, user, params).await?;
-            // let mut certificates = certificates;
-            // certificates.append(&mut certificates_uid);
-            // Ok(certificates.clone())
-            Ok([
-                certificates,
-                certificates_by_uid(unique_identifiers, kms, user, params).await?,
-            ]
-            .concat())
-        }
+        (Some(unique_identifiers), Some(certificates)) => Ok([
+            certificates,
+            certificates_by_uid(unique_identifiers, kms, user, params).await?,
+        ]
+        .concat()),
     }?;
 
     // Indexing Certificate Chain
