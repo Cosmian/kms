@@ -136,3 +136,4 @@ openssl x509 -outform der -in ../../leaf1.cert.pem -out ../../leaf1.cert.der
 openssl x509 -outform der -in ../../leaf2.cert.pem -out ../../leaf2.cert.der
 
 scp intermediate/crl/intermediate.crl.pem cosmian@package.cosmian.com:/mnt/package/kms/crl_tests
+
