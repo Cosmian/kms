@@ -162,7 +162,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
         },
     };
     let res_leaf1 = kms.import(leaf1_request, owner, None).await?;
-    //test
+    // Only the root, it is valid by default
     let request = Validate {
         certificate: None,
         unique_identifier: Some([res_root.unique_identifier.clone()].to_vec()),
@@ -171,6 +171,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Valid);
     print!("\n\n ####### End first test! #######\n\n");
+    // Root and intermediate valid certificates. Good structure.
     let request = Validate {
         certificate: None,
         unique_identifier: Some(
@@ -185,6 +186,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Valid);
     print!("\n\n ####### End second test! #######\n\n");
+    // Root and intermediate valid certificates. Leaf revoked. Test returns invalid.
     let request = Validate {
         certificate: None,
         unique_identifier: Some(
@@ -200,6 +202,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Invalid);
     print!("\n\n ####### End third test! #######\n\n");
+    // Root and intermediate valid certificates. Leaf valid. Test returns valid.
     let request = Validate {
         certificate: Some([leaf2_cert.clone()].to_vec()),
         unique_identifier: Some(
@@ -214,6 +217,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Valid);
     print!("\n\n ####### End fourth test! #######\n\n");
+    // Root and intermediate valid certificates. Leaf valid. Date provided is future to the expiration of the certificates. Test returns invalid.
     let request = Validate {
         certificate: Some(
             [
@@ -234,6 +238,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Invalid); // Test designed to be invalid
     print!("\n\n ####### End fifth test! #######\n\n");
+    // Root is a valid certificates. Leaf too. Missing intermediate certificate. Result Invalid.
     let request = Validate {
         certificate: Some([leaf2_cert.clone()].to_vec()),
         unique_identifier: Some([res_root.unique_identifier.clone()].to_vec()),
@@ -242,6 +247,15 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let res = kms.validate(request, owner, None).await?;
     assert!(res.validity_indicator == ValidityIndicator::Invalid);
     print!("\n\n ####### End sixth test! #######\n\n");
+    // Root certificate not provided. Intermediate and leaf are valid certificates. Return is Invalid.
+    let request = Validate {
+        certificate: Some([leaf2_cert.clone()].to_vec()),
+        unique_identifier: Some([res_intermediate.unique_identifier.clone()].to_vec()),
+        validity_time: None,
+    };
+    let res = kms.validate(request, owner, None).await?;
+    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    print!("\n\n ####### End seventh test! #######\n\n");
 
     Result::Ok(())
 }

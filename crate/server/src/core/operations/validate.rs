@@ -66,12 +66,14 @@ pub(crate) async fn validate_operation(
         index_certificates(&certificates, &mut HashMap::<Vec<u8>, u8>::new())?;
 
     // Getting root certificate from indexing
-    let root_idx = *hm_certificates.get(&HEAD.to_vec()).ok_or_else(|| {
-        KmsError::from(KmipError::ObjectNotFound(
-            "The certificate chain has no root".to_string(),
-        ))
-    })?;
-    let root_cert = certificates.get(root_idx as usize).ok_or_else(|| {
+    let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
+        root_idx
+    } else {
+        return Ok(ValidateResponse {
+            validity_indicator: ValidityIndicator::Invalid,
+        })
+    };
+    let root_cert = certificates.get(*root_idx as usize).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
             cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
             "Root not found".to_string(),
