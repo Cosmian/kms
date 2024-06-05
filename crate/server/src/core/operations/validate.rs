@@ -416,21 +416,21 @@ async fn test_and_get_resource_from_uri(
         Some(UriType::Url(url)) => {
             let response = reqwest::get(&url).await;
             // missing error conversion
-            if response.is_err() {
+            let response = if let Ok(response) = response {
+                response
+            } else {
                 return Err(KmsError::from(KmipError::ObjectNotFound(
                     "No certificate found at the following uri ".to_string() + uri,
                 )))
             };
-            let response = response.expect("Safe unwrap oh http Response. It must be Ok");
-            let text = response.text().await;
-            //missing error conversion
-            if text.is_err() {
+            let body = if let Ok(text) = response.text().await {
+                text
+            } else {
                 return Err(KmsError::from(KmipError::ObjectNotFound(
                     "Error in getting the body of the response for the following uri ".to_string()
                         + url.as_str(),
                 )))
             };
-            let body = text.expect("Safe unwrap of the Body of the Response. It must be Ok");
             KResult::Ok(body.as_bytes().to_vec())
         }
         Some(UriType::Path(path)) => {
@@ -489,10 +489,10 @@ async fn get_crl_bytes(
     .await;
 
     // filtering errors
-    let is_err = responses.iter().all(|x| x.is_err());
+    let is_ok = responses.iter().all(|x| x.is_ok());
 
     // checking if there are any errors
-    if !is_err {
+    if is_ok {
         Ok(responses
             .iter_mut()
             .map(|x| {
