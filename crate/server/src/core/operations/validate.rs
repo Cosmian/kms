@@ -62,8 +62,7 @@ pub(crate) async fn validate_operation(
     }?;
 
     // Indexing Certificate Chain
-    let mut hm_certificates =
-        index_certificates(&certificates, &mut HashMap::<Vec<u8>, u8>::new())?;
+    let mut hm_certificates = index_certificates(&certificates)?;
 
     // Getting root certificate from indexing
     let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
@@ -104,7 +103,7 @@ pub(crate) async fn validate_operation(
     let date_validation = validate_chain_date(&certificates, request.validity_time)?;
 
     // Checking if the certificate chain has revocked elements
-    let uri_list = get_crl_uris_from_certificate_chain(&certificates)?;
+    let uri_list = get_crl_uris_from_certificate_chain(certificates.clone())?;
     if uri_list.is_empty() {
         Ok(ValidateResponse {
             validity_indicator: structural_validity.and(date_validation),
@@ -128,9 +127,9 @@ pub(crate) async fn validate_operation(
 /// Example: The certificate root key is "root". To find the son of the root, just get the
 /// authority key identifier from this certificate. That's the key of the son.
 fn index_certificates(
-    certificates: &[Vec<u8>],
-    hm_certificates: &mut HashMap<Vec<u8>, u8>,
+    certificates: &[Vec<u8>], // return a map created in the fun
 ) -> KResult<HashMap<Vec<u8>, u8>> {
+    let mut hm_certificates = HashMap::<Vec<u8>, u8>::new();
     for (i, cert) in certificates.iter().enumerate() {
         let cert = X509::from_der(cert)?;
         let aki = cert.authority_key_id();
@@ -222,20 +221,8 @@ async fn certificates_by_uid(
     }))
     .await;
 
-    // is any of them an Error?
-    let is_ok = res.iter().all(|x| x.is_ok());
-
     // checking if there are any errors
-    if is_ok {
-        Ok(res
-            .iter()
-            .map(|x| x.clone().expect("safe unwrap of uids"))
-            .collect())
-    } else {
-        Err(KmsError::from(KmipError::ObjectNotFound(
-            "There is a Kms Certificate UID that cannot be retrieved".to_string(),
-        )))
-    }
+    res.into_iter().collect()
 }
 
 // Fetches a certificate. If it fails, returns the according error
@@ -285,13 +272,14 @@ fn validate_chain_date(
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
-            let certificate = X509::from_der(certificate)?;
-            let validation = validate_date(&certificate, &current_date)?;
+            //let certificate = X509::from_der(certificate)?;
+            let validation = validate_date(certificate, &current_date)?;
             Ok(acc.and(validation))
         })
 }
 
-fn validate_date(certificate: &X509, date: &Asn1Time) -> KResult<ValidityIndicator> {
+fn validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicator> {
+    let certificate = X509::from_der(certificate)?;
     let now = date.as_ref();
     let (start, stop) = (certificate.not_before(), certificate.not_after());
     if start <= now && now <= stop {
@@ -304,21 +292,20 @@ fn validate_date(certificate: &X509, date: &Asn1Time) -> KResult<ValidityIndicat
 // getting crl uri for all the chain.
 // returns a vector
 fn get_crl_uris_from_certificate_chain(
-    certificates: &[Vec<u8>],
+    certificates: Vec<Vec<u8>>,
 ) -> KResult<Vec<(String, Vec<u8>)>> {
     certificates
         .iter()
         .try_fold(Vec::new(), |mut acc, certificate| {
-            get_crl_uri_from_certificate(certificate).map(|mut uris| {
+            let certificate = X509::from_der(certificate)?;
+            get_crl_uri_from_certificate(&certificate).map(|mut uris| {
                 acc.append(&mut uris);
                 acc
             })
         })
 }
 
-fn get_crl_uri_from_certificate(certificate: &[u8]) -> KResult<Vec<(String, Vec<u8>)>> {
-    /* and vec<u8> */
-    let certificate = X509::from_der(certificate)?;
+fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<u8>)>> {
     let certificate_hash = certificate.authority_key_id();
     let certificate_hash = if let Some(auth_id) = certificate_hash {
         auth_id.as_slice().to_vec()
