@@ -82,10 +82,9 @@ pub async fn certify(
     let issuer = get_issuer(&subject, kms, &request, user, params).await?;
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
-    let (unique_identifier, operations) = match subject {
+    let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) => {
             (
-                unique_identifier.clone(),
                 vec![
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -96,11 +95,11 @@ pub async fn certify(
                         StateEnumeration::Active,
                     )),
                 ],
+                unique_identifier,
             )
         }
         Subject::Certificate(unique_identifier, _, _) => {
             (
-                unique_identifier.clone(),
                 vec![
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -111,11 +110,12 @@ pub async fn certify(
                         StateEnumeration::Active,
                     )),
                 ],
+                unique_identifier,
             )
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             // update the public key attributes with a link to the certificate
-            let mut public_key_attributes = from_public_key.attributes.clone();
+            let mut public_key_attributes = from_public_key.attributes;
             public_key_attributes.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
@@ -127,7 +127,6 @@ pub async fn certify(
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
             );
             (
-                unique_identifier.clone(),
                 vec![
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -139,12 +138,13 @@ pub async fn certify(
                     )),
                     // update the public key
                     AtomicOperation::UpdateObject((
-                        from_public_key.id.clone(),
+                        from_public_key.id,
                         from_public_key.object,
                         public_key_attributes,
                         None,
                     )),
                 ],
+                unique_identifier,
             )
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, _) => {
@@ -182,14 +182,13 @@ pub async fn certify(
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
             (
-                unique_identifier.clone(),
                 vec![
                     // upsert the private key
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
                         keypair_data.private_key_object,
                         private_key_attributes,
-                        Some(keypair_data.private_key_tags.clone()),
+                        Some(keypair_data.private_key_tags),
                         StateEnumeration::Active,
                     )),
                     // upsert the public key
@@ -197,7 +196,7 @@ pub async fn certify(
                         keypair_data.public_key_id.to_string(),
                         keypair_data.public_key_object,
                         public_key_attributes,
-                        Some(keypair_data.public_key_tags.clone()),
+                        Some(keypair_data.public_key_tags),
                         StateEnumeration::Active,
                     )),
                     // upsert the certificate
@@ -209,6 +208,7 @@ pub async fn certify(
                         StateEnumeration::Active,
                     )),
                 ],
+                unique_identifier,
             )
         }
     };

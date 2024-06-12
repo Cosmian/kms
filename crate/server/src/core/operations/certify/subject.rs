@@ -101,7 +101,7 @@ impl Subject {
     pub fn tags(&self) -> HashSet<String> {
         match self {
             Subject::Certificate(_, _, attributes) => attributes.get_tags(),
-            // It is an open question whether the tags form an existing public key should be
+            // It is an open question whether the tags from an existing public key should be
             // added to those of the certificate. For now, we return an empty set.
             _ => HashSet::new(),
         }
