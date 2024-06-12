@@ -1,3 +1,4 @@
+set -e
 echo "removing old configurations"
 rm -rf certs crl newcerts private intermediate
 rm index.*
