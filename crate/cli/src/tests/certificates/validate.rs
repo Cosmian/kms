@@ -1,8 +1,13 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    fs,
+    path::{self, PathBuf},
+    process::Command,
+};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{start_default_test_kms_server, ONCE};
+use openssl::x509::X509;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -88,6 +93,7 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliErr
 
 async fn validate_certificate(
     cli_conf_path: &str,
+    sub_command: &str,
     certificates: Vec<String>,
     uids: Vec<String>,
     date: String,
@@ -106,7 +112,7 @@ async fn validate_certificate(
     }
     args.push("--validity-time".to_owned());
     args.push(date.to_owned());
-
+    cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
@@ -117,7 +123,6 @@ async fn validate_certificate(
 }
 
 #[tokio::test]
-
 async fn test_validate() -> Result<(), CliError> {
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
@@ -191,6 +196,7 @@ async fn test_validate() -> Result<(), CliError> {
 
     validate_certificate(
         &ctx.owner_client_conf_path,
+        "certificates",
         [].to_vec(),
         [
             intermediate_certificate_id.clone(),
@@ -208,6 +214,7 @@ async fn test_validate() -> Result<(), CliError> {
 
     validate_certificate(
         &ctx.owner_client_conf_path,
+        "certificates",
         [].to_vec(),
         [
             intermediate_certificate_id.clone(),
@@ -226,6 +233,7 @@ async fn test_validate() -> Result<(), CliError> {
 
     validate_certificate(
         &ctx.owner_client_conf_path,
+        "certificates",
         [].to_vec(),
         [
             intermediate_certificate_id.clone(),
@@ -233,6 +241,85 @@ async fn test_validate() -> Result<(), CliError> {
             leaf2_certificate_id.clone(),
         ]
         .to_vec(),
+        // Date: 15/04/2048
+        "4804152030Z".to_string(),
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_validate_1() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let root_path = path::Path::new("test_data/certificates/chain/ca.cert.der");
+    let intermediate_path = path::Path::new("test_data/certificates/chain/intermediate.cert.der");
+    let leaf1_path = path::Path::new("test_data/certificates/chain/leaf1.cert.der"); // invalid
+    let leaf2_path = path::Path::new("test_data/certificates/chain/leaf2.cert.der"); // valid
+
+    let root_cert = fs::read(root_path)?;
+    let root_cert = String::from_utf8(X509::from_der(&root_cert).unwrap().to_text().unwrap())?;
+    let intermediate_cert = fs::read(intermediate_path)?;
+    let intermediate_cert = String::from_utf8(
+        X509::from_der(&intermediate_cert)
+            .unwrap()
+            .to_text()
+            .unwrap(),
+    )?;
+    let leaf1_cert = fs::read(leaf1_path)?;
+    let leaf1_cert = String::from_utf8(X509::from_der(&leaf1_cert).unwrap().to_text().unwrap())?;
+    let leaf2_cert = fs::read(leaf2_path)?;
+    let leaf2_cert = String::from_utf8(X509::from_der(&leaf2_cert).unwrap().to_text().unwrap())?;
+
+    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [
+            intermediate_cert.clone(),
+            root_cert.clone(),
+            leaf1_cert.clone(),
+        ]
+        .to_vec(),
+        [].to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    println!(
+        "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
+    );
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [
+            intermediate_cert.clone(),
+            root_cert.clone(),
+            leaf2_cert.clone(),
+        ]
+        .to_vec(),
+        [].to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    println!(
+        "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
+         leaf2's expiration date"
+    );
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [
+            intermediate_cert.clone(),
+            root_cert.clone(),
+            leaf2_cert.clone(),
+        ]
+        .to_vec(),
+        [].to_vec(),
         // Date: 15/04/2048
         "4804152030Z".to_string(),
     )

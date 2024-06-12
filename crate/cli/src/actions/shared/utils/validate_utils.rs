@@ -19,8 +19,8 @@ pub async fn validate(
 
 fn print_validity_indicator(vi: ValidityIndicator) {
     match vi {
-        ValidityIndicator::Invalid => print!("certificate validity : invalid"),
-        ValidityIndicator::Unknown => print!("certificate validity : unknown"),
-        ValidityIndicator::Valid => print!("certificate validity : valid"),
+        ValidityIndicator::Invalid => println!("certificate validity : invalid"),
+        ValidityIndicator::Unknown => println!("certificate validity : unknown"),
+        ValidityIndicator::Valid => println!("certificate validity : valid"),
     }
 }
