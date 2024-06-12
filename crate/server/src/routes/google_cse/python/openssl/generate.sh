@@ -12,7 +12,7 @@ set -e
 ## Root CA
 
 #-1. Generate a private key for the CA.**
-# This will generate a 4096-bit RSA private key for the CA. The private key will be   in the file `ca.key`.
+# This will generate a 4096-bit RSA private key for the CA. The private key will be stored in the file `ca.key`.
 openssl genrsa -out ca.key 4096
 
 #-2. Generate a self-signed certificate for the CA.**

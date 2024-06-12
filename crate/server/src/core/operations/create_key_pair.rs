@@ -257,10 +257,11 @@ pub(crate) fn generate_key_pair_and_tags(
             }
         }
         CryptographicAlgorithm::RSA => {
-            let key_size_in_bits = any_attributes
-                .cryptographic_length
-                .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
-                as u32;
+            let key_size_in_bits = u32::try_from(
+                any_attributes
+                    .cryptographic_length
+                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?,
+            )?;
             trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
             create_rsa_key_pair(
