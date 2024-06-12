@@ -138,6 +138,12 @@ impl From<std::string::FromUtf8Error> for KmsError {
     }
 }
 
+impl From<std::num::TryFromIntError> for KmsError {
+    fn from(e: std::num::TryFromIntError) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
         Self::DatabaseError(e.to_string())
