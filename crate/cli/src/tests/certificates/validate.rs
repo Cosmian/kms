@@ -117,7 +117,7 @@ async fn validate_certificate(
 }
 
 #[tokio::test]
-#[ignore]
+
 async fn test_validate() -> Result<(), CliError> {
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 

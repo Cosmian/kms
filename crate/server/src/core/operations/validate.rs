@@ -61,8 +61,15 @@ pub(crate) async fn validate_operation(
         .concat()),
     }?;
 
+    let mut certs = Vec::<X509>::new();
+    let certificates = certificates.into_iter().try_fold(&mut certs, |acc, x| {
+        let x = X509::from_der(x.as_slice())?;
+        acc.push(x);
+        KResult::Ok(acc)
+    })?;
+
     // Indexing Certificate Chain
-    let mut hm_certificates = index_certificates(&certificates)?;
+    let hm_certificates = index_certificates(certificates)?;
 
     // Getting root certificate from indexing
     let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
@@ -72,13 +79,12 @@ pub(crate) async fn validate_operation(
             validity_indicator: ValidityIndicator::Invalid,
         })
     };
-    let root_cert = certificates.get(*root_idx as usize).ok_or_else(|| {
+    let root_x509 = certificates.get(*root_idx as usize).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
             cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
             "Root not found".to_string(),
         ))
     })?;
-    let root_x509 = X509::from_der(root_cert)?;
 
     // Verifying that the root certificate is auto-signed
     let root_pkey = root_x509.public_key()?;
@@ -92,7 +98,7 @@ pub(crate) async fn validate_operation(
     // The result is a ValidityIndicator, representing the validity of the chain,
     // and a u8, representing the length of the chain
     let (structural_validity, count) =
-        validate_chain_structure(root_cert, &certificates, &mut hm_certificates, 0)?;
+        validate_chain_structure(root_x509, certificates, &hm_certificates, 0)?;
     if certificates.len() != count as usize {
         return Ok(ValidateResponse {
             validity_indicator: ValidityIndicator::Invalid,
@@ -100,20 +106,18 @@ pub(crate) async fn validate_operation(
     };
 
     // Checking if the certificate chain has not expired
-    let date_validation = validate_chain_date(&certificates, request.validity_time)?;
+    let date_validation = validate_chain_date(certificates, request.validity_time)?;
 
     // Checking if the certificate chain has revocked elements
-    let uri_list = get_crl_uris_from_certificate_chain(certificates.clone())?;
+    let uri_list = get_crl_uris_from_certificate_chain(certificates)?;
     if uri_list.is_empty() {
         Ok(ValidateResponse {
             validity_indicator: structural_validity.and(date_validation),
         })
     } else {
-        let mut crl_bytes_list =
-            get_crl_bytes(uri_list, &mut hm_certificates, certificates.clone()).await?;
+        let mut crl_bytes_list = get_crl_bytes(uri_list, &hm_certificates, certificates).await?;
 
-        let revocation_status =
-            chain_revocation_status(certificates.as_slice(), &mut crl_bytes_list)?;
+        let revocation_status = chain_revocation_status(certificates, &mut crl_bytes_list)?;
         Ok(ValidateResponse {
             validity_indicator: revocation_status.and(structural_validity.and(date_validation)),
         })
@@ -127,11 +131,10 @@ pub(crate) async fn validate_operation(
 /// Example: The certificate root key is "root". To find the son of the root, just get the
 /// authority key identifier from this certificate. That's the key of the son.
 fn index_certificates(
-    certificates: &[Vec<u8>], // return a map created in the fun
+    certificates: &[X509], // return a map created in the fun
 ) -> KResult<HashMap<Vec<u8>, u8>> {
     let mut hm_certificates = HashMap::<Vec<u8>, u8>::new();
     for (i, cert) in certificates.iter().enumerate() {
-        let cert = X509::from_der(cert)?;
         let aki = cert.authority_key_id();
         let ski = cert.subject_key_id();
         let is_root = match (aki, ski) {
@@ -150,7 +153,7 @@ fn index_certificates(
             hm_certificates.insert(Asn1OctetStringRef::as_slice(aki.unwrap()).to_vec(), i as u8);
         }
     }
-    Ok(hm_certificates.clone())
+    Ok(hm_certificates)
 }
 
 // validate_chain_structure searches for the issuer certificate
@@ -159,13 +162,12 @@ fn index_certificates(
 // Start of the check is the root certificate. Iteratively, the offspring
 // certificates are checked. The check comprehends checking the signature validity.
 fn validate_chain_structure(
-    root: &[u8],
-    certificates: &Vec<Vec<u8>>,
-    hm_certificates: &mut HashMap<Vec<u8>, u8>,
+    root: &X509,
+    certificates: &[X509],
+    hm_certificates: &HashMap<Vec<u8>, u8>,
     _count: u8,
 ) -> KResult<(ValidityIndicator, u8)> {
-    let root_x509 = X509::from_der(root)?;
-    let son_issuer_id = root_x509
+    let son_issuer_id = root
         .subject_key_id()
         .ok_or_else(|| {
             KmsError::from(KmipError::InvalidKmipObject(
@@ -190,9 +192,8 @@ fn validate_chain_structure(
     } else {
         return Ok((ValidityIndicator::Invalid, _count + 1))
     };
-    let son_x509 = X509::from_der(son_cert)?;
-    let root_pkey = root_x509.public_key()?;
-    let validity = son_x509.verify(&root_pkey)?;
+    let root_pkey = root.public_key()?;
+    let validity = son_cert.verify(&root_pkey)?;
     let (res, count) =
         validate_chain_structure(son_cert, certificates, hm_certificates, _count + 1)?;
     if ValidityIndicator::from_bool(validity).and(res) == ValidityIndicator::Valid {
@@ -260,10 +261,7 @@ async fn certificate_by_uid(
     }
 }
 
-fn validate_chain_date(
-    certificates: &[Vec<u8>],
-    date: Option<String>,
-) -> KResult<ValidityIndicator> {
+fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<ValidityIndicator> {
     let current_date = if let Some(date) = date {
         Asn1Time::from_str(date.as_str())
     } else {
@@ -278,8 +276,7 @@ fn validate_chain_date(
         })
 }
 
-fn validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicator> {
-    let certificate = X509::from_der(certificate)?;
+fn validate_date(certificate: &X509, date: &Asn1Time) -> KResult<ValidityIndicator> {
     let now = date.as_ref();
     let (start, stop) = (certificate.not_before(), certificate.not_after());
     if start <= now && now <= stop {
@@ -291,14 +288,11 @@ fn validate_date(certificate: &[u8], date: &Asn1Time) -> KResult<ValidityIndicat
 
 // getting crl uri for all the chain.
 // returns a vector
-fn get_crl_uris_from_certificate_chain(
-    certificates: Vec<Vec<u8>>,
-) -> KResult<Vec<(String, Vec<u8>)>> {
+fn get_crl_uris_from_certificate_chain(certificates: &[X509]) -> KResult<Vec<(String, Vec<u8>)>> {
     certificates
         .iter()
         .try_fold(Vec::new(), |mut acc, certificate| {
-            let certificate = X509::from_der(certificate)?;
-            get_crl_uri_from_certificate(&certificate).map(|mut uris| {
+            get_crl_uri_from_certificate(certificate).map(|mut uris| {
                 acc.append(&mut uris);
                 acc
             })
@@ -347,7 +341,7 @@ fn crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
 }
 
 fn chain_revocation_status(
-    certificates: &[Vec<u8>],
+    certificates: &[X509],
     crls: &mut [Vec<u8>],
 ) -> KResult<ValidityIndicator> {
     certificates
@@ -357,13 +351,12 @@ fn chain_revocation_status(
 }
 
 fn certificate_revocation_status(
-    certificate: &[u8],
+    certificate: &X509,
     crls: &mut [Vec<u8>],
 ) -> KResult<ValidityIndicator> {
     let res = crls.iter().try_fold(ValidityIndicator::Valid, |acc, crl| {
-        let certificate = X509::from_der(certificate)?;
         let crl = X509Crl::from_pem(crl.as_slice())?;
-        let res = crl_status_to_validity_indicator(crl.get_by_cert(&certificate));
+        let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
         KResult::Ok(acc.and(res))
     })?;
     Ok(res)
@@ -379,9 +372,9 @@ enum UriType {
 // It retrieves files in locale and in remote (via http request).
 async fn test_and_get_resource_from_uri(
     uri: &String,
-    hm_certificates: &mut HashMap<Vec<u8>, u8>,
-    certificates: Vec<Vec<u8>>,
-    certificate_id: Vec<u8>,
+    hm_certificates: &HashMap<Vec<u8>, u8>,
+    certificates: &[X509],
+    certificate_id: &[u8],
 ) -> KResult<Vec<u8>> {
     // checking wether the resource is an URL or a Pathname
     let uri_type = match url::Url::parse(uri) {
@@ -435,7 +428,7 @@ async fn test_and_get_resource_from_uri(
         }
     }?;
     // Getting the CRL issuer Certificate
-    let certificate_idx = hm_certificates.get(&certificate_id).ok_or_else(|| {
+    let certificate_idx = hm_certificates.get(certificate_id).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
             cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
             "The certificate must be in the hashmap".to_string(),
@@ -447,7 +440,6 @@ async fn test_and_get_resource_from_uri(
             "The certificate index must be valid".to_string(),
         ))
     })?;
-    let certificate = X509::from_der(certificate.as_slice())?;
 
     // Verifying that the CRL is well signed by its issuer
     let crl = X509Crl::from_pem(crl_bytes.as_slice())?;
@@ -463,17 +455,11 @@ async fn test_and_get_resource_from_uri(
 // request and receive crl objects. Input: uri.
 async fn get_crl_bytes(
     uri_crls: Vec<(String, Vec<u8>)>,
-    hm_certificates: &mut HashMap<Vec<u8>, u8>,
-    certificates: Vec<Vec<u8>>,
+    hm_certificates: &HashMap<Vec<u8>, u8>,
+    certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
     let mut responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
-        test_and_get_resource_from_uri(
-            uri,
-            &mut hm_certificates.clone(),
-            certificates.clone(),
-            certificate_id.clone(),
-        )
-        .await
+        test_and_get_resource_from_uri(uri, hm_certificates, certificates, certificate_id).await
     }))
     .await;
 
