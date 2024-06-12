@@ -248,7 +248,7 @@ impl CertifyAction {
         } else if let Some(certificate_id_to_renew) = &self.certificate_id_to_re_certify {
             unique_identifier = Some(UniqueIdentifier::TextString(
                 certificate_id_to_renew.clone(),
-            ))
+            ));
         } else if self.generate_key_pair {
             attributes.certificate_attributes =
                 Some(Box::new(CertificateAttributes::parse_subject_line(

@@ -39,7 +39,7 @@ information in the Certificate Request takes precedence.
 
 The KMIP implementation does not:
 
-- specify how the signer is selected and whther self-signing is allowed
+- specify how the signer is selected and whether self-signing is allowed
 - specify how the certificate extensions are provided
 - and only supports Certificate Signing Request (CSR) and certifying public keys
 

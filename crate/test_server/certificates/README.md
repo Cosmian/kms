@@ -2,7 +2,7 @@ The [generate.sh](./generate_certs.sh) script will generate
 
 - a CA certificate
 - a server certificate in a PKCS12 file to enable HTTPS on the server
-- a client certificate to authenticate to the server with CN being test.client@cosmian.com
+- a client certificate to authenticate to the server with CN being <test.client@cosmian.com>
 
 Since the PKCS12 password is `password` (see script), the following command will start the server:
 
