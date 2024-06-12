@@ -1,13 +1,8 @@
-use std::{
-    fs,
-    path::{self, PathBuf},
-    process::Command,
-};
+use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{start_default_test_kms_server, ONCE};
-use openssl::x509::X509;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -106,12 +101,12 @@ async fn validate_certificate(
         args.push("--certificate".to_owned());
         args.push(certificate);
     }
-    // args.push("--validity-time".to_owned());
-    // args.push(date.to_owned());
     for uid in uids {
         args.push("--unique-identifier".to_owned());
         args.push(uid);
     }
+    args.push("--validity-time".to_owned());
+    args.push(date.to_owned());
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
