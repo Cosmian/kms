@@ -40,7 +40,7 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
     }
 }
 
-/// Extract the X509Extensions of an openssl X509 certificate
+/// Extract the `X509Extensions` of an openssl X509 certificate
 /// This is still an open issue in the openssl crate: https://github.com/sfackler/rust-openssl/pull/1095
 /// (The PR was closed)
 /// If this is ever fixed, this method should be replaced by the one in the openssl crate

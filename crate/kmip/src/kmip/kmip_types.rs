@@ -705,7 +705,7 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
         match value {
             UniqueIdentifier::TextString(s) => LinkedObjectIdentifier::TextString(s),
             UniqueIdentifier::Enumeration(e) => LinkedObjectIdentifier::Enumeration(e),
-            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i as i64),
+            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i64::from(i)),
         }
     }
 }

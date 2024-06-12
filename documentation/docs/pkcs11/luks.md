@@ -163,7 +163,7 @@ First allocate some space then create a LUKS partition using `cryptsetup`.
 
 #### 1. Allocating space for the LUKS partition
 
-LUKS partitions can be created either from disk paritions or from a file.
+LUKS partitions can be created either from disk partitions or from a file.
 
 ##### From a file
 

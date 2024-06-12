@@ -231,8 +231,7 @@ fn cryptographic_usage_mask_private_key(
         | CryptographicAlgorithm::Ed448 => FIPS_PRIVATE_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
         c => kms_bail!(KmsError::InvalidRequest(format!(
-            "Cryptographic algorithm not supported for private key in FIPS mode: {}",
-            c
+            "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),
     })
 }
@@ -249,8 +248,7 @@ fn cryptographic_usage_mask_public_key(
         | CryptographicAlgorithm::Ed448 => FIPS_PUBLIC_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
         c => kms_bail!(KmsError::InvalidRequest(format!(
-            "Cryptographic algorithm not supported for private key in FIPS mode: {}",
-            c
+            "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),
     })
 }

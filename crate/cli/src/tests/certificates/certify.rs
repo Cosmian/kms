@@ -175,7 +175,7 @@ fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attri
         } => certificate_value,
         _ => panic!("wrong object type"),
     }
-    .to_vec();
+    .clone();
     // check that the certificate is valid by parsing it using openssl
     let cert_x509 = X509::from_der(&cert_x509_der).unwrap();
     // print the subject name
@@ -599,7 +599,7 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
     )?;
 
     let (_, attributes, _) = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
-    println!("{:?}", attributes);
+    println!("{attributes:?}");
 
     // check links to public key
     let (public_key_id, public_key_attributes) =

@@ -48,4 +48,3 @@ zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]
-

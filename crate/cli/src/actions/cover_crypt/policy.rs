@@ -248,7 +248,7 @@ impl BinaryAction {
 /// View the policy of an existing public or private master key.
 ///
 ///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract rhe policy from a Key exported as TTLV.
+///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ViewAction {

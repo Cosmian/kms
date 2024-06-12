@@ -14,7 +14,7 @@ use openssl::{
 
 use crate::{database::object_with_metadata::ObjectWithMetadata, kms_error, result::KResult};
 
-/// This holds KeyPair information when one is created for the subject
+/// This holds `KeyPair` information when one is created for the subject
 pub struct KeyPairData {
     pub(crate) private_key_id: UniqueIdentifier,
     pub(crate) private_key_object: Object,
