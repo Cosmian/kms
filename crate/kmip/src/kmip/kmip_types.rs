@@ -2562,3 +2562,33 @@ pub enum ResultStatusEnumeration {
     OperationPending = 0x0000_0002,
     OperationUndone = 0x0000_0003,
 }
+
+/// An Enumeration object indicating whether the certificate chain is valid,
+/// invalid, or unknown.
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+pub enum ValidityIndicator {
+    Valid = 0x0000_0000,
+    Invalid = 0x0000_0001,
+    Unknown = 0x0000_0002,
+}
+
+impl ValidityIndicator {
+    pub fn and(&self, vi: ValidityIndicator) -> ValidityIndicator {
+        match (self, vi) {
+            (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            (ValidityIndicator::Invalid, _) | (_, ValidityIndicator::Invalid) => {
+                ValidityIndicator::Invalid
+            }
+            _ => ValidityIndicator::Unknown,
+        }
+    }
+
+    pub fn from_bool(b: bool) -> ValidityIndicator {
+        if b {
+            ValidityIndicator::Valid
+        } else {
+            ValidityIndicator::Invalid
+        }
+    }
+}

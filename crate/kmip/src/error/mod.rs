@@ -39,6 +39,9 @@ pub enum KmipError {
 
     #[error("OpenSSL Error: {0}")]
     OpenSSL(String),
+
+    #[error("Object Not Found: {0}")]
+    ObjectNotFound(String),
 }
 
 impl KmipError {

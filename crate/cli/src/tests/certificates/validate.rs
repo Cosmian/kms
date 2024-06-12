@@ -1,5 +1,7 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
+use assert_cmd::cargo::CommandCargoExt;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
@@ -7,7 +9,11 @@ use tracing::debug;
 use crate::{
     actions::certificates::CertificateInputFormat,
     error::CliError,
-    tests::certificates::{encrypt::encrypt, import::import_certificate},
+    tests::{
+        certificates::{encrypt::encrypt, import::import_certificate},
+        utils::recover_cmd_logs,
+        PROG_NAME,
+    },
 };
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
@@ -78,4 +84,162 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
 #[ignore]
 async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
     import_revoked_certificate_encrypt("prime256v1").await
+}
+
+async fn validate_certificate(
+    cli_conf_path: &str,
+    sub_command: &str,
+    certificates: Vec<String>,
+    uids: Vec<String>,
+    date: String,
+) -> Result<(), CliError> {
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    let mut args: Vec<String> = vec!["validate".to_owned()];
+    for certificate in certificates {
+        args.push("--certificate".to_owned());
+        args.push(certificate);
+    }
+    for uid in uids {
+        args.push("--unique-identifier".to_owned());
+        args.push(uid);
+    }
+    args.push("--validity-time".to_owned());
+    args.push(date.to_owned());
+    cmd.arg(sub_command).args(args);
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() {
+        return Ok(())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
+#[tokio::test]
+async fn test_validate() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+
+    println!("importing root cert");
+    let root_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/ca.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("importing intermediate cert");
+    let intermediate_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/intermediate.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(root_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("importing leaf1 cert");
+
+    let leaf1_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf1.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("importing leaf2 cert");
+
+    let leaf2_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf2.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf1_certificate_id.clone(),
+        ]
+        .to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    println!(
+        "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
+    );
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ]
+        .to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    println!(
+        "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
+         leaf2's expiration date"
+    );
+
+    validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ]
+        .to_vec(),
+        // Date: 15/04/2048
+        "4804152030Z".to_string(),
+    )
+    .await?;
+
+    Ok(())
 }

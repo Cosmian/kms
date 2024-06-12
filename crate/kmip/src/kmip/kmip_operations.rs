@@ -15,7 +15,7 @@ use super::{
         AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
         KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
         ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
-        UniqueIdentifier,
+        UniqueIdentifier, ValidityIndicator,
     },
 };
 use crate::error::KmipError;
@@ -133,6 +133,8 @@ pub enum Operation {
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
+    Validate(Validate),
+    ValidateResponse(ValidateResponse),
 }
 
 impl Operation {
@@ -151,7 +153,8 @@ impl Operation {
             | Operation::Locate(_)
             | Operation::Revoke(_)
             | Operation::ReKeyKeyPair(_)
-            | Operation::Destroy(_) => Direction::Request,
+            | Operation::Destroy(_)
+            | Operation::Validate(_) => Direction::Request,
 
             Operation::ImportResponse(_)
             | Operation::CertifyResponse(_)
@@ -165,7 +168,8 @@ impl Operation {
             | Operation::LocateResponse(_)
             | Operation::RevokeResponse(_)
             | Operation::ReKeyKeyPairResponse(_)
-            | Operation::DestroyResponse(_) => Direction::Response,
+            | Operation::DestroyResponse(_)
+            | Operation::ValidateResponse(_) => Direction::Response,
         }
     }
 
@@ -191,6 +195,9 @@ impl Operation {
                 OperationEnumeration::RekeyKeyPair
             }
             Operation::Destroy(_) | Operation::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Operation::Validate(_) | Operation::ValidateResponse(_) => {
+                OperationEnumeration::Validate
+            }
         }
     }
 
@@ -1321,4 +1328,39 @@ pub struct Destroy {
 pub struct DestroyResponse {
     /// The Unique Identifier of the object.
     pub unique_identifier: UniqueIdentifier,
+}
+/// This operation requests the server to validate a certificate chain and return
+/// information on its validity. Only a single certificate chain SHALL be
+/// included in each request.
+/// The request MAY contain a list of certificate objects, and/or a list of
+/// Unique Identifiers that identify Managed Certificate objects.
+/// Together, the two lists compose a certificate chain to be validated.
+/// The request MAY also contain a date for which all certificates in the
+/// certificate chain are REQUIRED to be valid.
+/// The method or policy by which validation is conducted is a decision of the
+/// server and is outside of the scope of this protocol.
+/// Likewise, the order in which the supplied certificate chain is validated and
+/// the specification of trust anchors used to terminate validation are also
+/// controlled by the server.
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Validate {
+    /// One or more Certificates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<Vec<Vec<u8>>>,
+    /// One or more Unique Identifiers of Certificate Objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<Vec<UniqueIdentifier>>,
+    /// A Date-Time object indicating when the certificate chain needs to be
+    /// valid. If omitted, the current date and time SHALL be assumed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validity_time: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ValidateResponse {
+    /// An Enumeration object indicating whether the certificate chain is valid,
+    /// invalid, or unknown.
+    pub validity_indicator: ValidityIndicator,
 }

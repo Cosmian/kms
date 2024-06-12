@@ -7,7 +7,7 @@ use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
     destroy_certificate::DestroyCertificateAction, encrypt_certificate::EncryptCertificateAction,
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
-    revoke_certificate::RevokeCertificateAction,
+    revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
 };
 use crate::error::CliError;
 
@@ -19,6 +19,7 @@ mod encrypt_certificate;
 mod export_certificate;
 mod import_certificate;
 mod revoke_certificate;
+mod validate_certificate;
 
 /// Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 #[derive(Subcommand)]
@@ -31,6 +32,7 @@ pub enum CertificatesCommands {
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
+    Validate(ValidateCertificatesAction),
 }
 
 impl CertificatesCommands {
@@ -44,6 +46,7 @@ impl CertificatesCommands {
             Self::Import(action) => action.run(client_connector).await,
             Self::Revoke(action) => action.run(client_connector).await,
             Self::Destroy(action) => action.run(client_connector).await,
+            Self::Validate(action) => action.run(client_connector).await,
         }
     }
 }

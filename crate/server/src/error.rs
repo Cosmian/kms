@@ -12,7 +12,7 @@ use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum KmsError {
     // When a conversion from/to bytes
     #[error("Conversion Error: {0}")]
@@ -194,6 +194,7 @@ impl From<KmipError> for KmsError {
             KmipError::InvalidTag(s) => Self::NotSupported(s),
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
+            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

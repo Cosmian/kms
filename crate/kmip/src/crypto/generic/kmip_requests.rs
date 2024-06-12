@@ -6,7 +6,7 @@ use crate::{
     kmip::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke},
+        kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke, Validate},
         kmip_types::{
             Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
         },
@@ -22,6 +22,39 @@ pub fn build_revoke_key_request(
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_string())),
         revocation_reason,
         compromise_occurrence_date: None,
+    })
+}
+
+/// Build a `Validate` request to validate a certificate chain.
+pub fn build_validate_certificate_request(
+    certificates: Vec<String>,
+    unique_identifiers: Vec<String>,
+    date: String,
+) -> Result<Validate, KmipError> {
+    let certificates = {
+        if certificates.is_empty() {
+            None
+        } else {
+            Some(certificates.into_iter().map(|x| x.into_bytes()).collect())
+        }
+    };
+    let unique_identifiers = {
+        if unique_identifiers.is_empty() {
+            None
+        } else {
+            Some(
+                unique_identifiers
+                    .iter()
+                    .map(|x| UniqueIdentifier::TextString(x.clone()))
+                    .collect(),
+            )
+        }
+    };
+    let date = { if date.is_empty() { None } else { Some(date) } };
+    Ok(Validate {
+        certificate: certificates,
+        unique_identifier: unique_identifiers,
+        validity_time: date,
     })
 }
 
