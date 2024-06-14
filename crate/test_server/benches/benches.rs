@@ -25,10 +25,19 @@ criterion_group!(
     name = encryption_benches;
     config = Criterion::default().sample_size(1000).measurement_time(Duration::from_secs(10));
     targets =
-        bench_rsa_encrypt_2048,
-        bench_rsa_encrypt_4096,
-        bench_rsa_decrypt_2048,
-        bench_rsa_decrypt_4096,
+        bench_rsa_pkcsv15_encrypt_2048,
+        bench_rsa_pkcsv15_encrypt_4096,
+        bench_rsa_pkcsv15_decrypt_2048,
+        bench_rsa_pkcsv15_decrypt_4096,
+        bench_rsa_oaep_encrypt_2048,
+        bench_rsa_oaep_encrypt_4096,
+        bench_rsa_oaep_decrypt_2048,
+        bench_rsa_oaep_decrypt_4096,
+        bench_rsa_key_wrp_encrypt_2048,
+        bench_rsa_key_wrp_encrypt_4096,
+        bench_rsa_key_wrp_decrypt_2048,
+        bench_rsa_key_wrp_decrypt_4096,
+
 );
 
 fn bench_rsa_create_keypair(c: &mut Criterion) {
@@ -55,14 +64,174 @@ fn bench_rsa_create_keypair(c: &mut Criterion) {
     });
 }
 
-fn bench_rsa_encrypt_2048(c: &mut Criterion) {
-    bench_rsa_encrypt(c, 2048);
+fn bench_rsa_pkcsv15_encrypt_2048(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA PKCSv1.5",
+    );
 }
-fn bench_rsa_encrypt_4096(c: &mut Criterion) {
-    bench_rsa_encrypt(c, 4096);
+fn bench_rsa_pkcsv15_encrypt_4096(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA PKCSv1.5",
+    );
 }
 
-fn bench_rsa_encrypt(c: &mut Criterion, key_size: usize) {
+fn bench_rsa_pkcsv15_decrypt_2048(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA PKCSv1.5",
+    );
+}
+fn bench_rsa_pkcsv15_decrypt_4096(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA PKCSv1.5",
+    );
+}
+
+fn bench_rsa_oaep_encrypt_2048(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA OAEP",
+    );
+}
+fn bench_rsa_oaep_encrypt_4096(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA OAEP",
+    );
+}
+
+fn bench_rsa_oaep_decrypt_2048(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA OAEP",
+    );
+}
+fn bench_rsa_oaep_decrypt_4096(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA OAEP",
+    );
+}
+
+fn bench_rsa_key_wrp_encrypt_2048(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA AES KWP",
+    );
+}
+fn bench_rsa_key_wrp_encrypt_4096(c: &mut Criterion) {
+    bench_rsa_encrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA AES KWP",
+    );
+}
+
+fn bench_rsa_key_wrp_decrypt_2048(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        2048,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA AES KWP",
+    );
+}
+fn bench_rsa_key_wrp_decrypt_4096(c: &mut Criterion) {
+    bench_rsa_decrypt(
+        c,
+        4096,
+        &CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        "RSA AES KWP",
+    );
+}
+
+fn bench_rsa_encrypt(
+    c: &mut Criterion,
+    key_size: usize,
+    cryptographic_parameters: &CryptographicParameters,
+    name: &str,
+) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let (kms_rest_client, _sk, pk) = runtime.block_on(async {
@@ -76,21 +245,19 @@ fn bench_rsa_encrypt(c: &mut Criterion, key_size: usize) {
     });
 
     let mut group = c.benchmark_group("RSA tests");
-    group.bench_function(&format!("RSA {key_size}bit encryption"), |b| {
+    group.bench_function(&format!("{name} {key_size}bit encryption"), |b| {
         b.to_async(&runtime).iter(|| async {
-            let _ = encrypt(&kms_rest_client, &pk, &[0u8; 32]).await;
+            let _ = encrypt(&kms_rest_client, &pk, &[0u8; 32], cryptographic_parameters).await;
         });
     });
 }
 
-fn bench_rsa_decrypt_2048(c: &mut Criterion) {
-    bench_rsa_decrypt(c, 2048);
-}
-fn bench_rsa_decrypt_4096(c: &mut Criterion) {
-    bench_rsa_decrypt(c, 4096);
-}
-
-fn bench_rsa_decrypt(c: &mut Criterion, key_size: usize) {
+fn bench_rsa_decrypt(
+    c: &mut Criterion,
+    key_size: usize,
+    cryptographic_parameters: &CryptographicParameters,
+    name: &str,
+) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let (kms_rest_client, sk, _pk, ciphertext) = runtime.block_on(async {
@@ -100,14 +267,14 @@ fn bench_rsa_decrypt(c: &mut Criterion, key_size: usize) {
             .unwrap();
         let kms_rest_client = ctx.owner_client_conf.initialize_kms_client().unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
-        let ciphertext = encrypt(&kms_rest_client, &pk, &[0u8; 32]).await;
+        let ciphertext = encrypt(&kms_rest_client, &pk, &[0u8; 32], cryptographic_parameters).await;
         (kms_rest_client, sk, pk, ciphertext)
     });
 
     let mut group = c.benchmark_group("RSA tests");
-    group.bench_function(&format!("RSA {key_size}bit decryption"), |b| {
+    group.bench_function(&format!("{name} {key_size}bit decryption"), |b| {
         b.to_async(&runtime).iter(|| async {
-            let _ = decrypt(&kms_rest_client, &sk, &ciphertext).await;
+            let _ = decrypt(&kms_rest_client, &sk, &ciphertext, cryptographic_parameters).await;
         });
     });
 }
@@ -129,7 +296,12 @@ async fn create_rsa_keypair(
     )
 }
 
-async fn encrypt(kms_rest_client: &KmsClient, pk: &str, cleartext: &[u8]) -> Vec<u8> {
+async fn encrypt(
+    kms_rest_client: &KmsClient,
+    pk: &str,
+    cleartext: &[u8],
+    cryptographic_parameters: &CryptographicParameters,
+) -> Vec<u8> {
     // Create the kmip query
     let encrypt_request = build_encryption_request(
         pk,
@@ -137,12 +309,7 @@ async fn encrypt(kms_rest_client: &KmsClient, pk: &str, cleartext: &[u8]) -> Vec
         cleartext.to_vec(),
         None,
         None,
-        Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
-            hashing_algorithm: Some(HashingAlgorithm::SHA256),
-            ..Default::default()
-        }),
+        Some(cryptographic_parameters.clone()),
     )
     .unwrap();
 
@@ -152,7 +319,12 @@ async fn encrypt(kms_rest_client: &KmsClient, pk: &str, cleartext: &[u8]) -> Vec
     encrypt_response.data.unwrap()
 }
 
-async fn decrypt(kms_rest_client: &KmsClient, sk: &str, ciphertext: &[u8]) -> Vec<u8> {
+async fn decrypt(
+    kms_rest_client: &KmsClient,
+    sk: &str,
+    ciphertext: &[u8],
+    cryptographic_parameters: &CryptographicParameters,
+) -> Vec<u8> {
     // Create the kmip query
     let decrypt_request = build_decryption_request(
         sk,
@@ -160,12 +332,7 @@ async fn decrypt(kms_rest_client: &KmsClient, sk: &str, ciphertext: &[u8]) -> Ve
         ciphertext.to_vec(),
         None,
         None,
-        Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::OAEP),
-            hashing_algorithm: Some(HashingAlgorithm::SHA256),
-            ..Default::default()
-        }),
+        Some(cryptographic_parameters.clone()),
     );
 
     // Query the KMS with your kmip data and get the key pair ids
