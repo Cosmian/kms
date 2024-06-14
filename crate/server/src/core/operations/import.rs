@@ -455,7 +455,11 @@ async fn process_pkcs12(
 
     // parse the PKCS12
     let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
-    let pkcs12 = pkcs12_parser.parse2(&password)?;
+    let pkcs12 = pkcs12_parser.parse2(&password).map_err(|e| {
+        KmsError::Certificate(format!(
+            "Unable to parse PKCS12 file: (bad/missing password?). {e:?}"
+        ))
+    })?;
 
     // First build the tuples (id,Object) for the private key, the leaf certificate
     // and the chain certificates

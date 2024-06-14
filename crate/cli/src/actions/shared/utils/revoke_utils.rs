@@ -32,9 +32,9 @@ pub async fn revoke(
         == revoke_response
             .unique_identifier
             .as_str()
-            .context("the server did not return a key id as a dtring")?
+            .context("the server did not return a key id as a string")?
     {
-        println!("Successfully revoked the key: {}.", &key_id);
+        println!("Successfully revoked the object: {}.", &key_id);
         Ok(())
     } else {
         cli_bail!("Something went wrong when revoking the key.")

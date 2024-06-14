@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{KeyFormatType, LinkType, StateEnumeration},
+    kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
@@ -181,24 +181,21 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    if let Object::Certificate { .. } = object {
+    debug!("destroy: object: {object:?}");
+    let attributes = if let Object::Certificate { .. } = object {
         trace!("Certificate destroying");
+        Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
         key_block.key_value = KeyValue {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
             attributes: key_block.key_value.attributes.clone(),
         };
-    }
+        key_block.attributes()?.clone()
+    };
 
     kms.db
-        .update_object(
-            unique_identifier,
-            object,
-            object.attributes()?,
-            None,
-            params,
-        )
+        .update_object(unique_identifier, object, &attributes, None, params)
         .await?;
 
     kms.db

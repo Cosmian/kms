@@ -104,7 +104,7 @@ pub struct CertifyAction {
     /// The unique identifier of the certificate to issue or renew.
     /// If not provided, a random one will be generated when issuing a certificate,
     /// or the original one will be used when renewing a certificate.
-    #[clap(long = "certificate-id", short = 'i')]
+    #[clap(long = "certificate-id", short = 'c')]
     certificate_id: Option<String>,
 
     /// The path to a certificate signing request.
@@ -171,7 +171,7 @@ pub struct CertifyAction {
     /// The unique identifier of the certificate of the issuer.
     /// A private key must be linked to that certificate
     /// if no issuer private key id is provided.
-    #[clap(long = "issuer-certificate-id", short = 'c')]
+    #[clap(long = "issuer-certificate-id", short = 'i')]
     issuer_certificate_id: Option<String>,
 
     /// The requested number of validity days
@@ -364,7 +364,7 @@ impl CertifyAction {
         let certificate_unique_identifier = client_connector
             .certify(certify_request)
             .await
-            .expect("failed creating certificate")
+            .map_err(|e| CliError::ServerError(format!("failed creating certificate: {e:?}")))?
             .unique_identifier;
 
         println!("The certificate was issued with id: {certificate_unique_identifier}.");

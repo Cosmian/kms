@@ -39,7 +39,7 @@ pub struct ExportCertificateAction {
     /// If not specified, tags should be specified
     #[clap(
         long = "certificate-id",
-        short = 'k',
+        short = 'c',
         group = "certificate-tags",
         verbatim_doc_comment
     )]
@@ -69,7 +69,7 @@ pub struct ExportCertificateAction {
     /// Destroyed objects have their key material removed.
     #[clap(
         long = "allow-revoked",
-        short = 'i',
+        short = 'r',
         default_value = "false",
         verbatim_doc_comment
     )]

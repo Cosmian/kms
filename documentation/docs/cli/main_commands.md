@@ -639,7 +639,7 @@ Issue or renew a X509 certificate
 ### Usage
 `ckms certificates certify [options]`
 ### Arguments
-`--certificate-id [-i] <CERTIFICATE_ID>` The unique identifier of the certificate to issue or renew. If not provided, a random one will be generated when issuing a certificate, or the original one will be used when renewing a certificate
+`--certificate-id [-c] <CERTIFICATE_ID>` The unique identifier of the certificate to issue or renew. If not provided, a random one will be generated when issuing a certificate, or the original one will be used when renewing a certificate
 
 `--certificate-signing-request [-r] <CERTIFICATE_SIGNING_REQUEST>` The path to a certificate signing request
 
@@ -664,7 +664,7 @@ Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p52
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
-`--issuer-certificate-id [-c] <ISSUER_CERTIFICATE_ID>` The unique identifier of the certificate of the issuer. A private key must be linked to that certificate if no issuer private key id is provided
+`--issuer-certificate-id [-i] <ISSUER_CERTIFICATE_ID>` The unique identifier of the certificate of the issuer. A private key must be linked to that certificate if no issuer private key id is provided
 
 `--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
 
@@ -708,7 +708,7 @@ Encrypt a file using the certificate public key
 ### Arguments
 ` <FILE>` The file to encrypt
 
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
@@ -730,7 +730,7 @@ Export a certificate from the KMS
 ### Arguments
 ` <CERTIFICATE_FILE>` The file to export the certificate to
 
-`--certificate-id [-k] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
+`--certificate-id [-c] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
 If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate/private key when no unique id is specified.
@@ -742,7 +742,7 @@ Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
-`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
+`--allow-revoked [-r] <ALLOW_REVOKED>` Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
 The user must be the owner of the certificate.
 Destroyed objects have their key material removed.
 
@@ -808,7 +808,7 @@ Revoke a certificate
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
 
@@ -823,7 +823,7 @@ Destroy a certificate
 ### Usage
 `ckms certificates destroy [options]`
 ### Arguments
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
 

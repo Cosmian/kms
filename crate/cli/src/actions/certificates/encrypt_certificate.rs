@@ -23,7 +23,7 @@ pub struct EncryptCertificateAction {
 
     /// The certificate unique identifier.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'k', group = "key-tags")]
+    #[clap(long = "certificate-id", short = 'c', group = "key-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
