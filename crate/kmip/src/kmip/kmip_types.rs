@@ -1213,12 +1213,19 @@ impl CertificateAttributes {
             let mut parts = component.splitn(2, '=');
             let key = parts
                 .next()
-                .ok_or_else(|| KmipError::Default("subject name identifier missing".to_string()))?
+                .ok_or_else(|| {
+                    KmipError::Default(
+                        "Missing x509 certificate `subject name` identifier".to_string(),
+                    )
+                })?
                 .trim();
             let value = parts
                 .next()
                 .ok_or_else(|| {
-                    KmipError::Default(format!("subject name value missing for identifier {key}"))
+                    KmipError::Default(format!(
+                        "Missing or invalid x509 certificate `subject name` value for identifier \
+                         {key}"
+                    ))
                 })?
                 .trim();
             match key {

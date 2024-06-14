@@ -68,7 +68,12 @@ pub struct ImportCertificateAction {
     certificate_id: Option<String>,
 
     /// Import the certificate in the selected format.
-    #[clap(long = "format", short = 'f', default_value = "json-ttlv")]
+    #[clap(
+        required = true,
+        long = "format",
+        short = 'f',
+        default_value = "json-ttlv"
+    )]
     input_format: CertificateInputFormat,
 
     /// The corresponding private key id if any.

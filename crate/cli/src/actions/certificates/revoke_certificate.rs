@@ -15,7 +15,7 @@ pub struct RevokeCertificateAction {
 
     /// The certificate unique identifier of the certificate to revoke.
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'k', group = "certificate-tags")]
+    #[clap(long = "certificate-id", short = 'c', group = "certificate-tags")]
     certificate_id: Option<String>,
 
     /// Tag to use to retrieve the certificate when no certificate id is specified.
