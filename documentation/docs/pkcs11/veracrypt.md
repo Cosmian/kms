@@ -20,9 +20,11 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md#configuration).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md).
 
-See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to learn how to configure the
+See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
+to learn
+how to configure the
 KMS to use Open ID connect or certificate authentication (please note that the KMS can
 also manage the machines certificates).
 

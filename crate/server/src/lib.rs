@@ -10,6 +10,7 @@ pub mod kms_server;
 pub mod middlewares;
 pub mod result;
 pub mod routes;
+pub mod telemetry;
 
 pub use database::KMSServer;
 

@@ -229,6 +229,12 @@ impl From<base64::DecodeError> for KmsError {
     }
 }
 
+impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
+    fn from(e: tracing::dispatcher::SetGlobalDefaultError) -> Self {
+        Self::ServerError(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
