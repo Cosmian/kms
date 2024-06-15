@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [?.?.?] - 2024-06-15
+
+### Features
+
+- Added benchmarks
+
 ## [4.16.0] - 2024-05-06
 
 ### Bug Fixes
@@ -17,7 +23,8 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Create Gmail key pairs and identities with `ckms` via Gmail API ([#243](https://github.com/Cosmian/kms/pull/243))
+- Create Gmail key pairs and identities with `ckms` via Gmail
+  API ([#243](https://github.com/Cosmian/kms/pull/243))
 
 ### Bug Fixes
 
@@ -27,7 +34,8 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Add Google Workspace CSE endpoints for **encrypted Gmail** ([#192](https://github.com/Cosmian/kms/pull/192))
+- Add Google Workspace CSE endpoints for **encrypted Gmail
+  ** ([#192](https://github.com/Cosmian/kms/pull/192))
 
 ### Bug Fixes
 
@@ -135,10 +143,10 @@ All notable changes to this project will be documented in this file.
 
 - Save KMIP Attributes in a proper column of `Objects`
   table [#166](https://github.com/Cosmian/kms/pull/166):
-  - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
+    - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
 - Add support for CoverCrypt `rekey`, `prune`, and `Policy` editing
   methods [#179](https://github.com/Cosmian/kms/pull/179):
-  - Add CLI commands to perform these actions
+    - Add CLI commands to perform these actions
 - Accurate CryptographicUsageMask for KMIP creation (RSA and EC
   keys) [#189](https://github.com/Cosmian/kms/pull/189)
   and [#187](https://github.com/Cosmian/kms/pull/187).
@@ -253,10 +261,10 @@ All notable changes to this project will be documented in this file.
 
 - Redis-Findex: `create` now checks for the pre-existence of the object
 - Better KMIP compliance:
-  - improved KeyBlock definition [#76](https://github.com/Cosmian/kms/issues/76)
-  - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
-  - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
-  - Use od standards attributes instead of Vendor attributes wherever possible
+    - improved KeyBlock definition [#76](https://github.com/Cosmian/kms/issues/76)
+    - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
+    - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
+    - Use od standards attributes instead of Vendor attributes wherever possible
 
 ## [4.9.1] - 2023-11-14
 
@@ -301,13 +309,13 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - KMS running inside TEE (SGX or SEV)
-  - review the `verify` subcommand
-  - force checking the leaf TLS certificate when querying a KMS running inside a TEE
-  - verify RA-TLS certificate before querying the bootstrap server
-  - review the TLS certificate generation using the key tied to the TEE
-  - remove libsgx and create a new dependance to tee_attestation crate
-  - update KMS server argument regarding the TEE and certbot
-  - review documentation regarding the KMS usage inside a TEE
+    - review the `verify` subcommand
+    - force checking the leaf TLS certificate when querying a KMS running inside a TEE
+    - verify RA-TLS certificate before querying the bootstrap server
+    - review the TLS certificate generation using the key tied to the TEE
+    - remove libsgx and create a new dependance to tee_attestation crate
+    - update KMS server argument regarding the TEE and certbot
+    - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])
 
 ### Ci
@@ -320,17 +328,17 @@ All notable changes to this project will be documented in this file.
 
 - Added the wildcard user `*` to grant access rights to all users on an object
 - About certificates:
-  - add validation of the complete chain instead of the leaf and parent certificates
-  - add verifications before using a certificate:
-    - check that each certificate is not expired (both chain and leaf certificates)
-    - check that no certificate is revoked (both chain and leaf certificates)
-    - check that each certificate has a valid signature (both chain and leaf certificates)
-    - check that certificate CRL signature is valid
-  - add RSA X509 certificate support
-  - add Covercrypt bulk encryption
+    - add validation of the complete chain instead of the leaf and parent certificates
+    - add verifications before using a certificate:
+        - check that each certificate is not expired (both chain and leaf certificates)
+        - check that no certificate is revoked (both chain and leaf certificates)
+        - check that each certificate has a valid signature (both chain and leaf certificates)
+        - check that certificate CRL signature is valid
+    - add RSA X509 certificate support
+    - add Covercrypt bulk encryption
 - KMS CLI `ckms`:
-  - can import the Mozilla Common CA Database (CCADB)
-  - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private
+    - can import the Mozilla Common CA Database (CCADB)
+    - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private
       key)
 
 ### Bug Fixes
@@ -355,25 +363,25 @@ All notable changes to this project will be documented in this file.
   components, including the database encryption secret and the HTTPS certificate key, directly into
   the encrypted machine memory, through a secure connection
 - Add certificate support:
-  - in cosmian_kms_server:
-    - implement `Certify` KMIP operation
-    - in addition, the KMS server will automatically add:
-      - the system tag `_cert` on `Certificate` object
-      - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the
+    - in cosmian_kms_server:
+        - implement `Certify` KMIP operation
+        - in addition, the KMS server will automatically add:
+            - the system tag `_cert` on `Certificate` object
+            - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the
               link between public/private key objects and the related certificate object
-      - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where
+            - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where
               SPKI refers
               to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI
               value identifies uniquely the underlying certificate
-      - the system tag `_cert_ca=<Subject Common Name>` on CA `Certificate` object
-    - import X509 certificate as PEM and also import private key as PEM
-    - export generic KMIP key `wrapped` by X509 certificate
-    - import a wrapped key with unwrapping on the fly
-    - encrypt with X509 certificate and decrypt with PKCS8 private key
-  - in `ckms`, add:
-    - create/destroy certificate
-    - export/import certificate
-    - revoke certificate
+            - the system tag `_cert_ca=<Subject Common Name>` on CA `Certificate` object
+        - import X509 certificate as PEM and also import private key as PEM
+        - export generic KMIP key `wrapped` by X509 certificate
+        - import a wrapped key with unwrapping on the fly
+        - encrypt with X509 certificate and decrypt with PKCS8 private key
+    - in `ckms`, add:
+        - create/destroy certificate
+        - export/import certificate
+        - revoke certificate
 - Add the export wrapping with X509 certificate encryption
 
 ## [4.5.0] - 2023-08-21
@@ -442,8 +450,8 @@ Use the tags to export objects, locate them, or request data encryption and decr
 - Use of cloudproof_rust as a dependency rather than Covercrypt and Crypto Core directly to avoid
   version conflicts
 - Authentication:
-  - support for more JWT providers
-  - support for certificate authentication
+    - support for more JWT providers
+    - support for certificate authentication
 - Removal of global static conf and use of proper injection (was hindering testing)
 - Authorization: re-factor of endpoints and fix delegation issues around revoke and destroy
 
@@ -528,7 +536,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 ### Features
 
 - Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
-  - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
+    - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
 
 ### Ci
 
