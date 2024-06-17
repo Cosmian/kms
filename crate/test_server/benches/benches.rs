@@ -247,7 +247,13 @@ fn bench_rsa_encrypt(
     let mut group = c.benchmark_group("RSA tests");
     group.bench_function(&format!("{name} {key_size}bit encryption"), |b| {
         b.to_async(&runtime).iter(|| async {
-            let _ = encrypt(&kms_rest_client, &pk, &[0u8; 32], cryptographic_parameters).await;
+            let _ = encrypt(
+                &kms_rest_client,
+                &pk,
+                vec![0u8; 32],
+                cryptographic_parameters,
+            )
+            .await;
         });
     });
 }
@@ -267,14 +273,20 @@ fn bench_rsa_decrypt(
             .unwrap();
         let kms_rest_client = ctx.owner_client_conf.initialize_kms_client().unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
-        let ciphertext = encrypt(&kms_rest_client, &pk, &[0u8; 32], cryptographic_parameters).await;
+        let ciphertext = encrypt(
+            &kms_rest_client,
+            &pk,
+            vec![0u8; 32],
+            cryptographic_parameters,
+        )
+        .await;
         (kms_rest_client, sk, pk, ciphertext)
     });
 
     let mut group = c.benchmark_group("RSA tests");
     group.bench_function(&format!("{name} {key_size}bit decryption"), |b| {
         b.to_async(&runtime).iter(|| async {
-            let _ = decrypt(&kms_rest_client, &sk, &ciphertext, cryptographic_parameters).await;
+            let () = decrypt(&kms_rest_client, &sk, &ciphertext, cryptographic_parameters).await;
         });
     });
 }
@@ -299,17 +311,17 @@ async fn create_rsa_keypair(
 async fn encrypt(
     kms_rest_client: &KmsClient,
     pk: &str,
-    cleartext: &[u8],
+    cleartext: Vec<u8>,
     cryptographic_parameters: &CryptographicParameters,
 ) -> Vec<u8> {
     // Create the kmip query
     let encrypt_request = build_encryption_request(
         pk,
         None,
-        cleartext.to_vec(),
+        cleartext,
         None,
         None,
-        Some(cryptographic_parameters.clone()),
+        Some(cryptographic_parameters.to_owned()),
     )
     .unwrap();
 
@@ -324,7 +336,7 @@ async fn decrypt(
     sk: &str,
     ciphertext: &[u8],
     cryptographic_parameters: &CryptographicParameters,
-) -> Vec<u8> {
+) {
     // Create the kmip query
     let decrypt_request = build_decryption_request(
         sk,
@@ -336,7 +348,10 @@ async fn decrypt(
     );
 
     // Query the KMS with your kmip data and get the key pair ids
-    let decrypt_response = kms_rest_client.decrypt(decrypt_request).await.unwrap();
-
-    decrypt_response.data.unwrap().to_vec()
+    kms_rest_client
+        .decrypt(decrypt_request)
+        .await
+        .unwrap()
+        .data
+        .unwrap();
 }

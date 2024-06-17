@@ -320,7 +320,7 @@ fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<
                     .and_then(|x| x.get(0))
                     .and_then(GeneralNameRef::uri);
                 if let Some(crl_uri) = crl_uri {
-                    uri_list.push(crl_uri.to_string())
+                    uri_list.push(crl_uri.to_string());
                 }
             }
             let res = uri_list
@@ -464,7 +464,7 @@ async fn get_crl_bytes(
     .await;
 
     // filtering errors
-    let is_ok = responses.iter().all(|x| x.is_ok());
+    let is_ok = responses.iter().all(std::result::Result::is_ok);
 
     // checking if there are any errors
     if is_ok {

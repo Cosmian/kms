@@ -35,7 +35,12 @@ pub fn build_validate_certificate_request(
         if certificates.is_empty() {
             None
         } else {
-            Some(certificates.into_iter().map(|x| x.into_bytes()).collect())
+            Some(
+                certificates
+                    .into_iter()
+                    .map(std::string::String::into_bytes)
+                    .collect(),
+            )
         }
     };
     let unique_identifiers = {
