@@ -13,6 +13,7 @@ pub async fn validate(
 ) -> Result<String, CliError> {
     let request = build_validate_certificate_request(certificates, uids, date)?;
     let result = kms_rest_client.validate(request).await?;
+    print_validity_indicator(result.validity_indicator);
     Ok({
         match result.validity_indicator {
             ValidityIndicator::Invalid => "Invalid".to_string(),
@@ -20,4 +21,12 @@ pub async fn validate(
             ValidityIndicator::Valid => "Valid".to_string(),
         }
     })
+}
+
+fn print_validity_indicator(vi: ValidityIndicator) {
+    match vi {
+        ValidityIndicator::Invalid => print!("Invalid"),
+        ValidityIndicator::Valid => print!("Valid"),
+        ValidityIndicator::Unknown => print!("Unknown"),
+    }
 }

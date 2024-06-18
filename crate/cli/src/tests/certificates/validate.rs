@@ -203,8 +203,8 @@ async fn test_validate() -> Result<(), CliError> {
         "".to_string(),
     )
     .await?;
-    println!("result 1 test_validate {}", test1_res);
-    assert_eq!(test1_res, "Invalid".to_string());
+
+    assert_eq!(test1_res, "Invalid");
 
     println!(
         "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
@@ -224,7 +224,7 @@ async fn test_validate() -> Result<(), CliError> {
     )
     .await?;
 
-    assert_eq!(test2_res, "Valid".to_string());
+    assert_eq!(test2_res, "Valid");
 
     println!(
         "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
@@ -246,7 +246,7 @@ async fn test_validate() -> Result<(), CliError> {
     )
     .await?;
 
-    assert_eq!(test3_res, "Invalid".to_string());
+    assert_eq!(test3_res, "Invalid");
 
     Ok(())
 }
