@@ -248,5 +248,16 @@ async fn test_validate() -> Result<(), CliError> {
 
     assert_eq!(test3_res, "Invalid");
 
+    let test4_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [root_certificate_id.clone()].to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    assert_eq!(test4_res, "Valid");
+
     Ok(())
 }

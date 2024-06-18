@@ -389,6 +389,17 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     )?;
 
     let _ = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
+    //validating generated certificate
+    // let validation = validate::validate_certificate(
+    //     &ctx.owner_client_conf_path,
+    //     "certificates",
+    //     [].to_vec(),
+    //     [certificate_id.clone()].to_vec(),
+    //     "".to_string(),
+    // )
+    // .await?;
+    // assert_eq!("Valid", validation);
+
     Ok(())
 }
 
@@ -415,6 +426,16 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     // check the certificate
     let (_, _, cert_x509_der) =
         check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
+    // validating generated certificate
+    // let validation = validate::validate_certificate(
+    //     &ctx.owner_client_conf_path,
+    //     "certificates",
+    //     [].to_vec(),
+    //     [certificate_id.clone()].to_vec(),
+    //     "".to_string(),
+    // )
+    // .await?;
+    // assert_eq!("Invalid", validation);
 
     // check the added extensions
     check_certificate_added_extensions(&cert_x509_der);
@@ -493,6 +514,17 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
 
     // check links to public key
     check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
+
+    // validating generated certificate
+    // let validation = validate::validate_certificate(
+    //     &ctx.owner_client_conf_path,
+    //     "certificates",
+    //     [].to_vec(),
+    //     [certificate_id.clone()].to_vec(),
+    //     "".to_string(),
+    // )
+    // .await?;
+    // assert_eq!("Valid", validation);
 
     Ok(())
 }
@@ -670,7 +702,7 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
         true,
     )?;
 
-    println!("importing leaf1 cert");
+    println!("importing leaf cert");
 
     let leaf_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
