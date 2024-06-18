@@ -36,14 +36,15 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 - [Quick start](#quick-start)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
-    * [Linux](#linux)
-    * [MacOS](#macos)
-    * [Windows](#windows)
-    * [Build the Docker container](#build-the-docker-container)
+  * [Linux](#linux)
+  * [MacOS](#macos)
+  * [Windows](#windows)
+  * [Build the Docker container](#build-the-docker-container)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
 - [Releases](#releases)
+- [Benchmarks](#benchmarks)
 
 <!-- tocstop -->
 
@@ -278,27 +279,27 @@ Typical values for single threaded HTTP KMIP 2.1 requests
 (zero network latency) are as follows
 
 ```text
-- RSA PKCSv1.5:  
-    - encrypt 
+- RSA PKCSv1.5:
+    - encrypt
             - 2048 bits: 128 microseconds
             - 4096 bits: 175 microseconds
-    - decrypt 
+    - decrypt
             - 2048 bits: 830 microseconds
             - 4096 bits: 4120 microseconds
-- RSA PKCS OAEP:  
-    - encrypt 
+- RSA PKCS OAEP:
+    - encrypt
             - 2048 bits: 134 microseconds
             - 4096 bits: 173 microseconds
-    - decrypt 
+    - decrypt
             - 2048 bits: 849 microseconds
             - 4096 bits: 3823 microseconds
-- RSA PKCS KEY WRP (AES):  
-    - encrypt 
+- RSA PKCS KEY WRP (AES):
+    - encrypt
             - 2048 bits: 142 microseconds
             - 4096 bits: 198 microseconds
-    - decrypt 
+    - decrypt
             - 2048 bits: 824 microseconds
-            - 4096 bits: 3768 microseconds  
+            - 4096 bits: 3768 microseconds
 - RSA Keypair creation (saved in KMS DB)
     -  2048 bits: 33 milliseconds
     -  4096 bits: 322 milliseconds
