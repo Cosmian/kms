@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2024-??-??
+
+### Features
+
+- Added RSA benchmarks
+
 ## [4.16.0] - 2024-05-06
 
 ### Bug Fixes

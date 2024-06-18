@@ -630,6 +630,8 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`destroy`** [[3.7]](#37-ckms-certificates-destroy)  Destroy a certificate
 
+**`validate`** [[3.8]](#38-ckms-certificates-validate)  Validate a certificate
+
 ---
 
 ## 3.1 ckms certificates certify
@@ -815,6 +817,23 @@ Destroy a certificate
 `--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 3.8 ckms certificates validate
+
+Validate a certificate
+
+### Usage
+`ckms certificates validate [options]`
+### Arguments
+`--certificate [-v] <CERTIFICATE>` One or more Certificates
+
+`--unique-identifier [-k] <UNIQUE_IDENTIFIER>` One or more Unique Identifiers of Certificate Objects
+
+`--validity-time [-t] <VALIDITY_TIME>` A Date-Time object indicating when the certificate chain needs to be valid. If omitted, the current date and time SHALL be assumed
 
 
 

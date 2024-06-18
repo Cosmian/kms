@@ -24,7 +24,7 @@ rust-version = "1.71.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
-  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"
+  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"

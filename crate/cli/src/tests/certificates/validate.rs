@@ -106,7 +106,7 @@ async fn validate_certificate(
         args.push(uid);
     }
     args.push("--validity-time".to_owned());
-    args.push(date.to_owned());
+    args.push(date.clone());
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -199,7 +199,7 @@ async fn test_validate() -> Result<(), CliError> {
             leaf1_certificate_id.clone(),
         ]
         .to_vec(),
-        "".to_string(),
+        String::new(),
     )
     .await?;
 
@@ -217,7 +217,7 @@ async fn test_validate() -> Result<(), CliError> {
             leaf2_certificate_id.clone(),
         ]
         .to_vec(),
-        "".to_string(),
+        String::new(),
     )
     .await?;
 

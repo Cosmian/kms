@@ -2574,6 +2574,7 @@ pub enum ValidityIndicator {
 }
 
 impl ValidityIndicator {
+    #[must_use]
     pub fn and(&self, vi: ValidityIndicator) -> ValidityIndicator {
         match (self, vi) {
             (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
@@ -2584,6 +2585,7 @@ impl ValidityIndicator {
         }
     }
 
+    #[must_use]
     pub fn from_bool(b: bool) -> ValidityIndicator {
         if b {
             ValidityIndicator::Valid
