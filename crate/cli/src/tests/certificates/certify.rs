@@ -16,6 +16,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
+use super::validate;
 use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::CliError,
@@ -629,6 +630,80 @@ async fn test_issue_with_subject_name_self_signed() -> Result<(), CliError> {
     // since the certificate is self signed, the Certificate Link should point back to itself
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_certify_validate_certificates() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+
+    let root_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/csr/ca.crt",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("importing intermediate cert");
+    let intermediate_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/csr/intermediate.crt",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(root_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("importing leaf1 cert");
+
+    let leaf_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/csr/leaf.crt",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    println!("Validating chain");
+
+    let res = validate::validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf_certificate_id.clone(),
+        ]
+        .to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    assert_eq!(res, "Valid");
 
     Ok(())
 }
