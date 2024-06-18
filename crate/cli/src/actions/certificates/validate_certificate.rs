@@ -30,6 +30,7 @@ impl ValidateCertificatesAction {
             self.unique_identifier.clone(),
             self.validity_time.clone(),
         )
-        .await
+        .await?;
+        Ok(())
     }
 }

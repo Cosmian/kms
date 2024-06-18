@@ -16,6 +16,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
+use super::validate;
 use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::CliError,
@@ -374,7 +375,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     // Create a test server
     let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // import signers
-    let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+    let (root_cert, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = certify(
@@ -386,6 +387,22 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
             ..Default::default()
         },
     )?;
+
+    let validation = validate::validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            root_cert,
+            issuer_private_key_id.clone(),
+            certificate_id.clone(),
+        ]
+        .to_vec(),
+        "".to_string(),
+    )
+    .await?;
+
+    assert_eq!("Valid".to_string(), validation);
 
     let _ = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
     Ok(())
