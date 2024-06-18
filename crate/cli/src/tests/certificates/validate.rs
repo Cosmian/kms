@@ -203,7 +203,7 @@ async fn test_validate() -> Result<(), CliError> {
         "".to_string(),
     )
     .await?;
-
+    println!("result 1 test_validate {}", test1_res);
     assert_eq!(test1_res, "Invalid".to_string());
 
     println!(
