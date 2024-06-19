@@ -231,15 +231,16 @@ impl Object {
                     None
                 }
             },
-            Object::RemoteObjectId(remote_object_id) => match type_ {
-                AttributeType::Id => Some(Attribute::Id(
-                    remote_object_id.remote_id().as_bytes().to_vec(),
-                )),
-                _ => {
+            Object::RemoteObjectId(remote_object_id) => {
+                if type_ == AttributeType::Id {
+                    Some(Attribute::Id(
+                        remote_object_id.remote_id().as_bytes().to_vec(),
+                    ))
+                } else {
                     debug!("Remote object id: type_ unimplemented: {:?}", type_);
                     None
                 }
-            },
+            }
         };
         debug!("attribute: {:?} => {:?}", type_, attribute);
         attribute

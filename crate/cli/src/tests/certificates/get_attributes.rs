@@ -42,7 +42,7 @@ async fn test_get_attributes_p12() {
     )
     .unwrap();
 
-    assert!(attributes.get(&AttributeTag::LinkedPublicKeyId).is_none());
+    assert!(!attributes.contains_key(&AttributeTag::LinkedPublicKeyId));
     assert_eq!(
         attributes.get(&AttributeTag::KeyFormatType).unwrap(),
         &serde_json::json!("PKCS1")
@@ -73,9 +73,5 @@ async fn test_get_attributes_p12() {
         attributes.get(&AttributeTag::LinkedPrivateKeyId).unwrap(),
         &serde_json::json!(imported_p12_sk_uid)
     );
-    assert!(
-        attributes
-            .get(&AttributeTag::LinkedIssuerCertificateId)
-            .is_none()
-    );
+    assert!(!attributes.contains_key(&AttributeTag::LinkedIssuerCertificateId));
 }

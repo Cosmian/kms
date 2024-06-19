@@ -47,15 +47,12 @@ pub async fn handle_ttlv(
     user: &str,
     database_params: Option<&ExtraDatabaseParams>,
 ) -> KResult<TTLV> {
-    match ttlv.tag.as_str() {
-        "Message" => {
-            let req = from_ttlv::<Message>(ttlv)?;
-            let resp = kms.message(req, user, database_params).await?;
-            Ok(to_ttlv(&resp)?)
-        }
-        _ => {
-            let operation = dispatch(kms, ttlv, user, database_params).await?;
-            Ok(to_ttlv(&operation)?)
-        }
+    if ttlv.tag.as_str() == "Message" {
+        let req = from_ttlv::<Message>(ttlv)?;
+        let resp = kms.message(req, user, database_params).await?;
+        Ok(to_ttlv(&resp)?)
+    } else {
+        let operation = dispatch(kms, ttlv, user, database_params).await?;
+        Ok(to_ttlv(&operation)?)
     }
 }

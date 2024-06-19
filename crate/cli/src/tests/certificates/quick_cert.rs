@@ -93,18 +93,15 @@ pub fn export(
     allow_revoked: bool,
 ) -> Result<(), CliError> {
     let mut args = vec!["export"];
-    match tags_args {
-        Some(tags) => {
-            // add tags
-            for tag in tags {
-                args.push("--tag");
-                args.push(tag);
-            }
+    if let Some(tags) = tags_args {
+        // add tags
+        for tag in tags {
+            args.push("--tag");
+            args.push(tag);
         }
-        None => {
-            args.push("--certificate-id");
-            args.push(certificate_id);
-        }
+    } else {
+        args.push("--certificate-id");
+        args.push(certificate_id);
     };
     args.push(certificate_file);
     match output_format {

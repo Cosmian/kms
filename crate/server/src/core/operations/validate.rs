@@ -72,7 +72,7 @@ pub(crate) async fn validate_operation(
     let hm_certificates = index_certificates(certificates)?;
 
     // Getting root certificate from indexing
-    let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
+    let root_idx = if let Some(root_idx) = hm_certificates.get(HEAD) {
         root_idx
     } else {
         return Ok(ValidateResponse {
@@ -376,7 +376,7 @@ async fn test_and_get_resource_from_uri(
     certificates: &[X509],
     certificate_id: &[u8],
 ) -> KResult<Vec<u8>> {
-    // checking wether the resource is an URL or a Pathname
+    // checking whether the resource is an URL or a Pathname
     let uri_type = match url::Url::parse(uri) {
         Err(_) => {
             let path = path::Path::new(uri);

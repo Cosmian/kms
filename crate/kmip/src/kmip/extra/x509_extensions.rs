@@ -455,7 +455,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     /// - Certificate Policies (optional)
     /// - CRL Distribution Points (required)
     ///
-    /// see: https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity
+    /// see: <https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity>
     #[test]
     fn test_parse_extensions_gmail() {
         // cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");

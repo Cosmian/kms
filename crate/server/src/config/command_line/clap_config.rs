@@ -58,7 +58,7 @@ pub struct ClapConfig {
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
-    /// as the DKE Service (https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
+    /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
