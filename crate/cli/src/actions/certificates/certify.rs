@@ -187,6 +187,14 @@ pub struct CertifyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// Authority Key Identifier. It is the subject key identifier if the issuer.
+    #[clap(long = "authority-key-identifier", short = 'i')]
+    authority_key_identifier: Option<String>,
+
+    /// Subject Key Identifier. It is the subject key identifier if the issuer.
+    #[clap(long = "subject-key-identifier", short = 'y')]
+    subject_key_identifier: Option<String>,
 }
 
 impl CertifyAction {
@@ -351,6 +359,14 @@ impl CertifyAction {
 
         if let Some(extension_file) = &self.certificate_extensions {
             attributes.set_x509_extension_file(std::fs::read(extension_file)?);
+        }
+
+        if let Some(aki) = &self.authority_key_identifier {
+            attributes.set_x509_extension_authority_key_identifier(aki.clone());
+        }
+
+        if let Some(ski) = &self.subject_key_identifier {
+            attributes.set_x509_extension_subject_key_identifier(ski.clone());
         }
 
         let certify_request = Certify {

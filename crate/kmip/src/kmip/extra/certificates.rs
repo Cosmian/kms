@@ -47,4 +47,20 @@ impl Attributes {
             x509_extension_file,
         )
     }
+
+    pub fn set_x509_extension_authority_key_identifier(&mut self, aki: String) -> &mut Self {
+        self.set_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION, {
+            let attr = "authorityKeyIdentifier=".to_string();
+            attr.to_string().push_str(aki.as_str());
+            attr.as_bytes().to_vec()
+        })
+    }
+
+    pub fn set_x509_extension_subject_key_identifier(&mut self, ski: String) -> &mut Self {
+        self.set_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION, {
+            let attr = "subjectKeyIdentifier=".to_string();
+            attr.to_string().push_str(ski.as_str());
+            attr.as_bytes().to_vec()
+        })
+    }
 }
