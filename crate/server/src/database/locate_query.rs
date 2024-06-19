@@ -12,6 +12,7 @@ pub trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
+    #[allow(dead_code)]
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_NODE_WRAPPING: &'static str = "'$.object.KeyBlock.KeyWrappingData'";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
@@ -21,6 +22,7 @@ pub trait PlaceholderTrait {
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
+    #[allow(dead_code)]
     #[must_use]
     fn binder(param_number: usize) -> String {
         format!("${param_number}")

@@ -63,7 +63,7 @@ pub struct DkePublicKey {
     /// The key ID.
     /// A URI that identifies the key that is in use for the key name.  The format is {URI}/{KeyName}/{KeyVersion-Guid}
     /// This URI will be called by the client to decrypt the data by appending /decrypt to the end.
-    /// Ex. https://hostname/KeyName/2BE4E378-1317-4D64-AC44-D75f638F7B29
+    /// Ex. <https://hostname/KeyName/2BE4E378-1317-4D64-AC44-D75f638F7B29>
     #[serde(rename = "kid")]
     key_id: String,
 }

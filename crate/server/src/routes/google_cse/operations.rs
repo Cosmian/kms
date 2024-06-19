@@ -231,7 +231,7 @@ pub async fn unwrap(
 /// and using `algorithm`.
 ///
 /// Technical specifications of components from this request
-/// can be found here: https://support.google.com/a/answer/7300887
+/// can be found here: <https://support.google.com/a/answer/7300887>
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PrivateKeySignRequest {
     pub authentication: String,
@@ -239,7 +239,7 @@ pub struct PrivateKeySignRequest {
     /// The algorithm that was used to encrypt the Data Encryption Key (DEK) in envelope encryption.
     pub algorithm: String,
     /// Base64-encoded message digest.
-    /// The digest of the DER encoded SignedAttributes.
+    /// The digest of the DER encoded `SignedAttributes`.
     /// This value is unpadded. Max size: 128B
     pub digest: String,
 
@@ -261,8 +261,8 @@ pub struct PrivateKeySignResponse {
 /// Unwraps a wrapped private key and then signs the digest provided by the client.
 ///
 /// See Google documentation:
-/// - Private Key Sign endpoint: https://developers.google.com/workspace/cse/reference/private-key-sign
-/// - S/MIME certificate profiles: https://support.google.com/a/answer/7300887
+/// - Private Key Sign endpoint: <https://developers.google.com/workspace/cse/reference/private-key-sign>
+/// - S/MIME certificate profiles: <https://support.google.com/a/answer/7300887>
 pub async fn private_key_sign(
     req_http: HttpRequest,
     request: PrivateKeySignRequest,
@@ -350,7 +350,7 @@ pub struct PrivateKeyDecryptResponse {
 /// Unwraps a wrapped private key and then decrypts the content encryption key that is encrypted to the public key.
 ///
 /// See Google documentation:
-/// - Private Key Decrypt endpoint: https://developers.google.com/workspace/cse/reference/private-key-decrypt
+/// - Private Key Decrypt endpoint: <https://developers.google.com/workspace/cse/reference/private-key-decrypt>
 pub async fn private_key_decrypt(
     req_http: HttpRequest,
     request: PrivateKeyDecryptRequest,

@@ -16,7 +16,7 @@ pub enum DbParams {
     SqliteEnc(PathBuf),
     /// contains the Postgres connection URL
     Postgres(Url),
-    /// contains the MySql connection URL
+    /// contains the `MySql` connection URL
     Mysql(Url),
     /// contains
     /// - the Redis connection URL

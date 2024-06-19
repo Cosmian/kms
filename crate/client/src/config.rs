@@ -63,16 +63,16 @@ fn not(b: &bool) -> bool {
 /// to perform the `OAuth2` authorize code flow and obtain an access token.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct Oauth2Conf {
-    /// The client ID of the OAuth2 application.
-    /// This is obtained from the OAuth2 provider.
+    /// The client ID of the `OAuth2` application.
+    /// This is obtained from the `OAuth2` provider.
     pub client_id: String,
-    /// The client secret of the OAuth2 application.
-    /// This is obtained from the OAuth2 provider.
+    /// The client secret of the `OAuth2` application.
+    /// This is obtained from the `OAuth2` provider.
     pub client_secret: String,
-    /// The URL of the OAuth2 provider's authorization endpoint.
+    /// The URL of the `OAuth2` provider's authorization endpoint.
     /// For example, for Google, this is `https://accounts.google.com/o/oauth2/v2/auth`.
     pub authorize_url: String,
-    /// The URL of the OAuth2 provider's token endpoint.
+    /// The URL of the `OAuth2` provider's token endpoint.
     /// For example, for Google, this is `https://oauth2.googleapis.com/token`.
     pub token_url: String,
     /// The scopes to request.

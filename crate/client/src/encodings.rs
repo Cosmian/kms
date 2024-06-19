@@ -15,8 +15,7 @@ use crate::{client_bail, ClientError};
 ///
 /// The vector of objects is ordered child to parent:
 ///  - In a keypair: the private keys is appended at the end of the vector, the public key is inserted at the beginning.
-///  - The certificates chain have the leaf at the beginning and the root at the end
-/// (i.e. as they are submitted).
+///  - The certificates chain have the leaf at the beginning and the root at the end (i.e. as they are submitted).
 ///
 /// # Arguments
 /// * `bytes` - The PEM file bytes
