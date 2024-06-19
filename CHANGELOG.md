@@ -6,7 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Added RSA benchmarks
+- Add KMIP operation `Validate` for certificates ([#247](https://github.com/Cosmian/kms/pull/247))
+- Added RSA benchmarks ([#251](https://github.com/Cosmian/kms/pull/251))
+- Add OpenTelemetry OTLP protocol support to KMS server ([#253](https://github.com/Cosmian/kms/pull/253))
+
+### Bug Fixes
+
+- Replace `cargo audit` with `cargo deny` ([#245](https://github.com/Cosmian/kms/pull/245))
+- Replace Linux cross-compiling for Windows with compiling on Windows Github runner ([#249](https://github.com/Cosmian/kms/pull/249))
+- Fix vulnerability RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
+- Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254)) and ([#255](https://github.com/Cosmian/kms/pull/255))
 
 ## [4.16.0] - 2024-05-06
 
