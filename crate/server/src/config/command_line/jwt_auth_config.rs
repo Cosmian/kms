@@ -15,9 +15,9 @@ pub struct JwtAuthConfig {
     /// (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
     /// the same order :
     ///
-    /// --jwt_issuer_uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2>
-    /// --jwks_uri <JWKS_URI_1> <JWKS_URI_2>
-    /// --jwt_audience <JWT_AUDIENCE_1> <JWT_AUDIENCE_2>
+    /// --`jwt_issuer_uri` <`JWT_ISSUER_URI_1`> <`JWT_ISSUER_URI_2`>
+    /// --`jwks_uri` <`JWKS_URI_1`> <`JWKS_URI_2`>
+    /// --`jwt_audience` <`JWT_AUDIENCE_1`> <`JWT_AUDIENCE_2`>
     ///
     /// For Auth0, this is the delegated authority domain configured on Auth0, for instance
     /// `https://<your-tenant>.<region>.auth0.com/`

@@ -26,7 +26,7 @@ pub enum ExportKeyFormat {
 ///
 /// If not format is specified, the key is exported as a json-ttlv with a
 /// `KeyFormatType` that follows the section 4.26 of the KMIP specification.
-/// https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+/// <https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html>#_Toc57115585
 ///
 /// The key can optionally be unwrapped and/or wrapped when exported.
 ///

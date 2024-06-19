@@ -32,7 +32,7 @@ pub struct LocateObjectsAction {
     /// Cryptographic algorithm (case insensitive)
     ///
     /// The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
-    /// Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
+    /// Possible values include "Covercrypt", "ECDH", "`ChaCha20Poly1305`", "AES", "Ed25519"
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
     /// e.g. `ckms locate --algorithm WRONG`
@@ -51,7 +51,7 @@ pub struct LocateObjectsAction {
     /// Key format type (case insensitive)
     ///
     /// The list is the one specified by KMIP 2.1
-    /// in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
+    /// in addition to the two Covercrypt formats: "`CoverCryptSecretKey`" and "`CoverCryptPublicKey`"
     /// Possible values also include: "RAW" and "PKCS8"
     /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///

@@ -1,13 +1,13 @@
 //! Implements the RSA Key Encryption Mechanism `CKM_RSA_PKCS_OAEP`
 //! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-//! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+//! <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 //!
 //! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2
-//! https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf
+//! <https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf>
 //!
 //! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
-//!  - NIST FIPS 180-4: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
-//!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
+//!  - NIST FIPS 180-4: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512 (<https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf>
+//!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (<https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf>)
 //!
 //! The scheme can be used for both encryption and key wrapping
 use openssl::{
@@ -25,11 +25,12 @@ use crate::{error::KmipError, kmip::kmip_types::HashingAlgorithm};
 
 /// Key Wrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-/// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+/// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
 /// The maximum dek length is  k-2-2*hLen where
 ///  - k is the length in octets of the RSA modulus
 ///  - hLen is the length in octets of the hash function output
+///
 /// The output length is the same as the modulus length.
 ///
 /// Arguments:
@@ -48,11 +49,12 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
 
 /// Encryption using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-/// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+/// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
 /// The maximum plaintext length is  k-2-2*hLen where
 ///  - k is the length in octets of the RSA modulus
 ///  - hLen is the length in octets of the hash function output
+///
 /// The output length is the same as the modulus length.
 ///
 /// Arguments:
@@ -98,7 +100,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 
 /// Key Unwrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-/// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+/// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
 /// The wrapped data encryption key (dek) should be of of size k where k is the length in octets of the RSA modulus.
 ///
@@ -120,7 +122,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 
 /// Decrypt using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-/// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+/// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
 /// The ciphertext should be of size k where k is the length in octets of the RSA modulus.
 ///

@@ -297,6 +297,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// - the master private key uid
 /// - the `CoverCrypt` attributes to revoke
 /// - the `ReKeyKeyPairAction` to perform
+///
 /// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,

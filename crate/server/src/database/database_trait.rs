@@ -79,6 +79,7 @@ pub trait Database {
     ///
     /// If tags is `None`, the tags will not be updated.
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     async fn upsert(
         &self,
         uid: &str,
@@ -91,6 +92,7 @@ pub trait Database {
     ) -> KResult<()>;
 
     /// Delete an object from the database.
+    #[allow(dead_code)]
     async fn delete(
         &self,
         uid: &str,
@@ -160,6 +162,7 @@ pub trait Database {
     ///
     /// These access rights may have been directly granted or via the wildcard user
     /// unless `no_inherited_access` is set to `true`
+    #[allow(dead_code)]
     async fn list_user_access_rights_on_object(
         &self,
         uid: &str,

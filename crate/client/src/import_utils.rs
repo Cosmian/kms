@@ -31,29 +31,26 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     let object_type = object.object_type();
     trace!("object_type: {object_type:?}");
 
-    let (key_wrap_type, mut attributes) = match object_type {
-        ObjectType::Certificate => {
-            // add the tags to the attributes
-            let attributes = import_attributes.unwrap_or_default();
-            (None, attributes)
-        } // no wrapping for certificate
-        _ => {
-            // unwrap the key if needed
-            let key_wrap_type = object.key_wrapping_data().map(|_| {
-                if unwrap {
-                    KeyWrapType::NotWrapped
-                } else {
-                    KeyWrapType::AsRegistered
-                }
-            });
-            // add the tags to the attributes
-            let attributes = if let Some(attributes) = import_attributes {
-                attributes
+    let (key_wrap_type, mut attributes) = if object_type == ObjectType::Certificate {
+        // add the tags to the attributes
+        let attributes = import_attributes.unwrap_or_default();
+        (None, attributes)
+    } else {
+        // unwrap the key if needed
+        let key_wrap_type = object.key_wrapping_data().map(|_| {
+            if unwrap {
+                KeyWrapType::NotWrapped
             } else {
-                object.attributes().cloned().unwrap_or_default()
-            };
-            (key_wrap_type, attributes)
-        }
+                KeyWrapType::AsRegistered
+            }
+        });
+        // add the tags to the attributes
+        let attributes = if let Some(attributes) = import_attributes {
+            attributes
+        } else {
+            object.attributes().cloned().unwrap_or_default()
+        };
+        (key_wrap_type, attributes)
     };
 
     // set the new tags

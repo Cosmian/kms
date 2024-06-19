@@ -74,13 +74,13 @@ impl EncryptionSystem for AesGcmSystem {
         };
 
         // Supplied Nonce or new one.
-        let nonce: [u8; AES_256_GCM_IV_LENGTH] = match request.iv_counter_nonce.as_ref() {
-            Some(iv) => iv.as_slice().try_into()?,
-            None => {
-                let mut iv = [0; AES_256_GCM_IV_LENGTH];
-                rand_bytes(&mut iv)?;
-                iv
-            }
+        let nonce: [u8; AES_256_GCM_IV_LENGTH] = if let Some(iv) = request.iv_counter_nonce.as_ref()
+        {
+            iv.as_slice().try_into()?
+        } else {
+            let mut iv = [0; AES_256_GCM_IV_LENGTH];
+            rand_bytes(&mut iv)?;
+            iv
         };
 
         // Additional data.

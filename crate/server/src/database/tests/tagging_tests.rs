@@ -82,8 +82,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(&symmetric_key, &owm.object);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
     assert_eq!(tags.len(), 2);
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     // find this object from tags as owner using tag1
     let res = db
@@ -107,8 +107,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     // find this object from tags as owner using tag2
     let res = db
@@ -132,8 +132,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     // find this object from tags as owner using tag1 and tag2
     let res = db
@@ -157,8 +157,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     // should NOT find this object from tags as owner using tag1, tag2 and tag3
     let res = db
@@ -224,8 +224,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![ObjectOperationType::Get]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     // find this object from tags as USER_DECRYPT using tag1
     let res = db
@@ -249,8 +249,8 @@ pub async fn tags<DB: Database>(
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![ObjectOperationType::Decrypt]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
-    assert!(tags.contains(&"tag1".to_string()));
-    assert!(tags.contains(&"tag2".to_string()));
+    assert!(tags.contains("tag1"));
+    assert!(tags.contains("tag2"));
 
     Ok(())
 }

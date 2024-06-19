@@ -25,11 +25,11 @@ cosmian_kms_server = { path = "../server", features = [
     "insecure",
 ], default-features = false }
 serde_json = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = [
     "html_reports",
     "async_tokio",
-], default_features = false }
+], default-features = false }
