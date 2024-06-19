@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 use crate::error::Pkcs11Error;
 
 /// A wrapper around a KMS KMIP object.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct KmsObject {
     pub object: Object,

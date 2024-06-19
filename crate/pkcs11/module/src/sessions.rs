@@ -54,7 +54,7 @@ static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 pub struct FindContext {
     /// The PKCS#11 objects manipulated by this context.
     pub objects: Vec<Object>,
-    /// The indexes that have not yet been read by C_FindObjects
+    /// The indexes that have not yet been read by `C_FindObjects`
     pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
 }
 
@@ -62,15 +62,16 @@ pub struct FindContext {
 pub struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
-    /// Payload stored for multipart C_SignUpdate operations.
+    /// Payload stored for multipart `C_SignUpdate` operations.
     pub payload: Option<Vec<u8>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct DecryptContext {
     pub remote_object: Arc<dyn RemoteObjectId>,
     pub algorithm: EncryptionAlgorithm,
-    /// Ciphertext stored for multipart C_DecryptUpdate operations.
+    /// Ciphertext stored for multipart `C_DecryptUpdate` operations.
     pub ciphertext: Option<Vec<u8>>,
 }
 

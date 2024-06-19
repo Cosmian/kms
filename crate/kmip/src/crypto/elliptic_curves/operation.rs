@@ -68,9 +68,9 @@ fn check_ecc_mask_against_flags(
 #[cfg(feature = "fips")]
 /// Check that
 /// - `algorithm` is among `allowed` algorithms.
-/// - `algorithm` is compliant with usage mask provided for private and public
-/// key components. For example `ECDH` and `Sign` are incompatible together
-/// since ECDH is for key agreement.
+/// - `algorithm` is compliant with usage mask provided for private and public key components.
+///
+/// For example `ECDH` and `Sign` are incompatible together since ECDH is for key agreement.
 ///
 /// If `algorithm` is None, raise error.
 fn check_ecc_mask_algorithm_compliance(

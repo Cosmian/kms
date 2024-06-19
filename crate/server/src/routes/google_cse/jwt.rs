@@ -131,8 +131,7 @@ pub async fn decode_jwt_authorization_token(
 
 /// The configuration for Google CSE:
 ///  - JWT authentication and authorization configurations
-///  - external KACLS URL of this server configured in Google Workspace client-side encryption
-/// (something like <https://cse.mydomain.com/google_cse>)
+///  - external KACLS URL of this server configured in Google Workspace client-side encryption something like <https://cse.mydomain.com/google_cse>
 #[derive(Clone)]
 pub struct GoogleCseConfig {
     pub authentication: Arc<Vec<JwtConfig>>,

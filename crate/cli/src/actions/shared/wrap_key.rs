@@ -13,7 +13,6 @@ use cosmian_kms_client::{
         },
     },
     export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
-    KmsRestClient,
 };
 
 use crate::{

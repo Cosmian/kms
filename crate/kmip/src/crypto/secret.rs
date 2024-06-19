@@ -9,8 +9,6 @@ use openssl::rand::rand_bytes;
 use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[cfg(feature = "ser")]
-use crate::bytes_ser_de::Serializable;
 #[cfg(feature = "openssl")]
 use crate::error::KmipError;
 
@@ -138,24 +136,3 @@ impl<const LENGTH: usize> Drop for Secret<LENGTH> {
 }
 
 impl<const LENGTH: usize> ZeroizeOnDrop for Secret<LENGTH> {}
-
-#[cfg(feature = "ser")]
-impl<const LENGTH: usize> Serializable for Secret<LENGTH> {
-    type Error = CryptoCoreError;
-
-    #[inline(always)]
-    fn length(&self) -> usize {
-        LENGTH
-    }
-
-    #[inline(always)]
-    fn write(&self, ser: &mut crate::bytes_ser_de::Serializer) -> Result<usize, Self::Error> {
-        ser.write_array(self)
-    }
-
-    #[inline(always)]
-    fn read(de: &mut crate::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let mut bytes = de.read_array::<LENGTH>()?;
-        Ok(Self::from_unprotected_bytes(&mut bytes))
-    }
-}

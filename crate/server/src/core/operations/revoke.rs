@@ -59,13 +59,13 @@ pub(crate) async fn revoke_operation(
 
 /// Recursively revoke keys
 #[async_recursion(?Send)]
-pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
+pub(crate) async fn recursively_revoke_key(
     uid_or_tags: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
     user: &str,
-    params: Option<&'a ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {

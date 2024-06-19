@@ -1,3 +1,4 @@
+#![allow(non_local_definitions)]
 use pyo3::prelude::*;
 
 mod py_kms_client;

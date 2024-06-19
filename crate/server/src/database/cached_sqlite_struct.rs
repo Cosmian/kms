@@ -277,41 +277,37 @@ impl KMSSqliteCache {
             .expect("Unable to lock for write");
 
         let item = sqlites.get_mut(&id);
-        match item {
-            // Deal with the case: the id is already known but the sqlite was closed
-            Some(item) => {
-                if !item.closed {
-                    // Sqlite is already saved and opened
-                    return Ok(())
-                }
-
-                info!("CachedSQLCipher: reopen group_id={id}");
-
-                item.sqlite = Arc::new(pool);
-                item.closed = false;
-                item.in_used = 1;
-                item.last_used_at = _now();
+        if let Some(item) = item {
+            if !item.closed {
+                // Sqlite is already saved and opened
+                return Ok(())
             }
-            None => {
-                info!("CachedSQLCipher: new group_id={id}");
 
-                // Book a slot for it
-                let freeable_cache_id = freeable_sqlites.push(id)?;
+            info!("CachedSQLCipher: reopen group_id={id}");
 
-                // Add it to the SqliteCache
-                // compute the mac
-                let mut mac = vec![0u8; 32];
-                mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
-                let mut item = KMSSqliteCacheItem::new(pool, mac, freeable_cache_id);
+            item.sqlite = Arc::new(pool);
+            item.closed = false;
+            item.in_used = 1;
+            item.last_used_at = _now();
+        } else {
+            info!("CachedSQLCipher: new group_id={id}");
 
-                freeable_sqlites.uncache(freeable_cache_id)?;
+            // Book a slot for it
+            let freeable_cache_id = freeable_sqlites.push(id)?;
 
-                // Make it usable (to avoid direct free after alloc in case of cache overflow)
-                item.in_used = 1;
-                item.last_used_at = _now();
+            // Add it to the SqliteCache
+            // compute the mac
+            let mut mac = vec![0u8; 32];
+            mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
+            let mut item = KMSSqliteCacheItem::new(pool, mac, freeable_cache_id);
 
-                sqlites.insert(id, item);
-            }
+            freeable_sqlites.uncache(freeable_cache_id)?;
+
+            // Make it usable (to avoid direct free after alloc in case of cache overflow)
+            item.in_used = 1;
+            item.last_used_at = _now();
+
+            sqlites.insert(id, item);
         };
 
         self.current_size.fetch_add(1, Ordering::Relaxed);

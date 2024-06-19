@@ -23,7 +23,7 @@ etcetera = "0.8.0"
 serde_json = { workspace = true }
 sha3 = "0.10.8"
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
