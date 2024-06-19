@@ -43,6 +43,8 @@ pub struct CertifyOp {
     days: Option<u32>,
     certificate_extensions: Option<PathBuf>,
     tags: Option<Vec<String>>,
+    authority_key_identifier: Option<String>,
+    subject_key_identifier: Option<String>,
 }
 
 pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
@@ -98,6 +100,14 @@ pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, Cli
             args.push("--tag".to_owned());
             args.push((*tag).to_string());
         }
+    }
+    if let Some(aki) = certify_op.authority_key_identifier {
+        args.push("--authority_key_identifier".to_owned());
+        args.push(aki);
+    }
+    if let Some(ski) = certify_op.subject_key_identifier {
+        args.push("--subject_key_identifier".to_owned());
+        args.push(ski);
     }
     cmd.arg("certificates").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -384,6 +394,8 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
             csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            authority_key_identifier: None,
+            subject_key_identifier: None,
             ..Default::default()
         },
     )?;

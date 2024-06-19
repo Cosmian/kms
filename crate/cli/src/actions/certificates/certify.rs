@@ -189,11 +189,11 @@ pub struct CertifyAction {
     tags: Vec<String>,
 
     /// Authority Key Identifier. It is the subject key identifier if the issuer.
-    #[clap(long = "authority-key-identifier", short = 'i')]
+    #[clap(long = "authority-key-identifier", short = 'y')]
     authority_key_identifier: Option<String>,
 
     /// Subject Key Identifier. It is the subject key identifier if the issuer.
-    #[clap(long = "subject-key-identifier", short = 'y')]
+    #[clap(long = "subject-key-identifier", short = 'z')]
     subject_key_identifier: Option<String>,
 }
 
