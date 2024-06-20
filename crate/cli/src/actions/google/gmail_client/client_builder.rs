@@ -62,7 +62,7 @@ impl GmailClient {
 
     pub async fn handle_response(response: Response) -> Result<(), CliError> {
         if response.status().is_success() {
-            println!(
+            tracing::info!(
                 "{}",
                 response.text().await.map_err(GoogleApiError::Reqwest)?
             );

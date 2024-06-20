@@ -15,7 +15,7 @@ use cosmian_kms_client::{
 };
 use strum::IntoEnumIterator;
 
-use crate::error::CliError;
+use crate::{actions::console, error::CliError};
 
 /// Locate cryptographic objects inside the KMS
 ///
@@ -125,11 +125,11 @@ impl LocateObjectsAction {
         };
 
         let response = kms_rest_client.locate(locate).await?;
-        if let Some(identifiers) = response.unique_identifiers {
-            for identifier in identifiers {
-                println!("{identifier}");
-            }
+        let mut stdout = console::Stdout::new("List of unique identifiers", None);
+        if let Some(ids) = response.unique_identifiers {
+            stdout.set_unique_identifiers(ids);
         }
+        stdout.write()?;
 
         Ok(())
     }

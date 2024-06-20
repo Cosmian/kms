@@ -7,7 +7,10 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},
+    actions::{
+        console,
+        cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -84,18 +87,15 @@ impl CreateMasterKeyPairAction {
             .with_context(|| "failed creating a Covercrypt Master Key Pair")?;
 
         let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-
         let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-        println!("The master key pair has been properly generated.\n");
-        println!("  Private key unique identifier: {private_key_unique_identifier}\n");
-        println!("  Public key unique identifier : {public_key_unique_identifier}");
-        if !self.tags.is_empty() {
-            println!("\n  Tags:");
-            for tag in &self.tags {
-                println!("    - {tag}");
-            }
-        }
+        let mut stdout = console::Stdout::new(
+            "The master key pair has been properly generated.",
+            Some(&self.tags),
+        );
+        stdout.set_private_key_unique_identifier(&private_key_unique_identifier.to_string());
+        stdout.set_public_key_unique_identifier(&public_key_unique_identifier.to_string());
+        stdout.write()?;
 
         Ok(())
     }

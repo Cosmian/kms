@@ -51,11 +51,9 @@ pub fn create_symmetric_key(
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
-
-        let unique_identifier = extract_uid(output, "The symmetric key was created with id")
-            .ok_or_else(|| {
-                CliError::Default("failed extracting the unique identifier".to_owned())
-            })?;
+        let unique_identifier = extract_uid(output, "Unique identifier").ok_or_else(|| {
+            CliError::Default("failed extracting the unique identifier".to_owned())
+        })?;
         return Ok(unique_identifier.to_string())
     }
 

@@ -3,7 +3,10 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsClient,
 };
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResultHelper, CliError},
+};
 
 /// Create a new RSA key pair
 ///
@@ -44,9 +47,11 @@ impl CreateKeyPairAction {
         let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
         let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-        println!("The RSA key pair has been created.");
-        println!("  Private key unique identifier: {private_key_unique_identifier}\n");
-        println!("  Public key unique identifier : {public_key_unique_identifier}");
+        let mut stdout =
+            console::Stdout::new("The RSA key pair has been created.", Some(&self.tags));
+        stdout.set_private_key_unique_identifier(&private_key_unique_identifier.to_string());
+        stdout.set_public_key_unique_identifier(&public_key_unique_identifier.to_string());
+        stdout.write()?;
 
         Ok(())
     }

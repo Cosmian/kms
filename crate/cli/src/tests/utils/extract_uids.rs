@@ -19,17 +19,17 @@ pub fn extract_private_key(text: &str) -> Option<&str> {
 
 /// Extract the public key from a test.
 pub fn extract_public_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Public key unique identifier ")
+    extract_uid(text, "Public key unique identifier")
 }
 
 /// Extract the imported key id
-pub fn extract_imported_key_id(text: &str) -> Option<&str> {
-    extract_uid(text, ".*? was imported with id")
+pub fn extract_unique_identifier(text: &str) -> Option<&str> {
+    extract_uid(text, "Unique identifier")
 }
 
 /// Extract the decryption user key from a test.
 pub fn extract_user_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Created the user decryption key with ID")
+    extract_uid(text, "Unique identifier")
 }
 
 /// Extract the database secret from a test

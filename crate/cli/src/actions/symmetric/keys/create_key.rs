@@ -9,6 +9,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -120,7 +121,13 @@ impl CreateKeyAction {
             }
         };
 
-        println!("The symmetric key was created with id: {unique_identifier}.");
+        let mut stdout = console::Stdout::new(
+            "The symmetric key was successfully generated.",
+            Some(&self.tags),
+        );
+        stdout.set_unique_identifier(unique_identifier);
+        stdout.write()?;
+
         Ok(())
     }
 }

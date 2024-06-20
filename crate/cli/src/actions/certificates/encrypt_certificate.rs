@@ -8,6 +8,7 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -89,7 +90,11 @@ impl EncryptCertificateAction {
             .write_all(&ciphertext)
             .with_context(|| "failed to write the encrypted file")?;
 
-        println!("The encrypted file is available at {:?}", &output_file);
+        console::Stdout::new(
+            &format!("The encrypted file is available at {:?}", &output_file),
+            None,
+        )
+        .write()?;
 
         Ok(())
     }

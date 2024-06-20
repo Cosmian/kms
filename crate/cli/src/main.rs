@@ -116,7 +116,7 @@ async fn main_() -> Result<(), CliError> {
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Google(action) => action.process(&conf_path).await?,
                 _ => {
-                    println!("Error: unexpected command");
+                    tracing::error!("unexpected command");
                 }
             }
         }

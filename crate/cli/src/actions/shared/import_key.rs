@@ -15,7 +15,7 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
-use crate::error::CliError;
+use crate::{actions::console, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum ImportKeyFormat {
@@ -186,16 +186,13 @@ impl ImportKeyAction {
         .await?;
 
         // print the response
-        println!(
+        let stdout = format!(
             "The {:?} in file {:?} was imported with id: {}",
             object_type, &self.key_file, unique_identifier,
         );
-        if !self.tags.is_empty() {
-            println!("Tags:");
-            for tag in &self.tags {
-                println!("    - {tag}");
-            }
-        }
+        let mut stdout = console::Stdout::new(&stdout, Some(&self.tags));
+        stdout.set_unique_identifier(unique_identifier);
+        stdout.write()?;
 
         Ok(())
     }
@@ -210,9 +207,9 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
     match object.object_type() {
         ObjectType::PrivateKey | ObjectType::PublicKey => {
             if !objects.is_empty() {
-                println!(
-                    "Warning: the PEM file contains multiple objects. Only the private key will \
-                     be imported. A corresponding public key will be generated automatically."
+                tracing::warn!(
+                    "The PEM file contains multiple objects. Only the private key will be \
+                     imported. A corresponding public key will be generated automatically."
                 );
             }
             Ok(object)

@@ -23,7 +23,7 @@ use crate::{
         certificates::{export::export_certificate, import::import_certificate},
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
         shared::export_key,
-        utils::{extract_uids::extract_uid, recover_cmd_logs},
+        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -102,7 +102,7 @@ pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, Cli
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let import_output = std::str::from_utf8(&output.stdout)?;
-        let imported_key_id = extract_certificate_id(import_output)
+        let imported_key_id = extract_unique_identifier(import_output)
             .ok_or_else(|| CliError::Default("failed extracting the imported key id".to_owned()))?
             .to_owned();
         return Ok(imported_key_id)
@@ -110,11 +110,6 @@ pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, Cli
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
-}
-
-/// Extract the imported key id
-pub fn extract_certificate_id(text: &str) -> Option<&str> {
-    extract_uid(text, ".*? was issued with id")
 }
 
 fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String), CliError> {
@@ -233,6 +228,11 @@ fn check_certificate_added_extensions(cert_x509_der: &[u8]) {
     // check X509 extensions
     let (_, cert_x509) = X509Certificate::from_der(cert_x509_der).unwrap();
     let exts_with_x509_parser = cert_x509.extensions();
+
+    for ext in exts_with_x509_parser {
+        println!("\n\next: {ext:?}");
+        println!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+    }
 
     // BasicConstraints
     let bc = exts_with_x509_parser

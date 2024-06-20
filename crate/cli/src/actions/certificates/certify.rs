@@ -19,7 +19,7 @@ use cosmian_kms_client::{
     read_bytes_from_file, KmsClient,
 };
 
-use crate::error::CliError;
+use crate::{actions::console, error::CliError};
 
 /// The algorithm to use for the keypair generation
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -367,7 +367,13 @@ impl CertifyAction {
             .map_err(|e| CliError::ServerError(format!("failed creating certificate: {e:?}")))?
             .unique_identifier;
 
-        println!("The certificate was issued with id: {certificate_unique_identifier}.");
+        let mut stdout = console::Stdout::new(
+            "The certificate was successfully generated.",
+            Some(&self.tags),
+        );
+        stdout.set_unique_identifier(certificate_unique_identifier);
+        stdout.write()?;
+
         Ok(())
     }
 }

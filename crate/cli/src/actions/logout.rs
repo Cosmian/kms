@@ -18,7 +18,9 @@ impl LogoutAction {
         conf.kms_access_token = None;
         conf.save(conf_path)?;
 
-        println!("\nThe access token was removed from the KMS configuration file: {conf_path:?}");
+        tracing::info!(
+            "\nThe access token was removed from the KMS configuration file: {conf_path:?}"
+        );
 
         Ok(())
     }

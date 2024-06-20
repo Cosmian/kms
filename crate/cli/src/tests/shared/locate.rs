@@ -52,10 +52,13 @@ pub fn locate(
     cmd.arg("locate").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(std::str::from_utf8(&output.stdout)?
+        println!("yo: {}", std::str::from_utf8(&output.stdout)?);
+        let mut lines = std::str::from_utf8(&output.stdout)?
             .lines()
             .map(std::borrow::ToOwned::to_owned)
-            .collect::<Vec<String>>())
+            .collect::<Vec<String>>();
+        lines.remove(0); // remove header line: `List of unique identifiers`
+        return Ok(lines)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -76,6 +79,9 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         &["test_cc"],
     )?;
 
+    println!("master_private_key_id: {master_private_key_id}");
+    println!("master_public_key_id: {master_public_key_id}");
+
     // Locate with Tags
     let ids = locate(
         &ctx.owner_client_conf_path,
@@ -84,6 +90,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         None,
         None,
     )?;
+    println!("ids: {ids:?}");
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&master_private_key_id));
     assert!(ids.contains(&master_public_key_id));

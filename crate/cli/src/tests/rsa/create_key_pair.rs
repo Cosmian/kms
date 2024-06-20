@@ -35,7 +35,7 @@ pub fn create_rsa_4096_bits_key_pair(
     if output.status.success() {
         let rsa_output = std::str::from_utf8(&output.stdout)?;
         assert!(rsa_output.contains("Private key unique identifier:"));
-        assert!(rsa_output.contains("Public key unique identifier :"));
+        assert!(rsa_output.contains("Public key unique identifier:"));
         let private_key_id = extract_private_key(rsa_output)
             .ok_or_else(|| CliError::Default("failed extracting the private key".to_owned()))?
             .to_owned();
