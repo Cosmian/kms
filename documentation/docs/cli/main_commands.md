@@ -1090,6 +1090,8 @@ To specify multiple tags, use the option multiple times.
 
 `--key-format-type [-f] <KEY_FORMAT_TYPE>` Key format type (case insensitive)
 
+`--object-type [-o] <OBJECT_TYPE>` Object type (case insensitive)
+
 `--public-key-id [-p] <PUBLIC_KEY_ID>` Locate an object which has a link to this public key id
 
 `--private-key-id [-k] <PRIVATE_KEY_ID>` Locate an object which has a link to this private key id
