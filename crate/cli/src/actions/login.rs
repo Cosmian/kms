@@ -58,14 +58,14 @@ impl LoginAction {
         };
 
         let state = LoginState::try_from(login_config)?;
-        println!("Browse to: {}", state.auth_url);
+        tracing::info!("Browse to: {}", state.auth_url);
         let access_token = state.finalize().await?;
 
         // update the configuration and save it
         conf.kms_access_token = Some(access_token);
         conf.save(conf_path)?;
 
-        println!(
+        tracing::info!(
             "\nSuccess! The access token was saved in the KMS configuration file: {conf_path:?}"
         );
 

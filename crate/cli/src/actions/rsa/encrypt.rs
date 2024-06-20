@@ -7,7 +7,10 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::rsa::{to_cryptographic_parameters, EncryptionAlgorithm, HashFn},
+    actions::{
+        console,
+        rsa::{to_cryptographic_parameters, EncryptionAlgorithm, HashFn},
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -120,7 +123,8 @@ impl EncryptAction {
             .write_all(&data)
             .with_context(|| "failed to write the encrypted file")?;
 
-        println!("The encrypted file is available at {output_file:?}");
+        let stdout = format!("The encrypted file is available at {output_file:?}");
+        console::Stdout::new(&stdout, None).write()?;
 
         Ok(())
     }

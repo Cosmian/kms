@@ -1,6 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
+use super::console;
 use crate::error::{result::CliResultHelper, CliError};
 
 /// Print the version of the server
@@ -15,7 +16,7 @@ impl ServerVersionAction {
             .await
             .with_context(|| "Can't execute the version query on the kms server")?;
 
-        println!("{version}");
+        console::Stdout::new(&version, None).write()?;
 
         Ok(())
     }

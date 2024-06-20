@@ -127,7 +127,7 @@ pub fn write_single_decrypted_data(
     write_bytes_to_file(plaintext, &output_file)
         .with_context(|| "failed to write the decrypted file")?;
 
-    println!("The decrypted file is available at {output_file:?}");
+    tracing::info!("The decrypted file is available at {output_file:?}");
     Ok(())
 }
 
@@ -149,7 +149,7 @@ pub fn write_single_encrypted_data(
     write_bytes_to_file(encrypted_data, &output_file)
         .with_context(|| "failed to write the encrypted file")?;
 
-    println!("The encrypted file is available at {output_file:?}");
+    tracing::info!("The encrypted file is available at {output_file:?}");
     Ok(())
 }
 
@@ -223,7 +223,7 @@ pub fn write_bulk_decrypted_data(
 
         write_bytes_to_file(chunk_data, &output_file)?;
 
-        println!("The decrypted file is available at {output_file:?}");
+        tracing::info!("The decrypted file is available at {output_file:?}");
         Ok(())
     })
 }
@@ -277,7 +277,7 @@ pub fn write_bulk_encrypted_data(
 
         write_bytes_to_file(chunk_data, &output_file)?;
 
-        println!("The encrypted file is available at {output_file:?}");
+        tracing::info!("The encrypted file is available at {output_file:?}");
         Ok(())
     })
 }

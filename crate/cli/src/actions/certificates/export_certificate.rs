@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use crate::{cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
@@ -142,7 +142,7 @@ impl ExportCertificateAction {
             }
         }
 
-        println!(
+        let mut stdout_msg = format!(
             "The certificate {} of type {} was exported to {:?}",
             &object_id,
             object.object_type(),
@@ -153,11 +153,16 @@ impl ExportCertificateAction {
         if let Some(export_attributes) = export_attributes {
             let attributes_file = self.certificate_file.with_extension("attributes.json");
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
-            println!(
+            let stdout_attributes = format!(
                 "The attributes of the certificate {} were exported to {:?}",
                 &object_id, &attributes_file
             );
+            stdout_msg = format!("{stdout_msg} - {stdout_attributes}");
         }
+        let mut stdout = console::Stdout::new(&stdout_msg, None);
+        stdout.set_unique_identifier(object_id);
+        stdout.write()?;
+
         Ok(())
     }
 }

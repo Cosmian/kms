@@ -7,6 +7,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -34,7 +35,10 @@ pub async fn revoke(
             .as_str()
             .context("the server did not return a key id as a string")?
     {
-        println!("Successfully revoked the object: {}.", &key_id);
+        let mut stdout = console::Stdout::new("Successfully revoked the object.", None);
+        stdout.set_unique_identifier(key_id);
+        stdout.write()?;
+
         Ok(())
     } else {
         cli_bail!("Something went wrong when revoking the key.")
