@@ -154,7 +154,7 @@ jobs:
         run: |
           set -x
           DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
-          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          -o 'StrictHostKeyChecking no' cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
           scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
         env:
           VERSION: ${{ github.head_ref }}
@@ -164,7 +164,7 @@ jobs:
         run: |
           set -x
           DESTINATION_DIR=/mnt/package/kms/$VERSION
-          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          ssh -o 'StrictHostKeyChecking no' cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
           scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
         env:
           VERSION: ${{ github.ref_name }}
