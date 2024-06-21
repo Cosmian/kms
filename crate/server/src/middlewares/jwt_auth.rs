@@ -153,7 +153,7 @@ where
         }
         Err(jwt_log_errors) => {
             for error in &jwt_log_errors {
-                tracing::info!("{error:?}");
+                tracing::error!("{error:?}");
             }
             error!(
                 "{:?} {} 401 unauthorized: bad JWT",
