@@ -170,9 +170,13 @@ impl ListOwnedObjects {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        let mut stdout = console::Stdout::new("The objects owned by this user are:", None);
-        stdout.set_object_owned(objects);
-        stdout.write()?;
+        if !objects.is_empty() {
+            let mut stdout = console::Stdout::new("The objects owned by this user are:", None);
+            stdout.set_object_owned(objects);
+            stdout.write()?;
+        } else {
+            console::Stdout::new("No object owned by this user.", None).write()?;
+        }
 
         Ok(())
     }
@@ -192,9 +196,13 @@ impl ListAccessRightsObtained {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        let mut stdout = console::Stdout::new("The access right obtained are:", None);
-        stdout.set_access_rights_obtained(objects);
-        stdout.write()?;
+        if !objects.is_empty() {
+            let mut stdout = console::Stdout::new("The access rights obtained are: ", None);
+            stdout.set_access_rights_obtained(objects);
+            stdout.write()?;
+        } else {
+            console::Stdout::new("No access right obtained.", None).write()?;
+        }
 
         Ok(())
     }

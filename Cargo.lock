@@ -1239,7 +1239,6 @@ dependencies = [
  "cosmian_kms_server",
  "cosmian_logger",
  "der",
- "env_logger",
  "jwt-simple",
  "kms_test_server",
  "oauth2",
