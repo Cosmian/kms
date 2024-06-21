@@ -88,7 +88,7 @@ impl WrapKeyAction {
                 create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);
 
             // Print the wrapping key for user.
-            tracing::info!(
+            println!(
                 "Wrapping key: {}. This is the only time that this wrapping key will be printed.",
                 general_purpose::STANDARD.encode(&*key_bytes)
             );
