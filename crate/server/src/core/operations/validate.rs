@@ -72,7 +72,7 @@ pub(crate) async fn validate_operation(
     let hm_certificates = index_certificates(certificates)?;
 
     // Getting root certificate from indexing
-    let root_idx = if let Some(root_idx) = hm_certificates.get(&HEAD.to_vec()) {
+    let root_idx = if let Some(root_idx) = hm_certificates.get(HEAD) {
         root_idx
     } else {
         return Ok(ValidateResponse {
@@ -327,7 +327,7 @@ fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<
                     .and_then(|x| x.get(0))
                     .and_then(GeneralNameRef::uri);
                 if let Some(crl_uri) = crl_uri {
-                    uri_list.push(crl_uri.to_string())
+                    uri_list.push(crl_uri.to_string());
                 }
             }
             let res = uri_list
@@ -471,7 +471,7 @@ async fn get_crl_bytes(
     .await;
 
     // filtering errors
-    let is_ok = responses.iter().all(|x| x.is_ok());
+    let is_ok = responses.iter().all(std::result::Result::is_ok);
 
     // checking if there are any errors
     if is_ok {

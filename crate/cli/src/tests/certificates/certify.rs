@@ -731,7 +731,7 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
             leaf_certificate_id.clone(),
         ]
         .to_vec(),
-        "".to_string(),
+        String::new(),
     )
     .await?;
 
