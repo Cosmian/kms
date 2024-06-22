@@ -24,11 +24,14 @@ pub async fn kmip(
     body: String,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<TTLV>> {
+    let span = tracing::span!(tracing::Level::INFO, "kmip_2_1");
+    let _enter = span.enter();
+
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
-    info!("POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
+    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
     Ok(Json(ttlv))

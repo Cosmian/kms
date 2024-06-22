@@ -147,7 +147,6 @@ repos:
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign, --skip, test_cse_private_key_decrypt]
-      - id: cargo-audit
       # - id: cargo-outdated
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
@@ -155,3 +154,9 @@ repos:
       - id: clippy-all-targets-all-features
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
+
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.14.16 # choose your preferred tag
+    hooks:
+      - id: cargo-deny
+        args: [--all-features, check]

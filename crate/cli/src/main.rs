@@ -79,7 +79,7 @@ async fn main_() -> Result<(), CliError> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
             "RUST_LOG",
-            "info,cosmian=info,cosmian_kms_cli=info, actix_web=info,sqlx::query=error,mysql=info",
+            "info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info",
         );
     }
 

@@ -98,7 +98,8 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
 
 ## Configuring the access to the KMS
 
-The PKCS#11 module uses the same configuration file as the [CLI](../cli/cli.md#configuration).
+The PKCS#11 module uses the same configuration file as
+the [CLI](../cli/cli.md).
 Since it may be run as a system user, the configuration file should be made available
 in `/etc/cosmian/kms.json`.
 

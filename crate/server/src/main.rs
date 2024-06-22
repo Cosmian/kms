@@ -7,11 +7,12 @@ use cosmian_kms_server::{
     kms_bail,
     kms_server::start_kms_server,
     result::KResult,
+    telemetry::initialize_telemetry,
 };
 use dotenvy::dotenv;
 #[cfg(feature = "timeout")]
 use tracing::warn;
-use tracing::{debug, info};
+use tracing::{debug, info, span};
 
 #[cfg(feature = "timeout")]
 mod expiry;
@@ -35,15 +36,12 @@ async fn main() -> KResult<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
             "RUST_LOG",
-            "info,cosmian=info,cosmian_kms_server=info, \
-             actix_web=info,sqlx::query=error,mysql=info",
+            "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info",
         );
     }
 
     // Load variable from a .env file
     dotenv().ok();
-
-    env_logger::init();
 
     let conf = if let Ok(conf_path) = std::env::var("COSMIAN_KMS_CONF") {
         let conf_path = PathBuf::from(conf_path);
@@ -80,6 +78,13 @@ async fn main() -> KResult<()> {
         ClapConfig::parse()
     };
 
+    // Start the telemetry
+    initialize_telemetry(&clap_config)?;
+
+    //TODO: For an unknown reason, this span never goes to OTLP
+    let span = span!(tracing::Level::INFO, "start");
+    let _guard = span.enter();
+
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");
 
@@ -109,8 +114,9 @@ async fn main() -> KResult<()> {
 mod tests {
     use std::path::PathBuf;
 
-    use cosmian_kms_server::config::{
-        ClapConfig, DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig,
+    use cosmian_kms_server::{
+        config::{ClapConfig, DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig},
+        telemetry::TelemetryConfig,
     };
 
     #[test]
@@ -150,6 +156,10 @@ mod tests {
             force_default_username: false,
             google_cse_kacls_url: Some("[google cse kacls url]".to_string()),
             ms_dke_service_url: Some("[ms dke service url]".to_string()),
+            telemetry: TelemetryConfig {
+                otlp: Some("http://localhost:4317".to_string()),
+                quiet: false,
+            },
         };
 
         let toml_string = r#"
@@ -181,6 +191,10 @@ jwt_audience = ["[jwt audience 1]", "[jwt audience 2]"]
 [workspace]
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
+
+[telemetry]
+otlp = "http://localhost:4317"
+quiet = false
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

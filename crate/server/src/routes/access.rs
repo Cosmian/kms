@@ -20,9 +20,12 @@ pub async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
+    let span = tracing::span!(tracing::Level::INFO, "list_owned_objects");
+    let _enter = span.enter();
+
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /access/owned {user}");
+    info!(user = user, "GET /access/owned {user}");
 
     let list = kms
         .list_owned_objects(&user, database_params.as_ref())
@@ -38,9 +41,12 @@ pub async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
+    let span = tracing::span!(tracing::Level::INFO, "list_access_rights_obtained");
+    let _enter = span.enter();
+
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /access/granted {user}");
+    info!(user = user, "GET /access/granted {user}");
 
     let list = kms
         .list_access_rights_obtained(&user, database_params.as_ref())
@@ -56,10 +62,13 @@ pub async fn list_accesses(
     object_id: Path<(String,)>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
+    let span = tracing::span!(tracing::Level::INFO, "list_accesses");
+    let _enter = span.enter();
+
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /accesses/{object_id} {user}");
+    info!(user = user, "GET /accesses/{object_id} {user}");
 
     let list = kms
         .list_accesses(&object_id, &user, database_params.as_ref())
@@ -75,10 +84,17 @@ pub async fn grant_access(
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<SuccessResponse>> {
+    let span = tracing::span!(tracing::Level::INFO, "grant_access");
+    let _enter = span.enter();
+
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("POST /access/grant {access:?} {user}");
+    info!(
+        user = user,
+        access = access.to_string(),
+        "POST /access/grant {access:?} {user}"
+    );
 
     kms.grant_access(&access, &user, database_params.as_ref())
         .await?;
@@ -99,10 +115,17 @@ pub async fn revoke_access(
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<SuccessResponse>> {
+    let span = tracing::span!(tracing::Level::INFO, "revoke_access");
+    let _enter = span.enter();
+
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("POST /access/revoke {access:?} {user}");
+    info!(
+        user = user,
+        access = access.to_string(),
+        "POST /access/revoke {access:?} {user}"
+    );
 
     kms.revoke_access(&access, &user, database_params.as_ref())
         .await?;

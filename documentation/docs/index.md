@@ -43,6 +43,7 @@ and an application-level encrypted database indexed with Findex.
 - [Support for object tagging](#support-for-object-tagging)
 - [Command line interface client](#command-line-interface-client)
 - [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+- [Integrated with OpenTelemetry](#integrated-with-opentelemetry)
 - [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
 - [Comprehensive inline help](#comprehensive-inline-help)
 - [TOML configuration file](#toml-configuration-file)
@@ -156,6 +157,11 @@ the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/conta
 Raw binaries for multiple operating systems are also available on
 the [Cosmian public packages repository](https://package.cosmian.com/kms/4.16.0/)
 
+#### Integrated with OpenTelemetry
+
+The KMS server can be configured to send telemetry traces to
+an [OpenTelemetry](https://opentelemetry.io/) collector.
+
 #### Integrated with Cloudproof libraries
 
 To build the next generation of privacy-by-design applications with end-to-end encryption,
@@ -258,10 +264,9 @@ Options:
       --jwt-issuer-uri <JWT_ISSUER_URI>...
           The issuer URI of the JWT token
 
-          To handle multiple identity managers, add different parameters under each argument
-          (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
-          the same order
-          --jwt-issuer-uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2>
+          To handle multiple identity managers, add different parameters under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order :
+
+          --jwt_issuer_uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2> --jwks_uri <JWKS_URI_1> <JWKS_URI_2> --jwt_audience <JWT_AUDIENCE_1> <JWT_AUDIENCE_2>
 
           For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 
@@ -272,10 +277,7 @@ Options:
       --jwks-uri <JWKS_URI>...
           The JWKS (Json Web Key Set) URI of the JWT token
 
-          To handle multiple identity managers, add different parameters under each argument
-          (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in
-          the same order
-           --jwks-uri <JWKS_URI_1> <JWKS_URI_2>
+          To handle multiple identity managers, add different parameters under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
 
           For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
@@ -315,11 +317,6 @@ Options:
 
           [env: KMS_FORCE_DEFAULT_USERNAME=]
 
-      --jwk-private-key <JWK_PRIVATE_KEY>
-          Enable the use of encryption by providing a JWK private key as JSON
-
-          [env: JWK_PRIVATE_KEY=]
-
       --google-cse-kacls-url <GOOGLE_CSE_KACLS_URL>
           This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
 
@@ -337,11 +334,23 @@ Options:
 
           [env: KMS_MS_DKE_SERVICE_URL=]
 
+      --otlp <OTLP>
+          The OTLP collector URL
+          (for instance, http://localhost:4317)
+
+          [env: KMS_OTLP_URL=]
+
+      --quiet
+          Do not log to stdout
+
+          [env: KMS_LOG_QUIET=]
+
   -h, --help
           Print help (see a summary with '-h')
 
   -V, --version
           Print version
+
 ```
 
 #### TOML configuration file
@@ -381,4 +390,8 @@ jwt_audience = ["[jwt audience]"]
 [workspace]
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
+
+[telemetry]
+otlp = "[url of the OTLP collector]"
+quiet = false
 ```

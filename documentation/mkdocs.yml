@@ -1,7 +1,7 @@
 ---
 site_name: Cosmian Key Management System
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2022 Cosmian. All rights reserved
+copyright: © Copyright 2018-2024 Cosmian. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material
@@ -51,6 +51,7 @@ nav:
   - FIPS mode: fips.md
   - Cryptographic algorithms: algorithms.md
   - Enabling TLS: tls.md
+  - Logging and telemetry: logging.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
   - Running in the cloud or any zero-trust environment: zero_trust.md
