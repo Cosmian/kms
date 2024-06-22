@@ -255,10 +255,9 @@ impl GetAttributesAction {
                 "The attributes for {unique_identifier} were exported to {:?}",
                 &output_file
             );
-            console::Stdout::new(&stdout, None).write()?;
+            console::Stdout::new(&stdout).write()?;
         } else {
-            let mut stdout =
-                console::Stdout::new(&format!("Attributes for {unique_identifier}"), None);
+            let mut stdout = console::Stdout::new(&format!("Attributes for {unique_identifier}"));
             stdout.set_unique_identifier(unique_identifier);
             stdout.set_attributes(results);
             stdout.write()?;

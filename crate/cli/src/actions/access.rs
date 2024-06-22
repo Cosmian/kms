@@ -74,7 +74,7 @@ impl GrantAccess {
             "The following access right were successfully granted to `{}`: {:?}",
             self.user, self.operations,
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -120,7 +120,7 @@ impl RevokeAccess {
             "The following permissions have been properly removed for `{}`: {:?}",
             self.user, self.operations
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -148,7 +148,7 @@ impl ListAccessesGranted {
             "The access rights granted on object {} are:",
             &self.object_uid
         );
-        let mut stdout = console::Stdout::new(&stdout, None);
+        let mut stdout = console::Stdout::new(&stdout);
         stdout.set_accesses(accesses);
         stdout.write()?;
 
@@ -171,11 +171,11 @@ impl ListOwnedObjects {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         if !objects.is_empty() {
-            let mut stdout = console::Stdout::new("The objects owned by this user are:", None);
+            let mut stdout = console::Stdout::new("The objects owned by this user are:");
             stdout.set_object_owned(objects);
             stdout.write()?;
         } else {
-            console::Stdout::new("No object owned by this user.", None).write()?;
+            console::Stdout::new("No object owned by this user.").write()?;
         }
 
         Ok(())
@@ -197,11 +197,11 @@ impl ListAccessRightsObtained {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         if !objects.is_empty() {
-            let mut stdout = console::Stdout::new("The access rights obtained are: ", None);
+            let mut stdout = console::Stdout::new("The access rights obtained are: ");
             stdout.set_access_rights_obtained(objects);
             stdout.write()?;
         } else {
-            console::Stdout::new("No access right obtained.", None).write()?;
+            console::Stdout::new("No access right obtained.").write()?;
         }
 
         Ok(())

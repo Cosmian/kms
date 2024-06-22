@@ -85,10 +85,10 @@ impl DecryptCertificateAction {
             .write_all(&plaintext)
             .with_context(|| "Fail to write the plaintext file")?;
 
-        console::Stdout::new(
-            &format!("The decrypted file is available at {:?}", &output_file),
-            None,
-        )
+        console::Stdout::new(&format!(
+            "The decrypted file is available at {:?}",
+            &output_file
+        ))
         .write()?;
 
         Ok(())

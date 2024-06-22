@@ -37,14 +37,16 @@ pub struct Stdout {
 }
 
 impl Stdout {
-    //TODO: take ownership of args
     #[must_use]
-    pub fn new(stdout: &str, tags: Option<&Vec<String>>) -> Stdout {
+    pub fn new(stdout: &str) -> Stdout {
         Stdout {
             stdout: stdout.to_string(),
-            tags: tags.cloned(),
             ..Default::default()
         }
+    }
+
+    pub fn set_tags(&mut self, tags: Option<&Vec<String>>) {
+        self.tags = tags.cloned();
     }
 
     pub fn set_unique_identifier<T: Into<String>>(&mut self, unique_identifier: T) {
@@ -60,12 +62,13 @@ impl Stdout {
         );
     }
 
-    pub fn set_private_key_unique_identifier(&mut self, private_key_unique_identifier: &str) {
-        self.private_key_unique_identifier = Some(private_key_unique_identifier.to_string());
-    }
-
-    pub fn set_public_key_unique_identifier(&mut self, public_key_unique_identifier: &str) {
-        self.public_key_unique_identifier = Some(public_key_unique_identifier.to_string());
+    pub fn set_key_pair_unique_identifier<T: Into<String>>(
+        &mut self,
+        private_key_unique_identifier: T,
+        public_key_unique_identifier: T,
+    ) {
+        self.private_key_unique_identifier = Some(private_key_unique_identifier.into());
+        self.public_key_unique_identifier = Some(public_key_unique_identifier.into());
     }
 
     pub fn set_attributes(&mut self, attributes: HashMap<String, Value>) {
@@ -106,8 +109,6 @@ impl Stdout {
             }
             if let Some(ids) = &self.unique_identifiers {
                 for id in ids {
-                    // TODO: fix this
-                    // println!("\t  Unique identifier: {id}");
                     println!("{id}");
                 }
             }

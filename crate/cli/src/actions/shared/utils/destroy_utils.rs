@@ -27,7 +27,7 @@ pub async fn destroy(kms_rest_client: &KmsClient, key_id: &str) -> Result<(), Cl
             .as_str()
             .context("The server did not return the key uid as a string")?
     {
-        let mut stdout = console::Stdout::new("Successfully destroyed the key.", None);
+        let mut stdout = console::Stdout::new("Successfully destroyed the key.");
         stdout.set_unique_identifier(key_id);
         stdout.write()?;
 

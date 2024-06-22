@@ -51,7 +51,7 @@ pub enum Subject {
     KeypairAndSubjectName(
         /// Unique identifier of the certificate to create
         UniqueIdentifier,
-        /// Generated KeyPair from which the certificate is created
+        /// Generated `KeyPair` from which the certificate is created
         KeyPairData,
         /// Subject name of the certificate
         X509Name,

@@ -190,7 +190,8 @@ impl ImportKeyAction {
             "The {:?} in file {:?} was imported with id: {}",
             object_type, &self.key_file, unique_identifier,
         );
-        let mut stdout = console::Stdout::new(&stdout, Some(&self.tags));
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_tags(Some(&self.tags));
         stdout.set_unique_identifier(unique_identifier);
         stdout.write()?;
 
@@ -207,9 +208,9 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
     match object.object_type() {
         ObjectType::PrivateKey | ObjectType::PublicKey => {
             if !objects.is_empty() {
-                tracing::warn!(
-                    "The PEM file contains multiple objects. Only the private key will be \
-                     imported. A corresponding public key will be generated automatically."
+                println!(
+                    "WARNING: the PEM file contains multiple objects. Only the private key will \
+                     be imported. A corresponding public key will be generated automatically."
                 );
             }
             Ok(object)

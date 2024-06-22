@@ -68,10 +68,11 @@ impl RekeyAction {
             &self.access_policy
         );
 
-        let mut stdout = console::Stdout::new(&stdout, self.tags.as_ref());
-        stdout
-            .set_private_key_unique_identifier(&response.private_key_unique_identifier.to_string());
-        stdout.set_public_key_unique_identifier(&response.public_key_unique_identifier.to_string());
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_key_pair_unique_identifier(
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        );
         stdout.write()?;
 
         Ok(())
@@ -134,10 +135,12 @@ impl PruneAction {
             &self.access_policy
         );
 
-        let mut stdout = console::Stdout::new(&stdout, self.tags.as_ref());
-        stdout
-            .set_private_key_unique_identifier(&response.private_key_unique_identifier.to_string());
-        stdout.set_public_key_unique_identifier(&response.public_key_unique_identifier.to_string());
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_tags(self.tags.as_ref());
+        stdout.set_key_pair_unique_identifier(
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        );
         stdout.write()?;
 
         Ok(())

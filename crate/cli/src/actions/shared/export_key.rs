@@ -168,7 +168,7 @@ impl ExportKeyAction {
             object.object_type(),
             &self.key_file
         );
-        let mut stdout = console::Stdout::new(&stdout, None);
+        let mut stdout = console::Stdout::new(&stdout);
         stdout.set_unique_identifier(id);
         stdout.write()?;
 

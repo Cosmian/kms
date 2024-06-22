@@ -137,7 +137,7 @@ impl CreateAction {
             "The binary policy file was generated in {:?}.",
             &self.policy_binary_file
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -289,7 +289,7 @@ impl ViewAction {
             let specs: HashMap<String, Vec<String>> = policy.try_into()?;
             serde_json::to_string_pretty(&specs)?
         };
-        console::Stdout::new(&json, None).write()?;
+        console::Stdout::new(&json).write()?;
         Ok(())
     }
 }
@@ -349,7 +349,7 @@ impl AddAttributeAction {
             &rekey_response.private_key_unique_identifier,
             &rekey_response.public_key_unique_identifier,
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -407,7 +407,7 @@ impl RenameAttributeAction {
             "Attribute {} was successfully renamed to {}.",
             &self.attribute, &self.new_name
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -459,7 +459,7 @@ impl DisableAttributeAction {
             "Attribute {} was successfully disabled from the master public key {}.",
             &self.attribute, &rekey_response.public_key_unique_identifier,
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -517,7 +517,7 @@ impl RemoveAttributeAction {
             &rekey_response.private_key_unique_identifier,
             &rekey_response.public_key_unique_identifier,
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }

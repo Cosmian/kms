@@ -260,7 +260,8 @@ impl ImportCertificateAction {
                 ("The list of Mozilla CCADB certificates".to_string(), None)
             }
         };
-        let mut stdout = console::Stdout::new(&stdout_message, Some(&self.tags));
+        let mut stdout = console::Stdout::new(&stdout_message);
+        stdout.set_tags(Some(&self.tags));
         if let Some(id) = returned_unique_identifier {
             stdout.set_unique_identifier(id);
         }

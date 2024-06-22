@@ -106,7 +106,7 @@ impl UnwrapKeyAction {
             "The key of type {:?} in file {:?} was unwrapped in file: {:?}",
             object_type, self.key_file_in, &output_file
         );
-        console::Stdout::new(&stdout, None).write()?;
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }

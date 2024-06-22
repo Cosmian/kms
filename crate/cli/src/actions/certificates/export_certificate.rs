@@ -142,7 +142,7 @@ impl ExportCertificateAction {
             }
         }
 
-        let mut stdout_msg = format!(
+        let mut stdout = format!(
             "The certificate {} of type {} was exported to {:?}",
             &object_id,
             object.object_type(),
@@ -157,9 +157,9 @@ impl ExportCertificateAction {
                 "The attributes of the certificate {} were exported to {:?}",
                 &object_id, &attributes_file
             );
-            stdout_msg = format!("{stdout_msg} - {stdout_attributes}");
+            stdout = format!("{stdout} - {stdout_attributes}");
         }
-        let mut stdout = console::Stdout::new(&stdout_msg, None);
+        let mut stdout = console::Stdout::new(&stdout);
         stdout.set_unique_identifier(object_id);
         stdout.write()?;
 

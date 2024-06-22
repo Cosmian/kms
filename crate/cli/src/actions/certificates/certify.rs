@@ -367,10 +367,8 @@ impl CertifyAction {
             .map_err(|e| CliError::ServerError(format!("failed creating certificate: {e:?}")))?
             .unique_identifier;
 
-        let mut stdout = console::Stdout::new(
-            "The certificate was successfully generated.",
-            Some(&self.tags),
-        );
+        let mut stdout = console::Stdout::new("The certificate was successfully generated.");
+        stdout.set_tags(Some(&self.tags));
         stdout.set_unique_identifier(certificate_unique_identifier);
         stdout.write()?;
 

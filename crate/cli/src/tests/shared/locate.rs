@@ -52,7 +52,6 @@ pub fn locate(
     cmd.arg("locate").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        println!("yo: {}", std::str::from_utf8(&output.stdout)?);
         let mut lines = std::str::from_utf8(&output.stdout)?
             .lines()
             .map(std::borrow::ToOwned::to_owned)

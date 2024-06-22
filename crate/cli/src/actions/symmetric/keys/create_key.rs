@@ -118,10 +118,8 @@ impl CreateKeyAction {
                 .to_string()
         };
 
-        let mut stdout = console::Stdout::new(
-            "The symmetric key was successfully generated.",
-            Some(&self.tags),
-        );
+        let mut stdout = console::Stdout::new("The symmetric key was successfully generated.");
+        stdout.set_tags(Some(&self.tags));
         stdout.set_unique_identifier(unique_identifier);
         stdout.write()?;
 

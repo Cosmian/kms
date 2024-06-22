@@ -35,7 +35,7 @@ pub async fn revoke(
             .as_str()
             .context("the server did not return a key id as a string")?
     {
-        let mut stdout = console::Stdout::new("Successfully revoked the object.", None);
+        let mut stdout = console::Stdout::new("Successfully revoked the object.");
         stdout.set_unique_identifier(key_id);
         stdout.write()?;
 
