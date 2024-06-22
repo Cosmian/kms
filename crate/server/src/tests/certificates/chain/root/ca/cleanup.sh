@@ -1,3 +1,5 @@
+#!/bin/sh
+
 rm -rf certs crl newcerts private intermediate
 rm index.*
 rm serial*

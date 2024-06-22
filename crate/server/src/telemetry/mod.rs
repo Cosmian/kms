@@ -11,7 +11,7 @@ mod otlp;
 #[serde(default)]
 pub struct TelemetryConfig {
     /// The OTLP collector URL
-    /// (for instance, http://localhost:4317)
+    /// (for instance, <http://localhost:4317>)
     #[clap(long, env("KMS_OTLP_URL"), verbatim_doc_comment)]
     pub otlp: Option<String>,
     /// Do not log to stdout

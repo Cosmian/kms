@@ -24,15 +24,15 @@ p256 = { version = "0.13.2", default-features = false, features = [
 pkcs1 = "0.7.5"
 pkcs11_sys = { path = "../sys" }
 rand = "0.8.5"
-serde = { version = "1.0.197", features = ["derive"] }
-strum_macros = "0.26.2"
-thiserror = "1.0.57"
+serde = { version = "1.0.203", features = ["derive"] }
+strum_macros = "0.26.4"
+thiserror = "1.0.61"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-zeroize = "1.7.0"
+zeroize = "1.8.1"
 
 [dev-dependencies]
-serial_test = { version = "3.0.0", default-features = false }
+serial_test = { version = "3.1.1", default-features = false }
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
   "env-filter",
