@@ -16,7 +16,7 @@ impl ServerVersionAction {
             .await
             .with_context(|| "Can't execute the version query on the kms server")?;
 
-        console::Stdout::new(&version, None).write()?;
+        console::Stdout::new(&version).write()?;
 
         Ok(())
     }

@@ -85,10 +85,9 @@ impl CreateUserKeyAction {
 
         let user_key_unique_identifier = &create_response.unique_identifier;
 
-        let mut stdout = console::Stdout::new(
-            "The user decryption key pair has been properly generated.",
-            Some(&self.tags),
-        );
+        let mut stdout =
+            console::Stdout::new("The user decryption key pair has been properly generated.");
+        stdout.set_tags(Some(&self.tags));
         stdout.set_unique_identifier(user_key_unique_identifier.to_owned());
         stdout.write()?;
 

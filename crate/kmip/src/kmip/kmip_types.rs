@@ -1988,6 +1988,11 @@ impl Default for UniqueIdentifier {
     }
 }
 
+impl From<&UniqueIdentifier> for String {
+    fn from(value: &UniqueIdentifier) -> Self {
+        value.to_string()
+    }
+}
 impl From<UniqueIdentifier> for String {
     fn from(value: UniqueIdentifier) -> Self {
         value.to_string()

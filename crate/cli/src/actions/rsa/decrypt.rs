@@ -124,7 +124,9 @@ impl DecryptAction {
             .with_context(|| "Fail to write the plain file")?;
 
         let stdout = format!("The decrypted file is available at {output_file:?}");
-        console::Stdout::new(&stdout, self.tags.as_ref()).write()?;
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_tags(self.tags.as_ref());
+        stdout.write()?;
 
         Ok(())
     }

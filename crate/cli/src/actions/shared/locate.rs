@@ -67,14 +67,14 @@ pub struct LocateObjectsAction {
     /// The list is the one specified by KMIP 2.1
     /// Possible values are:
     /// * Certificate
-    /// * SymmetricKey
-    /// * PublicKey
-    /// * PrivateKey
-    /// * SplitKey
-    /// * SecretData
-    /// * OpaqueObject
-    /// * PGPKey
-    /// * CertificateRequest
+    /// * `SymmetricKey`
+    /// * `PublicKey`
+    /// * `PrivateKey`
+    /// * `SplitKey`
+    /// * `SecretData`
+    /// * `OpaqueObject`
+    /// * `PGPKey`
+    /// * `CertificateRequest`
     #[clap(long = "object-type", short = 'o',
         value_parser = ObjectTypeParser,verbatim_doc_comment)]
     object_type: Option<ObjectType>,
@@ -149,14 +149,14 @@ impl LocateObjectsAction {
         let response = kms_rest_client.locate(locate).await?;
         if let Some(ids) = response.unique_identifiers {
             if !ids.is_empty() {
-                let mut stdout = console::Stdout::new("List of unique identifiers:", None);
+                let mut stdout = console::Stdout::new("List of unique identifiers:");
                 stdout.set_unique_identifiers(ids);
                 stdout.write()?;
             } else {
-                console::Stdout::new("No object found.", None).write()?;
+                console::Stdout::new("No object found.").write()?;
             }
         } else {
-            console::Stdout::new("No object found.", None).write()?;
+            console::Stdout::new("No object found.").write()?;
         }
 
         Ok(())

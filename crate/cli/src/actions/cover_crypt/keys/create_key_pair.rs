@@ -89,12 +89,12 @@ impl CreateMasterKeyPairAction {
         let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
         let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-        let mut stdout = console::Stdout::new(
-            "The master key pair has been properly generated.",
-            Some(&self.tags),
+        let mut stdout = console::Stdout::new("The master key pair has been properly generated.");
+        stdout.set_tags(Some(&self.tags));
+        stdout.set_key_pair_unique_identifier(
+            private_key_unique_identifier,
+            public_key_unique_identifier,
         );
-        stdout.set_private_key_unique_identifier(&private_key_unique_identifier.to_string());
-        stdout.set_public_key_unique_identifier(&public_key_unique_identifier.to_string());
         stdout.write()?;
 
         Ok(())
