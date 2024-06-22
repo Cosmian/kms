@@ -68,7 +68,7 @@ repos:
     rev: v1.21.0
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -76,9 +76,9 @@ repos:
       - id: forbid-crlf
       - id: remove-crlf
       - id: forbid-tabs
-        exclude: ^.git/
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
       - id: remove-tabs
-        exclude: ^.git/
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
 
   - repo: https://github.com/sirosen/texthooks
     rev: 0.6.6
@@ -94,6 +94,7 @@ repos:
     rev: 3.0.0
     hooks:
       - id: shellcheck
+        exclude: scripts/centos_install_curl.sh
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -114,7 +115,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data
+        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs

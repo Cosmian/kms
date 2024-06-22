@@ -1,4 +1,7 @@
+#!/bin/sh
+
 set -e
+
 echo "removing old configurations"
 rm -rf certs crl newcerts private intermediate
 rm index.*
@@ -65,7 +68,7 @@ cat intermediate/certs/intermediate.cert.pem \
 
 ## Leaf1
 
-echo "LEAFS"
+echo "LEAVES"
 openssl genrsa -aes256 \
       -out intermediate/private/leaf1.key.pem -passout pass:leaf1123 2048
 

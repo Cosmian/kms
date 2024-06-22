@@ -27,13 +27,13 @@ chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { workspace = true, optional = true }
-pyo3 = { workspace = true, optional = true  }
+pyo3 = { workspace = true, optional = true }
 rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -21,10 +21,10 @@ base64 = { workspace = true }
 cloudproof = { workspace = true }
 ## use the non-openssl version
 cosmian_kmip = { path = "../kmip", default-features = true }
-der = "0.7.8"
+der = "0.7.9"
 http = { workspace = true }
 log = "0.4"
-pem = "3.0.3"
+pem = "3.0.4"
 reqwest = { workspace = true, features = [
   "json",
   "multipart",
@@ -40,4 +40,4 @@ tracing = "0.1"
 url = { workspace = true }
 webpki-roots = "0.22"
 x509-cert = "0.2.5"
-zeroize = "1.7.0"
+zeroize = "1.8.1"
