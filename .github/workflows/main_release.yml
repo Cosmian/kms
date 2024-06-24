@@ -135,6 +135,11 @@ jobs:
       - python_and_docker
       - clean_env_test
     runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
     env:
       ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
 
@@ -145,7 +150,8 @@ jobs:
 
       - name: Creating zip to be attached to release
         run: |
-          sudo apt-get install -y zip
+          apt update -y
+          apt-get install -y zip
           for archive_name in $ARCHIVE_NAMES; do
             zip -r "$archive_name".zip "$archive_name"
           done
@@ -154,8 +160,8 @@ jobs:
         run: |
           set -x
           DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
-          ssh -o 'StrictHostKeyChecking no' cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
         env:
           VERSION: ${{ github.head_ref }}
 
@@ -164,8 +170,8 @@ jobs:
         run: |
           set -x
           DESTINATION_DIR=/mnt/package/kms/$VERSION
-          ssh -o 'StrictHostKeyChecking no' cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
         env:
           VERSION: ${{ github.ref_name }}
 
