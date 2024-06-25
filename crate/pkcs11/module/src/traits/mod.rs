@@ -118,7 +118,6 @@ impl TryFrom<&Attributes> for SearchOptions {
             return Ok(SearchOptions::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
-            // let id = compoundid::decode(id)?;
             Ok(SearchOptions::Id(id.clone()))
         } else if let Some(Attribute::Label(label)) = attributes.get(AttributeType::Label) {
             Ok(SearchOptions::Label(label.into()))

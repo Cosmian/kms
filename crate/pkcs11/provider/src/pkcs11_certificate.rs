@@ -1,12 +1,11 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
 use cosmian_pkcs11_module::traits::{Certificate, PublicKey};
-use tracing::error;
 use x509_cert::{
     der::{Decode, Encode},
     Certificate as X509Certificate,
 };
 
-use crate::{error::Pkcs11Error, kms_object::KmsObject};
+use crate::{error::Pkcs11Error, kms_object::KmsObject, pkcs11_public_key::Pkcs11PublicKey};
 
 /// A PKCS11 Certificate is a Certificate that wraps data from a KMS object
 #[derive(Debug)]
@@ -55,23 +54,10 @@ impl Certificate for Pkcs11Certificate {
             .map_err(|e| Pkcs11Error::from(e).into())
     }
 
-    fn public_key(&self) -> cosmian_pkcs11_module::MResult<&dyn PublicKey> {
-        let spki = &self.certificate.tbs_certificate.subject_public_key_info;
-        let fingerprint = spki.fingerprint_bytes()?.to_vec();
-
-        let der_bytes = self
-            .certificate
-            .tbs_certificate
-            .subject_public_key_info
-            .to_der()?;
-
-        let algorithm = &self
-            .certificate
-            .tbs_certificate
-            .subject_public_key_info
-            .algorithm;
-        error!("FATAL: get public key from certificate not implemented");
-        todo!("implement get public key from certificate")
+    fn public_key(&self) -> cosmian_pkcs11_module::MResult<Box<dyn PublicKey>> {
+        Pkcs11PublicKey::try_from_spki(&self.certificate.tbs_certificate.subject_public_key_info)
+            .map_err(|e| Pkcs11Error::from(e).into())
+            .map(|pk| Box::new(pk) as Box<dyn PublicKey>)
     }
 
     fn issuer(&self) -> cosmian_pkcs11_module::MResult<Vec<u8>> {

@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use cosmian_pkcs11_module::{
     traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm},
-    MResult,
+    MError, MResult,
 };
-use x509_cert::{
-    der::Encode,
-    spki::{AlgorithmIdentifier, ObjectIdentifier, SubjectPublicKeyInfoOwned},
-};
+use sha3::Digest;
+use tracing::error;
+use x509_cert::{der::Encode, spki::SubjectPublicKeyInfoOwned};
 
 pub struct Pkcs11PublicKey {
     /// DER bytes of the public key
@@ -20,16 +19,14 @@ pub struct Pkcs11PublicKey {
 
 impl Pkcs11PublicKey {
     pub fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> MResult<Self> {
-        let algorithm = match spki.algorithm.oids()? {
-            [oid, params_oid] => (oid, Some(params_oid)),
-            [oid] => (oid, None),
-            _ => {
-                return Err("Invalid number of OIDs in SubjectPublicKeyInfo".into());
-            }
-        };
+        let algorithm = &spki.algorithm;
+        let algorithm =
+            KeyAlgorithm::from_oid(&algorithm.oid).ok_or_else(|| MError::ArgumentsBad)?;
+        let der_bytes = spki.to_der()?;
+        let fingerprint = sha3::Sha3_256::digest(&der_bytes).to_vec();
         Ok(Self {
-            der_bytes: spki.to_der()?,
-            fingerprint: spki.fingerprint_bytes()?.to_vec(),
+            der_bytes,
+            fingerprint,
             algorithm,
         })
     }
@@ -48,15 +45,19 @@ impl PublicKey for Pkcs11PublicKey {
         self.der_bytes.clone()
     }
 
-    fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()> {
+    fn verify(
+        &self,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+        _signature: &[u8],
+    ) -> MResult<()> {
+        error!("verify not implemented for Pkcs11PublicKey");
         todo!()
     }
 
-    fn delete(self: Arc<Self>) {
-        todo!()
-    }
+    fn delete(self: Arc<Self>) {}
 
     fn algorithm(&self) -> KeyAlgorithm {
-        todo!()
+        self.algorithm.clone()
     }
 }

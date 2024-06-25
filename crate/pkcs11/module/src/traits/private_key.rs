@@ -26,18 +26,18 @@ use crate::{
 };
 
 pub trait PrivateKey: Send + Sync {
-    fn public_key_id(&self) -> Vec<u8>;
+    fn private_key_id(&self) -> Vec<u8>;
     fn label(&self) -> String;
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
     fn algorithm(&self) -> KeyAlgorithm;
     fn find_public_key(&self, backend: &dyn Backend) -> MResult<Option<Arc<dyn PublicKey>>> {
-        backend.find_public_key(SearchOptions::Id(self.public_key_id()))
+        backend.find_public_key(SearchOptions::Id(self.private_key_id()))
     }
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
         Id {
             label: self.label(),
-            hash: self.public_key_id(),
+            hash: self.private_key_id(),
         }
     }
 }
@@ -52,7 +52,7 @@ impl std::fmt::Debug for dyn PrivateKey {
 
 impl PartialEq for dyn PrivateKey {
     fn eq(&self, other: &Self) -> bool {
-        self.public_key_id() == other.public_key_id() && self.label() == other.label()
+        self.private_key_id() == other.private_key_id() && self.label() == other.label()
     }
 }
 
@@ -61,7 +61,7 @@ impl Eq for dyn PrivateKey {}
 impl Hash for dyn PrivateKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.type_id().hash(state);
-        self.public_key_id().hash(state);
+        self.private_key_id().hash(state);
         self.label().hash(state);
     }
 }
