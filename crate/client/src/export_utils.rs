@@ -146,7 +146,7 @@ pub async fn batch_export_objects(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> Result<Vec<Result<(String, Object, Attributes), String>>, ClientError> {
     if allow_revoked {
         batch_export(
             kms_rest_client,
@@ -174,7 +174,7 @@ async fn batch_get(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> Result<Vec<Result<(String, Object, Attributes), String>>, ClientError> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -198,7 +198,11 @@ async fn batch_get(
                 Ok(Operation::GetAttributesResponse(atts)),
             ] => {
                 let object = Object::post_fix(get.object_type, get.object.clone());
-                results.push(Ok((object, atts.attributes.clone())));
+                results.push(Ok((
+                    get.unique_identifier.to_string(),
+                    object,
+                    atts.attributes.clone(),
+                )));
             }
             [Err(e), _] => results.push(Err(e.to_string())),
             [_, Err(e)] => results.push(Err(e.to_string())),
@@ -217,7 +221,7 @@ async fn batch_export(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> Result<Vec<Result<(String, Object, Attributes), String>>, ClientError> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -249,7 +253,11 @@ async fn batch_export(
                     Object::post_fix(export_response.object_type, export_response.object.clone());
                 let mut attributes = export_response.attributes.clone();
                 let _ = attributes.set_tags(atts.attributes.get_tags());
-                results.push(Ok((object, atts.attributes.clone())));
+                results.push(Ok((
+                    export_response.unique_identifier.to_string(),
+                    object,
+                    atts.attributes.clone(),
+                )));
             }
             [Err(e), _] => results.push(Err(e.to_string())),
             [_, Err(e)] => results.push(Err(e.to_string())),

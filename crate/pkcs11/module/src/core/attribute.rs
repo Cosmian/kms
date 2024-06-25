@@ -46,6 +46,7 @@ pub enum AttributeType {
     Class,
     Coefficient,
     Decrypt,
+    /// DER-encoding of an ANSI X9.62 Parameters value
     EcParams,
     EcPoint,
     Encrypt,
@@ -140,6 +141,7 @@ pub enum Attribute {
     Class(CK_OBJECT_CLASS),
     Coefficient(Vec<u8>),
     Decrypt(bool),
+    /// DER-encoding of an ANSI X9.62 Parameters value
     EcParams(Vec<u8>),
     EcPoint(Vec<u8>),
     Encrypt(bool),

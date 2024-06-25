@@ -17,22 +17,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{any::Any, hash::Hash, sync::Arc};
+use std::{any::Any, hash::Hash};
+
+use zeroize::Zeroizing;
 
 use crate::{
     core::compoundid::Id,
-    traits::{Backend, KeyAlgorithm, PublicKey, SearchOptions, SignatureAlgorithm},
+    traits::{KeyAlgorithm, SignatureAlgorithm},
     MResult,
 };
 
 pub trait PrivateKey: Send + Sync {
     fn private_key_id(&self) -> Vec<u8>;
-    fn label(&self) -> String;
-    fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
-    fn algorithm(&self) -> KeyAlgorithm;
-    fn find_public_key(&self, backend: &dyn Backend) -> MResult<Option<Arc<dyn PublicKey>>> {
-        backend.find_public_key(SearchOptions::Id(self.private_key_id()))
+
+    fn label(&self) -> String {
+        "PrivateKey".to_string()
     }
+
+    fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
+
+    /// Returns the algorithm of the key; will fail if only the remote part is known
+    fn algorithm(&self) -> MResult<KeyAlgorithm>;
+
+    /// Returns the DER bytes of the key; will fail if only the remote part is known
+    fn der_bytes(&self) -> MResult<Zeroizing<Vec<u8>>>;
+
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
         Id {

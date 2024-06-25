@@ -102,12 +102,14 @@ impl Backend for CkmsBackend {
             }
         };
         let kms_object = get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8)?;
-        Ok(Arc::new(Pkcs11PrivateKey::try_from(kms_object)?))
+        Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
 
-    fn find_public_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>> {
+    fn find_public_key(&self, query: SearchOptions) -> MResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
-        Ok(None)
+        Err(MError::Backend(Box::new(pkcs11_error!(
+            "find_public_key: not implemented"
+        ))))
     }
 
     fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>> {

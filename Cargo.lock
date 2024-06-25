@@ -829,6 +829,8 @@ dependencies = [
  "cosmian_pkcs11_module",
  "etcetera",
  "kms_test_server",
+ "p256",
+ "pkcs1",
  "serde_json",
  "sha3",
  "thiserror",
