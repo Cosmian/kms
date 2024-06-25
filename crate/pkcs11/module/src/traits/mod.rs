@@ -25,9 +25,11 @@ pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
 pub use key_algorithm::KeyAlgorithm;
 pub use once_cell;
+use pkcs1::RsaPublicKey;
 pub use private_key::PrivateKey;
 pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
 pub use signature_algorithm::SignatureAlgorithm;
+use tracing::error;
 
 use crate::{
     core::{
@@ -72,8 +74,10 @@ impl DigestType {
 
 pub trait PublicKey: Send + Sync {
     fn fingerprint(&self) -> &[u8];
-    fn label(&self) -> String;
-    fn to_der(&self) -> Vec<u8>;
+    fn label(&self) -> String {
+        "PublicKey".to_string()
+    }
+    // fn to_der(&self) -> Vec<u8>;
     fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()>;
     fn delete(self: Arc<Self>);
     fn algorithm(&self) -> KeyAlgorithm;
@@ -85,6 +89,24 @@ pub trait PublicKey: Send + Sync {
             hash: self.fingerprint().to_vec(),
         }
     }
+
+    /// Return the RSA public key if the key is an RSA key
+    fn rsa_public_key(&self) -> MResult<RsaPublicKey>;
+
+    /// Return the RSA modulus if the key is an RSA key
+    /// In big endian
+    fn rsa_modulus(&self) -> MResult<Vec<u8>> {
+        Ok(self.rsa_public_key()?.modulus.as_bytes().to_vec())
+    }
+
+    /// Return the RSA public exponent if the key is an RSA key
+    /// In big endian
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
+        Ok(self.rsa_public_key()?.public_exponent.as_bytes().to_vec())
+    }
+
+    /// Return the EC P256 public key if the key is an EC key
+    fn ec_p256_public_key(&self) -> MResult<p256::PublicKey>;
 }
 
 impl PartialEq for dyn PublicKey {

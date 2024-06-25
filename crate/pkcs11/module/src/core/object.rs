@@ -20,7 +20,10 @@
 use std::sync::Arc;
 
 use log::{error, warn};
-use p256::pkcs8::der::{asn1::OctetString, Encode};
+use p256::{
+    elliptic_curve::sec1::ToEncodedPoint,
+    pkcs8::der::{asn1::OctetString, Encode},
+};
 use pkcs1::{der::Decode, RsaPublicKey};
 use pkcs11_sys::{
     CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
@@ -37,7 +40,7 @@ use crate::{
         backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
         RemoteObjectType,
     },
-    MResult,
+    MError, MResult,
 };
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -113,42 +116,11 @@ impl Object {
                 AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
                 AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
                 AttributeType::Modulus => {
-                    let key = cert.public_key()?;
-                    match key.algorithm() {
-                        KeyAlgorithm::Rsa => {
-                            let der_bytes = key.to_der();
-                            let key = RsaPublicKey::from_der(&der_bytes).unwrap();
-                            Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
-                        }
-                        x => {
-                            error!(
-                                "certificate:modulus not available for public keys of type: {:?}",
-                                x
-                            );
-                            None
-                        }
-                    }
+                    Some(Attribute::Modulus(cert.public_key()?.rsa_modulus()?))
                 }
-                AttributeType::PublicExponent => {
-                    let key = cert.public_key()?;
-                    match key.algorithm() {
-                        KeyAlgorithm::Rsa => {
-                            let der_bytes = key.to_der();
-                            let key = RsaPublicKey::from_der(&der_bytes).unwrap();
-                            Some(Attribute::PublicExponent(
-                                key.public_exponent.as_bytes().to_vec(),
-                            ))
-                        }
-                        x => {
-                            error!(
-                                "certificate:public exponent not available for public keys of \
-                                 type: {:?}",
-                                x
-                            );
-                            None
-                        }
-                    }
-                }
+                AttributeType::PublicExponent => Some(Attribute::PublicExponent(
+                    cert.public_key()?.rsa_public_exponent()?,
+                )),
                 _ => {
                     error!("certificate: type_ unimplemented: {:?}", type_);
                     None
@@ -159,9 +131,21 @@ impl Object {
                 AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
                 AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
-                AttributeType::EcParams => Some(Attribute::EcParams(
-                    private_key.algorithm().to_oid()?.to_der()?,
-                )),
+                AttributeType::EcParams => {
+                    let algorithm = private_key.algorithm()?;
+                    match algorithm {
+                        KeyAlgorithm::EccP256
+                        | KeyAlgorithm::EccP384
+                        | KeyAlgorithm::EccP521
+                        | KeyAlgorithm::X25519 {}
+                        | KeyAlgorithm::Ed25519
+                        | KeyAlgorithm::X448
+                        | KeyAlgorithm::Ed448 => Some(Attribute::EcParams(
+                            private_key.algorithm()?.to_oid()?.to_der()?,
+                        )),
+                        _ => None,
+                    }
+                }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
                 AttributeType::KeyType => {
@@ -219,17 +203,9 @@ impl Object {
             Object::PublicKey(pk) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PUBLIC_KEY)),
                 AttributeType::Label => Some(Attribute::Label(pk.label())),
-                AttributeType::Modulus => {
-                    let key = pk.to_der();
-                    let key = RsaPublicKey::from_der(&key).unwrap();
-                    Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
-                }
+                AttributeType::Modulus => Some(Attribute::Modulus(pk.rsa_modulus()?)),
                 AttributeType::PublicExponent => {
-                    let key = pk.to_der();
-                    let key = RsaPublicKey::from_der(&key).unwrap();
-                    Some(Attribute::PublicExponent(
-                        key.public_exponent.as_bytes().to_vec(),
-                    ))
+                    Some(Attribute::PublicExponent(pk.rsa_public_exponent()?))
                 }
                 AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
                 AttributeType::Id => Some(Attribute::Id(pk.id().encode()?)),
@@ -237,8 +213,12 @@ impl Object {
                     if !pk.algorithm().is_ecc() {
                         return Ok(None);
                     }
-                    let wrapped = OctetString::new(pk.to_der())?;
-                    Some(Attribute::EcPoint(wrapped.to_der()?))
+                    Some(Attribute::EcPoint(
+                        pk.ec_p256_public_key()?
+                            .to_encoded_point(false)
+                            .to_bytes()
+                            .to_vec(),
+                    ))
                 }
                 AttributeType::EcParams => {
                     if !pk.algorithm().is_ecc() {

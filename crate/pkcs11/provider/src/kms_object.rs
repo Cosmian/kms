@@ -17,6 +17,7 @@ use crate::error::Pkcs11Error;
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct KmsObject {
+    pub tags_or_id: String,
     pub object: Object,
     pub attributes: Attributes,
     pub other_tags: Vec<String>,

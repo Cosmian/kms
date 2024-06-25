@@ -123,6 +123,9 @@ pub enum MError {
 
     #[error("{0}")]
     Todo(String),
+
+    #[error("cryptographic error: {0}")]
+    Cryptography(String),
 }
 
 impl From<MError> for CK_RV {
@@ -153,6 +156,7 @@ impl From<MError> for CK_RV {
             | MError::FromVecWithNul(_)
             | MError::NullPtr
             | MError::Todo(_)
+            | MError::Cryptography(_)
             | MError::TryFromInt(_)
             | MError::Pkcs1(_)
             | MError::Encoding(_)
