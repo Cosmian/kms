@@ -115,35 +115,39 @@ impl Object {
                 AttributeType::Modulus => {
                     let key = cert.public_key()?;
                     match key.algorithm() {
-                        KeyAlgorithm::Rsa => {}
+                        KeyAlgorithm::Rsa => {
+                            let der_bytes = key.to_der();
+                            let key = RsaPublicKey::from_der(&der_bytes).unwrap();
+                            Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
+                        }
                         x => {
                             error!(
                                 "certificate:modulus not available for public keys of type: {:?}",
                                 x
                             );
+                            None
                         }
                     }
-                    let der_bytes = key.to_der();
-                    let key = RsaPublicKey::from_der(&der_bytes).unwrap();
-                    Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
                 }
                 AttributeType::PublicExponent => {
                     let key = cert.public_key()?;
                     match key.algorithm() {
-                        KeyAlgorithm::Rsa => {}
+                        KeyAlgorithm::Rsa => {
+                            let der_bytes = key.to_der();
+                            let key = RsaPublicKey::from_der(&der_bytes).unwrap();
+                            Some(Attribute::PublicExponent(
+                                key.public_exponent.as_bytes().to_vec(),
+                            ))
+                        }
                         x => {
                             error!(
                                 "certificate:public exponent not available for public keys of \
                                  type: {:?}",
                                 x
                             );
+                            None
                         }
                     }
-                    let der_bytes = key.to_der();
-                    let key = RsaPublicKey::from_der(&der_bytes).unwrap();
-                    Some(Attribute::PublicExponent(
-                        key.public_exponent.as_bytes().to_vec(),
-                    ))
                 }
                 _ => {
                     error!("certificate: type_ unimplemented: {:?}", type_);

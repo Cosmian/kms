@@ -89,7 +89,7 @@ impl Backend for CkmsBackend {
         Ok(result)
     }
 
-    fn find_private_key(&self, query: SearchOptions) -> MResult<KmsObject> {
+    fn find_private_key(&self, query: SearchOptions) -> MResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = match query {
             SearchOptions::Id(id) => {
@@ -101,7 +101,8 @@ impl Backend for CkmsBackend {
                 ))))
             }
         };
-        get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8).map_err(Into::into)
+        let kms_object = get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8)?;
+        Ok(Arc::new(Pkcs11PrivateKey::try_from(kms_object)?))
     }
 
     fn find_public_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>> {
