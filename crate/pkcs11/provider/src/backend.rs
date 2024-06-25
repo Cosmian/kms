@@ -2,18 +2,22 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip::kmip_types::KeyFormatType;
 use cosmian_kms_client::KmsClient;
-use cosmian_pkcs11_module::traits::{
-    Backend, Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
-    RemoteObjectId, RemoteObjectType, SearchOptions, SignatureAlgorithm, Version,
+use cosmian_pkcs11_module::{
+    traits::{
+        Backend, Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
+        RemoteObjectId, RemoteObjectType, SearchOptions, SignatureAlgorithm, Version,
+    },
+    MError, MResult,
 };
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     error::Pkcs11Error,
-    kms_object::{get_kms_objects, kms_decrypt, locate_kms_objects},
+    kms_object::{get_kms_object, get_kms_objects, kms_decrypt, locate_kms_objects, KmsObject},
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
+    pkcs11_error,
     pkcs11_private_key::Pkcs11PrivateKey,
 };
 
@@ -63,15 +67,12 @@ impl Backend for CkmsBackend {
         Version { major, minor }
     }
 
-    fn find_certificate(
-        &self,
-        _query: SearchOptions,
-    ) -> cosmian_pkcs11_module::MResult<Option<Arc<dyn Certificate>>> {
-        trace!("find_all_certificates");
+    fn find_certificate(&self, _query: SearchOptions) -> MResult<Option<Arc<dyn Certificate>>> {
+        trace!("find_certificate");
         Ok(None)
     }
 
-    fn find_all_certificates(&self) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn Certificate>>> {
+    fn find_all_certificates(&self) -> MResult<Vec<Arc<dyn Certificate>>> {
         trace!("find_all_certificates");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
@@ -88,25 +89,27 @@ impl Backend for CkmsBackend {
         Ok(result)
     }
 
-    fn find_private_key(
-        &self,
-        _query: SearchOptions,
-    ) -> cosmian_pkcs11_module::MResult<Option<Arc<dyn RemoteObjectId>>> {
-        trace!("find_private_key: {:?}", _query);
-        Ok(None)
+    fn find_private_key(&self, query: SearchOptions) -> MResult<KmsObject> {
+        trace!("find_private_key: {:?}", query);
+        let id = match query {
+            SearchOptions::Id(id) => {
+                String::from_utf8(id).map_err(|_| pkcs11_error!("find_private_key: invalid ID"))?
+            }
+            _ => {
+                return Err(MError::Backend(Box::new(pkcs11_error!(
+                    "find_private_key: find must be made using an ID"
+                ))))
+            }
+        };
+        get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8).map_err(Into::into)
     }
 
-    fn find_public_key(
-        &self,
-        query: SearchOptions,
-    ) -> cosmian_pkcs11_module::MResult<Option<Arc<dyn PublicKey>>> {
+    fn find_public_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>> {
         trace!("find_public_key: {:?}", query);
         Ok(None)
     }
 
-    fn find_all_private_keys(
-        &self,
-    ) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn RemoteObjectId>>> {
+    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>> {
         trace!("find_all_private_keys");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
@@ -121,20 +124,17 @@ impl Backend for CkmsBackend {
         )
     }
 
-    fn find_all_public_keys(&self) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn PublicKey>>> {
+    fn find_all_public_keys(&self) -> MResult<Vec<Arc<dyn PublicKey>>> {
         trace!("find_all_public_keys");
         Ok(vec![])
     }
 
-    fn find_data_object(
-        &self,
-        query: SearchOptions,
-    ) -> cosmian_pkcs11_module::MResult<Option<Arc<dyn DataObject>>> {
+    fn find_data_object(&self, query: SearchOptions) -> MResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
         Ok(None)
     }
 
-    fn find_all_data_objects(&self) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn DataObject>>> {
+    fn find_all_data_objects(&self) -> MResult<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
@@ -155,7 +155,7 @@ impl Backend for CkmsBackend {
         &self,
         algorithm: KeyAlgorithm,
         label: Option<&str>,
-    ) -> cosmian_pkcs11_module::MResult<Arc<dyn PrivateKey>> {
+    ) -> MResult<Arc<dyn PrivateKey>> {
         trace!("generate_key: {:?}, {:?}", algorithm, label);
         Ok(Arc::new(EmptyPrivateKeyImpl {}))
     }
@@ -165,7 +165,7 @@ impl Backend for CkmsBackend {
         remote_object: Arc<dyn RemoteObjectId>,
         algorithm: EncryptionAlgorithm,
         ciphertext: Vec<u8>,
-    ) -> cosmian_pkcs11_module::MResult<Zeroizing<Vec<u8>>> {
+    ) -> MResult<Zeroizing<Vec<u8>>> {
         debug!(
             "decrypt: {:?}, cipher text length: {}",
             remote_object,
@@ -184,7 +184,7 @@ impl Backend for CkmsBackend {
 pub(crate) struct EmptyPrivateKeyImpl;
 
 impl PrivateKey for EmptyPrivateKeyImpl {
-    fn public_key_id(&self) -> Vec<u8> {
+    fn private_key_id(&self) -> Vec<u8> {
         vec![]
     }
 
@@ -192,11 +192,7 @@ impl PrivateKey for EmptyPrivateKeyImpl {
         "PrivateKeyImpl".to_string()
     }
 
-    fn sign(
-        &self,
-        _algorithm: &SignatureAlgorithm,
-        _data: &[u8],
-    ) -> cosmian_pkcs11_module::MResult<Vec<u8>> {
+    fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> MResult<Vec<u8>> {
         Ok(vec![])
     }
 

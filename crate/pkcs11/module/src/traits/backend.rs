@@ -44,7 +44,7 @@ pub trait Backend: Send + Sync {
 
     fn find_certificate(&self, query: SearchOptions) -> MResult<Option<Arc<dyn Certificate>>>;
     fn find_all_certificates(&self) -> MResult<Vec<Arc<dyn Certificate>>>;
-    fn find_private_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn RemoteObjectId>>>;
+    fn find_private_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PrivateKey>>>;
     fn find_public_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>>;
     fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>>;
     fn find_all_public_keys(&self) -> MResult<Vec<Arc<dyn PublicKey>>>;

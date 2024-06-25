@@ -62,15 +62,16 @@ pub struct FindContext {
 
 impl FindContext {
     /// Insert the object and add it to the unread
-    pub fn insert(&mut self, object: Arc<Object>) -> CK_OBJECT_HANDLE {
+    pub fn insert(&mut self, object: Arc<Object>) -> MResult<CK_OBJECT_HANDLE> {
         let handle = self.ids.len() as CK_OBJECT_HANDLE;
         self.ids.insert(handle, Arc::downgrade(&object));
-        trace!("object ID: {}", object.id());
-        self.objects.insert(object.id(), (object, handle));
+        let id = object.id()?;
+        trace!("object ID: {id}");
+        self.objects.insert(id, (object, handle));
         trace!("inserted object with id");
         self.unread_indexes.push(handle);
         trace!("inserted object with handle: {}", handle);
-        handle
+        Ok(handle)
     }
 
     pub fn get_using_handle(&self, handle: CK_OBJECT_HANDLE) -> Option<Arc<Object>> {
@@ -132,7 +133,7 @@ impl Session {
         let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
             Ok(sig) => sig,
             Err(e) => {
-                tracing::error!("signature failed: {e:?}");
+                error!("signature failed: {e:?}");
                 return Err(MError::ArgumentsBad);
             }
         };
@@ -211,29 +212,33 @@ impl Session {
                         backend()
                             .find_all_certificates()?
                             .into_iter()
-                            .for_each(|c| {
+                            .map(|c| {
                                 info!("load_find_context: adding certificate");
-                                find_ctx.insert(Arc::new(Object::Certificate(c)));
-                                info!("load_find_context: added certificate");
-                            });
+                                find_ctx.insert(Arc::new(Object::Certificate(c)))
+                            })
+                            .collect::<MResult<Vec<_>>>()?;
                     }
                     pkcs11_sys::CKO_PUBLIC_KEY => {
-                        backend().find_all_public_keys()?.into_iter().for_each(|c| {
-                            find_ctx.insert(Arc::new(Object::PublicKey(c)));
-                        })
+                        backend()
+                            .find_all_public_keys()?
+                            .into_iter()
+                            .map(|c| find_ctx.insert(Arc::new(Object::PublicKey(c))))
+                            .collect::<MResult<Vec<_>>>()?;
                     }
-                    pkcs11_sys::CKO_PRIVATE_KEY => backend()
-                        .find_all_private_keys()?
-                        .into_iter()
-                        .for_each(|c| {
-                            find_ctx.insert(Arc::new(Object::RemoteObjectId(c)));
-                        }),
-                    pkcs11_sys::CKO_DATA => backend()
-                        .find_all_data_objects()?
-                        .into_iter()
-                        .for_each(|c| {
-                            find_ctx.insert(Arc::new(Object::DataObject(c)));
-                        }),
+                    pkcs11_sys::CKO_PRIVATE_KEY => {
+                        backend()
+                            .find_all_private_keys()?
+                            .into_iter()
+                            .map(|c| find_ctx.insert(Arc::new(Object::RemoteObjectId(c))))
+                            .collect::<MResult<Vec<_>>>()?;
+                    }
+                    pkcs11_sys::CKO_DATA => {
+                        backend()
+                            .find_all_data_objects()?
+                            .into_iter()
+                            .map(|c| find_ctx.insert(Arc::new(Object::DataObject(c))))
+                            .collect::<MResult<Vec<_>>>()?;
+                    }
                     o => return Err(MError::Todo(format!("Object not supported: {o}"))),
                 }
                 info!(

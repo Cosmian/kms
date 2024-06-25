@@ -17,17 +17,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Debug, str::FromStr, sync::Arc};
+use std::sync::Arc;
 
-use log::error;
-use p256::pkcs8::{
-    der::{asn1::OctetString, Encode},
-    AssociatedOid,
-};
-use pkcs1::{der::Decode, ObjectIdentifier, RsaPublicKey};
+use log::{error, warn};
+use p256::pkcs8::der::{asn1::OctetString, Encode};
+use pkcs1::{der::Decode, RsaPublicKey};
 use pkcs11_sys::{
-    CKC_X_509, CKK_EC, CKK_RSA, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE,
-    CKO_PUBLIC_KEY, CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
+    CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
+    CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
 };
 use tracing::debug;
 
@@ -40,10 +37,9 @@ use crate::{
         backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
         RemoteObjectType,
     },
-    MError, MResult,
+    MResult,
 };
 
-// TODO(bweeks): resolve by improving the ObjectStore implementation.
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Hash, Eq, Clone)]
 pub enum Object {
@@ -56,17 +52,17 @@ pub enum Object {
 }
 
 impl Object {
-    pub fn id(&self) -> Id {
+    pub fn id(&self) -> MResult<Id> {
         match self {
             Object::Certificate(cert) => cert.id(),
-            Object::PrivateKey(private_key) => private_key.id(),
-            Object::Profile(id) => Id {
+            Object::PrivateKey(private_key) => Ok(private_key.id()),
+            Object::Profile(id) => Ok(Id {
                 label: "Profile".to_string(),
                 hash: id.to_be_bytes().to_vec(),
-            },
-            Object::PublicKey(public_key) => public_key.id(),
-            Object::DataObject(data) => data.id(),
-            Object::RemoteObjectId(remote_object_id) => remote_object_id.id(),
+            }),
+            Object::PublicKey(public_key) => Ok(public_key.id()),
+            Object::DataObject(data) => Ok(data.id()),
+            Object::RemoteObjectId(remote_object_id) => Ok(remote_object_id.id()),
         }
     }
 }
@@ -105,7 +101,7 @@ impl Object {
                 )),
                 AttributeType::CertificateType => Some(Attribute::CertificateType(CKC_X_509)),
                 AttributeType::Class => Some(Attribute::Class(CKO_CERTIFICATE)),
-                AttributeType::Id => Some(Attribute::Id(cert.id().encode()?)),
+                AttributeType::Id => Some(Attribute::Id(cert.id()?.encode()?)),
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label(cert.label())),
                 AttributeType::Token => Some(Attribute::Token(true)),
@@ -115,6 +111,40 @@ impl Object {
                 }
                 AttributeType::Subject => cert.subject().map(Attribute::Subject).ok(),
                 AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
+                AttributeType::Modulus => {
+                    let key = cert.public_key()?;
+                    match key.algorithm() {
+                        KeyAlgorithm::Rsa => {}
+                        x => {
+                            error!(
+                                "certificate:modulus not available for public keys of type: {:?}",
+                                x
+                            );
+                        }
+                    }
+                    let der_bytes = key.to_der();
+                    let key = RsaPublicKey::from_der(&der_bytes).unwrap();
+                    Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
+                }
+                AttributeType::PublicExponent => {
+                    let key = cert.public_key()?;
+                    match key.algorithm() {
+                        KeyAlgorithm::Rsa => {}
+                        x => {
+                            error!(
+                                "certificate:public exponent not available for public keys of \
+                                 type: {:?}",
+                                x
+                            );
+                        }
+                    }
+                    let der_bytes = key.to_der();
+                    let key = RsaPublicKey::from_der(&der_bytes).unwrap();
+                    Some(Attribute::PublicExponent(
+                        key.public_exponent.as_bytes().to_vec(),
+                    ))
+                }
                 _ => {
                     error!("certificate: type_ unimplemented: {:?}", type_);
                     None
@@ -124,7 +154,7 @@ impl Object {
                 AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
                 AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
-                AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
                 AttributeType::EcParams => Some(Attribute::EcParams(
                     private_key.algorithm().to_oid()?.to_der()?,
                 )),
@@ -193,7 +223,9 @@ impl Object {
                 AttributeType::PublicExponent => {
                     let key = pk.to_der();
                     let key = RsaPublicKey::from_der(&key).unwrap();
-                    Some(Attribute::Modulus(key.public_exponent.as_bytes().to_vec()))
+                    Some(Attribute::PublicExponent(
+                        key.public_exponent.as_bytes().to_vec(),
+                    ))
                 }
                 AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
                 AttributeType::Id => Some(Attribute::Id(pk.id().encode()?)),
@@ -218,7 +250,7 @@ impl Object {
             Object::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
                 AttributeType::Id => Some(Attribute::Id(data.id().encode()?)),
-                // TODO(BGR) should we hold zeroizable values here
+                // TODO(BGR) should we hold zeroizable values here ?
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
                 AttributeType::Private => Some(Attribute::Private(true)),
@@ -238,9 +270,15 @@ impl Object {
                 },
                 AttributeType::Modulus => Some(Attribute::Modulus(2048_u32.to_be_bytes().to_vec())),
                 AttributeType::PublicExponent => {
-                    Some(Attribute::Modulus(65537_u32.to_be_bytes().to_vec()))
+                    Some(Attribute::PublicExponent(65537_u32.to_be_bytes().to_vec()))
                 }
-
+                AttributeType::Value => {
+                    warn!(
+                        "Requesting value of Remote Object {:?}",
+                        remote_object_id.id()
+                    );
+                    Some(Attribute::Value(vec![]))
+                }
                 _ => {
                     error!("Remote object id: type_ unimplemented: {:?}", type_);
                     None

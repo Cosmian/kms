@@ -1,12 +1,12 @@
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_operations::{Decrypt, Locate},
+    kmip_operations::{Decrypt, Get, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
         UniqueIdentifier,
     },
 };
-use cosmian_kms_client::{batch_export_objects, ClientConf, KmsClient};
+use cosmian_kms_client::{batch_export_objects, export_object, ClientConf, KmsClient};
 use cosmian_pkcs11_module::traits::EncryptionAlgorithm;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -79,6 +79,46 @@ pub(crate) async fn get_kms_objects_async(
         });
     }
     Ok(results)
+}
+
+pub fn get_kms_object(
+    kms_client: &KmsClient,
+    object_id_or_tags: &str,
+    key_format_type: KeyFormatType,
+) -> Result<KmsObject, Pkcs11Error> {
+    tokio::runtime::Runtime::new()?.block_on(get_kms_object_async(
+        kms_client,
+        object_id_or_tags,
+        key_format_type,
+    ))
+}
+
+pub(crate) async fn get_kms_object_async(
+    kms_client: &KmsClient,
+    object_id_or_tags: &str,
+    key_format_type: KeyFormatType,
+) -> Result<KmsObject, Pkcs11Error> {
+    let (object, attributes) = export_object(
+        kms_client,
+        object_id_or_tags,
+        true,
+        None,
+        false,
+        Some(key_format_type),
+    )
+    .await?;
+
+    let attributes = attributes.unwrap_or_default();
+    let other_tags = attributes
+        .get_tags()
+        .into_iter()
+        .filter(|t| !t.is_empty() && !t.starts_with('_'))
+        .collect::<Vec<String>>();
+    Ok(KmsObject {
+        object,
+        attributes,
+        other_tags,
+    })
 }
 
 async fn locate_objects(

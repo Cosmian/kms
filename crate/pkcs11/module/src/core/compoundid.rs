@@ -62,10 +62,10 @@ fn hex_string(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-// pub fn encode(id: &Id) -> MResult<Vec<u8>> {
-//     Ok(bincode_opts().serialize(id)?)
-// }
-//
-// pub fn decode(data: &[u8]) -> MResult<Id> {
-//     Ok(bincode_opts().deserialize(data)?)
-// }
+pub fn encode(id: &Id) -> MResult<Vec<u8>> {
+    Ok(bincode_opts().serialize(id)?)
+}
+
+pub fn decode(data: &[u8]) -> MResult<Id> {
+    Ok(bincode_opts().deserialize(data)?)
+}
