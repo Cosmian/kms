@@ -17,26 +17,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{any::Any, hash::Hash, sync::Arc};
-
 pub use backend::{backend, register_backend, Backend};
 pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
 pub use key_algorithm::KeyAlgorithm;
 pub use once_cell;
-use pkcs1::RsaPublicKey;
 pub use private_key::PrivateKey;
+pub use public_key::PublicKey;
 pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
 pub use signature_algorithm::SignatureAlgorithm;
-use tracing::error;
 
 use crate::{
-    core::{
-        attribute::{Attribute, AttributeType, Attributes},
-        compoundid::Id,
-    },
-    MError, MResult,
+    core::attribute::{Attribute, AttributeType, Attributes},
+    MError,
 };
 
 mod backend;
@@ -45,6 +39,7 @@ mod data_object;
 mod encryption_algorithms;
 mod key_algorithm;
 mod private_key;
+mod public_key;
 mod remote_object_id;
 mod signature_algorithm;
 
@@ -69,59 +64,6 @@ impl DigestType {
             DigestType::Sha384 => 48,
             DigestType::Sha512 => 64,
         }
-    }
-}
-
-pub trait PublicKey: Send + Sync {
-    fn fingerprint(&self) -> &[u8];
-    fn label(&self) -> String {
-        "PublicKey".to_string()
-    }
-    // fn to_der(&self) -> Vec<u8>;
-    fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()>;
-    fn delete(self: Arc<Self>);
-    fn algorithm(&self) -> KeyAlgorithm;
-
-    /// ID used as CKA_ID when searching objects by ID
-    fn id(&self) -> Id {
-        Id {
-            label: self.label(),
-            hash: self.fingerprint().to_vec(),
-        }
-    }
-
-    /// Return the RSA public key if the key is an RSA key
-    fn rsa_public_key(&self) -> MResult<RsaPublicKey>;
-
-    /// Return the RSA modulus if the key is an RSA key
-    /// In big endian
-    fn rsa_modulus(&self) -> MResult<Vec<u8>> {
-        Ok(self.rsa_public_key()?.modulus.as_bytes().to_vec())
-    }
-
-    /// Return the RSA public exponent if the key is an RSA key
-    /// In big endian
-    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
-        Ok(self.rsa_public_key()?.public_exponent.as_bytes().to_vec())
-    }
-
-    /// Return the EC P256 public key if the key is an EC key
-    fn ec_p256_public_key(&self) -> MResult<p256::PublicKey>;
-}
-
-impl PartialEq for dyn PublicKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.fingerprint() == other.fingerprint() && self.label() == other.label()
-    }
-}
-
-impl Eq for dyn PublicKey {}
-
-impl Hash for dyn PublicKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.fingerprint().hash(state);
-        self.label().hash(state);
     }
 }
 

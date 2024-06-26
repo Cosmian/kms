@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_operations::{Decrypt, Get, Locate},
+    kmip_operations::{Decrypt, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
         UniqueIdentifier,
@@ -67,13 +67,15 @@ pub(crate) async fn get_kms_objects_async(
     trace!("Found objects: {:?}", responses);
     let mut results = vec![];
     for response in responses {
-        let (object, attributes) = response.map_err(|e| Pkcs11Error::ServerError(e.to_string()))?;
+        let (id, object, attributes) =
+            response.map_err(|e| Pkcs11Error::ServerError(e.to_string()))?;
         let other_tags = attributes
             .get_tags()
             .into_iter()
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
         results.push(KmsObject {
+            tags_or_id: id,
             object,
             attributes,
             other_tags,
@@ -99,7 +101,7 @@ pub(crate) async fn get_kms_object_async(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Result<KmsObject, Pkcs11Error> {
-    let (object, attributes) = export_object(
+    let (id, object, attributes) = export_object(
         kms_client,
         object_id_or_tags,
         true,
@@ -116,6 +118,7 @@ pub(crate) async fn get_kms_object_async(
         .filter(|t| !t.is_empty() && !t.starts_with('_'))
         .collect::<Vec<String>>();
     Ok(KmsObject {
+        tags_or_id: id.to_string(),
         object,
         attributes,
         other_tags,

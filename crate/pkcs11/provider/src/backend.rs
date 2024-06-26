@@ -9,12 +9,14 @@ use cosmian_pkcs11_module::{
     },
     MError, MResult,
 };
+use p256::SecretKey;
+use pkcs1::RsaPrivateKey;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     error::Pkcs11Error,
-    kms_object::{get_kms_object, get_kms_objects, kms_decrypt, locate_kms_objects, KmsObject},
+    kms_object::{get_kms_object, get_kms_objects, kms_decrypt, locate_kms_objects},
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
     pkcs11_error,
@@ -199,7 +201,17 @@ impl PrivateKey for EmptyPrivateKeyImpl {
         Ok(vec![])
     }
 
-    fn algorithm(&self) -> KeyAlgorithm {
-        KeyAlgorithm::Rsa
+    fn algorithm(&self) -> MResult<KeyAlgorithm> {
+        Ok(KeyAlgorithm::Rsa)
+    }
+
+    fn rsa_private_key(&self) -> MResult<RsaPrivateKey> {
+        Err(MError::Todo("rsa_private_key not implemented".to_string()))
+    }
+
+    fn ec_p256_private_key(&self) -> MResult<SecretKey> {
+        Err(MError::Todo(
+            "`p256`_private_key not implemented".to_string(),
+        ))
     }
 }
