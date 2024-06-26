@@ -20,11 +20,7 @@
 use std::sync::Arc;
 
 use log::{error, warn};
-use p256::{
-    elliptic_curve::sec1::ToEncodedPoint,
-    pkcs8::der::{asn1::OctetString, Encode},
-};
-use pkcs1::{der::Decode, RsaPublicKey};
+use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
 use pkcs11_sys::{
     CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
@@ -37,10 +33,10 @@ use crate::{
         compoundid::Id,
     },
     traits::{
-        backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
+        Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
         RemoteObjectType,
     },
-    MError, MResult,
+    MResult,
 };
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -148,38 +144,18 @@ impl Object {
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
-                AttributeType::KeyType => {
-                    Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
-                }
+                AttributeType::KeyType => Some(Attribute::KeyType(
+                    private_key.algorithm()?.to_ck_key_type(),
+                )),
                 AttributeType::Label => Some(Attribute::Label(private_key.label())),
                 AttributeType::Modulus => {
-                    let modulus = private_key
-                        .find_public_key(backend())
-                        .ok()
-                        .flatten()
-                        .and_then(|public_key| {
-                            let der = public_key.to_der();
-                            RsaPublicKey::from_der(&der)
-                                .map(|pk| pk.modulus.as_bytes().to_vec())
-                                .ok()
-                        });
-                    modulus.map(Attribute::Modulus)
+                    Some(Attribute::Modulus(private_key.rsa_modulus()?.to_vec()))
                 }
                 AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
-                AttributeType::PublicExponent => {
-                    let public_exponent = private_key
-                        .find_public_key(backend())
-                        .ok()
-                        .flatten()
-                        .and_then(|public_key| {
-                            let der = public_key.to_der();
-                            RsaPublicKey::from_der(&der)
-                                .map(|pk| pk.public_exponent.as_bytes().to_vec())
-                                .ok()
-                        });
-                    public_exponent.map(Attribute::PublicExponent)
-                }
+                AttributeType::PublicExponent => Some(Attribute::PublicExponent(
+                    private_key.rsa_public_exponent()?.to_vec(),
+                )),
                 AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
                 AttributeType::Sign => Some(Attribute::Sign(true)),
                 AttributeType::SignRecover => Some(Attribute::SignRecover(false)),

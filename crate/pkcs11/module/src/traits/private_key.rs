@@ -19,7 +19,7 @@
 
 use std::{any::Any, hash::Hash};
 
-use zeroize::Zeroizing;
+use pkcs1::RsaPrivateKey;
 
 use crate::{
     core::compoundid::Id,
@@ -39,9 +39,6 @@ pub trait PrivateKey: Send + Sync {
     /// Returns the algorithm of the key; will fail if only the remote part is known
     fn algorithm(&self) -> MResult<KeyAlgorithm>;
 
-    /// Returns the DER bytes of the key; will fail if only the remote part is known
-    fn der_bytes(&self) -> MResult<Zeroizing<Vec<u8>>>;
-
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
         Id {
@@ -49,6 +46,24 @@ pub trait PrivateKey: Send + Sync {
             hash: self.private_key_id(),
         }
     }
+
+    /// Return the RSA private key if the key is an RSA key
+    fn rsa_private_key(&self) -> MResult<RsaPrivateKey>;
+
+    /// Return the RSA modulus if the key is an RSA key
+    /// In big endian
+    fn rsa_modulus(&self) -> MResult<Vec<u8>> {
+        Ok(self.rsa_private_key()?.modulus.as_bytes().to_vec())
+    }
+
+    /// Return the RSA public exponent if the key is an RSA key
+    /// In big endian
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
+        Ok(self.rsa_private_key()?.public_exponent.as_bytes().to_vec())
+    }
+
+    /// Return the EC P256 private key if the key is an EC key
+    fn ec_p256_private_key(&self) -> MResult<p256::SecretKey>;
 }
 
 impl std::fmt::Debug for dyn PrivateKey {

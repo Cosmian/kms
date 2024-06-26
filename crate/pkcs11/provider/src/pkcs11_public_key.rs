@@ -19,11 +19,6 @@ pub struct Pkcs11PublicKey {
     algorithm: KeyAlgorithm,
 }
 
-enum PublicKeyType<'a> {
-    Rsa(RsaPublicKey<'a>),
-    P256(p256::PublicKey),
-}
-
 impl Pkcs11PublicKey {
     pub fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> MResult<Self> {
         let algorithm = &spki.algorithm;
@@ -43,10 +38,6 @@ impl PublicKey for Pkcs11PublicKey {
     fn fingerprint(&self) -> &[u8] {
         &self.fingerprint
     }
-
-    // fn to_der(&self) -> Vec<u8> {
-    //     self.der_bytes.clone()
-    // }
 
     fn verify(
         &self,
@@ -82,7 +73,10 @@ impl PublicKey for Pkcs11PublicKey {
     fn ec_p256_public_key(&self) -> MResult<p256::PublicKey> {
         match self.algorithm {
             KeyAlgorithm::EccP256 => {
-                let ec_p256 = p256::PublicKey::from_public_key_der(&self.der_bytes)?;
+                let ec_p256 =
+                    p256::PublicKey::from_public_key_der(&self.der_bytes).map_err(|e| {
+                        MError::Cryptography(format!("Failed to parse EC P256 public key: {:?}", e))
+                    })?;
                 Ok(ec_p256)
             }
             _ => {

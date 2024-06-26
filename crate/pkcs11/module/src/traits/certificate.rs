@@ -21,7 +21,7 @@ pub trait Certificate: Send + Sync + std::fmt::Debug {
     fn id(&self) -> MResult<Id> {
         Ok(Id {
             label: self.label(),
-            hash: self.public_key()?.to_der(),
+            hash: self.public_key()?.fingerprint().to_vec(),
         })
     }
 }

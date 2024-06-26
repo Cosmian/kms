@@ -79,7 +79,7 @@ fn key_wrapping_specification(
 ///  `wrapping_key_id` is ignored if `unwrap` is true
 ///
 /// # Returns
-/// * The exported object and the Export attributes (None for Get)
+/// * The exported object id, the object and the Export attributes (None for Get)
 ///
 /// # Errors
 /// * If the KMS cannot be reached
@@ -92,8 +92,8 @@ pub async fn export_object(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
-) -> Result<(Object, Option<Attributes>), ClientError> {
-    let (object, object_type, attributes) = if allow_revoked {
+) -> Result<(UniqueIdentifier, Object, Option<Attributes>), ClientError> {
+    let (id, object, object_type, attributes) = if allow_revoked {
         //use the KMIP export function to get revoked objects
         let export_response = kms_rest_client
             .export(export_request(
@@ -105,6 +105,7 @@ pub async fn export_object(
             .await
             .with_context(|| "Export")?;
         (
+            export_response.unique_identifier,
             export_response.object,
             export_response.object_type,
             Some(export_response.attributes),
@@ -120,10 +121,15 @@ pub async fn export_object(
             ))
             .await
             .with_context(|| "Get")?;
-        (get_response.object, get_response.object_type, None)
+        (
+            get_response.unique_identifier,
+            get_response.object,
+            get_response.object_type,
+            None,
+        )
     };
     // Return the object after post fixing the object type
-    Ok((Object::post_fix(object_type, object), attributes))
+    Ok((id, Object::post_fix(object_type, object), attributes))
 }
 
 /// Export a batch of Objects from the KMS

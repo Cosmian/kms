@@ -87,10 +87,10 @@ impl FindContext {
         self.objects.len()
     }
 
-    /// Clear the unread index
-    fn clear_unread(&mut self) {
-        self.unread_indexes.clear();
-    }
+    // /// Clear the unread index
+    // fn clear_unread(&mut self) {
+    //     self.unread_indexes.clear();
+    // }
 
     /// Add to the unread index
     fn add_to_unread(&mut self, handle: CK_OBJECT_HANDLE) {
