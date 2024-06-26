@@ -29,7 +29,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace -- --nocapture
+        cargo test -j 1--workspace -- --nocapture
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
@@ -55,7 +55,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace -- --nocapture
+        cargo test -j 1--workspace -- --nocapture
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
@@ -81,7 +81,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace --features fips -- --nocapture
+        cargo test -j 1--workspace --features fips -- --nocapture
       artifacts: |
         /usr/local/openssl
         target/debug/ckms
@@ -109,7 +109,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test -j 1--workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
@@ -136,7 +136,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test -j 1--workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         /usr/local/openssl
         target/debug/ckms
@@ -165,7 +165,7 @@ jobs:
         target/debug/ckms -h
         target/debug/cosmian_kms_server -h
 
-        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test -j 1--workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/debug/ckms
         target/debug/cosmian_kms_server
