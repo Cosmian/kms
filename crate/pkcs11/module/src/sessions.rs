@@ -282,7 +282,7 @@ pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
             let mut session_map = SESSIONS.lock().unwrap();
             if session_map.is_empty() {
                 session_map.insert(
-                    0_u32,
+                    0,
                     Session {
                         flags,
                         ..Default::default()
@@ -290,7 +290,7 @@ pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
                 );
             }
         }
-        0_u32
+        0
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS.lock().unwrap().insert(
