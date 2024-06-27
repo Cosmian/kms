@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -57,7 +57,7 @@ pub fn create_cc_master_key_pair(
 #[tokio::test]
 pub async fn test_create_master_key_pair() -> Result<(), CliError> {
     // from specs
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
@@ -76,7 +76,7 @@ pub async fn test_create_master_key_pair() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let err = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,

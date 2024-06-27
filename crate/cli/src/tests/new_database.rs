@@ -3,7 +3,7 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
 use kms_test_server::{
-    generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options, ONCE,
+    generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -18,7 +18,7 @@ use crate::{
 
 #[tokio::test]
 pub async fn test_new_database() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
@@ -34,7 +34,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_bad() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let bad_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
 
@@ -53,7 +53,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
@@ -67,7 +67,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_key_bad() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);

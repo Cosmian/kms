@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 use cosmian_logger::log_utils::log_init;
-use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
+use kms_test_server::{start_default_test_kms_server, TestsContext};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -373,7 +373,7 @@ fn check_public_and_private_key_linked(
 async fn test_certify_a_csr() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
@@ -407,7 +407,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
 async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=info");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
@@ -447,7 +447,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 async fn certify_a_public_key_test() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=info");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
@@ -482,7 +482,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
 async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=info");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
@@ -533,7 +533,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
 async fn test_renew_a_certificate() -> Result<(), CliError> {
     log_init("cosmian_kms_server=info");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
@@ -579,7 +579,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
 async fn test_issue_with_subject_name() -> Result<(), CliError> {
     log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // import signers
     let (_, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
@@ -612,7 +612,7 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
 async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=info");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
@@ -642,7 +642,7 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
 async fn test_issue_with_subject_name_self_signed() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug");
     // Create a test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // Certify the CSR without issuer i.e. self signed
     let certificate_id = certify(
@@ -669,7 +669,7 @@ async fn test_issue_with_subject_name_self_signed() -> Result<(), CliError> {
 #[tokio::test]
 #[ignore]
 async fn test_certify_validate_certificates() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let root_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,

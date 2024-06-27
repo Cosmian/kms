@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -79,7 +79,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -121,7 +121,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
