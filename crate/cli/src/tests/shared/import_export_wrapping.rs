@@ -17,7 +17,7 @@ use cosmian_kms_client::{
     },
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -38,7 +38,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // Generate a symmetric wrapping key
     let wrap_key_path = tmp_path.join("wrap.key");
     let mut rng = CsRng::from_entropy();
@@ -117,7 +117,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";

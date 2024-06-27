@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -17,7 +17,7 @@ use crate::{
 };
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -120,7 +120,7 @@ pub async fn validate_certificate(
 
 #[tokio::test]
 async fn test_validate() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     println!("importing root cert");
     let root_certificate_id = import_certificate(

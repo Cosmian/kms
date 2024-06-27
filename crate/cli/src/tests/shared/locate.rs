@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
@@ -68,7 +68,7 @@ pub fn locate(
 #[tokio::test]
 pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -213,7 +213,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -301,7 +301,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new key
     let key_id =
@@ -370,7 +370,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_grant() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

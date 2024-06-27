@@ -9,7 +9,7 @@ use cosmian_kms_client::{
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use openssl::pkcs12::Pkcs12;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -31,10 +31,7 @@ async fn test_import_export_p12_25519() {
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/another_p12/server.p12");
     // Create a test server
-    let ctx = ONCE
-        .get_or_try_init(start_default_test_kms_server)
-        .await
-        .unwrap();
+    let ctx = start_default_test_kms_server().await;
 
     //parse the PKCS#12 with openssl
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
@@ -212,10 +209,7 @@ async fn test_import_p12_rsa() {
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/csr/intermediate.p12");
     // Create a test server
-    let ctx = ONCE
-        .get_or_try_init(start_default_test_kms_server)
-        .await
-        .unwrap();
+    let ctx = start_default_test_kms_server().await;
 
     //parse the PKCS#12 with openssl
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
