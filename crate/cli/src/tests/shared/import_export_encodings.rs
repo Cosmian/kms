@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cosmian_kms_client::read_bytes_from_file;
-use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
+use kms_test_server::{start_default_test_kms_server, TestsContext};
 
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
@@ -12,7 +12,7 @@ use crate::{
 #[tokio::test]
 async fn test_import_export_encodings() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     test_pems(
         &ctx,

@@ -7,7 +7,7 @@ use std::{
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -195,7 +195,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let ca = "RootCA/SubCA";
     let hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];
@@ -337,7 +337,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let _tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let ca = "RootCA/SubCA";
     let _hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];

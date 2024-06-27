@@ -1,4 +1,4 @@
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 use crate::{
     actions::{certificates::CertificateInputFormat, shared::AttributeTag},
@@ -8,10 +8,7 @@ use crate::{
 #[tokio::test]
 async fn test_get_attributes_p12() {
     // Create a test server
-    let ctx = ONCE
-        .get_or_try_init(start_default_test_kms_server)
-        .await
-        .unwrap();
+    let ctx = start_default_test_kms_server().await;
 
     //import the certificate
     let imported_p12_sk_uid = import_certificate(

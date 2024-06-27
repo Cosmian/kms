@@ -15,9 +15,9 @@ use cosmian_kms_client::{
     },
     pad_be_bytes,
 };
+use kms_test_server::start_default_test_kms_server;
 #[cfg(not(feature = "fips"))]
 use kms_test_server::TestsContext;
-use kms_test_server::{start_default_test_kms_server, ONCE};
 #[cfg(not(feature = "fips"))]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
@@ -94,7 +94,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
@@ -155,7 +155,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
@@ -181,7 +181,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -267,7 +267,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // key does not exist
     export_key(
@@ -315,7 +315,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =

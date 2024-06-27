@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsClient,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 criterion_main!(keypair_benches, encryption_benches);
 
@@ -44,10 +44,7 @@ fn bench_rsa_create_keypair(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let kms_rest_client = runtime.block_on(async {
-        let ctx = ONCE
-            .get_or_try_init(start_default_test_kms_server)
-            .await
-            .unwrap();
+        let ctx = start_default_test_kms_server().await;
         ctx.owner_client_conf
             .initialize_kms_client(None, None)
             .unwrap()
@@ -237,10 +234,7 @@ fn bench_rsa_encrypt(
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let (kms_rest_client, _sk, pk) = runtime.block_on(async {
-        let ctx = ONCE
-            .get_or_try_init(start_default_test_kms_server)
-            .await
-            .unwrap();
+        let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx
             .owner_client_conf
             .initialize_kms_client(None, None)
@@ -272,10 +266,7 @@ fn bench_rsa_decrypt(
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     let (kms_rest_client, sk, _pk, ciphertext) = runtime.block_on(async {
-        let ctx = ONCE
-            .get_or_try_init(start_default_test_kms_server)
-            .await
-            .unwrap();
+        let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx
             .owner_client_conf
             .initialize_kms_client(None, None)

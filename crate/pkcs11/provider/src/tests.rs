@@ -8,16 +8,13 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::{import_object, KmsClient};
 use cosmian_pkcs11_module::traits::Backend;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_objects_async};
 
 #[tokio::test]
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
-    let ctx = ONCE
-        .get_or_try_init(start_default_test_kms_server)
-        .await
-        .unwrap();
+    let ctx = start_default_test_kms_server().await;
 
     let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
     create_keys(&kms_client).await?;
@@ -42,10 +39,7 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
     cosmian_logger::log_utils::log_init("fatal,cosmian_kms_client=debug");
     let rt = tokio::runtime::Runtime::new().unwrap();
     let owner_client_conf = rt.block_on(async {
-        let ctx = ONCE
-            .get_or_try_init(start_default_test_kms_server)
-            .await
-            .unwrap();
+        let ctx = start_default_test_kms_server().await;
 
         let kms_client = ctx
             .owner_client_conf
@@ -88,10 +82,7 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
 }
 
 async fn load_p12() -> Result<String, Pkcs11Error> {
-    let ctx = ONCE
-        .get_or_try_init(start_default_test_kms_server)
-        .await
-        .unwrap();
+    let ctx = start_default_test_kms_server().await;
 
     let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
     let p12_bytes = include_bytes!("../test_data/certificate.p12");

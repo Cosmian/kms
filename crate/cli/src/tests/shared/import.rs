@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
@@ -91,7 +91,7 @@ pub fn import_key(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let uid: String = import_key(
         &ctx.owner_client_conf_path,
@@ -143,7 +143,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
