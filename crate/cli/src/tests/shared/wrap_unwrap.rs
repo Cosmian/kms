@@ -14,7 +14,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod},
     read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
-use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
+use kms_test_server::{start_default_test_kms_server, TestsContext};
 use tempfile::TempDir;
 
 use crate::{
@@ -131,7 +131,7 @@ pub fn unwrap(
 
 #[tokio::test]
 pub async fn test_password_wrap_import() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

@@ -39,7 +39,7 @@ actix-cors = "0.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
-actix-tls = "3.3"
+actix-tls = "3.4"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.1"
@@ -63,7 +63,7 @@ dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
-lazy_static = "1.4"
+lazy_static = "1.5"
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
@@ -122,7 +122,7 @@ zeroize = { workspace = true }
 [dev-dependencies]
 actix-http = "3.6"
 cosmian_logger = { path = "../logger" }
-pem = "3.0.3"
+pem = "3.0.4"
 
 [build-dependencies]
 actix-http = "3.6"

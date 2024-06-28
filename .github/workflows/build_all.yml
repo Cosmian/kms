@@ -230,3 +230,31 @@ jobs:
         target/x86_64-apple-darwin/debug/ckms
         target/x86_64-apple-darwin/debug/cosmian_kms_server
         target/x86_64-apple-darwin/debug/libckms_pkcs11.dylib
+
+  macos14-tests:
+    uses: ./.github/workflows/build_generic.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: macos-14
+      archive-name: macos14_tests
+      commands: |
+        set -ex
+
+        rustup target add aarch64-apple-darwin
+
+        cd crate/cli
+        cargo build --target aarch64-apple-darwin
+        otool -L ../../target/aarch64-apple-darwin/debug/ckms | grep openssl && exit 1
+        cd ../pkcs11/provider
+        cargo build --target aarch64-apple-darwin
+        cd ../../server
+        cargo build --target aarch64-apple-darwin
+        cd ../..
+
+        # Check binaries
+        target/aarch64-apple-darwin/debug/ckms -h
+        target/aarch64-apple-darwin/debug/cosmian_kms_server -h
+      artifacts: |
+        target/aarch64-apple-darwin/debug/ckms
+        target/aarch64-apple-darwin/debug/cosmian_kms_server
+        target/aarch64-apple-darwin/debug/libckms_pkcs11.dylib

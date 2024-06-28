@@ -48,6 +48,8 @@ pub async fn decrypt(
 
     let owm = get_key(kms, &request, user, params).await?;
 
+    trace!("Decrypt: [OK] Get object with metadata");
+
     // Make sure that the key used to decrypt can be used to decrypt.
     if !owm
         .object
@@ -120,9 +122,15 @@ async fn get_key(
     trace!("decrypt: owm_s: {:?}", owm_s);
 
     // there can only be one key
-    let mut owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
+    let mut owm = owm_s.pop().ok_or_else(|| {
+        KmsError::KmipError(
+            ErrorReason::Item_Not_Found,
+            format!(
+                "Decrypt: no available key found (must be an active symmetric key or private key) \
+                 for object identifier {uid_or_tags}"
+            ),
+        )
+    })?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

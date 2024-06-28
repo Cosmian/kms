@@ -34,6 +34,12 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// for N-1 tests.
 pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
+pub async fn start_default_test_kms_server() -> &'static TestsContext {
+    ONCE.get_or_try_init(_start_default_test_kms_server)
+        .await
+        .unwrap()
+}
+
 pub struct TestsContext {
     pub owner_client_conf_path: String,
     pub user_client_conf_path: String,
@@ -53,7 +59,7 @@ impl TestsContext {
 
 /// Start a test KMS server in a thread with the default options:
 /// JWT authentication and encrypted database, no TLS
-pub async fn start_default_test_kms_server() -> Result<TestsContext, ClientError> {
+pub(crate) async fn _start_default_test_kms_server() -> Result<TestsContext, ClientError> {
     start_test_server_with_options(9990, false, true, true).await
 }
 
@@ -69,7 +75,7 @@ pub async fn start_test_server_with_options(
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
-    let kms_client = owner_client_conf.initialize_kms_client()?;
+    let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
 
     println!(
         "Starting KMS test server at URL: {} with server params {:?}",
@@ -318,4 +324,11 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     write_json_object_to_file(&invalid_conf, &invalid_conf_path)
         .expect("Can't write CONF_PATH_BAD_KEY");
     invalid_conf_path
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_start_server() -> Result<(), ClientError> {
+    let context = _start_default_test_kms_server().await?;
+    context.stop_server().await
 }

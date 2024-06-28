@@ -65,7 +65,7 @@ pub async fn wrap_key(
                 .context("unable to find a certificate or public key for the private key")?;
             // fetch the private key
             retrieve_object_for_operation(
-                &public_key_uid,
+                &public_key_uid.to_string(),
                 ObjectOperationType::Decrypt,
                 kms,
                 user,

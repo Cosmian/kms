@@ -32,7 +32,7 @@ impl ServerCertVerifier for LeafCertificateVerifier {
         ocsp_response: &[u8],                  // ocsp_response
         now: SystemTime,                       // now
     ) -> Result<ServerCertVerified, RustTLSError> {
-        // Verifiy the leaf certificate
+        // Verify the leaf certificate
         if !end_entity.eq(&self.expected_cert) {
             return Err(RustTLSError::General(
                 "Leaf certificate doesn't match the expected one".to_string(),

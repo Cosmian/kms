@@ -4,8 +4,8 @@ use cosmian_kmip::{
         kmip_objects::Object,
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
-            AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
-            UniqueIdentifier, VendorAttribute, VendorAttributeReference,
+            AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
+            VendorAttribute, VendorAttributeReference,
         },
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
@@ -202,32 +202,20 @@ pub async fn get_attributes(
                 }
                 Tag::PrivateKey => {
                     if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
-                        res.add_link(
-                            LinkType::PrivateKeyLink,
-                            LinkedObjectIdentifier::TextString(link.clone()),
-                        );
+                        res.add_link(LinkType::PrivateKeyLink, link);
                     }
                 }
                 Tag::PublicKey => {
                     if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
-                        res.add_link(
-                            LinkType::PublicKeyLink,
-                            LinkedObjectIdentifier::TextString(link.clone()),
-                        );
+                        res.add_link(LinkType::PublicKeyLink, link);
                     }
                 }
                 Tag::Certificate => {
                     if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
-                        res.add_link(
-                            LinkType::PKCS12CertificateLink,
-                            LinkedObjectIdentifier::TextString(link.clone()),
-                        );
+                        res.add_link(LinkType::PKCS12CertificateLink, link);
                     }
                     if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
-                        res.add_link(
-                            LinkType::CertificateLink,
-                            LinkedObjectIdentifier::TextString(link.clone()),
-                        );
+                        res.add_link(LinkType::CertificateLink, link);
                     }
                 }
 

@@ -53,6 +53,9 @@ jobs:
           - archive_name: macos_tests
             kms_path: .
             os: macos-12
+          - archive_name: macos14_tests
+            kms_path: .
+            os: macos-14
           - archive_name: windows_tests
             kms_path: .
             os: windows-2022

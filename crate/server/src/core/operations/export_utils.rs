@@ -611,8 +611,14 @@ async fn post_process_pkcs12_for_private_key(
     let mut chain: Stack<X509> = Stack::new()?;
     while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
         // retrieve the parent certificate
-        cert_owm =
-            retrieve_object_for_operation(&parent_id, operation_type, kms, user, params).await?;
+        cert_owm = retrieve_object_for_operation(
+            &parent_id.to_string(),
+            operation_type,
+            kms,
+            user,
+            params,
+        )
+        .await?;
         let certificate = kmip_certificate_to_openssl(&cert_owm.object)?;
         chain.push(certificate)?;
     }

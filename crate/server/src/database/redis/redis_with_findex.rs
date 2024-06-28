@@ -334,7 +334,7 @@ impl Database for RedisWithFindex {
         Ok(objects)
     }
 
-    /// Retrieve the ags of the object with the given `uid`
+    /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
         uid: &str,

@@ -11,7 +11,7 @@ use cosmian_kms_client::{
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeTag {
@@ -246,18 +246,21 @@ impl GetAttributesAction {
                 }
             }
         }
-        let json = serde_json::to_string_pretty(&results)?;
 
         if let Some(output_file) = &self.output_file {
+            let json = serde_json::to_string_pretty(&results)?;
             debug!("GetAttributes response for {unique_identifier}: {}", json);
             write_bytes_to_file(json.as_bytes(), output_file)?;
-            println!(
+            let stdout = format!(
                 "The attributes for {unique_identifier} were exported to {:?}",
                 &output_file
             );
+            console::Stdout::new(&stdout).write()?;
         } else {
-            println!("Attributes for {unique_identifier}:");
-            println!("{json}");
+            let mut stdout = console::Stdout::new(&format!("Attributes for {unique_identifier}"));
+            stdout.set_unique_identifier(unique_identifier);
+            stdout.set_attributes(results);
+            stdout.write()?;
         }
         Ok(())
     }

@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
@@ -27,7 +27,7 @@ pub async fn rekey(
     master_private_key_id: &str,
     access_policy: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -54,7 +54,7 @@ pub async fn prune(
     master_private_key_id: &str,
     access_policy: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -78,7 +78,7 @@ pub async fn prune(
 
 #[tokio::test]
 async fn test_rekey_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -164,7 +164,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_rekey_prune() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

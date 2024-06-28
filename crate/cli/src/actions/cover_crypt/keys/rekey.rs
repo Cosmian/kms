@@ -7,6 +7,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -59,13 +60,21 @@ impl RekeyAction {
             .await
             .with_context(|| "failed rekeying the master keys")?;
 
-        println!(
+        let stdout = format!(
             "The master private key {} and master public key {} were rekeyed for the access \
              policy {:?}",
             &response.private_key_unique_identifier,
             &response.public_key_unique_identifier,
             &self.access_policy
         );
+
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_key_pair_unique_identifier(
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        );
+        stdout.write()?;
+
         Ok(())
     }
 }
@@ -118,13 +127,22 @@ impl PruneAction {
             .await
             .with_context(|| "failed pruning the master keys")?;
 
-        println!(
+        let stdout = format!(
             "The master private key {} and master public key {} were pruned for the access policy \
              {:?}",
             &response.private_key_unique_identifier,
             &response.public_key_unique_identifier,
             &self.access_policy
         );
+
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_tags(self.tags.as_ref());
+        stdout.set_key_pair_unique_identifier(
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        );
+        stdout.write()?;
+
         Ok(())
     }
 }

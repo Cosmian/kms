@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
@@ -19,7 +19,7 @@ use crate::{
     error::CliError,
     tests::{
         shared::export::export_key,
-        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
+        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -78,7 +78,7 @@ pub fn import_key(
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let import_output = std::str::from_utf8(&output.stdout)?;
-        let imported_key_id = extract_imported_key_id(import_output)
+        let imported_key_id = extract_unique_identifier(import_output)
             .ok_or_else(|| CliError::Default("failed extracting the imported key id".to_owned()))?
             .to_owned();
         return Ok(imported_key_id)
@@ -91,7 +91,7 @@ pub fn import_key(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     let uid: String = import_key(
         &ctx.owner_client_conf_path,
@@ -143,7 +143,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
     // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
