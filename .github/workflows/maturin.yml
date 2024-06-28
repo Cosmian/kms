@@ -88,6 +88,38 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  pyo3-mac14:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: pip # caching pip dependencies
+
+      - name: Prerequisites for macos
+        run: |
+          set -x
+          rustup target add aarch64-apple-darwin
+
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
+          pip3 install maturin
+
+      - name: Python maturin build
+        run: |
+          set -x
+          cd crate/pyo3
+          maturin build --release --target aarch64-apple-darwin
+
+      - name: Upload WHL for MacOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_macos14
+          path: target/wheels/*macosx*.whl
+          retention-days: 1
+          if-no-files-found: error
+
   pyo3-windows:
     runs-on: ubuntu-20.04
     steps:
