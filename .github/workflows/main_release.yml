@@ -141,10 +141,11 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
+      ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos macos14 windows kms_python_linux kms_python_macos kms_python_macos14
+        kms_python_windows
 
     steps:
-      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos centos7 rhel9
+      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* centos7 rhel9
       - uses: actions/download-artifact@v3
       - run: find .
 
@@ -192,6 +193,7 @@ jobs:
         include:
           - archive_name: kms_python_linux
           - archive_name: kms_python_macos
+          - archive_name: kms_python_macos14
           - archive_name: kms_python_windows
 
     steps:
