@@ -86,6 +86,9 @@ jobs:
           - archive_name: macos
             kms_path: .
             os: macos-12
+          - archive_name: macos14
+            kms_path: .
+            os: macos-14
           - archive_name: windows
             kms_path: .
             os: windows-2022
