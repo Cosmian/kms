@@ -4,11 +4,12 @@ name: CI nightly release
 on:
   push:
     # any tags, including tags with / like v1.0/alpha
-    tags:
-      - '**'
+    # tags:
+    #   - '**'
   schedule:
-    # every day at 3 AM
-    - cron: 00 3 * * *
+    # every day at 1 AM
+    - cron: 00 1 * * *
+  workflow_dispatch:
 
 jobs:
   cargo-audit:
@@ -25,12 +26,6 @@ jobs:
 
   build:
     uses: ./.github/workflows/build_all_release.yml
-    secrets: inherit
-    with:
-      toolchain: nightly-2024-06-09
-
-  build_tests:
-    uses: ./.github/workflows/build_all.yml
     secrets: inherit
     with:
       toolchain: nightly-2024-06-09
@@ -65,30 +60,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - archive_name: centos7
+          - archive_name: centos7-release
             kms_path: .
             os: ubuntu-20.04
-          - archive_name: rhel9
-            kms_path: .
+
+          - archive_name: fips_centos7-release
+            kms_path: __w/kms/kms/target/x86_64-unknown-linux-gnu/release
+            os: ubuntu-20.04
+
+          - archive_name: rhel9-release
+            kms_path: x86_64-unknown-linux-gnu/release
             os: ubuntu-22.04
-          - archive_name: fips_centos7
-            kms_path: __w/kms/kms/target/release
+
+          - archive_name: fips_ubuntu_20_04-release
+            kms_path: home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/release
             os: ubuntu-20.04
-          - archive_name: ubuntu_20_04
-            kms_path: .
-            os: ubuntu-20.04
-          - archive_name: fips_ubuntu_20_04
-            kms_path: home/runner/work/kms/kms/target/release
-            os: ubuntu-20.04
-          - archive_name: ubuntu_22_04
-            kms_path: .
+
+          - archive_name: ubuntu_22_04-release
+            kms_path: release
             os: ubuntu-22.04
-          - archive_name: macos
-            kms_path: .
+
+          - archive_name: ubuntu_24_04-release
+            kms_path: release
+            os: ubuntu-24.04
+
+          - archive_name: macos-release
+            kms_path: release
             os: macos-12
-          - archive_name: macos14
-            kms_path: .
+
+          - archive_name: macos14-release
+            kms_path: release
             os: macos-14
+
           - archive_name: windows
             kms_path: .
             os: windows-2022
@@ -144,12 +147,13 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos macos14 windows kms_python_linux kms_python_macos kms_python_macos14
-        kms_python_windows
+      ARCHIVE_NAMES: centos7-release rhel9-release fips_centos7-release fips_ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release
+        macos14-release windows kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
 
     steps:
-      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* centos7 rhel9
+      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* centos7* rhel9*
       - uses: actions/download-artifact@v3
+
       - run: find .
 
       - name: Creating zip to be attached to release
@@ -163,27 +167,32 @@ jobs:
       - name: Push to package.cosmian.com
         run: |
           set -x
-          DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
+          if [[ ${GITHUB_REF} = *'refs/tags/'* ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+            DESTINATION_DIR=/mnt/package/kms/$BRANCH
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+            DESTINATION_DIR=/mnt/package/kms/last_build/$BRANCH
+          fi
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
-        env:
-          VERSION: ${{ github.head_ref }}
-
-      - name: Push to package.cosmian.com - tags
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -x
-          DESTINATION_DIR=/mnt/package/kms/$VERSION
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
-        env:
-          VERSION: ${{ github.ref_name }}
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            *.zip \
+            rhel9-release/target/x86_64-unknown-linux-gnu/generate-rpm/cosmian_kms_server-* \
+            rhel9-release/target/x86_64-unknown-linux-gnu/generate-rpm/cosmian_kms_cli-* \
+            ubuntu_22_04-release/target/x86_64-unknown-linux-gnu/debian/cosmian-kms-server_* \
+            ubuntu_22_04-release/target/x86_64-unknown-linux-gnu/debian/cosmian-kms-cli_* \
+            cosmian@package.cosmian.com:$DESTINATION_DIR/
 
       - name: Release on tags, attach asset on release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: ./*.zip
+          files: |
+            *.zip
+            rhel9-release/target/x86_64-unknown-linux-gnu/generate-rpm/cosmian_kms_server-* \
+            rhel9-release/target/x86_64-unknown-linux-gnu/generate-rpm/cosmian_kms_cli-* \
+            ubuntu_22_04-release/target/x86_64-unknown-linux-gnu/debian/cosmian-kms-server_* \
+            ubuntu_22_04-release/target/x86_64-unknown-linux-gnu/debian/cosmian-kms-cli_* \
 
   python_publish:
     name: python publish

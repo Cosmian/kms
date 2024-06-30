@@ -72,3 +72,30 @@ predicates = "3.1"
 regex = { version = "1.10", default-features = false }
 tempfile = "3.10"
 x509-parser = { workspace = true, features = ["verify"] }
+
+# ------------------------------------------------------------------------------
+# START DEBIAN PACKAGING
+[package.metadata.deb]
+maintainer = "Emmanuel Coste <emmanuel.coste@cosmian.com>"
+copyright = "2024, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../LICENSE", "0"]
+changelog = "../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+assets = [["target/release/ckms", "usr/sbin/", "555"]]
+
+# END DEBIAN PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START RPM PACKAGING
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+]
+auto-req = "no" # do not try to discover .so dependencies
+require-sh = true
+
+# END RPM PACKAGING
+# ------------------------------------------------------------------------------

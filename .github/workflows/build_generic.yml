@@ -13,11 +13,20 @@ on:
       archive-name:
         required: true
         type: string
-      commands:
+      artifacts:
+        required: false
+        type: string
+      target:
         required: true
         type: string
-      artifacts:
+      debug_or_release:
         required: true
+        type: string
+      features:
+        required: false
+        type: string
+      skip_services_tests:
+        required: false
         type: string
 
 env:
@@ -63,36 +72,36 @@ jobs:
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && !contains(runner.os, 'macos')
-        run: ${{ inputs.commands }}
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-
-          # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-
-      - name: Build on Mac
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && contains(runner.os, 'macos')
-        run: ${{ inputs.commands }}
-        env:
-          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-
-          # Google variables
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          TARGET: ${{ inputs.target }}
+          DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          FEATURES: ${{ inputs.features }}
+          SKIP_SERVICES_TESTS: ${{ inputs.skip_services_tests }}
+        run: |
+          bash .github/scripts/cargo_build.sh
 
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size +100M -delete
 
       - name: Upload KMS for ${{ inputs.distribution }}
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && inputs.artifacts != ''
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.archive-name }}
-          path: ${{ inputs.artifacts }}
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_server-*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_cli-*
+            target/${{ inputs.target }}/debian/cosmian-kms-server_*
+            target/${{ inputs.target }}/debian/cosmian-kms-cli_*
+            ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error

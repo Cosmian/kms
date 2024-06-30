@@ -15,47 +15,8 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release
-        cd ../server
-        cargo build --release
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
-
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
-      artifacts: |
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
-
-  rhel9:
-    uses: ./.github/workflows/build_rhel9.yml
-    secrets: inherit
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      archive-name: rhel9
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release
-        cd ../server
-        cargo build --release
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
-
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
-      artifacts: |
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
 
   fips-centos7:
     uses: ./.github/workflows/build_centos7.yml
@@ -63,49 +24,20 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release --features fips
-        cd ../server
-        cargo build --release --features fips
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
-
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
+      features: fips
       artifacts: |
         /usr/local/openssl
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
 
-  ubuntu-20:
-    uses: ./.github/workflows/build_generic.yml
+  rhel9:
+    uses: ./.github/workflows/build_rhel9.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-20.04
-      archive-name: ubuntu_20_04
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release
-        cd ../server
-        cargo build --release
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
-
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
-      artifacts: |
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
+      archive-name: rhel9
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -114,24 +46,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release --features fips
-        cd ../server
-        cargo build --release --features fips
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
-
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
+      features: fips
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
 
   ubuntu-22:
     uses: ./.github/workflows/build_generic.yml
@@ -140,24 +60,20 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04
-      commands: |
-        set -ex
-        cd crate/cli
-        cargo build --release
-        ldd ../../target/release/ckms | grep ssl && exit 1
-        cd ../server
-        cargo build --release
-        cd ../pkcs11/provider
-        cargo build --release
-        cd ../../..
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
-        # Check binaries
-        target/release/ckms -h
-        target/release/cosmian_kms_server -h
-      artifacts: |
-        target/release/ckms
-        target/release/cosmian_kms_server
-        target/release/libckms_pkcs11.so
+  ubuntu-24:
+    uses: ./.github/workflows/build_generic.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-24.04
+      archive-name: ubuntu_24_04
+      target: x86_64-unknown-linux-gnu
+      debug_or_release: release
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
   windows:
     uses: ./.github/workflows/build_windows.yml
@@ -197,27 +113,9 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       distribution: macos-12
       archive-name: macos
-      commands: |
-        set -ex
-
-        rustup target add x86_64-apple-darwin
-
-        cd crate/cli
-        cargo build --release --target x86_64-apple-darwin
-        otool -L ../../target/x86_64-apple-darwin/release/ckms | grep openssl && exit 1
-        cd ../pkcs11/provider
-        cargo build --release --target x86_64-apple-darwin
-        cd ../../server
-        cargo build --release --target x86_64-apple-darwin
-        cd ../..
-
-        # Check binaries
-        target/x86_64-apple-darwin/release/ckms -h
-        target/x86_64-apple-darwin/release/cosmian_kms_server -h
-      artifacts: |
-        target/x86_64-apple-darwin/release/ckms
-        target/x86_64-apple-darwin/release/cosmian_kms_server
-        target/x86_64-apple-darwin/release/libckms_pkcs11.dylib
+      target: x86_64-apple-darwin
+      debug_or_release: release
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
   # MACOS ARM BUILD
   macos14:
@@ -226,24 +124,6 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       distribution: macos-14
       archive-name: macos14
-      commands: |
-        set -ex
-
-        rustup target add aarch64-apple-darwin
-
-        cd crate/cli
-        cargo build --release --target aarch64-apple-darwin
-        otool -L ../../target/aarch64-apple-darwin/release/ckms | grep openssl && exit 1
-        cd ../pkcs11/provider
-        cargo build --release --target aarch64-apple-darwin
-        cd ../../server
-        cargo build --release --target aarch64-apple-darwin
-        cd ../..
-
-        # Check binaries
-        target/aarch64-apple-darwin/release/ckms -h
-        target/aarch64-apple-darwin/release/cosmian_kms_server -h
-      artifacts: |
-        target/aarch64-apple-darwin/release/ckms
-        target/aarch64-apple-darwin/release/cosmian_kms_server
-        target/aarch64-apple-darwin/release/libckms_pkcs11.dylib
+      target: aarch64-apple-darwin
+      debug_or_release: release
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
