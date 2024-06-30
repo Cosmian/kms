@@ -43,20 +43,13 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      - name: Set up cargo cache
+      - name: Cache dependencies
         id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+          key: ${{ runner.os }}
+          cache-directories: |
             ${{ env.OPENSSL_DIR }}
-          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: dtolnay/rust-toolchain@master
         if: steps.cargo_cache.outputs.cache-hit != 'true'
@@ -98,8 +91,6 @@ jobs:
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
-            target/${{ inputs.target }}/generate-rpm/cosmian_kms_server-*
-            target/${{ inputs.target }}/generate-rpm/cosmian_kms_cli-*
             target/${{ inputs.target }}/debian/cosmian-kms-server_*
             target/${{ inputs.target }}/debian/cosmian-kms-cli_*
             ${{ inputs.artifacts }}

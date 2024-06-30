@@ -143,10 +143,8 @@ jobs:
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
-            target/generate-rpm/cosmian_kms_server-*
-            target/generate-rpm/cosmian_kms_cli-*
-            target/debian/cosmian-kms-server_*
-            target/debian/cosmian-kms-cli_*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_server-*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_cli-*
             ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error
