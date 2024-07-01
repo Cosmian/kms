@@ -84,6 +84,9 @@ section = "security"
 priority = "optional"
 assets = [["target/release/ckms", "usr/sbin/", "555"]]
 
+[package.metadata.deb.variants.fips]
+features = ["fips"]
+
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------
 

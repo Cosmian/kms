@@ -53,24 +53,25 @@ jobs:
       artifacts: |
         /usr/local/openssl
 
-  ubuntu-22:
-    uses: ./.github/workflows/build_generic.yml
-    secrets: inherit
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-22.04
-      archive-name: ubuntu_22_04
-      target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+  ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distribution: ubuntu-20.04
+            archive-name: ubuntu_20_04
 
-  ubuntu-24:
+          - distribution: ubuntu-22.04
+            archive-name: ubuntu_22_04
+
+          - distribution: ubuntu-24.04
+            archive-name: ubuntu_24_04
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-24.04
-      archive-name: ubuntu_24_04
+      distribution: ${{ matrix.distribution }}
+      archive-name: ${{ matrix.archive-name }}
       target: x86_64-unknown-linux-gnu
       debug_or_release: debug
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse

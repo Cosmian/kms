@@ -93,5 +93,7 @@ if [ -f /etc/redhat-release ]; then
 elif [ -f /etc/lsb-release ]; then
   cargo install cargo-deb --force
   cargo deb --target "$TARGET" -p cosmian_kms_cli
+  cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
   cargo deb --target "$TARGET" -p cosmian_kms_server
+  cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
 fi
