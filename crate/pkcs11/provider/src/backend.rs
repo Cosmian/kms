@@ -11,7 +11,7 @@ use cosmian_pkcs11_module::{
 };
 use p256::SecretKey;
 use pkcs1::RsaPrivateKey;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -130,12 +130,12 @@ impl Backend for CkmsBackend {
     }
 
     fn find_all_public_keys(&self) -> MResult<Vec<Arc<dyn PublicKey>>> {
-        trace!("find_all_public_keys");
+        warn!("find_all_public_keys not implemented");
         Ok(vec![])
     }
 
     fn find_data_object(&self, query: SearchOptions) -> MResult<Option<Arc<dyn DataObject>>> {
-        trace!("find_data_object: {:?}", query);
+        warn!("find_data_object: {:?}, not implemented", query);
         Ok(None)
     }
 

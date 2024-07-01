@@ -114,7 +114,6 @@ impl PrivateKey for Pkcs11PrivateKey {
 
     fn algorithm(&self) -> MResult<KeyAlgorithm> {
         self.algorithm
-            .clone()
             .ok_or_else(|| MError::Cryptography("algorithm not known".to_string()))
     }
 
