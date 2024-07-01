@@ -54,6 +54,10 @@ pub struct ServerParams {
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
+
+    /// This setting enable the AWS XKS endpoints
+    /// https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md
+    pub enable_xks_service: bool,
 }
 
 impl ServerParams {
@@ -88,6 +92,7 @@ impl ServerParams {
             client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
+            enable_xks_service: conf.enable_xks_service,
         })
     }
 
@@ -168,6 +173,7 @@ impl Clone for ServerParams {
             client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
+            enable_xks_service: self.enable_xks_service,
         }
     }
 }

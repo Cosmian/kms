@@ -27,7 +27,7 @@ use crate::{
     routes::{
         access, add_new_database, get_version,
         google_cse::{self, GoogleCseConfig},
-        kmip, ms_dke,
+        kmip, ms_dke, xks,
     },
     KMSServer,
 };
@@ -252,6 +252,10 @@ pub async fn prepare_kms_server(
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Should we enable the AWS XKS Service ?
+    // https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md
+    let enable_xks = kms_server.params.enable_xks_service.is_some();
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
@@ -290,7 +294,24 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
-        // The default scope serves from the root / the KMIP, permissions and tee endpoints
+        if enable_xks {
+            // let enable_sig4 =...
+            // The scope for the AWS XKS endpoints is served from /kms/xks/v1
+            // which is the default used by AWS
+            let xks_scope = web::scope("/kms/xks/v1")
+                // .wrap(Condition::new(
+                //     enable_sig4,
+                //     sig4,
+                // )) // Use JWT for authentication if necessary.
+                .wrap(Cors::permissive())
+                .service(xks::get_health_status)
+                .service(xks::get_key_meta_data)
+                .service(xks::encrypt)
+                .service(xks::decrypt);
+            app = app.service(xks_scope);
+        }
+
+        // The default scope serves from the root / the KMIP, permissions and the endpoints
         let default_scope = web::scope("")
             .wrap(Condition::new(
                 use_jwt_auth,

@@ -703,7 +703,7 @@ impl KMS {
                     let secrets = req_http
                         .headers()
                         .get("KmsDatabaseSecret")
-                        .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                        .and_then(|h| h.to_str().ok().map(ToString::to_string))
                         .ok_or_else(|| {
                             KmsError::Unauthorized(
                                 "Missing KmsDatabaseSecret header in the query".to_owned(),

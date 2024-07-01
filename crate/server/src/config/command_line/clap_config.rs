@@ -66,6 +66,18 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
     pub ms_dke_service_url: Option<String>,
 
+    /// This setting enables the support for AWS External Keystore (XKS) endpoints.
+    /// Endpoints are available under the `/xks` path
+    ///
+    /// For details, check: https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        env = "KMS_XKS_SERVICE",
+        default_value = "false"
+    )]
+    pub enable_xks_service: bool,
+
     #[clap(flatten)]
     pub telemetry: TelemetryConfig,
 }
