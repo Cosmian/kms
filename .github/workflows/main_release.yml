@@ -4,8 +4,8 @@ name: CI nightly release
 on:
   push:
     # any tags, including tags with / like v1.0/alpha
-    # tags:
-    #   - '**'
+    tags:
+      - '**'
   schedule:
     # every day at 1 AM
     - cron: 00 1 * * *

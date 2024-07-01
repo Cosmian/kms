@@ -1,11 +1,8 @@
 default_username = "admin"
 
 [http]
-port = 8080
+port = 9998
 hostname = "0.0.0.0"
 
 [db]
-database_type = "redis-findex"
-database_url = "redis://0.0.0.0:6379"
-redis_master_password = "master-password"
-redis_findex_label = "label"
+database_type = "sqlite"
