@@ -92,8 +92,8 @@ if [ -f /etc/redhat-release ]; then
   cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
 elif [ -f /etc/lsb-release ]; then
   cargo install cargo-deb --force
-  cargo deb --target "$TARGET" -p cosmian_kms_cli
   cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
-  cargo deb --target "$TARGET" -p cosmian_kms_server
+  cargo deb --target "$TARGET" -p cosmian_kms_cli
   cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+  cargo deb --target "$TARGET" -p cosmian_kms_server
 fi

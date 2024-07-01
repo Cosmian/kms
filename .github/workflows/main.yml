@@ -32,14 +32,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - archive_name: centos7-debug
-            kms_path: .
-            os: ubuntu-20.04
-
-          - archive_name: fips_centos7-debug
-            kms_path: __w/kms/kms/target/x86_64-unknown-linux-gnu/debug
-            os: ubuntu-20.04
-
           - archive_name: rhel9-debug
             kms_path: debug
             os: ubuntu-22.04
