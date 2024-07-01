@@ -1,0 +1,9 @@
+#!/bin/sh -ex
+
+systemctl unmask cosmian_kms.service
+systemctl enable cosmian_kms.service
+systemctl stop cosmian_kms.service
+
+systemctl daemon-reload
+
+#DEBHELPER#

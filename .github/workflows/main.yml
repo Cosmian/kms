@@ -32,30 +32,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - archive_name: centos7_tests
-            kms_path: .
-            os: ubuntu-20.04
-          - archive_name: rhel9_tests
-            kms_path: .
+          - archive_name: rhel9-debug
+            kms_path: debug
             os: ubuntu-22.04
-          - archive_name: fips_centos7_tests
-            kms_path: __w/kms/kms/target/debug
+
+          - archive_name: fips_ubuntu_20_04-debug
+            kms_path: home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debug
             os: ubuntu-20.04
-          - archive_name: ubuntu_20_04_tests
-            kms_path: .
-            os: ubuntu-20.04
-          - archive_name: fips_ubuntu_20_04_tests
-            kms_path: home/runner/work/kms/kms/target/debug
-            os: ubuntu-20.04
-          - archive_name: ubuntu_22_04_tests
-            kms_path: .
+
+          - archive_name: ubuntu_22_04-debug
+            kms_path: debug
             os: ubuntu-22.04
-          - archive_name: macos_tests
-            kms_path: .
+
+          - archive_name: ubuntu_24_04-debug
+            kms_path: debug
+            os: ubuntu-24.04
+
+          - archive_name: macos-debug
+            kms_path: debug
             os: macos-12
-          - archive_name: macos14_tests
-            kms_path: .
+
+          - archive_name: macos14-debug
+            kms_path: debug
             os: macos-14
+
           - archive_name: windows_tests
             kms_path: .
             os: windows-2022

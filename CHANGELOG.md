@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 - Fix vulnerability RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
 - Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254)) and ([#255](https://github.com/Cosmian/kms/pull/255))
 
+### Miscellaneous Tasks
+
+- Create Debian/RPM packages for Ubuntu 2x.04 and RHEL 9 ([#264](https://github.com/Cosmian/kms/pull/264))
+- Drop Centos 7 support  ([#265](https://github.com/Cosmian/kms/pull/265))
+
 ## [4.16.0] - 2024-05-06
 
 ### Bug Fixes

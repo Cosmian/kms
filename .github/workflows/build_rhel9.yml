@@ -7,14 +7,20 @@ on:
       toolchain:
         required: true
         type: string
-      commands:
-        required: true
-        type: string
       archive-name:
         required: true
         type: string
       artifacts:
+        required: false
+        type: string
+      target:
         required: true
+        type: string
+      debug_or_release:
+        required: true
+        type: string
+      features:
+        required: false
         type: string
 
 env:
@@ -94,9 +100,6 @@ jobs:
           rm -rf /tmp/sqlite-data /tmp/tmp.json
 
       - name: Build and tests
-        run: |
-          set -x
-          ${{ inputs.commands }}
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
           RUST_LOG: cosmian_kms_server=trace
@@ -122,15 +125,26 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
+          TARGET: ${{ inputs.target }}
+          DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          FEATURES: ${{ inputs.features }}
+        run: |
+          bash .github/scripts/cargo_build.sh
+
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size ++100M -delete
 
       - name: Upload KMS for RHEL 9
-        if: inputs.artifacts != ''
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.archive-name }}
-          path: ${{ inputs.artifacts }}
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_server-*
+            target/${{ inputs.target }}/generate-rpm/cosmian_kms_cli-*
+            ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error
