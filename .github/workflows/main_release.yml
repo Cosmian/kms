@@ -60,14 +60,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - archive_name: centos7-release
-            kms_path: .
-            os: ubuntu-20.04
-
-          - archive_name: fips_centos7-release
-            kms_path: __w/kms/kms/target/x86_64-unknown-linux-gnu/release
-            os: ubuntu-20.04
-
           - archive_name: rhel9-release
             kms_path: release
             os: ubuntu-22.04
@@ -151,11 +143,11 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: centos7-release rhel9-release fips_centos7-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release
-        macos-release macos14-release windows kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
+      ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
+        windows kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
 
     steps:
-      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* centos7* rhel9*
+      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* rhel9*
       - uses: actions/download-artifact@v3
 
       - run: find .
@@ -181,9 +173,13 @@ jobs:
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             *.zip \
-            rhel9-release/generate-rpm/*.rpm \
-            ubuntu_22_04-release/debian/*.deb \
             cosmian@package.cosmian.com:$DESTINATION_DIR/
+
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa rhel9-release/generate-rpm/*.rpm cosmian@package.cosmian.com:$DESTINATION_DIR/rhel9
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_20_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-20.04
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_22_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-22.04
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_24_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-24.04
 
       - name: Release on tags, attach asset on release
         if: startsWith(github.ref, 'refs/tags/')
@@ -192,7 +188,9 @@ jobs:
           files: |
             *.zip
             rhel9-release/generate-rpm/*.rpm \
-            ubuntu_22_04-release/debian/*.deb
+            ubuntu_20_04-release/debian/*.deb \
+            ubuntu_22_04-release/debian/*.deb \
+            ubuntu_24_04-release/debian/*.deb
 
   python_publish:
     name: python publish
