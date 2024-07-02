@@ -161,6 +161,38 @@ systemd-units = [
 
 [package.metadata.deb.variants.fips]
 features = ["fips"]
+assets = [
+    [
+        "target/release/cosmian_kms_server",
+        "usr/sbin/cosmian_kms",
+        "500",
+    ],
+    [
+        "../../README.md",
+        "usr/share/doc/cosmian_kms/README",
+        "644",
+    ],
+    [
+        "../../pkg/kms.toml",
+        "etc/cosmian_kms/",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/lib64/ossl-modules/fips.so",
+        "usr/local/openssl/lib64/ossl-modules/fips.so",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/ssl/openssl.cnf",
+        "usr/local/openssl/ssl/openssl.cnf",
+        "400",
+    ],
+    [
+        "/usr/local/openssl/ssl/fipsmodule.cnf",
+        "usr/local/openssl/ssl/fipsmodule.cnf",
+        "400",
+    ],
+]
 
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------
