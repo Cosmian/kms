@@ -49,7 +49,9 @@ jobs:
         with:
           key: ${{ runner.os }}-${{ inputs.distribution }}
           cache-directories: |
-            ${{ env.OPENSSL_DIR }}
+            /usr/local/openssl/lib64/ossl-modules/fips.so
+            /usr/local/openssl/ssl/openssl.cnf
+            /usr/local/openssl/ssl/fipsmodule.cnf
 
       - uses: dtolnay/rust-toolchain@master
         if: steps.cargo_cache.outputs.cache-hit != 'true'

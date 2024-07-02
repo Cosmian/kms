@@ -30,7 +30,9 @@ jobs:
       features: fips
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
-        /usr/local/openssl
+        /usr/local/openssl/lib64/ossl-modules/fips.so
+        /usr/local/openssl/ssl/openssl.cnf
+        /usr/local/openssl/ssl/fipsmodule.cnf
 
   ubuntu:
     strategy:
