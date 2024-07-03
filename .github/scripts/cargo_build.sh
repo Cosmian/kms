@@ -76,8 +76,12 @@ fi
 
 # Tests on debug
 if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
+
+  find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
+  rm -f /tmp/*.json
+  export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
   # shellcheck disable=SC2086
-  cargo test --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+  cargo test -v -j 1 --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 fi
 
 rm -rf target/"$TARGET"/debian

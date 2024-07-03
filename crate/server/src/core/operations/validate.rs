@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs, path};
 use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
-        kmip_operations::{Validate, ValidateResponse},
+        kmip_operations::{ErrorReason, Validate, ValidateResponse},
         kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
     KmipError,
@@ -81,7 +81,7 @@ pub(crate) async fn validate_operation(
     };
     let root_x509 = certificates.get(*root_idx as usize).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
-            cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
+            ErrorReason::Item_Not_Found,
             "Root not found".to_string(),
         ))
     })?;
@@ -108,7 +108,7 @@ pub(crate) async fn validate_operation(
     // Checking if the certificate chain has not expired
     let date_validation = validate_chain_date(certificates, request.validity_time)?;
 
-    // Checking if the certificate chain has revocked elements
+    // Checking if the certificate chain has revoked elements
     let uri_list = get_crl_uris_from_certificate_chain(certificates)?;
     if uri_list.is_empty() {
         Ok(ValidateResponse {
@@ -142,13 +142,13 @@ fn index_certificates(
             (None, Some(_)) => true,
             (Some(_), None) => {
                 return Err(KmsError::from(KmipError::InvalidKmipObject(
-                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
+                    ErrorReason::Invalid_Object_Type,
                     "Certificate has no Subject Key Identifier".to_string(),
                 )))
             }
             (None, None) => {
                 return Err(KmsError::from(KmipError::InvalidKmipObject(
-                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
+                    ErrorReason::Invalid_Object_Type,
                     "Certificate has neither Subject Key Identifier nor Authority Key Identifier"
                         .to_string(),
                 )))
@@ -157,7 +157,13 @@ fn index_certificates(
         if is_root {
             hm_certificates.insert(HEAD.to_vec(), i as u8);
         } else {
-            hm_certificates.insert(Asn1OctetStringRef::as_slice(aki.unwrap()).to_vec(), i as u8);
+            let asn1_aki = aki.ok_or_else(|| {
+                KmsError::from(KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Object_Type,
+                    "No AKI found".to_string(),
+                ))
+            })?;
+            hm_certificates.insert(Asn1OctetStringRef::as_slice(asn1_aki).to_vec(), i as u8);
         }
     }
     Ok(hm_certificates)
@@ -178,7 +184,7 @@ fn validate_chain_structure(
         .subject_key_id()
         .ok_or_else(|| {
             KmsError::from(KmipError::InvalidKmipObject(
-                cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
+                ErrorReason::Item_Not_Found,
                 "Issuer son not found".to_string(),
             ))
         })?
@@ -221,7 +227,7 @@ async fn certificates_by_uid(
     let res = join_all(unique_identifiers.iter().map(|unique_identifier| async {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::from(KmipError::InvalidKmipObject(
-                cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
+                ErrorReason::Item_Not_Found,
                 "as_str returned None in certificates_by_uid".to_string(),
             ))
         })?;
@@ -259,7 +265,7 @@ async fn certificate_by_uid(
                 Ok(certificate_value)
             } else {
                 Err(KmsError::from(KmipError::InvalidKmipObject(
-                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Invalid_Object_Type,
+                    ErrorReason::Invalid_Object_Type,
                     String::from("Requested a Certificate Object, got a ")
                         + &kms_object.object.object_type().to_string(),
                 )))
@@ -393,8 +399,8 @@ async fn test_and_get_resource_from_uri(
                 Some(UriType::Path(s.to_string()))
             } else {
                 return Err(KmsError::from(KmipError::InvalidKmipValue(
-                    cosmian_kmip::kmip::kmip_operations::ErrorReason::Illegal_Object_Type,
-                    "The uri provided is ill defined".to_string(),
+                    ErrorReason::Illegal_Object_Type,
+                    "The uri provided is invalid".to_string(),
                 )))
             }
         }
@@ -429,7 +435,7 @@ async fn test_and_get_resource_from_uri(
         }
         _ => {
             return Err(KmsError::KmipError(
-                cosmian_kmip::kmip::kmip_operations::ErrorReason::General_Failure,
+                ErrorReason::General_Failure,
                 "Error that should not manifest".to_string(),
             ))
         }
@@ -437,13 +443,13 @@ async fn test_and_get_resource_from_uri(
     // Getting the CRL issuer Certificate
     let certificate_idx = hm_certificates.get(certificate_id).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
-            cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
+            ErrorReason::Item_Not_Found,
             "The certificate must be in the hashmap".to_string(),
         ))
     })?;
     let certificate = certificates.get(*certificate_idx as usize).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
-            cosmian_kmip::kmip::kmip_operations::ErrorReason::Item_Not_Found,
+            ErrorReason::Item_Not_Found,
             "The certificate index must be valid".to_string(),
         ))
     })?;
@@ -465,26 +471,23 @@ async fn get_crl_bytes(
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
-    let mut responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
+    let responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
         test_and_get_resource_from_uri(uri, hm_certificates, certificates, certificate_id).await
     }))
     .await;
 
-    // filtering errors
-    let is_ok = responses.iter().all(std::result::Result::is_ok);
-
-    // checking if there are any errors
-    if is_ok {
-        Ok(responses
-            .iter_mut()
-            .map(|x| {
-                x.clone()
-                    .expect("Safe unwrap of Result elements. The vector must not contain Err.")
-            })
-            .collect())
-    } else {
-        Err(KmsError::from(KmipError::ObjectNotFound(
-            "One of the Crl cannot be found".to_string(),
-        )))
+    // Collecting results, checking for errors
+    let mut crl_bytes = Vec::new();
+    for response in responses {
+        match response {
+            Ok(bytes) => crl_bytes.push(bytes),
+            Err(_) => {
+                return Err(KmsError::from(KmipError::ObjectNotFound(
+                    "One of the CRL cannot be found".to_string(),
+                )))
+            }
+        }
     }
+
+    Ok(crl_bytes)
 }
