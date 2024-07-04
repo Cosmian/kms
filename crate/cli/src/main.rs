@@ -22,7 +22,6 @@ use cosmian_kms_cli::{
 };
 use cosmian_kms_client::ClientConf;
 use cosmian_logger::log_utils::log_init;
-use tracing::info;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -90,11 +89,6 @@ async fn main() {
 async fn main_() -> Result<(), CliError> {
     // Set up environment variables and logging options if RUST_LOG if defined
     log_init("info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info");
-
-    info!(
-        "Starting `ckms` {}",
-        option_env!("CARGO_PKG_VERSION").unwrap_or("unknown")
-    );
 
     let opts = Cli::parse();
 
