@@ -1,0 +1,81 @@
+---
+name: Clean env test
+
+on:
+  workflow_call:
+    inputs:
+      debug_or_release:
+        required: true
+        type: string
+
+jobs:
+  clean_env_test:
+    name: ${{ matrix.archive_name }} -> Launch binary in a clean env. -> ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: rhel9-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: ubuntu-22.04
+
+          - archive_name: fips_ubuntu_20_04-${{ inputs.debug_or_release }}
+            kms_path: home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/${{ inputs.debug_or_release }}
+            os: ubuntu-20.04
+
+          - archive_name: ubuntu_20_04-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: ubuntu-20.04
+
+          - archive_name: ubuntu_22_04-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: ubuntu-22.04
+
+          - archive_name: ubuntu_24_04-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: ubuntu-24.04
+
+          - archive_name: macos-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: macos-12
+
+          - archive_name: macos14-${{ inputs.debug_or_release }}
+            kms_path: ${{ inputs.debug_or_release }}
+            os: macos-14
+
+          - archive_name: windows-${{ inputs.debug_or_release }}
+            kms_path: .
+            os: windows-2022
+
+    steps:
+      - uses: actions/download-artifact@v3
+
+      - run: find .
+        if: contains(runner.os, 'linux')
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+        run: |
+          set -ex
+
+          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms
+          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server
+
+          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms -V
+
+          # Copy openssl build for FIPS mode
+          if [ -d "${{ matrix.archive_name }}/usr/local/openssl" ]; then
+            sudo mkdir /usr/local/openssl
+            sudo chown -R $USER /usr/local/openssl
+            rsync -ru ${{ matrix.archive_name }}/usr/local/openssl/ /usr/local/openssl/
+            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          fi
+          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server -V
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'windows')
+        run: |
+          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms.exe -V
+          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server.exe -V

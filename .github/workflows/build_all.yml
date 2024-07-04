@@ -7,6 +7,9 @@ on:
       toolchain:
         required: true
         type: string
+      debug_or_release:
+        required: true
+        type: string
 
 jobs:
   rhel9:
@@ -16,7 +19,7 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: rhel9
       target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
+      debug_or_release: ${{ inputs.debug_or_release }}
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -26,7 +29,7 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
       target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
+      debug_or_release: ${{ inputs.debug_or_release }}
       features: fips
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
@@ -66,18 +69,12 @@ jobs:
       distribution: ${{ matrix.distribution }}
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
-      debug_or_release: debug
+      debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
   windows:
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
-      archive-name: windows_tests
-      commands: |
-        . .\.github\scripts\windows_build.ps1
-        Build-Project -BuildType debug
-      artifacts: |
-        target/x86_64-pc-windows-msvc/debug/ckms.exe
-        target/x86_64-pc-windows-msvc/debug/cosmian_kms_server.exe
-        target/x86_64-pc-windows-msvc/debug/ckms_pkcs11.dll
+      archive-name: windows
+      debug_or_release: ${{ inputs.debug_or_release }}
