@@ -78,3 +78,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
+
+  clean_env_test:
+    uses: ./.github/workflows/clean_env_tests.yml
+    with:
+      debug_or_release: ${{ inputs.debug_or_release }}
+    needs:
+      - rhel9
+      - fips-ubuntu-20
+      - generic-build
+      - windows

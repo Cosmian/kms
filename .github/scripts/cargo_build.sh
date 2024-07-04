@@ -69,14 +69,10 @@ else
   otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server | grep openssl && exit 1
 fi
 
-# Tests on debug
-if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
-  find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
-  rm -f /tmp/*.json
-  export RUST_LOG="cosmian_kms_server=debug"
-  # shellcheck disable=SC2086
-  cargo test -v -j 1 --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-fi
+find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
+rm -f /tmp/*.json
+# shellcheck disable=SC2086
+cargo test --target "$TARGET" $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 rm -rf target/"$TARGET"/debian
 rm -rf target/"$TARGET"/generate-rpm

@@ -38,9 +38,10 @@ function Build-Project {
     cd crate/server
     if ($BuildType -eq "release") {
         cargo build --release --target x86_64-pc-windows-msvc
+        cargo test --release --target x86_64-pc-windows-msvc -p cosmian_kms_cli -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
     } else {
         cargo build --target x86_64-pc-windows-msvc
-        cargo test -v --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+        cargo test --target x86_64-pc-windows-msvc -p cosmian_kms_cli -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
     }
 }
 

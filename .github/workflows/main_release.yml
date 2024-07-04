@@ -5,7 +5,7 @@ on:
   push:
     # any tags, including tags with / like v1.0/alpha
     tags:
-      - "**"
+      - '**'
   schedule:
     # every day at 1 AM
     - cron: 00 1 * * *
@@ -52,13 +52,6 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           inputs: '{ "kms_version": "${{ github.ref_name }}" }'
 
-  clean_env_test:
-    uses: ./.github/workflows/clean_env_tests.yml
-    with:
-      debug_or_release: release
-    needs:
-      - build
-
   ##############################################################################
   ### Releases
   ##############################################################################
@@ -70,7 +63,6 @@ jobs:
       - cargo-doc
       - build
       - python_and_docker
-      - clean_env_test
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -78,8 +70,7 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES:
-        rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
+      ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
         windows-release kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
 
     steps:

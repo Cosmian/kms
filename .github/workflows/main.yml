@@ -24,13 +24,6 @@ jobs:
       toolchain: nightly-2024-06-09
       debug_or_release: debug
 
-  clean_env_test:
-    uses: ./.github/workflows/clean_env_tests.yml
-    with:
-      debug_or_release: debug
-    needs:
-      - build_tests
-
   cargo-doc:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
     with:
