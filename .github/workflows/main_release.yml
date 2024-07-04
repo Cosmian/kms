@@ -16,7 +16,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
@@ -182,7 +182,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Deploy documentation in staging
         if: ${{ github.ref_name == 'develop' }}

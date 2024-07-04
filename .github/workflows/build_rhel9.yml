@@ -71,7 +71,7 @@ jobs:
       - name: Display cpuinfo
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: RHEL 9 prerequisites
         run: |

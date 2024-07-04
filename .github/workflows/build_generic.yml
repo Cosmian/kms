@@ -41,7 +41,7 @@ jobs:
         if: contains(runner.os, 'Linux')
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Cache dependencies
         id: cargo_cache
