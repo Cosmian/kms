@@ -35,13 +35,6 @@ fi
 
 rustup target add "$TARGET"
 
-crate=crate/cli
-echo "Building $crate"
-cd "$crate"
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
-cd "$ROOT_FOLDER"
-
 echo "Building crate/pkcs11/provider"
 cd crate/pkcs11/provider
 # shellcheck disable=SC2086
@@ -53,12 +46,14 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
-crate=crate/server
-echo "Building $crate"
-cd "$crate"
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
-cd "$ROOT_FOLDER"
+crates=("crate/server" "crate/cli")
+for crate in "${crates[@]}"; do
+  echo "Building $crate"
+  cd "$crate"
+  # shellcheck disable=SC2086
+  cargo build --target $TARGET $RELEASE $FEATURES
+  cd "$ROOT_FOLDER"
+done
 
 # Debug
 find .

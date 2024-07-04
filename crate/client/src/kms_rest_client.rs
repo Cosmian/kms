@@ -507,6 +507,7 @@ impl KmsClient {
                 .connect_timeout(Duration::from_secs(30))
                 .timeout(Duration::from_secs(30))
                 .tcp_keepalive(Duration::from_secs(30))
+                .pool_idle_timeout(Duration::from_secs(30))
                 .default_headers(headers)
                 .build()?,
             server_url,
