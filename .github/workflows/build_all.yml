@@ -75,27 +75,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows_tests
       commands: |
-        rustup target add x86_64-pc-windows-msvc
-
-        # build only `ckms`
-        cd crate/cli
-        cargo build --target x86_64-pc-windows-msvc
-
-        # build pkcs11 provider
-        cd ../pkcs11/provider
-        cargo build --target x86_64-pc-windows-msvc
-        cd ../../..
-
-        $env:VCPKG_INSTALLATION_ROOT
-        dir $env:VCPKG_INSTALLATION_ROOT
-        vcpkg install openssl[fips]
-
-        vcpkg integrate install
-        set VCPKGRS_DYNAMIC=1
-        $env:OPENSSL_DIR="$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows"
-
-        cd crate/server
-        cargo build --target x86_64-pc-windows-msvc
+        . .\.github\scripts\windows_build.ps1
+        Build-Project -BuildType debug
       artifacts: |
         target/x86_64-pc-windows-msvc/debug/ckms.exe
         target/x86_64-pc-windows-msvc/debug/cosmian_kms_server.exe
