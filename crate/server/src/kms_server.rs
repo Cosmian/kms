@@ -322,6 +322,8 @@ pub async fn prepare_kms_server(
     .client_disconnect_timeout(std::time::Duration::from_secs(90))
     .tls_handshake_timeout(std::time::Duration::from_secs(90))
     .keep_alive(std::time::Duration::from_secs(90))
+    .max_connection_rate(1000)
+    .max_connections(100000)
     .client_request_timeout(std::time::Duration::from_secs(90));
 
     Ok(match builder {
