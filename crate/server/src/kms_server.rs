@@ -324,7 +324,7 @@ pub async fn prepare_kms_server(
     .keep_alive(std::time::Duration::from_secs(90))
     .max_connection_rate(2048)
     .max_connections(100_000)
-    .workers(2)
+    .workers(24)
     .worker_max_blocking_threads(2048)
     .client_request_timeout(std::time::Duration::from_secs(90));
 

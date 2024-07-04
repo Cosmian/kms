@@ -41,6 +41,10 @@ jobs:
         if: contains(runner.os, 'Linux')
         run: cat /proc/cpuinfo
 
+      - run: |
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
+
       - uses: actions/checkout@v3
 
       - name: Cache dependencies
@@ -62,7 +66,7 @@ jobs:
       - name: Local OpenSSL FIPS Install
         if: steps.cargo_cache.outputs.cache-hit != 'true'
         run: |
-          sudo mkdir ${{ env.OPENSSL_DIR }}
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}
           sudo chown -R $USER ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 

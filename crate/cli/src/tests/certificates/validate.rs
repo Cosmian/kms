@@ -96,7 +96,7 @@ pub fn validate_certificate(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args: Vec<String> = vec!["validate".to_owned()];
     for certificate in certificates {
         args.push("--certificate".to_owned());
@@ -120,7 +120,7 @@ pub fn validate_certificate(
 }
 
 #[tokio::test]
-async fn test_validate() -> Result<(), CliError> {
+async fn test_cli_validate() -> Result<(), CliError> {
     log_init("cosmian_kms_cli=debug");
 
     let ctx = start_default_test_kms_server().await;
@@ -192,17 +192,16 @@ async fn test_validate() -> Result<(), CliError> {
     let test1_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        [].to_vec(),
-        [
+        vec![],
+        vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
             leaf1_certificate_id.clone(),
-        ]
-        .to_vec(),
+        ],
         String::new(),
     )?;
     info!(
-        "Validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed. \
+        "Validate chain with leaf1: result supposed to be invalid, as leaf1 was removed. \
          test1_res: {test1_res}"
     );
     assert_eq!(test1_res, "Invalid");
