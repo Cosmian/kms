@@ -56,7 +56,7 @@ for crate in "${crates[@]}"; do
 done
 
 # Debug
-find .
+# find .
 
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server -h
