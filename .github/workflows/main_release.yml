@@ -5,7 +5,7 @@ on:
   push:
     # any tags, including tags with / like v1.0/alpha
     tags:
-      - '**'
+      - "**"
   schedule:
     # every day at 1 AM
     - cron: 00 1 * * *
@@ -16,7 +16,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   cargo-lint:
@@ -78,7 +78,8 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
+      ARCHIVE_NAMES:
+        rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
         windows-release kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
 
     steps:
@@ -182,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Deploy documentation in staging
         if: ${{ github.ref_name == 'develop' }}

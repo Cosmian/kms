@@ -27,7 +27,7 @@ jobs:
         run: |
           docker run --rm ${{ inputs.kms-version }} --help
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           repository: Cosmian/cloudproof_python
           ref: ${{ inputs.branch }}
@@ -39,7 +39,7 @@ jobs:
         run: |
           scripts/ci_install_pyo3_builds.sh
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
       - run: find .
