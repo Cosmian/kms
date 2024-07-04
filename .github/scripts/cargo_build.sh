@@ -75,7 +75,7 @@ if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
   rm -f /tmp/*.json
   export RUST_LOG="cosmian_kms_server=debug"
   # shellcheck disable=SC2086
-  cargo test -v -j 2 --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+  cargo test -v -j 1 --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 fi
 
 rm -rf target/"$TARGET"/debian
