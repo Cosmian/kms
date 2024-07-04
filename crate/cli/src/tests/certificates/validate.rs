@@ -86,7 +86,7 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliErr
     import_revoked_certificate_encrypt("prime256v1").await
 }
 
-pub async fn validate_certificate(
+pub fn validate_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     certificates: Vec<String>,
@@ -201,8 +201,7 @@ async fn test_validate() -> Result<(), CliError> {
         ]
         .to_vec(),
         String::new(),
-    )
-    .await?;
+    )?;
 
     assert_eq!(test1_res, "Invalid");
 
@@ -221,8 +220,7 @@ async fn test_validate() -> Result<(), CliError> {
         ]
         .to_vec(),
         String::new(),
-    )
-    .await?;
+    )?;
 
     assert_eq!(test2_res, "Valid");
 
@@ -243,8 +241,7 @@ async fn test_validate() -> Result<(), CliError> {
         .to_vec(),
         // Date: 15/04/2048
         "4804152030Z".to_string(),
-    )
-    .await?;
+    )?;
 
     assert_eq!(test3_res, "Invalid");
 
@@ -254,8 +251,7 @@ async fn test_validate() -> Result<(), CliError> {
         [].to_vec(),
         [root_certificate_id.clone()].to_vec(),
         String::new(),
-    )
-    .await?;
+    )?;
 
     assert_eq!(test4_res, "Valid");
 

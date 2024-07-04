@@ -732,8 +732,7 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
         ]
         .to_vec(),
         String::new(),
-    )
-    .await?;
+    )?;
 
     assert_eq!(res, "Valid");
 
