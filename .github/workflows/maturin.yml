@@ -12,7 +12,7 @@ jobs:
   pyo3-linux:
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/pyo3/maturin:v0.14.1
+      image: ghcr.io/pyo3/maturin:v1.6.0
       options: --entrypoint ''
     steps:
       - run: yum install -y nodejs
