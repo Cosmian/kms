@@ -51,6 +51,7 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
       - name: Upload KMS for windows-2022
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
