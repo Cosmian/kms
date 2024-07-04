@@ -2,9 +2,10 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{
     actions::certificates::CertificateInputFormat,
@@ -120,9 +121,11 @@ pub fn validate_certificate(
 
 #[tokio::test]
 async fn test_validate() -> Result<(), CliError> {
+    log_init("cosmian_kms_cli=debug");
+
     let ctx = start_default_test_kms_server().await;
 
-    println!("importing root cert");
+    info!("importing root cert");
     let root_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
@@ -138,7 +141,7 @@ async fn test_validate() -> Result<(), CliError> {
         true,
     )?;
 
-    println!("importing intermediate cert");
+    info!("importing intermediate cert");
     let intermediate_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
@@ -154,8 +157,6 @@ async fn test_validate() -> Result<(), CliError> {
         true,
     )?;
 
-    println!("importing leaf1 cert");
-
     let leaf1_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
@@ -170,8 +171,7 @@ async fn test_validate() -> Result<(), CliError> {
         false,
         true,
     )?;
-
-    println!("importing leaf2 cert");
+    info!("leaf1 cert imported: {leaf1_certificate_id}");
 
     let leaf2_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
@@ -187,23 +187,25 @@ async fn test_validate() -> Result<(), CliError> {
         false,
         true,
     )?;
+    info!("leaf2 cert imported: {leaf2_certificate_id}");
 
-    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
-
-    //     let test1_res = validate_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         [].to_vec(),
-    //         [
-    //             intermediate_certificate_id.clone(),
-    //             root_certificate_id.clone(),
-    //             leaf1_certificate_id.clone(),
-    //         ]
-    //         .to_vec(),
-    //         String::new(),
-    //     )?;
-
-    //     assert_eq!(test1_res, "Invalid");
+    let test1_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        [].to_vec(),
+        [
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf1_certificate_id.clone(),
+        ]
+        .to_vec(),
+        String::new(),
+    )?;
+    info!(
+        "Validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed. \
+         test1_res: {test1_res}"
+    );
+    assert_eq!(test1_res, "Invalid");
 
     //     println!(
     //         "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
@@ -225,7 +227,7 @@ async fn test_validate() -> Result<(), CliError> {
     //     assert_eq!(test2_res, "Valid");
 
     //     println!(
-    //         "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
+    //         "validating chain with leaf2: Result supposed to be invalid, as date is posthumous to \
     //          leaf2's expiration date"
     //     );
 
