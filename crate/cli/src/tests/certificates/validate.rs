@@ -120,75 +120,75 @@ pub fn validate_certificate(
 
 #[tokio::test]
 async fn test_validate() -> Result<(), CliError> {
-    let _ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server().await;
 
     println!("importing root cert");
-    //     let root_certificate_id = import_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         "test_data/certificates/chain/ca.cert.pem",
-    //         CertificateInputFormat::Pem,
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //         false,
-    //         true,
-    //     )?;
+    let root_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/ca.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        true,
+    )?;
 
-    //     println!("importing intermediate cert");
-    //     let intermediate_certificate_id = import_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         "test_data/certificates/chain/intermediate.cert.pem",
-    //         CertificateInputFormat::Pem,
-    //         None,
-    //         None,
-    //         None,
-    //         Some(root_certificate_id.clone()),
-    //         None,
-    //         None,
-    //         false,
-    //         true,
-    //     )?;
+    println!("importing intermediate cert");
+    let intermediate_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/intermediate.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(root_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
 
-    //     println!("importing leaf1 cert");
+    println!("importing leaf1 cert");
 
-    //     let leaf1_certificate_id = import_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         "test_data/certificates/chain/leaf1.cert.pem",
-    //         CertificateInputFormat::Pem,
-    //         None,
-    //         None,
-    //         None,
-    //         Some(intermediate_certificate_id.clone()),
-    //         None,
-    //         None,
-    //         false,
-    //         true,
-    //     )?;
+    let leaf1_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf1.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
 
-    //     println!("importing leaf2 cert");
+    println!("importing leaf2 cert");
 
-    //     let leaf2_certificate_id = import_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         "test_data/certificates/chain/leaf2.cert.pem",
-    //         CertificateInputFormat::Pem,
-    //         None,
-    //         None,
-    //         None,
-    //         Some(intermediate_certificate_id.clone()),
-    //         None,
-    //         None,
-    //         false,
-    //         true,
-    //     )?;
+    let leaf2_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf2.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
 
-    //     println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
+    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
 
     //     let test1_res = validate_certificate(
     //         &ctx.owner_client_conf_path,
