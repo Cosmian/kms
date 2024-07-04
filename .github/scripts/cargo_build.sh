@@ -72,7 +72,7 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json
 # shellcheck disable=SC2086
-cargo test --target "$TARGET" $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 rm -rf target/"$TARGET"/debian
 rm -rf target/"$TARGET"/generate-rpm
