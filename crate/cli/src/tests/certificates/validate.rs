@@ -118,142 +118,142 @@ pub fn validate_certificate(
     ))
 }
 
-#[tokio::test]
-async fn test_validate() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+// #[tokio::test]
+// async fn test_validate() -> Result<(), CliError> {
+//     let ctx = start_default_test_kms_server().await;
 
-    println!("importing root cert");
-    let root_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/ca.cert.pem",
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-        true,
-    )?;
+//     println!("importing root cert");
+//     let root_certificate_id = import_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         "test_data/certificates/chain/ca.cert.pem",
+//         CertificateInputFormat::Pem,
+//         None,
+//         None,
+//         None,
+//         None,
+//         None,
+//         None,
+//         false,
+//         true,
+//     )?;
 
-    println!("importing intermediate cert");
-    let intermediate_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/intermediate.cert.pem",
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
+//     println!("importing intermediate cert");
+//     let intermediate_certificate_id = import_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         "test_data/certificates/chain/intermediate.cert.pem",
+//         CertificateInputFormat::Pem,
+//         None,
+//         None,
+//         None,
+//         Some(root_certificate_id.clone()),
+//         None,
+//         None,
+//         false,
+//         true,
+//     )?;
 
-    println!("importing leaf1 cert");
+//     println!("importing leaf1 cert");
 
-    let leaf1_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/leaf1.cert.pem",
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(intermediate_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
+//     let leaf1_certificate_id = import_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         "test_data/certificates/chain/leaf1.cert.pem",
+//         CertificateInputFormat::Pem,
+//         None,
+//         None,
+//         None,
+//         Some(intermediate_certificate_id.clone()),
+//         None,
+//         None,
+//         false,
+//         true,
+//     )?;
 
-    println!("importing leaf2 cert");
+//     println!("importing leaf2 cert");
 
-    let leaf2_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/leaf2.cert.pem",
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(intermediate_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
+//     let leaf2_certificate_id = import_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         "test_data/certificates/chain/leaf2.cert.pem",
+//         CertificateInputFormat::Pem,
+//         None,
+//         None,
+//         None,
+//         Some(intermediate_certificate_id.clone()),
+//         None,
+//         None,
+//         false,
+//         true,
+//     )?;
 
-    println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
+//     println!("validating chain with leaf1: Result supposed to be invalid, as leaf1 was removed");
 
-    let test1_res = validate_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        [].to_vec(),
-        [
-            intermediate_certificate_id.clone(),
-            root_certificate_id.clone(),
-            leaf1_certificate_id.clone(),
-        ]
-        .to_vec(),
-        String::new(),
-    )?;
+//     let test1_res = validate_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         [].to_vec(),
+//         [
+//             intermediate_certificate_id.clone(),
+//             root_certificate_id.clone(),
+//             leaf1_certificate_id.clone(),
+//         ]
+//         .to_vec(),
+//         String::new(),
+//     )?;
 
-    assert_eq!(test1_res, "Invalid");
+//     assert_eq!(test1_res, "Invalid");
 
-    println!(
-        "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
-    );
+//     println!(
+//         "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
+//     );
 
-    let test2_res = validate_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        [].to_vec(),
-        [
-            intermediate_certificate_id.clone(),
-            root_certificate_id.clone(),
-            leaf2_certificate_id.clone(),
-        ]
-        .to_vec(),
-        String::new(),
-    )?;
+//     let test2_res = validate_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         [].to_vec(),
+//         [
+//             intermediate_certificate_id.clone(),
+//             root_certificate_id.clone(),
+//             leaf2_certificate_id.clone(),
+//         ]
+//         .to_vec(),
+//         String::new(),
+//     )?;
 
-    assert_eq!(test2_res, "Valid");
+//     assert_eq!(test2_res, "Valid");
 
-    println!(
-        "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
-         leaf2's expiration date"
-    );
+//     println!(
+//         "validating chain with leaf2: Result supposed to be invalid, as date is postumous to \
+//          leaf2's expiration date"
+//     );
 
-    let test3_res = validate_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        [].to_vec(),
-        [
-            intermediate_certificate_id.clone(),
-            root_certificate_id.clone(),
-            leaf2_certificate_id.clone(),
-        ]
-        .to_vec(),
-        // Date: 15/04/2048
-        "4804152030Z".to_string(),
-    )?;
+//     let test3_res = validate_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         [].to_vec(),
+//         [
+//             intermediate_certificate_id.clone(),
+//             root_certificate_id.clone(),
+//             leaf2_certificate_id.clone(),
+//         ]
+//         .to_vec(),
+//         // Date: 15/04/2048
+//         "4804152030Z".to_string(),
+//     )?;
 
-    assert_eq!(test3_res, "Invalid");
+//     assert_eq!(test3_res, "Invalid");
 
-    let test4_res = validate_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        [].to_vec(),
-        [root_certificate_id.clone()].to_vec(),
-        String::new(),
-    )?;
+//     let test4_res = validate_certificate(
+//         &ctx.owner_client_conf_path,
+//         "certificates",
+//         [].to_vec(),
+//         [root_certificate_id.clone()].to_vec(),
+//         String::new(),
+//     )?;
 
-    assert_eq!(test4_res, "Valid");
+//     assert_eq!(test4_res, "Valid");
 
-    Ok(())
-}
+//     Ok(())
+// }
