@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [X.Y.Z] - 2024-??-??
+## [4.17.0] - 2024-07-04
 
 ### Features
 
@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Create Debian/RPM packages for Ubuntu 2x.04 and RHEL 9 ([#264](https://github.com/Cosmian/kms/pull/264))
-- Drop Centos 7 support  ([#265](https://github.com/Cosmian/kms/pull/265))
+- Drop Centos 7 support ([#265](https://github.com/Cosmian/kms/pull/265))
 
 ## [4.16.0] - 2024-05-06
 
