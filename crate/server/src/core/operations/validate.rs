@@ -14,7 +14,7 @@ use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},
@@ -115,7 +115,10 @@ pub(crate) async fn validate_operation(
             validity_indicator: structural_validity.and(date_validation),
         })
     } else {
+        info!("URI list: {uri_list:?}");
         let mut crl_bytes_list = get_crl_bytes(uri_list, &hm_certificates, certificates).await?;
+
+        info!("CRL list size: {}", crl_bytes_list.len());
 
         let revocation_status = chain_revocation_status(certificates, &mut crl_bytes_list)?;
         Ok(ValidateResponse {
@@ -321,7 +324,7 @@ fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<
     };
     let crl_dp = certificate.crl_distribution_points();
     match crl_dp {
-        None => Ok([].to_vec()),
+        None => Ok(vec![]),
         Some(crl_dp) => {
             let crl_size = crl_dp.len();
             let uri_list = &mut Vec::<String>::new();

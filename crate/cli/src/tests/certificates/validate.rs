@@ -203,7 +203,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         None,
     )?;
     info!(
-        "Validate chain with leaf1: result supposed to be invalid, as leaf1 was removed. \
+        "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res}"
     );
     assert_eq!(test1_res, "Invalid");
@@ -220,41 +220,38 @@ async fn test_cli_validate() -> Result<(), CliError> {
         None,
     )?;
     info!(
-        "validate chain with leaf2: result supposed to be valid, as leaf2 was never removed. \
+        "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
     assert_eq!(test2_res, "Valid");
 
-    //     println!(
-    //         "validating chain with leaf2: Result supposed to be invalid, as date is posthumous to \
-    //          leaf2's expiration date"
-    //     );
+    let test3_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ],
+        // Date: 15/04/2048
+        Some("4804152030Z".to_string()),
+    )?;
+    info!(
+        "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
+         leaf2's expiration date. test3_res: {test3_res}"
+    );
+    assert_eq!(test3_res, "Invalid");
 
-    //     let test3_res = validate_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         [].to_vec(),
-    //         [
-    //             intermediate_certificate_id.clone(),
-    //             root_certificate_id.clone(),
-    //             leaf2_certificate_id.clone(),
-    //         ]
-    //         .to_vec(),
-    //         // Date: 15/04/2048
-    //         "4804152030Z".to_string(),
-    //     )?;
+    let test4_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![root_certificate_id.clone()],
+        None,
+    )?;
 
-    //     assert_eq!(test3_res, "Invalid");
-
-    //     let test4_res = validate_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         [].to_vec(),
-    //         [root_certificate_id.clone()].to_vec(),
-    //         String::new(),
-    //     )?;
-
-    //     assert_eq!(test4_res, "Valid");
+    assert_eq!(test4_res, "Valid");
 
     Ok(())
 }
