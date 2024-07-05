@@ -152,3 +152,19 @@ jobs:
             ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           fi
           ./$KMS_PATH/cosmian_kms_server -V
+
+  push-or-release:
+    needs:
+      - kms-build
+      - kms-test
+    if: needs.kms-build.outputs.cache-hit != 'true'
+    uses: ./.github/workflows/push.yml
+    secrets: inherit
+    with:
+      archive-name: ${{ inputs.archive-name }}
+      archive-files: |
+        target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+        target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
+        target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
+      distribution: ${{ inputs.distribution }}
+      additional-files: target/${{ inputs.target }}/debian/*.deb

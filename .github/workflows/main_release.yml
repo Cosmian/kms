@@ -145,11 +145,8 @@ jobs:
 
       - name: Install requirements
         run: |
+          set -ex
           pip install twine
-
-      - name: Create folder dist
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
           mkdir -p dist
           cp ${{ matrix.archive_name }}/*.whl dist/
 
@@ -161,16 +158,10 @@ jobs:
           print-hash: true
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  cleanup:
+  public_documentation:
     needs:
       - release
       - python_publish
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
-    secrets: inherit
-
-  public_documentation:
-    needs:
-      - cleanup
     runs-on: ubuntu-latest
 
     steps:

@@ -1,0 +1,69 @@
+---
+on:
+  workflow_call:
+    inputs:
+      archive-name:
+        required: true
+        type: string
+      archive-files:
+        required: true
+        type: string
+      distribution:
+        required: true
+        type: string
+      additional-files:
+        required: true
+        type: string
+        default: ''
+
+jobs:
+  release:
+    name: release - ${{ inputs.archive-name }}
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - run: rm -rf ${{ inputs.archive-name }}*
+      - uses: actions/download-artifact@v3
+
+      - name: Find
+        run: find .
+
+      - name: Push to package.cosmian.com
+        run: |
+          set -ex
+
+          apt update -y
+          apt-get install -y zip
+          zip -r "${{ inputs.archive-name }}".zip ${{ inputs.archive-files }}
+
+          if [[ "${GITHUB_REF}" = *'refs/tags/'* ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+            DESTINATION_DIR=/mnt/package/kms/$BRANCH/${{ inputs.distribution }}
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+            DESTINATION_DIR=/mnt/package/kms/$BRANCH/${{ inputs.distribution }}
+          fi
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+
+          # Check if there are any files matching the pattern
+          if [ ! -f "${{ inputs.additional-files }}" = "" ]; then
+            if ls "${{ inputs.additional-files }}" 1> /dev/null 2>&1; then
+                echo "Files matching the pattern 'target/*.deb' exist."
+                scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ${{ inputs.additional-files }} cosmian@package.cosmian.com:$DESTINATION_DIR/
+            else
+                echo "No files matching the pattern ${{ inputs.additional-files }} found."
+            fi
+          fi
+
+      - name: Release on tags, attach asset on release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ inputs.archive-name }}.zip
+            ${{ inputs.additional-files }}

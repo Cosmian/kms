@@ -78,3 +78,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
+
+  cleanup:
+    needs:
+      - rhel9
+      - fips-ubuntu-20
+      - generic-build
+      - windows
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit
