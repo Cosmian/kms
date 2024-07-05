@@ -724,14 +724,13 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
     let res = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        [].to_vec(),
-        [
+        vec![],
+        vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
             leaf_certificate_id.clone(),
-        ]
-        .to_vec(),
-        String::new(),
+        ],
+        None,
     )?;
 
     assert_eq!(res, "Valid");

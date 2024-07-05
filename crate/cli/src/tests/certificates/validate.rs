@@ -92,7 +92,7 @@ pub fn validate_certificate(
     sub_command: &str,
     certificates: Vec<String>,
     uids: Vec<String>,
-    date: String,
+    date: Option<String>,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -106,8 +106,10 @@ pub fn validate_certificate(
         args.push("--unique-identifier".to_owned());
         args.push(uid);
     }
-    args.push("--validity-time".to_owned());
-    args.push(date.clone());
+    if let Some(d) = date {
+        args.push("--validity-time".to_owned());
+        args.push(d.clone());
+    }
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -198,7 +200,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
             root_certificate_id.clone(),
             leaf1_certificate_id.clone(),
         ],
-        String::new(),
+        None,
     )?;
     info!(
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was removed. \
@@ -206,24 +208,22 @@ async fn test_cli_validate() -> Result<(), CliError> {
     );
     assert_eq!(test1_res, "Invalid");
 
-    //     println!(
-    //         "validating chain with leaf2: Result supposed to be valid, as leaf2 was never removed"
-    //     );
-
-    //     let test2_res = validate_certificate(
-    //         &ctx.owner_client_conf_path,
-    //         "certificates",
-    //         [].to_vec(),
-    //         [
-    //             intermediate_certificate_id.clone(),
-    //             root_certificate_id.clone(),
-    //             leaf2_certificate_id.clone(),
-    //         ]
-    //         .to_vec(),
-    //         String::new(),
-    //     )?;
-
-    //     assert_eq!(test2_res, "Valid");
+    let test2_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ],
+        None,
+    )?;
+    info!(
+        "validate chain with leaf2: result supposed to be valid, as leaf2 was never removed. \
+         test2_res: {test2_res}"
+    );
+    assert_eq!(test2_res, "Valid");
 
     //     println!(
     //         "validating chain with leaf2: Result supposed to be invalid, as date is posthumous to \

@@ -44,6 +44,7 @@ jobs:
       - run: |
           sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
           sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
+          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
 
       - uses: actions/checkout@v3
 

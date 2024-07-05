@@ -19,7 +19,7 @@ pub struct ValidateCertificatesAction {
     /// A Date-Time object indicating when the certificate chain needs to be
     /// valid. If omitted, the current date and time SHALL be assumed.
     #[clap(long = "validity-time", short = 't')]
-    validity_time: String,
+    validity_time: Option<String>,
 }
 
 impl ValidateCertificatesAction {
