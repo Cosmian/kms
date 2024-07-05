@@ -61,3 +61,22 @@ jobs:
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
           retention-days: 1
           if-no-files-found: error
+
+    outputs:
+      cache-hit: ${{ steps.cargo_cache.outputs.cache-hit }}
+
+  kms-test:
+    needs: kms-build
+    if: needs.kms-build.outputs.cache-hit != 'true'
+    name: Clean env. ${{ inputs.archive-name }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'windows')
+        run: |
+          ./ckms.exe -V
+          ./cosmian_kms_server.exe -V
