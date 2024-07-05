@@ -21,7 +21,7 @@ jobs:
         ports:
           - 9998:9998
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Docker check container
         run: |

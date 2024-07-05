@@ -7,6 +7,9 @@ on:
       toolchain:
         required: true
         type: string
+      debug_or_release:
+        required: true
+        type: string
 
 jobs:
   rhel9:
@@ -16,7 +19,7 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: rhel9
       target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
+      debug_or_release: ${{ inputs.debug_or_release }}
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
@@ -26,7 +29,7 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
       target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
+      debug_or_release: ${{ inputs.debug_or_release }}
       features: fips
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
@@ -34,78 +37,53 @@ jobs:
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
 
-  ubuntu:
+  generic-build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - distribution: ubuntu-20.04
             archive-name: ubuntu_20_04
+            target: x86_64-unknown-linux-gnu
 
           - distribution: ubuntu-22.04
             archive-name: ubuntu_22_04
+            target: x86_64-unknown-linux-gnu
 
           - distribution: ubuntu-24.04
             archive-name: ubuntu_24_04
+            target: x86_64-unknown-linux-gnu
+
+          - distribution: macos-12
+            archive-name: macos
+            target: x86_64-apple-darwin
+
+          - distribution: macos-14
+            archive-name: macos14
+            target: aarch64-apple-darwin
+    name: ${{ matrix.distribution }}
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
       distribution: ${{ matrix.distribution }}
       archive-name: ${{ matrix.archive-name }}
-      target: x86_64-unknown-linux-gnu
-      debug_or_release: debug
+      target: ${{ matrix.target }}
+      debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
-  windows:
+  windows-2022:
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
-      archive-name: windows_tests
-      commands: |
-        rustup target add x86_64-pc-windows-msvc
+      archive-name: windows
+      debug_or_release: ${{ inputs.debug_or_release }}
 
-        # build only `ckms`
-        cd crate/cli
-        cargo build --target x86_64-pc-windows-msvc
-
-        # build pkcs11 provider
-        cd ../pkcs11/provider
-        cargo build --target x86_64-pc-windows-msvc
-        cd ../../..
-
-        $env:VCPKG_INSTALLATION_ROOT
-        dir $env:VCPKG_INSTALLATION_ROOT
-        vcpkg install openssl[fips]
-
-        vcpkg integrate install
-        set VCPKGRS_DYNAMIC=1
-        $env:OPENSSL_DIR="$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows"
-
-        cd crate/server
-        cargo build --target x86_64-pc-windows-msvc
-      artifacts: |
-        target/x86_64-pc-windows-msvc/debug/ckms.exe
-        target/x86_64-pc-windows-msvc/debug/cosmian_kms_server.exe
-        target/x86_64-pc-windows-msvc/debug/ckms_pkcs11.dll
-
-  mac:
-    uses: ./.github/workflows/build_generic.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: macos-12
-      archive-name: macos
-      target: x86_64-apple-darwin
-      debug_or_release: debug
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
-
-  # MACOS ARM BUILD
-  macos14:
-    uses: ./.github/workflows/build_generic.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: macos-14
-      archive-name: macos14
-      target: aarch64-apple-darwin
-      debug_or_release: debug
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+  cleanup:
+    needs:
+      - rhel9
+      - fips-ubuntu-20
+      - generic-build
+      - windows-2022
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit

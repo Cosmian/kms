@@ -18,7 +18,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.16.0"
+version = "4.17.0"
 edition = "2021"
 rust-version = "1.71.0"
 authors = [
@@ -74,6 +74,6 @@ time = "0.3"
 tokio = "1.38"
 tracing = "0.1"
 url = "2.5"
-uuid = "1.8"
+uuid = "1.9"
 x509-parser = "0.16"
 zeroize = "1.8"

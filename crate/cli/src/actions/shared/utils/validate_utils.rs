@@ -9,7 +9,7 @@ pub async fn validate(
     kms_rest_client: &KmsClient,
     certificates: Vec<String>,
     uids: Vec<String>,
-    date: String,
+    date: Option<String>,
 ) -> Result<String, CliError> {
     let request = build_validate_certificate_request(certificates, uids, date)?;
     let result = kms_rest_client.validate(request).await?;

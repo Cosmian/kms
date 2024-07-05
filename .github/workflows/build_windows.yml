@@ -10,10 +10,7 @@ on:
       archive-name:
         required: true
         type: string
-      commands:
-        required: true
-        type: string
-      artifacts:
+      debug_or_release:
         required: true
         type: string
 
@@ -27,31 +24,16 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      - name: Set up cargo cache
-        id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            $VCPKG_INSTALLATION_ROOT
-          key: ${{ runner.os }}-cargo-windows-2022-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-windows-2022-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
-
       - uses: dtolnay/rust-toolchain@master
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         shell: pwsh
-        run: ${{ inputs.commands }}
+        run: |
+          . .\.github\scripts\windows_build.ps1
+          Build-Project -BuildType ${{ inputs.debug_or_release }}
         env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
@@ -59,10 +41,27 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
       - name: Upload KMS for windows-2022
-        if: inputs.artifacts != ''
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.archive-name }}
-          path: ${{ inputs.artifacts }}
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
           retention-days: 1
           if-no-files-found: error
+
+  kms-test:
+    needs: kms-build
+    name: Clean env. ${{ inputs.archive-name }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'windows')
+        run: |
+          ./ckms.exe -V
+          ./cosmian_kms_server.exe -V

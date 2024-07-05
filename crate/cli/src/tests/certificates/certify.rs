@@ -393,7 +393,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     // let validation = validate::validate_certificate(
     //     &ctx.owner_client_conf_path,
     //     "certificates",
-    //     [].to_vec(),
+    //     vec![],
     //     [certificate_id.clone()].to_vec(),
     //     "".to_string(),
     // )
@@ -430,7 +430,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     // let validation = validate::validate_certificate(
     //     &ctx.owner_client_conf_path,
     //     "certificates",
-    //     [].to_vec(),
+    //     vec![],
     //     [certificate_id.clone()].to_vec(),
     //     "".to_string(),
     // )
@@ -519,7 +519,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
     // let validation = validate::validate_certificate(
     //     &ctx.owner_client_conf_path,
     //     "certificates",
-    //     [].to_vec(),
+    //     vec![],
     //     [certificate_id.clone()].to_vec(),
     //     "".to_string(),
     // )
@@ -724,16 +724,14 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
     let res = validate::validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        [].to_vec(),
-        [
+        vec![],
+        vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
             leaf_certificate_id.clone(),
-        ]
-        .to_vec(),
-        String::new(),
-    )
-    .await?;
+        ],
+        None,
+    )?;
 
     assert_eq!(res, "Valid");
 

@@ -317,7 +317,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
         )
         .expect("Can't decode token");
     let mut secrets =
-        serde_json::from_slice::<ExtraDatabaseParams>(&secrets).expect("Can't deserialized token");
+        serde_json::from_slice::<ExtraDatabaseParams>(&secrets).expect("Can't deserialize token");
     secrets.key = db_key; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.kms_database_secret = Some(token);

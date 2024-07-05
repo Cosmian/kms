@@ -41,33 +41,25 @@ jobs:
         if: contains(runner.os, 'Linux')
         run: cat /proc/cpuinfo
 
+      - run: |
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
+          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
+
       - uses: actions/checkout@v3
 
-      - name: Cache dependencies
-        id: cargo_cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-${{ inputs.distribution }}
-          cache-directories: |
-            /usr/local/openssl/lib64/ossl-modules/fips.so
-            /usr/local/openssl/ssl/openssl.cnf
-            /usr/local/openssl/ssl/fipsmodule.cnf
-
       - uses: dtolnay/rust-toolchain@master
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
       - name: Local OpenSSL FIPS Install
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         run: |
-          sudo mkdir ${{ env.OPENSSL_DIR }}
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}
           sudo chown -R $USER ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
@@ -85,7 +77,6 @@ jobs:
           find target/ -type f -size +100M -delete
 
       - name: Upload KMS for ${{ inputs.distribution }}
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
@@ -97,3 +88,40 @@ jobs:
             ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error
+
+  kms-test:
+    needs: kms-build
+    name: Clean env. ${{ inputs.archive-name }}
+    runs-on: ${{ inputs.distribution }}
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - run: find .
+        if: contains(runner.os, 'linux')
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+        run: |
+          set -ex
+
+          if [ "${{ inputs.features }}" = "fips" ]; then
+            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          else
+            KMS_PATH="${{ inputs.debug_or_release }}"
+          fi
+          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian_kms_server
+
+          ./$KMS_PATH/ckms -V
+
+          # Copy openssl build for FIPS mode
+          if [ -d "usr/local/openssl" ]; then
+            sudo mkdir /usr/local/openssl
+            sudo chown -R $USER /usr/local/openssl
+            rsync -ru usr/local/openssl/ /usr/local/openssl/
+            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          fi
+          ./$KMS_PATH/cosmian_kms_server -V

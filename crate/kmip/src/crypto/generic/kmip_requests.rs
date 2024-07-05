@@ -29,7 +29,7 @@ pub fn build_revoke_key_request(
 pub fn build_validate_certificate_request(
     certificates: Vec<String>,
     unique_identifiers: Vec<String>,
-    date: String,
+    date: Option<String>,
 ) -> Result<Validate, KmipError> {
     let certificates = {
         if certificates.is_empty() {
@@ -55,7 +55,6 @@ pub fn build_validate_certificate_request(
             )
         }
     };
-    let date = { if date.is_empty() { None } else { Some(date) } };
     Ok(Validate {
         certificate: certificates,
         unique_identifier: unique_identifiers,

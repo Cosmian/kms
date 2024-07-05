@@ -35,13 +35,6 @@ fi
 
 rustup target add "$TARGET"
 
-crate=crate/cli
-echo "Building $crate"
-cd "$crate"
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
-cd "$ROOT_FOLDER"
-
 echo "Building crate/pkcs11/provider"
 cd crate/pkcs11/provider
 # shellcheck disable=SC2086
@@ -53,15 +46,17 @@ if [ -z "$OPENSSL_DIR" ]; then
   exit 1
 fi
 
-crate=crate/server
-echo "Building $crate"
-cd "$crate"
-# shellcheck disable=SC2086
-cargo build --target $TARGET $RELEASE $FEATURES
-cd "$ROOT_FOLDER"
+crates=("crate/server" "crate/cli")
+for crate in "${crates[@]}"; do
+  echo "Building $crate"
+  cd "$crate"
+  # shellcheck disable=SC2086
+  cargo build --target $TARGET $RELEASE $FEATURES
+  cd "$ROOT_FOLDER"
+done
 
 # Debug
-find .
+# find .
 
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server -h
@@ -74,11 +69,11 @@ else
   otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server | grep openssl && exit 1
 fi
 
-# Tests on debug
-if [ "$DEBUG_OR_RELEASE" = "debug" ]; then
-  # shellcheck disable=SC2086
-  cargo test --target "$TARGET" $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-fi
+find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
+rm -f /tmp/*.json
+export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
+# shellcheck disable=SC2086
+cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 rm -rf target/"$TARGET"/debian
 rm -rf target/"$TARGET"/generate-rpm

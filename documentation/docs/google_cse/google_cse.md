@@ -44,7 +44,7 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.16.0 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.17.0 \
     --jwt-issuer-uri=https://accounts.google.com \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
     --google-cse-kacls-url=https://cse.example.com/google_cse
@@ -73,7 +73,7 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.16.0 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.17.0 \
     --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
     --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
     --jwt-audience=cse-authorization

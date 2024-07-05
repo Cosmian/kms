@@ -131,8 +131,8 @@ impl InsertKeypairsAction {
             .await?;
         let res = GmailClient::handle_response(response).await;
         match res {
-            Ok(()) => tracing::info!("Keypairs inserted for {email:?}."),
-            Err(error) => tracing::info!("Error inserting keypairs for {email:?} : {error:?}"),
+            Ok(()) => tracing::info!("Key pairs inserted for {email:?}."),
+            Err(error) => tracing::info!("Error inserting key pairs for {email:?} : {error:?}"),
         }
         Ok(())
     }

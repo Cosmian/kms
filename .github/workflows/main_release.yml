@@ -25,10 +25,11 @@ jobs:
       toolchain: nightly-2024-06-09
 
   build:
-    uses: ./.github/workflows/build_all_release.yml
+    uses: ./.github/workflows/build_all.yml
     secrets: inherit
     with:
       toolchain: nightly-2024-06-09
+      debug_or_release: release
 
   cargo-doc:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
@@ -51,79 +52,6 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           inputs: '{ "kms_version": "${{ github.ref_name }}" }'
 
-  clean_env_test:
-    name: ${{ matrix.archive_name }} -> Launch binary in a clean env. -> ${{ matrix.os }}
-    needs:
-      - build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - archive_name: rhel9-release
-            kms_path: release
-            os: ubuntu-22.04
-
-          - archive_name: fips_ubuntu_20_04-release
-            kms_path: home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/release
-            os: ubuntu-20.04
-
-          - archive_name: ubuntu_20_04-release
-            kms_path: release
-            os: ubuntu-20.04
-
-          - archive_name: ubuntu_22_04-release
-            kms_path: release
-            os: ubuntu-22.04
-
-          - archive_name: ubuntu_24_04-release
-            kms_path: release
-            os: ubuntu-24.04
-
-          - archive_name: macos-release
-            kms_path: release
-            os: macos-12
-
-          - archive_name: macos14-release
-            kms_path: release
-            os: macos-14
-
-          - archive_name: windows
-            kms_path: .
-            os: windows-2022
-
-    steps:
-      - uses: actions/download-artifact@v3
-
-      - run: find .
-        if: contains(runner.os, 'linux')
-
-      - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
-        run: |
-          set -ex
-
-          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms
-          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server
-
-          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms -V
-
-          # Copy openssl build for FIPS mode
-          if [ -d "${{ matrix.archive_name }}/usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru ${{ matrix.archive_name }}/usr/local/openssl/ /usr/local/openssl/
-            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
-          fi
-          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server -V
-
-      - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'windows')
-        run: |
-          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms.exe -V
-          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server.exe -V
-
   ##############################################################################
   ### Releases
   ##############################################################################
@@ -135,7 +63,6 @@ jobs:
       - cargo-doc
       - build
       - python_and_docker
-      - clean_env_test
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -144,7 +71,7 @@ jobs:
 
     env:
       ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos-release macos14-release
-        windows kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
+        windows-release kms_python_linux kms_python_macos kms_python_macos14 kms_python_windows
 
     steps:
       - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* rhel9*
@@ -218,11 +145,8 @@ jobs:
 
       - name: Install requirements
         run: |
+          set -ex
           pip install twine
-
-      - name: Create folder dist
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
           mkdir -p dist
           cp ${{ matrix.archive_name }}/*.whl dist/
 
@@ -234,16 +158,10 @@ jobs:
           print-hash: true
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  cleanup:
+  public_documentation:
     needs:
       - release
       - python_publish
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
-    secrets: inherit
-
-  public_documentation:
-    needs:
-      - cleanup
     runs-on: ubuntu-latest
 
     steps:
