@@ -28,7 +28,7 @@ jobs:
         id: cargo_cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ runner.os }}-windows-2022
+          key: ${{ runner.os }}-windows-2022-${{ inputs.debug_or_release }}
           cache-directories: |
             $VCPKG_INSTALLATION_ROOT
 
