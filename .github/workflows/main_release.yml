@@ -90,13 +90,12 @@ jobs:
       - name: Push to package.cosmian.com
         run: |
           set -x
-          if [[ "${GITHUB_REF}" = *'refs/tags/'* ]]; then
+          if [[ ${GITHUB_REF} = *'refs/tags/'* ]]; then
             BRANCH="${GITHUB_REF_NAME}"
-            DESTINATION_DIR=/mnt/package/kms/$BRANCH
           else
             BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-            DESTINATION_DIR=/mnt/package/kms/$BRANCH
           fi
+          DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             *.zip \
