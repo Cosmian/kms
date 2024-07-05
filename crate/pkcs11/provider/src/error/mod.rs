@@ -54,6 +54,7 @@ impl From<KmipError> for Pkcs11Error {
             KmipError::InvalidTag(s) => Self::NotSupported(s),
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
+            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

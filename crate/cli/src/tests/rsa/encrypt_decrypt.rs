@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -105,7 +105,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> Result<(), CliError> {
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -177,7 +177,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -261,7 +261,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> Result<(), CliErro
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -338,7 +338,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> Result<(), CliErro
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

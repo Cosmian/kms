@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 #[cfg(not(feature = "fips"))]
@@ -88,7 +88,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // syn
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
@@ -112,7 +112,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_ec_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // destroy via private key
     {
@@ -174,7 +174,7 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_cover_crypt() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // check revocation of all keys when the private key is destroyed
     {

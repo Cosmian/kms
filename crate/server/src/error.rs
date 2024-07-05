@@ -12,7 +12,7 @@ use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum KmsError {
     // When a conversion from/to bytes
     #[error("Conversion Error: {0}")]
@@ -138,6 +138,12 @@ impl From<std::string::FromUtf8Error> for KmsError {
     }
 }
 
+impl From<std::num::TryFromIntError> for KmsError {
+    fn from(e: std::num::TryFromIntError) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
         Self::DatabaseError(e.to_string())
@@ -194,6 +200,7 @@ impl From<KmipError> for KmsError {
             KmipError::InvalidTag(s) => Self::NotSupported(s),
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
+            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }
@@ -225,6 +232,12 @@ impl From<url::ParseError> for KmsError {
 impl From<base64::DecodeError> for KmsError {
     fn from(e: base64::DecodeError) -> Self {
         Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
+    fn from(e: tracing::dispatcher::SetGlobalDefaultError) -> Self {
+        Self::ServerError(e.to_string())
     }
 }
 

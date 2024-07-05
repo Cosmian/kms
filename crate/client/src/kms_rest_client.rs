@@ -13,7 +13,7 @@ use cosmian_kmip::kmip::{
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
         ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
         ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-        RevokeResponse,
+        RevokeResponse, Validate, ValidateResponse,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -377,6 +377,11 @@ impl KmsClient {
         self.post_ttlv::<Revoke, RevokeResponse>(&request).await
     }
 
+    /// This operation requests the server to validate a Managed Certificate Chain.
+    pub async fn validate(&self, request: Validate) -> Result<ValidateResponse, ClientError> {
+        self.post_ttlv::<Validate, ValidateResponse>(&request).await
+    }
+
     /// This operation requests the server to send a message, which is a list of operations,
     /// to the server.
     ///The messages in the protocol consist of a message header, one or more batch items
@@ -499,8 +504,10 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(5))
-                .tcp_keepalive(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(90))
+                .timeout(Duration::from_secs(90))
+                .tcp_keepalive(Duration::from_secs(90))
+                .pool_idle_timeout(Duration::from_secs(90))
                 .default_headers(headers)
                 .build()?,
             server_url,

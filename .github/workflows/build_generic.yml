@@ -13,11 +13,20 @@ on:
       archive-name:
         required: true
         type: string
-      commands:
+      artifacts:
+        required: false
+        type: string
+      target:
         required: true
         type: string
-      artifacts:
+      debug_or_release:
         required: true
+        type: string
+      features:
+        required: false
+        type: string
+      skip_services_tests:
+        required: false
         type: string
 
 env:
@@ -32,67 +41,87 @@ jobs:
         if: contains(runner.os, 'Linux')
         run: cat /proc/cpuinfo
 
+      - run: |
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
+          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
+
       - uses: actions/checkout@v3
 
-      - name: Set up cargo cache
-        id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            ${{ env.OPENSSL_DIR }}
-          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
-
       - uses: dtolnay/rust-toolchain@master
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
       - name: Local OpenSSL FIPS Install
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         run: |
-          sudo mkdir ${{ env.OPENSSL_DIR }}
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}
           sudo chown -R $USER ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && !contains(runner.os, 'macos')
-        run: ${{ inputs.commands }}
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-
-          # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-
-      - name: Build on Mac
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && contains(runner.os, 'macos')
-        run: ${{ inputs.commands }}
-        env:
-          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-
-          # Google variables
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          TARGET: ${{ inputs.target }}
+          DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          FEATURES: ${{ inputs.features }}
+          SKIP_SERVICES_TESTS: ${{ inputs.skip_services_tests }}
+        run: |
+          bash .github/scripts/cargo_build.sh
 
       - name: Remove large files before saving cache
         run: |
           find target/ -type f -size +100M -delete
 
       - name: Upload KMS for ${{ inputs.distribution }}
-        if: steps.cargo_cache.outputs.cache-hit != 'true' && inputs.artifacts != ''
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.archive-name }}
-          path: ${{ inputs.artifacts }}
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
+            target/${{ inputs.target }}/debian/*.deb
+            ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error
+
+  kms-test:
+    needs: kms-build
+    name: Clean env. ${{ inputs.archive-name }}
+    runs-on: ${{ inputs.distribution }}
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - run: find .
+        if: contains(runner.os, 'linux')
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+        run: |
+          set -ex
+
+          if [ "${{ inputs.features }}" = "fips" ]; then
+            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          else
+            KMS_PATH="${{ inputs.debug_or_release }}"
+          fi
+          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian_kms_server
+
+          ./$KMS_PATH/ckms -V
+
+          # Copy openssl build for FIPS mode
+          if [ -d "usr/local/openssl" ]; then
+            sudo mkdir /usr/local/openssl
+            sudo chown -R $USER /usr/local/openssl
+            rsync -ru usr/local/openssl/ /usr/local/openssl/
+            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          fi
+          ./$KMS_PATH/cosmian_kms_server -V

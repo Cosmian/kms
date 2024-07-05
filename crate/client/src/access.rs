@@ -18,6 +18,21 @@ pub struct Access {
     /// Operation types for the access
     pub operation_types: Vec<ObjectOperationType>,
 }
+
+impl fmt::Display for Access {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} {} {:?}",
+            self.user_id,
+            self.unique_identifier
+                .as_ref()
+                .map_or_else(|| "[N/A]".to_string(), std::string::ToString::to_string),
+            self.operation_types
+        )
+    }
+}
+
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
 #[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord)]
@@ -35,6 +50,7 @@ pub enum ObjectOperationType {
     Locate,
     Revoke,
     Rekey,
+    Validate,
 }
 
 impl fmt::Debug for ObjectOperationType {
@@ -58,6 +74,7 @@ impl fmt::Display for ObjectOperationType {
             Self::Locate => "locate",
             Self::Revoke => "revoke",
             Self::Rekey => "rekey",
+            Self::Validate => "validate",
         };
         write!(f, "{str}")
     }

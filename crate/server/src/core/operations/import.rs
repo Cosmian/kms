@@ -161,9 +161,9 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let certificate_attributes = CertificateAttributes::from(&certificate);
 
     // convert the certificate to a KMIP object
-    let (unique_id, object) = openssl_certificate_to_kmip(&certificate)?;
+    let object = openssl_certificate_to_kmip(&certificate)?;
     let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => unique_id,
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid,
     };
 
@@ -447,6 +447,7 @@ async fn process_pkcs12(
     // recover the password from the attributes
     let password = request_attributes
         .get_link(LinkType::PKCS12PasswordLink)
+        .map(|l| l.to_string())
         .unwrap_or_default();
     // remove the password from the attributes
     let mut request_attributes = request_attributes;
@@ -454,7 +455,11 @@ async fn process_pkcs12(
 
     // parse the PKCS12
     let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
-    let pkcs12 = pkcs12_parser.parse2(&password)?;
+    let pkcs12 = pkcs12_parser.parse2(&password).map_err(|e| {
+        KmsError::Certificate(format!(
+            "Unable to parse PKCS12 file: (bad/missing password?). {e:?}"
+        ))
+    })?;
 
     // First build the tuples (id,Object) for the private key, the leaf certificate
     // and the chain certificates
@@ -489,10 +494,10 @@ async fn process_pkcs12(
         leaf_certificate_tags.insert("_cert".to_string());
 
         // convert to KMIP
-        let (leaf_certificate_uid, leaf_certificate) = openssl_certificate_to_kmip(&openssl_cert)?;
+        let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
         (
-            leaf_certificate_uid,
+            Uuid::new_v4().to_string(),
             leaf_certificate,
             leaf_certificate_tags,
             CertificateAttributes::from(&openssl_cert),
@@ -509,11 +514,10 @@ async fn process_pkcs12(
             chain_certificate_tags.insert("_cert".to_string());
 
             // convert to KMIP
-            let (chain_certificate_uid, chain_certificate) =
-                openssl_certificate_to_kmip(&openssl_cert)?;
+            let chain_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
             chain.push((
-                chain_certificate_uid,
+                Uuid::new_v4().to_string(),
                 chain_certificate,
                 chain_certificate_tags,
                 CertificateAttributes::from(&openssl_cert),

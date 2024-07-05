@@ -22,9 +22,9 @@ doctest = false
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
 fips = ["cosmian_kms_client/fips"]
+openssl = ["cosmian_kms_client/openssl"]
 
 [dependencies]
-# Avoid pulling openssl
 actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 clap = { workspace = true, features = [
@@ -38,8 +38,8 @@ clap = { workspace = true, features = [
 ] }
 cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
+cosmian_logger = { path = "../logger" }
 der = { version = "0.7", features = ["pem"] }
-env_logger = { workspace = true }
 jwt-simple = { version = "0.12", default-features = false, features = [
   "pure-rust",
 ] }
@@ -65,9 +65,40 @@ const-oid = { version = "0.9", features = ["db"] }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], default-features = false }
+cosmian_logger = { path = "../logger" }
 kms_test_server = { path = "../test_server" }
 openssl = { workspace = true }
 predicates = "3.1"
 regex = { version = "1.10", default-features = false }
 tempfile = "3.10"
 x509-parser = { workspace = true, features = ["verify"] }
+
+# ------------------------------------------------------------------------------
+# START DEBIAN PACKAGING
+[package.metadata.deb]
+maintainer = "Emmanuel Coste <emmanuel.coste@cosmian.com>"
+copyright = "2024, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../LICENSE", "0"]
+changelog = "../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+assets = [["target/release/ckms", "usr/sbin/", "555"]]
+
+[package.metadata.deb.variants.fips]
+features = ["fips"]
+
+# END DEBIAN PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START RPM PACKAGING
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+]
+auto-req = "no" # do not try to discover .so dependencies
+require-sh = true
+
+# END RPM PACKAGING
+# ------------------------------------------------------------------------------

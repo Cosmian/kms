@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use crate::{cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
@@ -39,7 +39,7 @@ pub struct ExportCertificateAction {
     /// If not specified, tags should be specified
     #[clap(
         long = "certificate-id",
-        short = 'k',
+        short = 'c',
         group = "certificate-tags",
         verbatim_doc_comment
     )]
@@ -69,7 +69,7 @@ pub struct ExportCertificateAction {
     /// Destroyed objects have their key material removed.
     #[clap(
         long = "allow-revoked",
-        short = 'i',
+        short = 'r',
         default_value = "false",
         verbatim_doc_comment
     )]
@@ -142,7 +142,7 @@ impl ExportCertificateAction {
             }
         }
 
-        println!(
+        let mut stdout = format!(
             "The certificate {} of type {} was exported to {:?}",
             &object_id,
             object.object_type(),
@@ -153,11 +153,16 @@ impl ExportCertificateAction {
         if let Some(export_attributes) = export_attributes {
             let attributes_file = self.certificate_file.with_extension("attributes.json");
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
-            println!(
+            let stdout_attributes = format!(
                 "The attributes of the certificate {} were exported to {:?}",
                 &object_id, &attributes_file
             );
+            stdout = format!("{stdout} - {stdout_attributes}");
         }
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_unique_identifier(object_id);
+        stdout.write()?;
+
         Ok(())
     }
 }

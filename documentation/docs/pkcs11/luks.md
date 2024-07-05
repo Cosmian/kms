@@ -98,7 +98,8 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
 
 ## Configuring the access to the KMS
 
-The PKCS#11 module uses the same configuration file as the [CLI](../cli/cli.md#configuration).
+The PKCS#11 module uses the same configuration file as
+the [CLI](../cli/cli.md).
 Since it may be run as a system user, the configuration file should be made available
 in `/etc/cosmian/kms.json`.
 
@@ -163,7 +164,7 @@ First allocate some space then create a LUKS partition using `cryptsetup`.
 
 #### 1. Allocating space for the LUKS partition
 
-LUKS partitions can be created either from disk paritions or from a file.
+LUKS partitions can be created either from disk partitions or from a file.
 
 ##### From a file
 

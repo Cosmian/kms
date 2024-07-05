@@ -4,7 +4,7 @@ client `ckms_gui`.
 !!! info "Download ckms and ckms_gui"
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.16.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.17.0/)
 
 ## Configuring the clients
 
@@ -44,7 +44,7 @@ configuration of the KMS.
 - `verified_cert` contains the verified PEM TLS certificate used for certificate
   pinning
 - `gmail_api_conf` is OPTIONAL and contains information about the configured
-  service account used to fetch Gmail API and handle easily S/MIME elements (identities, keypairs)
+  service account used to fetch Gmail API and handle easily S/MIME elements (identities, key pairs)
   (see [below](#smime-gmail-service-account-configuration))
 
 Here is an example configuration with TLS authentication and a client-side encrypted
@@ -116,7 +116,7 @@ The `gmail_api_conf` field is a JSON object with the following fields:
 
 
 I can be retrieved directly from a JSON file downloaded from Google interface when creating
-and configurating the service account (following Google documentation).
+and configuring the service account (following Google documentation).
 
 Example:
 
@@ -125,7 +125,7 @@ Example:
   "kms_server_url": "https://kms.acme.com:9999",
   "gmail_api_conf": {
     "account_type": "service_account",
-    "project_id": "projet_id",
+    "project_id": "project_id",
     "private_key_id": "abc123abc123abc123abc123abc123abc123",
     "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
     "client_email": "xxx@yyyy.iam.gserviceaccount.com",

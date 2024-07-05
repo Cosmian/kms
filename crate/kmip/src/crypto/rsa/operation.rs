@@ -36,14 +36,16 @@ fn check_rsa_mask_against_flags(
         // Mask is `None` but FIPS mode is restrictive so it's considered too
         // permissive.
         kmip_bail!(
-            "Fordidden CryptographicUsageMask value, got None but expected among {} in FIPS mode.",
+            "RSA: forbidden CryptographicUsageMask value, got None but expected among {} in FIPS \
+             mode.",
             flags.bits()
         )
     };
 
     if (mask & !flags).bits() != 0 {
         kmip_bail!(
-            "Fordidden CryptographicUsageMask flag set, expected among {} in FIPS mode.",
+            "RSA: Forbidden CryptographicUsageMask flag set: {}, expected among {} in FIPS mode.",
+            mask.bits(),
             flags.bits()
         )
     }

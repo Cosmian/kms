@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cosmian_kms_client::read_bytes_from_file;
-use kms_test_server::{start_default_test_kms_server, TestsContext, ONCE};
+use kms_test_server::{start_default_test_kms_server, TestsContext};
 
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
@@ -12,40 +12,40 @@ use crate::{
 #[tokio::test]
 async fn test_import_export_encodings() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/ec_private_key_pkcs8.pem",
         ExportKeyFormat::Pkcs8Pem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/ec_private_key_sec1.pem",
         ExportKeyFormat::Sec1Pem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/ec_public_key_spki.pem",
         ExportKeyFormat::SpkiPem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/rsa_private_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/rsa_private_key_pkcs8.pem",
         ExportKeyFormat::Pkcs8Pem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/rsa_public_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
     test_pems(
-        &ctx,
+        ctx,
         "test_data/key_encodings/rsa_public_key_spki.pem",
         ExportKeyFormat::SpkiPem,
     )?;
@@ -54,7 +54,7 @@ async fn test_import_export_encodings() -> Result<(), CliError> {
 }
 
 fn test_pems(
-    ctx: &&TestsContext,
+    ctx: &TestsContext,
     key_file_path: &str,
     export_format: ExportKeyFormat,
 ) -> Result<(), CliError> {

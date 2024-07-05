@@ -9,6 +9,12 @@ CLI used to manage the Cosmian KMS.
 ### Arguments
 `--conf [-c] <CONF>` Configuration file location
 
+`--url <URL>` The URL of the KMS
+
+`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self signed cert or untrusted cert chain
+
+Possible values:  `"true", "false"`
+
 
 ### Subcommands
 
@@ -36,7 +42,7 @@ CLI used to manage the Cosmian KMS.
 
 **`logout`** [[12]](#12-ckms-logout)  Logout from the Identity Provider.
 
-**`markdown`** [[13]](#13-ckms-markdown)  Generate the CLI documentation as markdown
+**`markdown`** [[13]](#13-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
 **`google`** [[14]](#14-ckms-google)  Manage google elements. Handle keypairs and identities from Gmail API
 
@@ -611,7 +617,7 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 ### Subcommands
 
-**`certify`** [[3.1]](#31-ckms-certificates-certify)  Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+**`certify`** [[3.1]](#31-ckms-certificates-certify)  Issue or renew a X509 certificate
 
 **`decrypt`** [[3.2]](#32-ckms-certificates-decrypt)  Decrypt a file using the private key of a certificate
 
@@ -630,16 +636,18 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`destroy`** [[3.7]](#37-ckms-certificates-destroy)  Destroy a certificate
 
+**`validate`** [[3.8]](#38-ckms-certificates-validate)  Validate a certificate
+
 ---
 
 ## 3.1 ckms certificates certify
 
-Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+Issue or renew a X509 certificate
 
 ### Usage
 `ckms certificates certify [options]`
 ### Arguments
-`--certificate-id [-i] <CERTIFICATE_ID>` The certificate unique identifier. A random one will be generated if not provided
+`--certificate-id [-c] <CERTIFICATE_ID>` The unique identifier of the certificate to issue or renew. If not provided, a random one will be generated when issuing a certificate, or the original one will be used when renewing a certificate
 
 `--certificate-signing-request [-r] <CERTIFICATE_SIGNING_REQUEST>` The path to a certificate signing request
 
@@ -647,13 +655,24 @@ Certify a Certificate Signing Request or a Public key to create a X509 certifica
 
 Possible values:  `"pem", "der"` [default: `"pem"`]
 
-`--public-key-id-to-certify [-p] <PUBLIC_KEY_ID_TO_CERTIFY>` If not using a CSR, the id of the public key to certify
+`--public-key-id-to-certify [-p] <PUBLIC_KEY_ID_TO_CERTIFY>` The id of a public key to certify
 
-`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, the subject name to use
+`--certificate-id-to-re-certify [-n] <CERTIFICATE_ID_TO_RE_CERTIFY>` The id of a certificate to re-certify
+
+`--generate-key-pair [-g] <GENERATE_KEY_PAIR>` Generate a keypair then sign the public key and generate a certificate
+
+Possible values:  `"true", "false"`
+
+`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
+the subject name to use.
+
+`--algorithm [-a] <ALGORITHM>` The algorithm to use for the keypair generation
+
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
-`--issuer-certificate-id [-c] <ISSUER_CERTIFICATE_ID>` The unique identifier of the certificate of the issuer. A private key must be linked to that certificate if no issuer private key id is provided
+`--issuer-certificate-id [-i] <ISSUER_CERTIFICATE_ID>` The unique identifier of the certificate of the issuer. A private key must be linked to that certificate if no issuer private key id is provided
 
 `--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
 
@@ -697,7 +716,7 @@ Encrypt a file using the certificate public key
 ### Arguments
 ` <FILE>` The file to encrypt
 
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
@@ -719,7 +738,7 @@ Export a certificate from the KMS
 ### Arguments
 ` <CERTIFICATE_FILE>` The file to export the certificate to
 
-`--certificate-id [-k] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
+`--certificate-id [-c] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
 If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate/private key when no unique id is specified.
@@ -731,7 +750,7 @@ Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
-`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
+`--allow-revoked [-r] <ALLOW_REVOKED>` Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
 The user must be the owner of the certificate.
 Destroyed objects have their key material removed.
 
@@ -797,7 +816,7 @@ Revoke a certificate
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
 
@@ -812,9 +831,26 @@ Destroy a certificate
 ### Usage
 `ckms certificates destroy [options]`
 ### Arguments
-`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+`--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 3.8 ckms certificates validate
+
+Validate a certificate
+
+### Usage
+`ckms certificates validate [options]`
+### Arguments
+`--certificate [-v] <CERTIFICATE>` One or more Certificates
+
+`--unique-identifier [-k] <UNIQUE_IDENTIFIER>` One or more Unique Identifiers of Certificate Objects
+
+`--validity-time [-t] <VALIDITY_TIME>` A Date-Time object indicating when the certificate chain needs to be valid. If omitted, the current date and time SHALL be assumed
 
 
 
@@ -1078,6 +1114,8 @@ To specify multiple tags, use the option multiple times.
 `--cryptographic-length [-l] <CRYPTOGRAPHIC_LENGTH>` Cryptographic length (e.g. key size) in bits
 
 `--key-format-type [-f] <KEY_FORMAT_TYPE>` Key format type (case insensitive)
+
+`--object-type [-o] <OBJECT_TYPE>` Object type (case insensitive)
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` Locate an object which has a link to this public key id
 
@@ -1599,7 +1637,7 @@ Logout from the Identity Provider.
 
 ## 13 ckms markdown
 
-Generate the CLI documentation as markdown
+Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
 ### Usage
 `ckms markdown [options] <MARKDOWN_FILE>

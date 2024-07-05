@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
@@ -257,7 +258,7 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
     Certificate = 0x0000_0001,

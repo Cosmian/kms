@@ -10,35 +10,48 @@ on:
 
 jobs:
   pyo3-linux:
-    runs-on: ubuntu-20.04
-    container:
-      image: ghcr.io/pyo3/maturin:v0.14.1
-      options: --entrypoint ''
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - run: rustup default ${{ inputs.toolchain }}
+
+      - run: |
+          rustup default ${{ inputs.toolchain }}
+          rustup target add x86_64-unknown-linux-gnu
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3
+          cache: pip # caching pip dependencies
 
       - name: Prerequisites
         run: |
-          yum install -y perl-core zlib-devel wget libsodium-devel clang-devel centos-release-scl llvm-toolset-7
+          set -x
+          pip install maturin==1.2.3
+          sudo apt-get install --no-install-recommends -qq libclang-dev pkg-config
+
           # build openssl
+          pushd .
           cd /tmp
           wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz
           tar -xf openssl-1.1.1w.tar.gz
-          pushd openssl-1.1.1w
+          cd openssl-1.1.1w
           ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
           make -j
-          make install_sw
-          popd
+          sudo make install_sw
+          cd ..
           rm -rf openssl-1.1.1w*
-          # install maturin and readelf
-          pip install maturin==1.2.3
+          popd
+
+          cd crate/pyo3/python
+          pip install -r requirements.txt
 
       - name: Python maturin build
         run: |
           pushd crate/pyo3
-          LIBCLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ LIBCLANG_STATIC_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ CLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/bin/clang OPENSSL_DIR=/usr/local/ssl maturin build --compatibility manylinux_2_17 --release --target-dir target_python
+          OPENSSL_DIR=/usr/local/ssl maturin build --release --target x86_64-unknown-linux-gnu --target-dir target_python
           popd
+
+      - run: find target/
 
       - name: Upload WHL for Linux
         uses: actions/upload-artifact@v3
@@ -56,40 +69,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  pyo3-mac:
-    runs-on: macos-12
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-          cache: pip # caching pip dependencies
-
-      - name: Prerequisites for macos
-        run: |
-          set -x
-          rustup target add x86_64-apple-darwin
-
-          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
-          pip3 install maturin
-
-      - name: Python maturin build
-        run: |
-          set -x
-          cd crate/pyo3
-          maturin build --release --target x86_64-apple-darwin
-
-      - name: Upload WHL for MacOS
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_python_macos
-          path: target/wheels/*macosx*.whl
-          retention-days: 1
-          if-no-files-found: error
-
   pyo3-windows:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - run: |
@@ -134,5 +115,69 @@ jobs:
         with:
           name: kms_python_windows
           path: target/wheels/*win*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  pyo3-mac:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: pip # caching pip dependencies
+
+      - name: Prerequisites for macos
+        run: |
+          set -x
+          rustup target add x86_64-apple-darwin
+
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
+          pip3 install maturin
+
+      - name: Python maturin build
+        run: |
+          set -x
+          cd crate/pyo3
+          maturin build --release --target x86_64-apple-darwin
+
+      - name: Upload WHL for MacOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_macos
+          path: target/wheels/*macosx*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  pyo3-mac14:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: pip # caching pip dependencies
+
+      - name: Prerequisites for macos
+        run: |
+          set -x
+          rustup target add aarch64-apple-darwin
+
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
+          pip3 install maturin
+
+      - name: Python maturin build
+        run: |
+          set -x
+          cd crate/pyo3
+          maturin build --release --target aarch64-apple-darwin
+
+      - name: Upload WHL for MacOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_macos14
+          path: target/wheels/*macosx*.whl
           retention-days: 1
           if-no-files-found: error

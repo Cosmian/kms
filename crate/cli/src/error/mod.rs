@@ -172,6 +172,7 @@ impl From<KmipError> for CliError {
             KmipError::InvalidTag(s) => Self::NotSupported(s),
             KmipError::Derivation(s) => Self::NotSupported(s),
             KmipError::ConversionError(s) => Self::NotSupported(s),
+            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

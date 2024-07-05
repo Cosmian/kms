@@ -7,6 +7,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -112,7 +113,8 @@ impl EncryptAction {
             .write_all(&authentication_tag)
             .context("failed to write the authentication tag")?;
 
-        println!("The encrypted file is available at {output_file:?}");
+        let stdout = format!("The encrypted file is available at {output_file:?}");
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }

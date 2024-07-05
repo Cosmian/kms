@@ -20,6 +20,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
+use uuid::Uuid;
 
 use super::kmip_objects::ObjectType;
 #[cfg(feature = "openssl")]
@@ -143,9 +144,9 @@ pub enum CryptographicAlgorithm {
     THREE_DES = 0x0000_0002,
     AES = 0x0000_0003,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
-    /// see https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+    /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
     /// To use  `CKM_RSA_AES_KEY_WRAP` from PKCS#11, use and RSA key with AES as the algorithm
-    /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
+    /// See <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226908
     RSA = 0x0000_0004,
     DSA = 0x0000_0005,
     ECDSA = 0x0000_0006,
@@ -211,9 +212,7 @@ pub enum CryptographicAlgorithm {
 /// Payload. Specific fields MAY only pertain to certain types of Managed
 /// Cryptographic Objects. The domain parameter `q_length` corresponds to the bit
 /// length of parameter Q (refer to RFC7778, SEC2 and SP800-56A).
-/// - `q_length` applies to algorithms such as DSA and DH. The bit length of
-/// parameter P (refer to RFC7778, SEC2 and SP800-56A) is specified
-/// separately by setting the Cryptographic Length attribute.
+/// - `q_length` applies to algorithms such as DSA and DH. The bit length of parameter P (refer to RFC7778, SEC2 and SP800-56A) is specified separately by setting the Cryptographic Length attribute.
 /// - Recommended Curve is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -689,6 +688,26 @@ pub enum LinkedObjectIdentifier {
     Index(i64),
 }
 
+impl Display for LinkedObjectIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            LinkedObjectIdentifier::TextString(s) => write!(f, "{s}"),
+            LinkedObjectIdentifier::Enumeration(e) => write!(f, "{e}"),
+            LinkedObjectIdentifier::Index(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+impl From<UniqueIdentifier> for LinkedObjectIdentifier {
+    fn from(value: UniqueIdentifier) -> Self {
+        match value {
+            UniqueIdentifier::TextString(s) => LinkedObjectIdentifier::TextString(s),
+            UniqueIdentifier::Enumeration(e) => LinkedObjectIdentifier::Enumeration(e),
+            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i64::from(i)),
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum RevocationReasonEnumeration {
@@ -1047,16 +1066,12 @@ impl Attributes {
 
     /// Get the link to the object.
     #[must_use]
-    pub fn get_link(&self, link_type: LinkType) -> Option<String> {
+    pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
         if let Some(links) = &self.link {
             links
                 .iter()
                 .find(|&l| l.link_type == link_type)
-                .and_then(|l| match &l.linked_object_identifier {
-                    LinkedObjectIdentifier::TextString(s) => Some(s.clone()),
-                    LinkedObjectIdentifier::Enumeration(_e) => None,
-                    LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
-                })
+                .map(|l| l.linked_object_identifier.clone())
         } else {
             None
         }
@@ -1074,7 +1089,7 @@ impl Attributes {
 
     /// Get the parent id of the object.
     #[must_use]
-    pub fn get_parent_id(&self) -> Option<String> {
+    pub fn get_parent_id(&self) -> Option<LinkedObjectIdentifier> {
         self.get_link(LinkType::ParentLink)
     }
 
@@ -1196,12 +1211,19 @@ impl CertificateAttributes {
             let mut parts = component.splitn(2, '=');
             let key = parts
                 .next()
-                .ok_or_else(|| KmipError::Default("subject name identifier missing".to_string()))?
+                .ok_or_else(|| {
+                    KmipError::Default(
+                        "Missing x509 certificate `subject name` identifier".to_string(),
+                    )
+                })?
                 .trim();
             let value = parts
                 .next()
                 .ok_or_else(|| {
-                    KmipError::Default(format!("subject name value missing for identifier {key}"))
+                    KmipError::Default(format!(
+                        "Missing or invalid x509 certificate `subject name` value for identifier \
+                         {key}"
+                    ))
                 })?
                 .trim();
             match key {
@@ -1960,6 +1982,22 @@ impl Display for UniqueIdentifier {
     }
 }
 
+impl Default for UniqueIdentifier {
+    fn default() -> Self {
+        Self::TextString(Uuid::new_v4().to_string())
+    }
+}
+
+impl From<&UniqueIdentifier> for String {
+    fn from(value: &UniqueIdentifier) -> Self {
+        value.to_string()
+    }
+}
+impl From<UniqueIdentifier> for String {
+    fn from(value: UniqueIdentifier) -> Self {
+        value.to_string()
+    }
+}
 impl UniqueIdentifier {
     /// Returns the value as a string if it is a `TextString`
     #[must_use]
@@ -1967,6 +2005,16 @@ impl UniqueIdentifier {
         match self {
             UniqueIdentifier::TextString(s) => Some(s),
             _ => None,
+        }
+    }
+}
+
+impl From<LinkedObjectIdentifier> for UniqueIdentifier {
+    fn from(value: LinkedObjectIdentifier) -> Self {
+        match value {
+            LinkedObjectIdentifier::TextString(s) => UniqueIdentifier::TextString(s),
+            LinkedObjectIdentifier::Enumeration(e) => UniqueIdentifier::Enumeration(e),
+            LinkedObjectIdentifier::Index(i) => UniqueIdentifier::Integer(i as i32),
         }
     }
 }
@@ -2561,4 +2609,36 @@ pub enum ResultStatusEnumeration {
     OperationFailed = 0x0000_0001,
     OperationPending = 0x0000_0002,
     OperationUndone = 0x0000_0003,
+}
+
+/// An Enumeration object indicating whether the certificate chain is valid,
+/// invalid, or unknown.
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+pub enum ValidityIndicator {
+    Valid = 0x0000_0000,
+    Invalid = 0x0000_0001,
+    Unknown = 0x0000_0002,
+}
+
+impl ValidityIndicator {
+    #[must_use]
+    pub fn and(&self, vi: ValidityIndicator) -> ValidityIndicator {
+        match (self, vi) {
+            (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            (ValidityIndicator::Invalid, _) | (_, ValidityIndicator::Invalid) => {
+                ValidityIndicator::Invalid
+            }
+            _ => ValidityIndicator::Unknown,
+        }
+    }
+
+    #[must_use]
+    pub fn from_bool(b: bool) -> ValidityIndicator {
+        if b {
+            ValidityIndicator::Valid
+        } else {
+            ValidityIndicator::Invalid
+        }
+    }
 }

@@ -31,7 +31,7 @@ use crate::{
 };
 
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
-/// see: https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility/
+/// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
 pub struct MySqlPool {
     pool: Pool<MySql>,
 }

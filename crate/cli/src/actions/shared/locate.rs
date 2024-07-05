@@ -11,11 +11,12 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
+    kmip::kmip_objects::ObjectType,
     KmsClient,
 };
 use strum::IntoEnumIterator;
 
-use crate::error::CliError;
+use crate::{actions::console, error::CliError};
 
 /// Locate cryptographic objects inside the KMS
 ///
@@ -32,7 +33,7 @@ pub struct LocateObjectsAction {
     /// Cryptographic algorithm (case insensitive)
     ///
     /// The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
-    /// Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
+    /// Possible values include "Covercrypt", "ECDH", "`ChaCha20Poly1305`", "AES", "Ed25519"
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
     /// e.g. `ckms locate --algorithm WRONG`
@@ -51,7 +52,7 @@ pub struct LocateObjectsAction {
     /// Key format type (case insensitive)
     ///
     /// The list is the one specified by KMIP 2.1
-    /// in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
+    /// in addition to the two Covercrypt formats: "`CoverCryptSecretKey`" and "`CoverCryptPublicKey`"
     /// Possible values also include: "RAW" and "PKCS8"
     /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///
@@ -60,6 +61,23 @@ pub struct LocateObjectsAction {
     #[clap(long = "key-format-type", short = 'f',
         value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     key_format_type: Option<KeyFormatType>,
+
+    /// Object type (case insensitive)
+    ///
+    /// The list is the one specified by KMIP 2.1
+    /// Possible values are:
+    /// * Certificate
+    /// * `SymmetricKey`
+    /// * `PublicKey`
+    /// * `PrivateKey`
+    /// * `SplitKey`
+    /// * `SecretData`
+    /// * `OpaqueObject`
+    /// * `PGPKey`
+    /// * `CertificateRequest`
+    #[clap(long = "object-type", short = 'o',
+        value_parser = ObjectTypeParser,verbatim_doc_comment)]
+    object_type: Option<ObjectType>,
 
     /// Locate an object which has a link to this public key id.
     #[clap(long = "public-key-id", short = 'p')]
@@ -89,6 +107,10 @@ impl LocateObjectsAction {
 
         if let Some(key_format_type) = self.key_format_type {
             attributes.key_format_type = Some(key_format_type);
+        }
+
+        if let Some(object_type) = self.object_type {
+            attributes.object_type = Some(object_type);
         }
 
         if let Some(public_key_id) = &self.public_key_id {
@@ -125,10 +147,16 @@ impl LocateObjectsAction {
         };
 
         let response = kms_rest_client.locate(locate).await?;
-        if let Some(identifiers) = response.unique_identifiers {
-            for identifier in identifiers {
-                println!("{identifier}");
+        if let Some(ids) = response.unique_identifiers {
+            if !ids.is_empty() {
+                let mut stdout = console::Stdout::new("List of unique identifiers:");
+                stdout.set_unique_identifiers(ids);
+                stdout.write()?;
+            } else {
+                console::Stdout::new("No object found.").write()?;
             }
+        } else {
+            console::Stdout::new("No object found.").write()?;
         }
 
         Ok(())
@@ -211,6 +239,48 @@ impl clap::builder::TypedValueParser for KeyFormatTypeParser {
                     ContextValue::Strings(
                         KeyFormatType::iter()
                             .map(|algo| algo.to_string())
+                            .collect::<Vec<String>>(),
+                    ),
+                );
+                err
+            })
+    }
+}
+
+/// Parse a string entered by the user into a `ObjectType`
+#[derive(Clone)]
+struct ObjectTypeParser;
+
+impl clap::builder::TypedValueParser for ObjectTypeParser {
+    type Value = ObjectType;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        ObjectType::iter()
+            .find(|object_type| {
+                OsString::from(object_type.to_string().to_lowercase()) == value.to_ascii_lowercase()
+            })
+            .ok_or_else(|| {
+                let mut err = clap::Error::new(ErrorKind::ValueValidation).with_cmd(cmd);
+                if let Some(arg) = arg {
+                    err.insert(
+                        ContextKind::InvalidArg,
+                        ContextValue::String(arg.to_string()),
+                    );
+                }
+                err.insert(
+                    ContextKind::InvalidValue,
+                    ContextValue::String(value.to_string_lossy().to_string()),
+                );
+                err.insert(
+                    ContextKind::SuggestedValue,
+                    ContextValue::Strings(
+                        ObjectType::iter()
+                            .map(|object_type| object_type.to_string())
                             .collect::<Vec<String>>(),
                     ),
                 );

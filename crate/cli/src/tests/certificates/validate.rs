@@ -1,17 +1,24 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use assert_cmd::cargo::CommandCargoExt;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_logger::log_utils::log_init;
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{
     actions::certificates::CertificateInputFormat,
     error::CliError,
-    tests::certificates::{encrypt::encrypt, import::import_certificate},
+    tests::{
+        certificates::{encrypt::encrypt, import::import_certificate},
+        utils::recover_cmd_logs,
+        PROG_NAME,
+    },
 };
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -78,4 +85,173 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
 #[ignore]
 async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
     import_revoked_certificate_encrypt("prime256v1").await
+}
+
+pub fn validate_certificate(
+    cli_conf_path: &str,
+    sub_command: &str,
+    certificates: Vec<String>,
+    uids: Vec<String>,
+    date: Option<String>,
+) -> Result<String, CliError> {
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    let mut args: Vec<String> = vec!["validate".to_owned()];
+    for certificate in certificates {
+        args.push("--certificate".to_owned());
+        args.push(certificate);
+    }
+    for uid in uids {
+        args.push("--unique-identifier".to_owned());
+        args.push(uid);
+    }
+    if let Some(d) = date {
+        args.push("--validity-time".to_owned());
+        args.push(d.clone());
+    }
+    cmd.arg(sub_command).args(args);
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() {
+        let validate_output = std::str::from_utf8(&output.stdout)?;
+        return Ok(validate_output.to_string())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
+#[tokio::test]
+async fn test_cli_validate() -> Result<(), CliError> {
+    log_init("cosmian_kms_cli=debug");
+
+    let ctx = start_default_test_kms_server().await;
+
+    info!("importing root cert");
+    let root_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/ca.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    info!("importing intermediate cert");
+    let intermediate_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/intermediate.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(root_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+
+    let leaf1_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf1.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+    info!("leaf1 cert imported: {leaf1_certificate_id}");
+
+    let leaf2_certificate_id = import_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        "test_data/certificates/chain/leaf2.cert.pem",
+        CertificateInputFormat::Pem,
+        None,
+        None,
+        None,
+        Some(intermediate_certificate_id.clone()),
+        None,
+        None,
+        false,
+        true,
+    )?;
+    info!("leaf2 cert imported: {leaf2_certificate_id}");
+
+    let test1_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf1_certificate_id.clone(),
+        ],
+        None,
+    )?;
+    info!(
+        "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
+         test1_res: {test1_res}"
+    );
+    assert_eq!(test1_res, "Invalid");
+
+    let test2_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ],
+        None,
+    )?;
+    info!(
+        "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
+         test2_res: {test2_res}"
+    );
+    assert_eq!(test2_res, "Valid");
+
+    let test3_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![
+            intermediate_certificate_id.clone(),
+            root_certificate_id.clone(),
+            leaf2_certificate_id.clone(),
+        ],
+        // Date: 15/04/2048
+        Some("4804152030Z".to_string()),
+    )?;
+    info!(
+        "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
+         leaf2's expiration date. test3_res: {test3_res}"
+    );
+    assert_eq!(test3_res, "Invalid");
+
+    let test4_res = validate_certificate(
+        &ctx.owner_client_conf_path,
+        "certificates",
+        vec![],
+        vec![root_certificate_id.clone()],
+        None,
+    )?;
+
+    assert_eq!(test4_res, "Valid");
+
+    Ok(())
 }

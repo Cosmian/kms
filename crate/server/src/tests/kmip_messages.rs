@@ -109,7 +109,11 @@ async fn test_kmip_messages() -> KResult<()> {
     );
     assert_eq!(
         response.items[2].result_message,
-        Some("id_12345".to_string())
+        Some(
+            "Decrypt: no available key found (must be an active symmetric key or private key) for \
+             object identifier id_12345"
+                .to_string()
+        )
     );
     assert!(response.items[2].response_payload.is_none());
     Ok(())

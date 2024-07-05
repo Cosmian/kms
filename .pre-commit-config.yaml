@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse
+exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v3.2.0
@@ -24,7 +24,7 @@ repos:
         exclude_types:
           - yaml
           - markdown
-        exclude: documentation/theme_overrides/assets
+        exclude: documentation/theme_overrides
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.40.0
@@ -46,6 +46,7 @@ repos:
     rev: v1.1.2
     hooks:
       - id: htmlhint
+        exclude: documentation/theme_overrides
       - id: dockerfile_lint
       - id: markdown-toc
 
@@ -67,7 +68,7 @@ repos:
     rev: v1.21.0
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|crate/pkcs11/sys/src/
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -75,9 +76,9 @@ repos:
       - id: forbid-crlf
       - id: remove-crlf
       - id: forbid-tabs
-        exclude: ^.git/
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
       - id: remove-tabs
-        exclude: ^.git/
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
 
   - repo: https://github.com/sirosen/texthooks
     rev: 0.6.6
@@ -85,6 +86,7 @@ repos:
       - id: fix-smartquotes
       - id: fix-ligatures
       - id: fix-spaces
+        exclude: documentation/docs/images/google_cse.drawio.svg
       - id: forbid-bidi-controls
       - id: macro-expand
 
@@ -92,6 +94,7 @@ repos:
     rev: 3.0.0
     hooks:
       - id: shellcheck
+        exclude: scripts/centos_install_curl.sh
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -112,10 +115,10 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md
+        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
-        exclude: documentation/docs/cli/main_commands.md
+        exclude: documentation/docs/cli/main_commands.md|documentation/docs
       - id: file-contents-sorter
       - id: fix-byte-order-marker
       - id: fix-encoding-pragma
@@ -147,7 +150,6 @@ repos:
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign, --skip, test_cse_private_key_decrypt]
-      - id: cargo-audit
       # - id: cargo-outdated
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
@@ -155,3 +157,9 @@ repos:
       - id: clippy-all-targets-all-features
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
+
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.14.16 # choose your preferred tag
+    hooks:
+      - id: cargo-deny
+        args: [--all-features, check]

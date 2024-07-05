@@ -13,6 +13,7 @@ class KmsObject:
         Returns:
             str
         """
+
     def key_block(self) -> bytes:
         """Retrieve key bytes
 
@@ -31,6 +32,7 @@ class KmsEncryptResponse:
         Args:
             data (str): The JSON string representing the KmsEncryptResponse.
         """
+
     def unique_identifier(self) -> str:
         """
         Retrieves the unique identifier of the key used during encryption.
@@ -38,6 +40,7 @@ class KmsEncryptResponse:
         Returns:
             str: The unique identifier of the key.
         """
+
     def data(self) -> bytes:
         """
         Retrieves the data bytes from the encryption response.
@@ -45,6 +48,7 @@ class KmsEncryptResponse:
         Returns:
             bytes.
         """
+
     def iv_counter_nonce(self) -> bytes:
         """
         Retrieves the IV, Counter, or Nonce bytes from the encryption response.
@@ -52,6 +56,7 @@ class KmsEncryptResponse:
         Returns:
             bytes
         """
+
     def authenticated_encryption_tag(self) -> bytes:
         """
         Retrieves the authentication tag bytes from the encryption response.
@@ -59,6 +64,7 @@ class KmsEncryptResponse:
         Returns:
             bytes
         """
+
     def correlation_value(self) -> bytes:
         """
         Retrieves the correlation value bytes from the encryption response.
@@ -93,6 +99,7 @@ class KmsClient:
             insecure_mode (bool, optional): accept self signed ssl cert. Defaults to False.
             allowed_tee_tls_cert (Optional[bytes])  : PEM certificate of a tee.
         """
+
     def create_cover_crypt_master_key_pair(
         self, policy: Union[Policy, bytes]
     ) -> Future[Tuple[str, str]]:
@@ -104,6 +111,7 @@ class KmsClient:
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
         """
+
     def import_cover_crypt_master_private_key(
         self,
         private_key: bytes,
@@ -129,6 +137,7 @@ class KmsClient:
         Returns:
             Future[str]: the unique identifier of the key
         """
+
     def import_cover_crypt_public_key(
         self,
         public_key: bytes,
@@ -149,6 +158,7 @@ class KmsClient:
         Returns:
             Future[str]: the unique identifier of the key
         """
+
     def rekey_cover_crypt_access_policy(
         self,
         access_policy: str,
@@ -164,6 +174,7 @@ class KmsClient:
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
         """
+
     async def prune_cover_crypt_access_policy(
         self,
         access_policy: str,
@@ -181,6 +192,7 @@ class KmsClient:
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
+
     async def remove_cover_crypt_attribute(
         self,
         attribute: str,
@@ -204,6 +216,7 @@ class KmsClient:
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
+
     async def disable_cover_crypt_attribute(
         self,
         attribute: str,
@@ -223,6 +236,7 @@ class KmsClient:
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
+
     async def add_cover_crypt_attribute(
         self,
         attribute: str,
@@ -244,6 +258,7 @@ class KmsClient:
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
+
     async def rename_cover_crypt_attribute(
         self,
         attribute: str,
@@ -261,6 +276,7 @@ class KmsClient:
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
+
     def create_cover_crypt_user_decryption_key(
         self,
         access_policy: str,
@@ -278,6 +294,7 @@ class KmsClient:
         Returns:
             Future[str]: User secret key UID
         """
+
     def import_cover_crypt_user_decryption_key(
         self,
         private_key: bytes,
@@ -304,6 +321,7 @@ class KmsClient:
         Returns:
             Future[str]: User secret key UID
         """
+
     def cover_crypt_encryption(
         self,
         encryption_policy_str: str,
@@ -325,6 +343,7 @@ class KmsClient:
         Returns:
             Future[bytes]: ciphertext
         """
+
     def cover_crypt_decryption(
         self,
         encrypted_data: bytes,
@@ -341,6 +360,7 @@ class KmsClient:
         Returns:
             Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata bytes)
         """
+
     def get_object(self, unique_identifier: UidOrTags) -> Future[KmsObject]:
         """Fetch KMIP object by UID.
 
@@ -350,6 +370,7 @@ class KmsClient:
         Returns:
             Future[KmsObject]
         """
+
     def revoke_key(
         self,
         revocation_reason: str,
@@ -364,6 +385,7 @@ class KmsClient:
         Returns:
             Future[str]: uid of the revoked key
         """
+
     def destroy_key(
         self,
         key_identifier: UidOrTags,
@@ -376,6 +398,7 @@ class KmsClient:
         Returns:
             Future[str]: uid of the destroyed key
         """
+
     def create_symmetric_key(
         self,
         key_len_in_bits: int,
@@ -392,6 +415,7 @@ class KmsClient:
         Returns:
             Future[str]: uid of the created key.
         """
+
     def encrypt(
         self,
         data: bytes,
@@ -406,6 +430,7 @@ class KmsClient:
         Returns:
             Future[KmsEncryptResponse]: encryption result
         """
+
     def decrypt(
         self,
         encrypted_data: bytes,

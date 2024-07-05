@@ -1,0 +1,8 @@
+default_username = "admin"
+
+[http]
+port = 9998
+hostname = "0.0.0.0"
+
+[db]
+database_type = "sqlite"

@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
@@ -49,13 +49,16 @@ pub fn locate(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("locate").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(std::str::from_utf8(&output.stdout)?
+        let mut lines = std::str::from_utf8(&output.stdout)?
             .lines()
             .map(std::borrow::ToOwned::to_owned)
-            .collect::<Vec<String>>())
+            .collect::<Vec<String>>();
+        lines.remove(0); // remove header line: `List of unique identifiers`
+        return Ok(lines)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -66,7 +69,7 @@ pub fn locate(
 #[tokio::test]
 pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -76,6 +79,9 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         &["test_cc"],
     )?;
 
+    println!("master_private_key_id: {master_private_key_id}");
+    println!("master_public_key_id: {master_public_key_id}");
+
     // Locate with Tags
     let ids = locate(
         &ctx.owner_client_conf_path,
@@ -84,6 +90,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         None,
         None,
     )?;
+    println!("ids: {ids:?}");
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&master_private_key_id));
     assert!(ids.contains(&master_public_key_id));
@@ -207,7 +214,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -295,7 +302,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new key
     let key_id =
@@ -364,7 +371,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_grant() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

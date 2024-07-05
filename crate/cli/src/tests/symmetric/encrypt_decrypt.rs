@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use super::SUB_COMMAND;
@@ -73,7 +73,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_with_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)
 }
@@ -137,7 +137,7 @@ async fn test_encrypt_decrypt_with_tags() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let _key_id =
         create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &["tag_sym"])?;
 

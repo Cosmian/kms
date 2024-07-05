@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -22,7 +22,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_view_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -61,7 +61,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_create_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -87,7 +87,7 @@ pub async fn rename(
     attribute: &str,
     new_name: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -115,7 +115,7 @@ pub async fn add(
     master_private_key_id: &str,
     new_attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -142,7 +142,7 @@ pub async fn disable(
     master_private_key_id: &str,
     attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -169,7 +169,7 @@ pub async fn remove(
     master_private_key_id: &str,
     attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -193,7 +193,7 @@ pub async fn remove(
 
 #[tokio::test]
 async fn test_edit_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

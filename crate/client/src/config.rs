@@ -63,16 +63,16 @@ fn not(b: &bool) -> bool {
 /// to perform the `OAuth2` authorize code flow and obtain an access token.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct Oauth2Conf {
-    /// The client ID of the OAuth2 application.
-    /// This is obtained from the OAuth2 provider.
+    /// The client ID of the `OAuth2` application.
+    /// This is obtained from the `OAuth2` provider.
     pub client_id: String,
-    /// The client secret of the OAuth2 application.
-    /// This is obtained from the OAuth2 provider.
+    /// The client secret of the `OAuth2` application.
+    /// This is obtained from the `OAuth2` provider.
     pub client_secret: String,
-    /// The URL of the OAuth2 provider's authorization endpoint.
+    /// The URL of the `OAuth2` provider's authorization endpoint.
     /// For example, for Google, this is `https://accounts.google.com/o/oauth2/v2/auth`.
     pub authorize_url: String,
-    /// The URL of the OAuth2 provider's token endpoint.
+    /// The URL of the `OAuth2` provider's token endpoint.
     /// For example, for Google, this is `https://oauth2.googleapis.com/token`.
     pub token_url: String,
     /// The scopes to request.
@@ -256,15 +256,26 @@ impl ClientConf {
         Ok(conf)
     }
 
-    pub fn initialize_kms_client(&self) -> Result<KmsClient, ClientError> {
+    /// Initialize a KMS REST client.
+    ///
+    /// Parameters `kms_server_url` and `accept_invalid_certs` from the command line
+    /// will override the ones from the configuration file.
+    pub fn initialize_kms_client(
+        &self,
+        kms_server_url: Option<&str>,
+        accept_invalid_certs: Option<bool>,
+    ) -> Result<KmsClient, ClientError> {
+        let kms_server_url = kms_server_url.unwrap_or(&self.kms_server_url);
+        let accept_invalid_certs = accept_invalid_certs.unwrap_or(self.accept_invalid_certs);
+
         // Instantiate a KMS server REST client with the given configuration
         let kms_rest_client = KmsClient::instantiate(
-            &self.kms_server_url,
+            kms_server_url,
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
             self.ssl_client_pkcs12_password.as_deref(),
             self.kms_database_secret.as_deref(),
-            self.accept_invalid_certs,
+            accept_invalid_certs,
             if let Some(certificate) = &self.verified_cert {
                 Some(Certificate(
                     X509Certificate::from_pem(certificate.as_bytes())?.to_der()?,
@@ -274,10 +285,7 @@ impl ClientConf {
             },
         )
         .with_context(|| {
-            format!(
-                "Unable to instantiate a KMS server REST client {}",
-                &self.kms_server_url
-            )
+            format!("Unable to instantiate a KMS server REST client {kms_server_url}")
         })?;
 
         Ok(kms_rest_client)

@@ -24,3 +24,10 @@ services:
     image: redis:latest
     ports:
       - 6379:6379
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - 16686:16686
+      - 4317:4317
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true

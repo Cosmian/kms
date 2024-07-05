@@ -9,6 +9,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -94,33 +95,34 @@ impl CreateKeyAction {
             },
         };
 
-        let unique_identifier = match key_bytes {
-            Some(key_bytes) => {
-                let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm);
-                import_object(
-                    kms_rest_client,
-                    None,
-                    object,
-                    None,
-                    false,
-                    false,
-                    &self.tags,
-                )
-                .await?
-            }
-            None => {
-                let create_key_request =
-                    symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
-                kms_rest_client
-                    .create(create_key_request)
-                    .await
-                    .with_context(|| "failed creating the key")?
-                    .unique_identifier
-                    .to_string()
-            }
+        let unique_identifier = if let Some(key_bytes) = key_bytes {
+            let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm);
+            import_object(
+                kms_rest_client,
+                None,
+                object,
+                None,
+                false,
+                false,
+                &self.tags,
+            )
+            .await?
+        } else {
+            let create_key_request =
+                symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
+            kms_rest_client
+                .create(create_key_request)
+                .await
+                .with_context(|| "failed creating the key")?
+                .unique_identifier
+                .to_string()
         };
 
-        println!("The symmetric key was created with id: {unique_identifier}.");
+        let mut stdout = console::Stdout::new("The symmetric key was successfully generated.");
+        stdout.set_tags(Some(&self.tags));
+        stdout.set_unique_identifier(unique_identifier);
+        stdout.write()?;
+
         Ok(())
     }
 }

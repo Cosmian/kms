@@ -14,6 +14,7 @@ mod locate;
 mod message;
 mod rekey_keypair;
 mod revoke;
+mod validate;
 mod wrapping;
 
 pub(crate) use certify::certify;
@@ -32,4 +33,5 @@ pub(crate) use locate::locate;
 pub(crate) use message::message;
 pub(crate) use rekey_keypair::rekey_keypair;
 pub(crate) use revoke::{recursively_revoke_key, revoke_operation};
+pub(crate) use validate::validate_operation;
 pub(crate) use wrapping::{unwrap_key, wrap_key};

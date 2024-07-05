@@ -864,7 +864,7 @@ fn to_qualified_uids(
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        debug!("to_qualified_uids: raw: {raw:?}");
+        trace!("to_qualified_uids: raw: {raw:?}");
         let attrs = if !raw.is_empty() {
             let attrs: Attributes =
                 serde_json::from_slice(&raw).context("failed deserializing attributes")?;

@@ -4,6 +4,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig};
+use crate::telemetry::TelemetryConfig;
 
 const DEFAULT_USERNAME: &str = "admin";
 
@@ -18,6 +19,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
+            telemetry: TelemetryConfig::default(),
         }
     }
 }
@@ -58,11 +60,14 @@ pub struct ClapConfig {
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in Azure App Registrations
-    /// as the DKE Service (https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
+    /// as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
     pub ms_dke_service_url: Option<String>,
+
+    #[clap(flatten)]
+    pub telemetry: TelemetryConfig,
 }
 
 impl fmt::Debug for ClapConfig {

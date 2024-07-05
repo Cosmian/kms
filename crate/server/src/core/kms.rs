@@ -17,7 +17,7 @@ use cosmian_kmip::{
             Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
             ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
             ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-            RevokeResponse,
+            RevokeResponse, Validate, ValidateResponse,
         },
         kmip_types::{StateEnumeration, UniqueIdentifier},
     },
@@ -736,5 +736,14 @@ impl KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<MessageResponse> {
         operations::message(self, request, user, params).await
+    }
+
+    pub async fn validate(
+        &self,
+        request: Validate,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<ValidateResponse> {
+        operations::validate_operation(self, request, user, params).await
     }
 }

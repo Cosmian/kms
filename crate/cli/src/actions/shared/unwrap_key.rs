@@ -8,10 +8,10 @@ use cosmian_kms_client::{
         kmip::kmip_types::CryptographicAlgorithm,
     },
     export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
-    KmsRestClient,
 };
 
 use crate::{
+    actions::console,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -102,10 +102,12 @@ impl UnwrapKeyAction {
 
         write_kmip_object_to_file(&object, &output_file)?;
 
-        println!(
+        let stdout = format!(
             "The key of type {:?} in file {:?} was unwrapped in file: {:?}",
             object_type, self.key_file_in, &output_file
         );
+        console::Stdout::new(&stdout).write()?;
+
         Ok(())
     }
 }

@@ -7,7 +7,7 @@ use std::{
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -93,18 +93,15 @@ pub fn export(
     allow_revoked: bool,
 ) -> Result<(), CliError> {
     let mut args = vec!["export"];
-    match tags_args {
-        Some(tags) => {
-            // add tags
-            for tag in tags {
-                args.push("--tag");
-                args.push(tag);
-            }
+    if let Some(tags) = tags_args {
+        // add tags
+        for tag in tags {
+            args.push("--tag");
+            args.push(tag);
         }
-        None => {
-            args.push("--certificate-id");
-            args.push(certificate_id);
-        }
+    } else {
+        args.push("--certificate-id");
+        args.push(certificate_id);
     };
     args.push(certificate_file);
     match output_format {
@@ -132,6 +129,7 @@ pub fn export(
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     println!("output: {output:?}");
@@ -181,6 +179,7 @@ pub fn destroy(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     if output.status.success() {
@@ -198,7 +197,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let ca = "RootCA/SubCA";
     let hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];
@@ -340,7 +339,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let _tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let ca = "RootCA/SubCA";
     let _hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];

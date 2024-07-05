@@ -50,7 +50,7 @@ pub struct ServerParams {
     ///
     /// It should contain the external URL of this server as configured in
     /// App Registrations of Azure as the DKE Service.
-    /// Check this link: https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store
+    /// Check this link: <https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,

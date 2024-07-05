@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{KeyFormatType, LinkType, StateEnumeration},
+    kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
@@ -54,11 +54,11 @@ pub async fn destroy_operation(
 
 /// Recursively destroy keys
 #[async_recursion(?Send)]
-pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
+pub(crate) async fn recursively_destroy_key(
     uid_or_tags: &str,
     kms: &KMS,
     user: &str,
-    params: Option<&'a ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -103,8 +103,11 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                         .await?;
                 }
                 // destroy any linked public key
-                if let Some(public_key_id) =
-                    owm.object.attributes()?.get_link(LinkType::PublicKeyLink)
+                if let Some(public_key_id) = owm
+                    .object
+                    .attributes()?
+                    .get_link(LinkType::PublicKeyLink)
+                    .map(|l| l.to_string())
                 {
                     if !ids_to_skip.contains(&public_key_id) {
                         recursively_destroy_key(
@@ -125,8 +128,11 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                 //add this key to the ids to skip
                 ids_to_skip.insert(owm.id.clone());
                 // destroy any linked private key
-                if let Some(private_key_id) =
-                    owm.object.attributes()?.get_link(LinkType::PrivateKeyLink)
+                if let Some(private_key_id) = owm
+                    .object
+                    .attributes()?
+                    .get_link(LinkType::PrivateKeyLink)
+                    .map(|l| l.to_string())
                 {
                     if !ids_to_skip.contains(&private_key_id) {
                         recursively_destroy_key(
@@ -175,24 +181,21 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    if let Object::Certificate { .. } = object {
+    debug!("destroy: object: {object:?}");
+    let attributes = if let Object::Certificate { .. } = object {
         trace!("Certificate destroying");
+        Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
         key_block.key_value = KeyValue {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
             attributes: key_block.key_value.attributes.clone(),
         };
-    }
+        key_block.attributes()?.clone()
+    };
 
     kms.db
-        .update_object(
-            unique_identifier,
-            object,
-            object.attributes()?,
-            None,
-            params,
-        )
+        .update_object(unique_identifier, object, &attributes, None, params)
         .await?;
 
     kms.db

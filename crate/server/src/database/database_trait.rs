@@ -79,6 +79,7 @@ pub trait Database {
     ///
     /// If tags is `None`, the tags will not be updated.
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     async fn upsert(
         &self,
         uid: &str,
@@ -91,6 +92,7 @@ pub trait Database {
     ) -> KResult<()>;
 
     /// Delete an object from the database.
+    #[allow(dead_code)]
     async fn delete(
         &self,
         uid: &str,
@@ -160,6 +162,7 @@ pub trait Database {
     ///
     /// These access rights may have been directly granted or via the wildcard user
     /// unless `no_inherited_access` is set to `true`
+    #[allow(dead_code)]
     async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
@@ -172,7 +175,7 @@ pub trait Database {
     /// (typically in a transaction)
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -194,7 +197,7 @@ pub enum AtomicOperation {
             StateEnumeration,
         ),
     ),
-    /// Update the object (uid, object, attributes, tags, state) - the state will be not be updated
+    /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
     /// Update the state (uid, state)
     UpdateState((String, StateEnumeration)),

@@ -21,6 +21,7 @@ use cosmian_kms_cli::{
     error::CliError,
 };
 use cosmian_kms_client::ClientConf;
+use cosmian_logger::log_utils::log_init;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -34,6 +35,17 @@ struct Cli {
     /// Takes precedence over `KMS_CLI_CONF` env variable.
     #[arg(short, long)]
     conf: Option<PathBuf>,
+
+    /// The URL of the KMS
+    #[arg(long, action)]
+    pub(crate) url: Option<String>,
+
+    /// Allow to connect using a self signed cert or untrusted cert chain
+    ///
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
+    /// running an invalid or insecure SSL certificate
+    #[arg(long)]
+    pub(crate) accept_invalid_certs: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -57,6 +69,9 @@ enum CliCommands {
     Sym(SymmetricCommands),
     Login(LoginAction),
     Logout(LogoutAction),
+
+    /// Action to auto-generate doc in Markdown format
+    /// Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
     #[command(subcommand)]
@@ -72,18 +87,8 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
-    // Set up environment variables and logging options
-    if std::env::var("RUST_BACKTRACE").is_err() {
-        std::env::set_var("RUST_BACKTRACE", "1");
-    }
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var(
-            "RUST_LOG",
-            "info,cosmian=info,cosmian_kms_cli=info, actix_web=info,sqlx::query=error,mysql=info",
-        );
-    }
-
-    env_logger::init();
+    // Set up environment variables and logging options if RUST_LOG if defined
+    log_init("info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info");
 
     let opts = Cli::parse();
 
@@ -100,7 +105,8 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Logout(action) => action.process(&conf_path).await?,
         command => {
             let conf = ClientConf::load(&conf_path)?;
-            let kms_rest_client = conf.initialize_kms_client()?;
+            let kms_rest_client =
+                conf.initialize_kms_client(opts.url.as_deref(), opts.accept_invalid_certs)?;
 
             match command {
                 CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
@@ -116,7 +122,7 @@ async fn main_() -> Result<(), CliError> {
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Google(action) => action.process(&conf_path).await?,
                 _ => {
-                    println!("Error: unexpected command");
+                    tracing::error!("unexpected command");
                 }
             }
         }

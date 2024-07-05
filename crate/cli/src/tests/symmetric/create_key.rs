@@ -7,7 +7,7 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::{start_default_test_kms_server, ONCE};
+use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -51,11 +51,9 @@ pub fn create_symmetric_key(
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
-
-        let unique_identifier = extract_uid(output, "The symmetric key was created with id")
-            .ok_or_else(|| {
-                CliError::Default("failed extracting the unique identifier".to_owned())
-            })?;
+        let unique_identifier = extract_uid(output, "Unique identifier").ok_or_else(|| {
+            CliError::Default("failed extracting the unique identifier".to_owned())
+        })?;
         return Ok(unique_identifier.to_string())
     }
 
@@ -66,7 +64,7 @@ pub fn create_symmetric_key(
 
 #[tokio::test]
 pub async fn test_create_symmetric_key() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
+    let ctx = start_default_test_kms_server().await;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0u8; 32];
 

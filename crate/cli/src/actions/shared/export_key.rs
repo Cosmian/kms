@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     write_kmip_object_to_file, ClientResultHelper, KmsClient,
 };
 
-use crate::{cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
@@ -26,7 +26,7 @@ pub enum ExportKeyFormat {
 ///
 /// If not format is specified, the key is exported as a json-ttlv with a
 /// `KeyFormatType` that follows the section 4.26 of the KMIP specification.
-/// https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+/// <https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html>#_Toc57115585
 ///
 /// The key can optionally be unwrapped and/or wrapped when exported.
 ///
@@ -162,12 +162,16 @@ impl ExportKeyAction {
             write_kmip_object_to_file(&object, &self.key_file)?;
         }
 
-        println!(
+        let stdout = format!(
             "The key {} of type {} was exported to {:?}",
             &id,
             object.object_type(),
             &self.key_file
         );
+        let mut stdout = console::Stdout::new(&stdout);
+        stdout.set_unique_identifier(id);
+        stdout.write()?;
+
         Ok(())
     }
 }
