@@ -24,22 +24,12 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      - name: Cache dependencies
-        id: cargo_cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-windows-2022-${{ inputs.debug_or_release }}
-          cache-directories: |
-            $VCPKG_INSTALLATION_ROOT
-
       - uses: dtolnay/rust-toolchain@master
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           . .\.github\scripts\windows_build.ps1
@@ -51,7 +41,6 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
       - name: Upload KMS for windows-2022
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
@@ -62,12 +51,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-    outputs:
-      cache-hit: ${{ steps.cargo_cache.outputs.cache-hit }}
-
   kms-test:
     needs: kms-build
-    if: needs.kms-build.outputs.cache-hit != 'true'
     name: Clean env. ${{ inputs.archive-name }}
     runs-on: windows-2022
     steps:
