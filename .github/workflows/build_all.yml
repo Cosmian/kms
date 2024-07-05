@@ -72,7 +72,7 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
-  windows:
+  windows-2022:
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -84,6 +84,6 @@ jobs:
       - rhel9
       - fips-ubuntu-20
       - generic-build
-      - windows
+      - windows-2022
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit

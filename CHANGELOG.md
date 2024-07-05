@@ -2,54 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.17.0] - 2024-07-04
+## [4.17.0] - 2024-07-05
 
-### Features
+### 🚀 Features
 
 - Add KMIP operation `Validate` for certificates ([#247](https://github.com/Cosmian/kms/pull/247))
 - Added RSA benchmarks ([#251](https://github.com/Cosmian/kms/pull/251))
 - Add OpenTelemetry OTLP protocol support to KMS server ([#253](https://github.com/Cosmian/kms/pull/253))
+- Support for multiple certification scenarios and self-signing ([#248](https://github.com/Cosmian/kms/pull/248))
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
-- Replace `cargo audit` with `cargo deny` ([#245](https://github.com/Cosmian/kms/pull/245))
-- Replace Linux cross-compiling for Windows with compiling on Windows Github runner ([#249](https://github.com/Cosmian/kms/pull/249))
 - Fix vulnerability RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
 - Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254)) and ([#255](https://github.com/Cosmian/kms/pull/255))
 
-### Miscellaneous Tasks
+### ⚙️ Miscellaneous Tasks
 
 - Create Debian/RPM packages for Ubuntu 2x.04 and RHEL 9 ([#264](https://github.com/Cosmian/kms/pull/264))
 - Drop Centos 7 support ([#265](https://github.com/Cosmian/kms/pull/265))
+- Replace `cargo audit` with `cargo deny` ([#245](https://github.com/Cosmian/kms/pull/245))
+- Replace Linux cross-compiling for Windows with compiling on Windows Github runner ([#249](https://github.com/Cosmian/kms/pull/249))
+- Add support for build on MacOS ARM
 
 ## [4.16.0] - 2024-05-06
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Fixed import of symmetric key tag to '_kk' from '_sk'
 
-### Features
+### 🚀 Features
 
 - Add support for LUKS via PKCS#11 module
 - Add support for CKM_RSA_PKCS (PKCS#1 v1.5) for RSA encryption/decryption
 
 ## [4.15.2] - 2024-05-03
 
-### Features
+### 🚀 Features
 
 - Create Gmail key pairs and identities with `ckms` via Gmail API ([#243](https://github.com/Cosmian/kms/pull/243))
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Comment out mermaid configuration
 
 ## [4.15.1] - 2024-05-02
 
-### Features
+### 🚀 Features
 
 - Add Google Workspace CSE endpoints for **encrypted Gmail** ([#192](https://github.com/Cosmian/kms/pull/192))
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
 - Remove everything related to GCP images build ([#241](https://github.com/Cosmian/kms/pull/241))
@@ -60,13 +62,13 @@ All notable changes to this project will be documented in this file.
 
 ## [4.15.0] - 2024-04-08
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Add license to KMS GCP image ([#235](https://github.com/Cosmian/kms/pull/235))
 - Re-enable the validation of JWT Issuer URI
 - Fix CSE error status code, propagating the right status code instead of generic server code error
 
-### Features
+### 🚀 Features
 
 - Handle many identity providers in jwt authentication
 - New command line argument `--key-usage` to define key or certificate usage on import
@@ -81,7 +83,7 @@ All notable changes to this project will be documented in this file.
 - Add standalone workflow to test KMS in Cosmian
   VM ([#233](https://github.com/Cosmian/kms/pull/233))
 
-### Features
+### 🚀 Features
 
 - Rebase KMS GCP image on Cosmian VM 1.1.0-rc.4
 
@@ -91,13 +93,13 @@ All notable changes to this project will be documented in this file.
 
 - Remove optimization RUSTFLAGS ([#227](https://github.com/Cosmian/kms/pull/227))
 
-### Features
+### 🚀 Features
 
 - Rebase KMS GCP image on Cosmian VM 1.1.0-rc.3
 
 ## [4.14.0] - 2024-03-27
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Fixed double quotes problem in cosmian vm test (CI)
 - Fixed trailing null byte bug for biguint/bytes
@@ -105,7 +107,7 @@ All notable changes to this project will be documented in this file.
 - Make the CLI compile on Windows and macOS (without openssl
   installed) ([#209](https://github.com/Cosmian/kms/pull/209))
 
-### Features
+### 🚀 Features
 
 - Support Veracrypt PKCS11 provider library ([#208](https://github.com/Cosmian/kms/pull/208))
 
@@ -115,7 +117,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.13.5] - 2024-03-20
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Add missing image_licenses in packer for GCP ([#219](https://github.com/Cosmian/kms/pull/219))
 
@@ -127,7 +129,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.13.3] - 2024-03-11
 
-### Bug fixes
+### 🐛 Bug Fixes
 
 - `ckms` needs `kmip` dependency with
   features `openssl` ([#202](https://github.com/Cosmian/kms/pull/202))
@@ -151,7 +153,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.13.0] - 2024-03-08
 
-### Features
+### 🚀 Features
 
 - Save KMIP Attributes in a proper column of `Objects`
   table [#166](https://github.com/Cosmian/kms/pull/166):
@@ -172,7 +174,7 @@ All notable changes to this project will be documented in this file.
 - Add build on RHEL9 [#196](https://github.com/Cosmian/kms/pull/196).
 - Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
 
-### Bug fixes
+### 🐛 Bug Fixes
 
 - Fixing inconsistent crypto consts [#190](https://github.com/Cosmian/kms/pull/190).
 - Fix interpolation in error macros [#184](https://github.com/Cosmian/kms/pull/184).
@@ -181,7 +183,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.12.0] - 2024-02-08
 
-### Features
+### 🚀 Features
 
 - Generalize the refresh of JWKS in the middleware [#150](https://github.com/Cosmian/kms/pull/150).
 - CI speed up [#173](https://github.com/Cosmian/kms/pull/173).
@@ -197,12 +199,12 @@ All notable changes to this project will be documented in this file.
 
 ## [4.11.3] - 2024-01-26
 
-### Features
+### 🚀 Features
 
 - CLI: allow multiple operations to be supplied at once for access
   control [#155](https://github.com/Cosmian/kms/pull/155).
 
-### Miscellaneous Tasks
+### ⚙️ Miscellaneous Tasks
 
 - Business Source License 1.1
 
@@ -215,7 +217,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.11.1] - 2024-01-18
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Load correct openssl provider on run
 
@@ -225,12 +227,12 @@ All notable changes to this project will be documented in this file.
 
 ## [4.11.0] - 2024-01-17
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Fix AES decryption: tag invalid size [#133](https://github.com/Cosmian/kms/issues/133)
 - Remove bootstrap server leftovers [#142](https://github.com/Cosmian/kms/issues/142)
 
-### Features
+### 🚀 Features
 
 - X509 v3 extensions support [#120](https://github.com/Cosmian/kms/issues/120)
 - Dynamic salt for password derivation, resolving
@@ -254,7 +256,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.10.0] - 2023-12-11
 
-### Features
+### 🚀 Features
 
 - Support for certificate generation using the Certify KMIP operation and a PKCS#10 or a public key
 - Support for most standardized encoding formats on import.export: PKCS#8, PKCS#1, SEC1, X509,
@@ -269,7 +271,7 @@ All notable changes to this project will be documented in this file.
   which can now be achieved using the `Certify` KMIP
   operation [#103](https://github.com/Cosmian/kms/issues/103)
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Redis-Findex: `create` now checks for the pre-existence of the object
 - Better KMIP compliance:
@@ -280,13 +282,13 @@ All notable changes to this project will be documented in this file.
 
 ## [4.9.1] - 2023-11-14
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - KMIP server operations only support DER format for certificates (#89)
 
 ## [4.9.0] - 2023-11-10
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - fix: migrate to num-bigint-dig for bigint (#85)
 
@@ -294,31 +296,31 @@ All notable changes to this project will be documented in this file.
 
 - Test KMS inside an SGX machine
 
-### Features
+### 🚀 Features
 
 - Update Covercrypt version to support Policy V2 ([#63])
 - Generalize bulk operations using KMIP `Messages` structure
 
 ## [4.8.2] - 2023-10-31
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Save certs as DER instead of PEM for KMIP compliance
 
 ## [4.8.1] - 2023-10-12
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Fix for [#64](https://github.com/Cosmian/kms/issues/64)
 
 ## [4.8.0] - 2023-10-07
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Fix container build on tags
 - Serialize the header for each chunk for Covercrypt bulk encryption (#59)
 
-### Features
+### 🚀 Features
 
 - KMS running inside TEE (SGX or SEV)
   - review the `verify` subcommand
@@ -336,7 +338,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.7.0] - 2023-10-02
 
-### Features
+### 🚀 Features
 
 - Added the wildcard user `*` to grant access rights to all users on an object
 - About certificates:
@@ -353,7 +355,7 @@ All notable changes to this project will be documented in this file.
   - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private
       key)
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Improved database data structures using Maps and Sets instead of Vectors where uniqueness is
   required
@@ -361,7 +363,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.6.0] - 2023-09-01
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Filter Locate request by object type
 
@@ -369,7 +371,7 @@ All notable changes to this project will be documented in this file.
 
 - Remove merge leftovers
 
-### Features
+### 🚀 Features
 
 - bootstrap: the KMS server now supports bootstrap mode to facilitate the secure input of secret
   components, including the database encryption secret and the HTTPS certificate key, directly into
@@ -398,11 +400,11 @@ All notable changes to this project will be documented in this file.
 
 ## [4.5.0] - 2023-08-21
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Documentation
 
-### Features
+### 🚀 Features
 
 - tagging: the KMS server now supports user tagging of objects to facilitate their management.
   Specify as many user tags as needed when creating and importing objects.
@@ -423,23 +425,23 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.4.3] - 2023-07-17
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Remove RUSTFLAGS for docker container and python package
 
-### Features
+### 🚀 Features
 
 - Update sqlx to 0.7 + bitflags and base64-url to version 2
 
 ## [4.4.2] - 2023-06-13
 
-### Features
+### 🚀 Features
 
 - Support glibc v2.17 when building ckms and cosmian_kms_server
 
 ## [4.4.1] - 2023-06-09
 
-### Bug Fixes
+### 🐛 Bug Fixes
 
 - Incorrect docker tag
 
@@ -449,7 +451,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.4.0] - 2023-06-06
 
-### Features
+### 🚀 Features
 
 - Added the ability to manipulate EC and Symmetric Keys
 - Added ECIES encryption (using Curve 25519) and AES GCM encryption
@@ -484,7 +486,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.3.4] - 2023-03-09
 
-### Features
+### 🚀 Features
 
 - Python KMS client (pyo3): export `database_secret` and `insecure` as parameters
 
@@ -496,7 +498,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.3.3] - 2023-03-02
 
-### Features
+### 🚀 Features
 
 - Use CoverCrypt v11
 
@@ -530,12 +532,12 @@ Use the tags to export objects, locate them, or request data encryption and decr
 - Improves the installation doc and details the important options
 - Makes wording coherent between doc and code
 
-### Features
+### 🚀 Features
 
 - adds native HTTP/S support by providing certificates
 - improves encrypted SQLite support
 
-### Miscellaneous Tasks
+### ⚙️ Miscellaneous Tasks
 
 - removes multiple features on the KMS server and makes them command-line options.
 - There is now a single docker (115MB) that covers all cases (except SGX, which will come later)
@@ -545,7 +547,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.2.0] - 2023-01-30
 
-### Features
+### 🚀 Features
 
 - Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
   - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
