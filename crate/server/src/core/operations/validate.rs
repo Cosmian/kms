@@ -14,6 +14,7 @@ use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
+use reqwest::Client;
 use tracing::{info, trace};
 
 use crate::{
@@ -387,54 +388,51 @@ enum UriType {
 // the crl object as a vector of u8.
 // It retrieves files in locale and in remote (via http request).
 async fn test_and_get_resource_from_uri(
+    client: &Client,
     uri: &String,
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
     certificate_id: &[u8],
 ) -> KResult<Vec<u8>> {
     // checking whether the resource is an URL or a Pathname
-    let uri_type = match url::Url::parse(uri) {
-        Err(_) => {
-            let path = path::Path::new(uri);
-            let path_buf = path.canonicalize()?;
-            let path = path_buf.as_path();
-            if let Some(s) = path.to_str() {
-                Some(UriType::Path(s.to_string()))
-            } else {
+    let uri_type = if let Ok(url) = url::Url::parse(uri) {
+        Some(UriType::Url(url.into()))
+    } else {
+        let path_buf = path::Path::new(uri).canonicalize()?;
+        match path_buf.to_str() {
+            Some(s) => Some(UriType::Path(s.to_string())),
+            None => {
                 return Err(KmsError::from(KmipError::InvalidKmipValue(
                     ErrorReason::Illegal_Object_Type,
                     "The uri provided is invalid".to_string(),
                 )))
             }
         }
-        Ok(_) => Some(UriType::Url(uri.to_string())),
     };
     // Retrieving the object from its location
     let crl_bytes = match uri_type {
         Some(UriType::Url(url)) => {
-            let response = reqwest::get(&url).await;
-            // missing error conversion
-            let response = if let Ok(response) = response {
-                response
-            } else {
-                return Err(KmsError::from(KmipError::ObjectNotFound(
-                    "No certificate found at the following uri ".to_string() + uri,
-                )))
-            };
-            let body = if let Ok(text) = response.text().await {
-                text
-            } else {
-                return Err(KmsError::from(KmipError::ObjectNotFound(
-                    "Error in getting the body of the response for the following uri ".to_string()
-                        + url.as_str(),
-                )))
-            };
-            KResult::Ok(body.as_bytes().to_vec())
+            match client.get(&url).send().await {
+                Ok(response) => {
+                    // missing error conversion
+                    match response.text().await {
+                        Ok(text) => Ok(text.as_bytes().to_vec()),
+                        Err(e) => Err(KmsError::from(KmipError::ObjectNotFound(format!(
+                            "Error in getting the body of the response for the following uri: \
+                             {uri}. Error: {e:?} "
+                        )))),
+                    }
+                }
+                Err(e) => {
+                    return Err(KmsError::from(KmipError::ObjectNotFound(format!(
+                        "Unable to download CRL at the following uri {uri}: Error: {e:?}"
+                    ))))
+                }
+            }
         }
         Some(UriType::Path(path)) => {
-            // path should be already canonic
-            let pem = fs::read(path::Path::new(&path))?;
-            Ok(pem)
+            // Get PEM file (path should be already canonic)
+            Ok(fs::read(path::Path::new(&path))?)
         }
         _ => {
             return Err(KmsError::KmipError(
@@ -474,23 +472,17 @@ async fn get_crl_bytes(
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
-    let responses = join_all(uri_crls.iter().map(|(uri, certificate_id)| async {
-        test_and_get_resource_from_uri(uri, hm_certificates, certificates, certificate_id).await
-    }))
-    .await;
+    let client = reqwest::Client::new();
 
-    // Collecting results, checking for errors
-    let mut crl_bytes = Vec::new();
-    for response in responses {
-        match response {
-            Ok(bytes) => crl_bytes.push(bytes),
-            Err(_) => {
-                return Err(KmsError::from(KmipError::ObjectNotFound(
-                    "One of the CRL cannot be found".to_string(),
-                )))
-            }
-        }
-    }
+    let responses = uri_crls.iter().map(|(uri, certificate_id)| {
+        test_and_get_resource_from_uri(&client, uri, hm_certificates, certificates, certificate_id)
+    });
+
+    let crl_bytes = join_all(responses)
+        .await
+        .into_iter()
+        .flatten()
+        .collect::<Vec<Vec<_>>>();
 
     Ok(crl_bytes)
 }
