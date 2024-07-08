@@ -145,7 +145,7 @@ jobs:
       - name: Upload WHL for MacOS
         uses: actions/upload-artifact@v3
         with:
-          name: kms_python_macos
+          name: kms_python_macos_intel
           path: target/wheels/*macosx*.whl
           retention-days: 1
           if-no-files-found: error
@@ -177,7 +177,7 @@ jobs:
       - name: Upload WHL for MacOS
         uses: actions/upload-artifact@v3
         with:
-          name: kms_python_macos14
+          name: kms_python_macos_arm
           path: target/wheels/*macosx*.whl
           retention-days: 1
           if-no-files-found: error
