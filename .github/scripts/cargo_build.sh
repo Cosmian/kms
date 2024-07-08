@@ -81,12 +81,12 @@ rm -rf target/"$TARGET"/generate-rpm
 if [ -f /etc/redhat-release ]; then
   cd crate/cli && cargo build --target "$TARGET" --release && cd -
   cd crate/server && cargo build --target "$TARGET" --release && cd -
-  cargo install cargo-generate-rpm --force
+  cargo install --version 0.14.1 cargo-generate-rpm --force
   cd "$ROOT_FOLDER"
   cargo generate-rpm --target "$TARGET" -p crate/cli
   cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
 elif [ -f /etc/lsb-release ]; then
-  cargo install cargo-deb --force
+  cargo install --version 2.4.0 cargo-deb --force
   cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
   cargo deb --target "$TARGET" -p cosmian_kms_cli
   cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
