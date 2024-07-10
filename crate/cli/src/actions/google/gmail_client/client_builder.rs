@@ -4,7 +4,10 @@ use reqwest::{Client, Response};
 use serde::Deserialize;
 
 use super::{service_account::ServiceAccount, token::retrieve_token, GoogleApiError};
-use crate::error::{result::CliResult, CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResult, CliError},
+};
 
 #[derive(Deserialize)]
 pub(crate) struct RequestError {
@@ -62,10 +65,8 @@ impl GmailClient {
 
     pub(crate) async fn handle_response(response: Response) -> CliResult<()> {
         if response.status().is_success() {
-            println!(
-                "{}",
-                response.text().await.map_err(GoogleApiError::Reqwest)?
-            );
+            let stdout = response.text().await.map_err(GoogleApiError::Reqwest)?;
+            console::Stdout::new(&stdout).write()?;
             Ok(())
         } else {
             let json_body = response

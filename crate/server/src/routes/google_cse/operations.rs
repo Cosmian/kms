@@ -38,6 +38,7 @@ pub struct StatusResponse {
     pub vendor_id: String,
     pub version: String,
     pub name: String,
+    pub kacls_url: String,
     pub operations_supported: Vec<String>,
 }
 
@@ -46,13 +47,14 @@ pub struct StatusResponse {
 /// # Returns
 /// - `StatusResponse`: The status of the server.
 #[must_use]
-pub fn get_status() -> StatusResponse {
+pub fn get_status(kacls_url: &str) -> StatusResponse {
     debug!("get_status");
     StatusResponse {
         server_type: "KACLS".to_owned(),
         vendor_id: "Cosmian".to_owned(),
         version: crate_version!().to_owned(),
         name: "Cosmian KMS".to_owned(),
+        kacls_url: kacls_url.to_owned(),
         operations_supported: vec![
             "digest".to_owned(),
             "privatekeydecrypt".to_owned(),

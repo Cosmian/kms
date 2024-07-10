@@ -32,9 +32,9 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
                     })?,
                     label: kms_object.other_tags.join(","),
                 }),
-                CertificateType::PGP => Err(Pkcs11Error::ServerError(format!(
-                    "Invalid Certificate Type: {certificate_type:?}"
-                ))),
+                CertificateType::PGP | CertificateType::PKCS7 => Err(Pkcs11Error::ServerError(
+                    format!("Invalid Certificate Type: {certificate_type:?}"),
+                )),
             },
             o => Err(Pkcs11Error::ServerError(format!(
                 "Invalid KMS Object for a certificate: {o:?}"

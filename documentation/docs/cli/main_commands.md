@@ -1710,9 +1710,12 @@ by using the keypairs.obliterate method.
 
 **`obliterate`** [[14.1.6]](#1416-ckms-google-keypairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the keypairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
+
+**`create`** [[14.1.7]](#1417-ckms-google-keypairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
 
 ---
 
@@ -1803,7 +1806,7 @@ by using the keypairs.obliterate method.
 
 Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the keypairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
@@ -1814,6 +1817,27 @@ reading the encrypted messages.
 ` <KEYPAIRS_ID>` The identifier of the key pair to obliterate
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
+
+
+
+---
+
+## 14.1.7 ckms google keypairs create
+
+Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
+
+### Usage
+`ckms google keypairs create [options]`
+### Arguments
+`--user-id [-u] <USER_ID>` The requester's primary email address
+
+`--csekey-id [-w] <CSEKEY_ID>` CSE key ID to wrap exported user private key
+
+`--issuer_private_key_id [-i] <ISSUER_PRIVATE_KEY_ID>` The issuer certificate id
+
+`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
+the subject name to use.
 
 
 
