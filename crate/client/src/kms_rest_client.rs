@@ -16,7 +16,7 @@ use cosmian_kmip::kmip::{
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
         ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
         ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-        RevokeResponse, Validate, ValidateResponse,
+        RevokeResponse, StatusResponse, Validate, ValidateResponse,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -459,6 +459,11 @@ impl KmsClient {
     /// This operation requests the version of the server
     pub async fn version(&self) -> Result<String, ClientError> {
         self.get_no_ttlv("/version", None::<&()>).await
+    }
+
+    /// This operation requests google_cse status of the server
+    pub async fn google_cse_status(&self) -> Result<StatusResponse, ClientError> {
+        self.get_no_ttlv("/google_cse/status", None::<&()>).await
     }
 
     /// Instantiate a new KMIP REST Client

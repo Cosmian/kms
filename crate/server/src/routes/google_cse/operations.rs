@@ -38,17 +38,19 @@ pub struct StatusResponse {
     pub vendor_id: String,
     pub version: String,
     pub name: String,
+    pub kacls_url: String,
     pub operations_supported: Vec<String>,
 }
 
 #[must_use]
-pub fn get_status() -> StatusResponse {
+pub fn get_status(kacls_url: &str) -> StatusResponse {
     debug!("get_status");
     StatusResponse {
         server_type: "KACLS".to_string(),
         vendor_id: "Cosmian".to_string(),
         version: crate_version!().to_string(),
         name: "Cosmian KMS".to_string(),
+        kacls_url: kacls_url.to_string(),
         operations_supported: vec![
             "digest".to_string(),
             "privatekeydecrypt".to_string(),
