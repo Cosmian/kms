@@ -15,7 +15,7 @@ use openssl::{
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
 use reqwest::Client;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},
@@ -111,21 +111,19 @@ pub(crate) async fn validate_operation(
 
     // Checking if the certificate chain has revoked elements
     let uri_list = get_crl_uris_from_certificate_chain(certificates)?;
-    if uri_list.is_empty() {
-        Ok(ValidateResponse {
-            validity_indicator: structural_validity.and(date_validation),
-        })
+    let validity_indicator = if uri_list.is_empty() {
+        structural_validity.and(date_validation)
     } else {
         info!("URI list: {uri_list:?}");
         let mut crl_bytes_list = get_crl_bytes(uri_list, &hm_certificates, certificates).await?;
-
         info!("CRL list size: {}", crl_bytes_list.len());
 
         let revocation_status = chain_revocation_status(certificates, &mut crl_bytes_list)?;
-        Ok(ValidateResponse {
-            validity_indicator: revocation_status.and(structural_validity.and(date_validation)),
-        })
-    }
+        revocation_status.and(structural_validity.and(date_validation))
+    };
+
+    debug!("validate_operation: exiting with success");
+    Ok(ValidateResponse { validity_indicator })
 }
 
 /// This function builds a map from an array of X509 certificates. This map can be
@@ -394,6 +392,21 @@ async fn test_and_get_resource_from_uri(
     certificates: &[X509],
     certificate_id: &[u8],
 ) -> KResult<Vec<u8>> {
+    debug!("test_and_get_resource_from_uri: entering");
+    // Getting the CRL issuer Certificate
+    let certificate_idx = hm_certificates.get(certificate_id).ok_or_else(|| {
+        KmsError::from(KmipError::InvalidKmipObject(
+            ErrorReason::Item_Not_Found,
+            "The certificate must be in the hashmap".to_string(),
+        ))
+    })?;
+    let certificate = certificates.get(*certificate_idx as usize).ok_or_else(|| {
+        KmsError::from(KmipError::InvalidKmipObject(
+            ErrorReason::Item_Not_Found,
+            "The certificate index must be valid".to_string(),
+        ))
+    })?;
+
     // checking whether the resource is an URL or a Pathname
     let uri_type = if let Ok(url) = url::Url::parse(uri) {
         Some(UriType::Url(url.into()))
@@ -441,19 +454,6 @@ async fn test_and_get_resource_from_uri(
             ))
         }
     }?;
-    // Getting the CRL issuer Certificate
-    let certificate_idx = hm_certificates.get(certificate_id).ok_or_else(|| {
-        KmsError::from(KmipError::InvalidKmipObject(
-            ErrorReason::Item_Not_Found,
-            "The certificate must be in the hashmap".to_string(),
-        ))
-    })?;
-    let certificate = certificates.get(*certificate_idx as usize).ok_or_else(|| {
-        KmsError::from(KmipError::InvalidKmipObject(
-            ErrorReason::Item_Not_Found,
-            "The certificate index must be valid".to_string(),
-        ))
-    })?;
 
     // Verifying that the CRL is well signed by its issuer
     let crl = X509Crl::from_pem(crl_bytes.as_slice())?;
@@ -463,6 +463,7 @@ async fn test_and_get_resource_from_uri(
             "The CRL is not well-signed".to_string(),
         )))
     };
+    debug!("test_and_get_resource_from_uri: exiting in success");
     Ok(crl_bytes)
 }
 

@@ -83,22 +83,7 @@ pub async fn certify(
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
     let (operations, unique_identifier) = match subject {
-        Subject::X509Req(unique_identifier, _) => {
-            (
-                vec![
-                    // upsert the certificate
-                    AtomicOperation::Upsert((
-                        unique_identifier.to_string(),
-                        certificate,
-                        attributes,
-                        Some(tags),
-                        StateEnumeration::Active,
-                    )),
-                ],
-                unique_identifier,
-            )
-        }
-        Subject::Certificate(unique_identifier, _, _) => {
+        Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
             (
                 vec![
                     // upsert the certificate
