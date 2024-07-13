@@ -121,7 +121,7 @@ pub fn validate_certificate(
 }
 
 #[tokio::test]
-#[ignore = "error: connection closed before message completed"]
+// #[ignore = "error: connection closed before message completed"]
 async fn test_cli_validate() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
