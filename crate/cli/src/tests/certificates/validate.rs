@@ -122,7 +122,7 @@ pub fn validate_certificate(
 }
 
 #[tokio::test]
-#[ignore = "error: connection closed before message completed"]
+// #[ignore = "error: connection closed before message completed"]
 async fn test_cli_validate() -> Result<(), CliError> {
     log_init("cosmian_kms_cli=debug");
 
