@@ -557,19 +557,20 @@ cryptoki_fn!(
         pTemplate: CK_ATTRIBUTE_PTR,
         ulCount: CK_ULONG,
     ) {
-        initialized!();
-        valid_session!(hSession);
-        not_null!(pTemplate);
         trace!(
             "C_GetAttributeValue: session: {:?}, object: {:?}",
             hSession,
             hObject
         );
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pTemplate);
+
         sessions::session(hSession, |session| -> MResult<()> {
             let find_ctx = session
                 .find_ctx
                 .as_ref()
-                .ok_or_else(|| MError::OperationNotInitialized)?;
+                .ok_or_else(|| MError::OperationNotInitialized(hSession))?;
             let object = match find_ctx.get_using_handle(hObject) {
                 Some(object) => object,
                 None => {
@@ -606,12 +607,11 @@ cryptoki_fn!(
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
                 info!(
-                    "C_GetAttributeValue: session: {:?}, object: {:?},type: {:?}",
+                    "C_GetAttributeValue: session: {:?}, object: {:?}, type: {:?}",
                     hSession,
                     hObject,
                     type_.to_string(),
                 );
-                debug!("C_GetAttributeValue: attribute: {:?}", attribute);
             }
             Ok(())
         })
@@ -663,15 +663,18 @@ cryptoki_fn!(
                 Some(find_ctx) => find_ctx,
                 None => {
                     unsafe { *pulObjectCount = 0 };
-                    return Err(MError::OperationNotInitialized);
+                    return Err(MError::OperationNotInitialized(hSession));
                 }
             };
             debug!(
-                "C_FindObjects: objects still available: {:?}",
-                find_ctx.unread_indexes
+                "C_FindObjects: session: {:?}, objects still available: {:?}",
+                hSession, find_ctx.unread_indexes
             );
             if find_ctx.unread_indexes.is_empty() {
-                info!("C_FindObjects: no more objects to return");
+                info!(
+                    "C_FindObjects: session: {:?}, no more objects to return",
+                    hSession
+                );
                 unsafe { *pulObjectCount = 0 };
                 return Ok(());
             }
@@ -680,7 +683,11 @@ cryptoki_fn!(
                 .unread_indexes
                 .drain(0..max_objects)
                 .collect::<Vec<_>>();
-            info!("C_FindObjects: returning {} objects", handles.len());
+            info!(
+                "C_FindObjects: session: {:?}, returning {} objects",
+                hSession,
+                handles.len()
+            );
             let output = unsafe { slice::from_raw_parts_mut(phObject, max_objects) };
             output.copy_from_slice(handles.as_slice());
             unsafe { *pulObjectCount = max_objects as CK_ULONG };
@@ -698,7 +705,7 @@ cryptoki_fn!(
             let find_ctx = session
                 .find_ctx
                 .as_mut()
-                .ok_or(MError::OperationNotInitialized)?;
+                .ok_or(MError::OperationNotInitialized(hSession))?;
             find_ctx.unread_indexes = find_ctx
                 .objects
                 .iter()
@@ -756,7 +763,7 @@ cryptoki_fn!(
             let find_ctx = session
                 .find_ctx
                 .as_ref()
-                .ok_or(MError::OperationNotInitialized)?;
+                .ok_or(MError::OperationNotInitialized(hSession))?;
             match find_ctx.get_using_handle(hKey).as_deref() {
                 Some(Object::RemoteObjectId(remote_object)) => match remote_object.remote_type() {
                     RemoteObjectType::PublicKey | RemoteObjectType::Certificate => {
@@ -898,7 +905,7 @@ cryptoki_fn!(
             let find_ctx = &session
                 .find_ctx
                 .as_ref()
-                .ok_or(MError::OperationNotInitialized)?;
+                .ok_or(MError::OperationNotInitialized(hSession))?;
             let object = find_ctx.get_using_handle(hKey);
             let private_key = match object.as_deref() {
                 Some(Object::PrivateKey(private_key)) => private_key,
@@ -942,7 +949,7 @@ cryptoki_fn!(
         not_null!(pPart);
         sessions::session(hSession, |session| -> MResult<()> {
             let sign_ctx = match session.sign_ctx.as_mut() {
-                None => return Err(MError::OperationNotInitialized),
+                None => return Err(MError::OperationNotInitialized(hSession)),
                 Some(sign_ctx) => sign_ctx,
             };
             sign_ctx

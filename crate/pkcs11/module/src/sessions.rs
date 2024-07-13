@@ -125,11 +125,11 @@ impl Session {
     ) -> MResult<()> {
         let sign_ctx = match self.sign_ctx.as_mut() {
             Some(sign_ctx) => sign_ctx,
-            None => return Err(MError::OperationNotInitialized),
+            None => return Err(MError::OperationNotInitialized(0)),
         };
         let data = data
             .or(sign_ctx.payload.as_deref())
-            .ok_or(MError::OperationNotInitialized)?;
+            .ok_or(MError::OperationNotInitialized(0))?;
         let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
             Ok(sig) => sig,
             Err(e) => {
@@ -161,7 +161,7 @@ impl Session {
     ) -> MResult<()> {
         let decrypt_ctx = match self.decrypt_ctx.as_mut() {
             Some(decrypt_ctx) => decrypt_ctx,
-            None => return Err(MError::OperationNotInitialized),
+            None => return Err(MError::OperationNotInitialized(0)),
         };
         let cleartext = backend().decrypt(
             decrypt_ctx.remote_object.clone(),
@@ -257,7 +257,7 @@ impl Session {
                 let find_ctx = self
                     .find_ctx
                     .as_mut()
-                    .ok_or(MError::OperationNotInitialized)?;
+                    .ok_or(MError::OperationNotInitialized(0))?;
                 let (_, handle) = find_ctx
                     .get_using_id(&id)
                     .ok_or_else(|| MError::ArgumentsBad)?;

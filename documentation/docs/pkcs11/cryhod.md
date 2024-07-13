@@ -99,6 +99,6 @@ ckms.exe rsa keys create -s 2048 -t disk-encryption
 
 
 ```shell
-Public key unique identifier: bcf07b63-54f3-429b-8c55-6ed444752a8e
-Private key unique identifier: 9aa39521-dcde-4aad-b328-9a3168beb556
+          Public key unique identifier: ec572e57-eab0-481c-9393-805a11c12ac0
+          Private key unique identifier: e70509f9-77ae-4310-bd15-8f6049372426
 ```

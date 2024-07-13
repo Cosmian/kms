@@ -71,8 +71,8 @@ pub enum MError {
     #[error("object {0} is invalid")]
     ObjectHandleInvalid(CK_OBJECT_HANDLE),
 
-    #[error("operation has not been initialized")]
-    OperationNotInitialized,
+    #[error("operation has not been initialized, session: {0}")]
+    OperationNotInitialized(CK_SESSION_HANDLE),
 
     #[error("no random number generator")]
     RandomNoRng,
@@ -143,7 +143,7 @@ impl From<MError> for CK_RV {
             MError::MechanismInvalid(_) => CKR_MECHANISM_INVALID,
             MError::NeedToCreateThreads => CKR_NEED_TO_CREATE_THREADS,
             MError::ObjectHandleInvalid(_) => CKR_OBJECT_HANDLE_INVALID,
-            MError::OperationNotInitialized => CKR_OPERATION_NOT_INITIALIZED,
+            MError::OperationNotInitialized(_) => CKR_OPERATION_NOT_INITIALIZED,
             MError::RandomNoRng => CKR_RANDOM_NO_RNG,
             MError::SessionHandleInvalid(_) => CKR_SESSION_HANDLE_INVALID,
             MError::SessionParallelNotSupported => CKR_SESSION_PARALLEL_NOT_SUPPORTED,

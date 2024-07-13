@@ -92,6 +92,18 @@ impl PartialEq for Object {
 }
 
 impl Object {
+    pub fn name(&self) -> String {
+        match self {
+            Object::Certificate(_) => "Certificate",
+            Object::PrivateKey(_) => "Private Key",
+            Object::Profile(_) => "Profile",
+            Object::PublicKey(_) => "Public Key",
+            Object::DataObject(_) => "Data Object",
+            Object::RemoteObjectId(_) => "Remote Object ID",
+        }
+        .to_string()
+    }
+
     pub fn attribute(&self, type_: AttributeType) -> MResult<Option<Attribute>> {
         let attribute = match self {
             Object::Certificate(cert) => match type_ {
@@ -243,9 +255,14 @@ impl Object {
                     error!("Remote object id: type_ unimplemented: {:?}", type_);
                     None
                 }
-            }
+            },
         };
-        debug!("attribute: {:?} => {:?}", type_, attribute);
+        debug!(
+            "Object: {}, attribute: {:?} => {:?}",
+            self.name(),
+            type_,
+            attribute
+        );
         Ok(attribute)
     }
 
