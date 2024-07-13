@@ -2,7 +2,6 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use cosmian_logger::log_utils::log_init;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::{debug, info};
@@ -124,8 +123,6 @@ pub fn validate_certificate(
 #[tokio::test]
 // #[ignore = "error: connection closed before message completed"]
 async fn test_cli_validate() -> Result<(), CliError> {
-    log_init("cosmian_kms_cli=debug");
-
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
@@ -207,7 +204,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res}"
     );
-    assert_eq!(test1_res, "Invalid");
+    assert_eq!(test1_res, "Invalid\n");
 
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -224,7 +221,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
-    assert_eq!(test2_res, "Valid");
+    assert_eq!(test2_res, "Valid\n");
 
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -242,7 +239,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res}"
     );
-    assert_eq!(test3_res, "Invalid");
+    assert_eq!(test3_res, "Invalid\n");
 
     let test4_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -253,7 +250,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
     )?;
 
     info!("validate chain only. Must be valid.");
-    assert_eq!(test4_res, "Valid");
+    assert_eq!(test4_res, "Valid\n");
 
     info!("validate tests successfully passed");
     Ok(())

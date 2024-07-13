@@ -470,7 +470,7 @@ impl KmsClient {
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
-        headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+        // headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
         // We deal with 4 scenarios:
         // 1. HTTP: no TLS
@@ -504,10 +504,11 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(90))
-                .timeout(Duration::from_secs(90))
-                .tcp_keepalive(Duration::from_secs(90))
-                .pool_idle_timeout(Duration::from_secs(90))
+                // .connect_timeout(Duration::from_secs(90))
+                // .timeout(Duration::from_secs(90))
+                // .tcp_keepalive(Duration::from_secs(90))
+                // .pool_max_idle_per_host(max)
+                // .pool_idle_timeout(None)
                 .default_headers(headers)
                 .build()?,
             server_url,
