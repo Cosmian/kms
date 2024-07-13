@@ -48,6 +48,7 @@ impl Pkcs11PrivateKey {
         {
             CryptographicAlgorithm::RSA => {
                 let rsa_modulus = kms_object.attributes.cryptographic_length.ok_or_else(||MError::ArgumentsBad)?.to_be_bytes().to_vec();
+                let rsa_exponent = kms_object.attributes.cryptographic_length.ok_or_else(||MError::ArgumentsBad)?.to_be_bytes().to_vec();
                 let cryptographic_parameters = kms_object.attributes.cryptographic_parameters.ok_or_else(|| MError::ArgumentsBad)?;
                 let key_size = cryptographic_parameters.
                 KeyAlgorithm::Rsa
