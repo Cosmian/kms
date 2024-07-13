@@ -2,7 +2,6 @@ use std::{
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
-    time::Duration,
 };
 
 use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
@@ -470,7 +469,7 @@ impl KmsClient {
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
-        // headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+        headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
         // We deal with 4 scenarios:
         // 1. HTTP: no TLS
@@ -507,8 +506,8 @@ impl KmsClient {
                 // .connect_timeout(Duration::from_secs(90))
                 // .timeout(Duration::from_secs(90))
                 // .tcp_keepalive(Duration::from_secs(90))
-                // .pool_max_idle_per_host(max)
-                // .pool_idle_timeout(None)
+                .pool_idle_timeout(None)
+                .pool_max_idle_per_host(0)
                 .default_headers(headers)
                 .build()?,
             server_url,

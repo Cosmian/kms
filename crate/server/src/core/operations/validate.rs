@@ -10,6 +10,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use futures::future::join_all;
+use http::{HeaderMap, HeaderValue};
 use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
@@ -473,8 +474,14 @@ async fn get_crl_bytes(
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
-    let client = reqwest::Client::new();
-
+    let builder = reqwest::ClientBuilder::new();
+    let mut headers = HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    let client = builder
+        .pool_idle_timeout(None)
+        .pool_max_idle_per_host(0)
+        .default_headers(headers)
+        .build()?;
     let responses = uri_crls.iter().map(|(uri, certificate_id)| {
         test_and_get_resource_from_uri(&client, uri, hm_certificates, certificates, certificate_id)
     });
