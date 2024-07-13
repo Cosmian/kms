@@ -137,7 +137,11 @@ where `<vcpkg>` is the path to the vcpkg installation directory,
 and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
 To run the server from the command line, add `<vcpkg>\installed\<archi>\bin` to the `PATH`
-environment variable.
+environment variable e.g.
+
+```powershell
+$env:PATH+="<vcpkg>\installed\x64-windows\bin\"
+```
 
 ### Build the Docker container
 
