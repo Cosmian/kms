@@ -37,7 +37,7 @@ pub trait PrivateKey: Send + Sync {
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
 
     /// Returns the algorithm of the key; will fail if only the remote part is known
-    fn algorithm(&self) -> MResult<KeyAlgorithm>;
+    fn algorithm(&self) -> KeyAlgorithm;
 
     /// ID used as CKA_ID when searching objects by ID
     fn id(&self) -> Id {
@@ -47,22 +47,15 @@ pub trait PrivateKey: Send + Sync {
         }
     }
 
+    /// Return the key size in bits
+    fn key_size(&self) -> usize;
+
     /// Return the RSA private key if the key is an RSA key
     fn rsa_private_key(&self) -> MResult<RsaPrivateKey>;
-
-    /// Return the RSA modulus if the key is an RSA key
-    /// In big endian
-    fn rsa_modulus(&self) -> MResult<Vec<u8>>;
-    // {
-    //     Ok(self.rsa_private_key()?.modulus.as_bytes().to_vec())
-    // }
 
     /// Return the RSA public exponent if the key is an RSA key
     /// In big endian
     fn rsa_public_exponent(&self) -> MResult<Vec<u8>>;
-    // {
-    //     Ok(self.rsa_private_key()?.public_exponent.as_bytes().to_vec())
-    // }
 
     /// Return the EC P256 private key if the key is an EC key
     fn ec_p256_private_key(&self) -> MResult<p256::SecretKey>;

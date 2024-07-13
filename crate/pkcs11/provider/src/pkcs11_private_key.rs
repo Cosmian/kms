@@ -16,21 +16,20 @@ use crate::kms_object::KmsObject;
 pub struct Pkcs11PrivateKey {
     id: String,
     object_type: RemoteObjectType,
+    algorithm: KeyAlgorithm,
+    key_size: usize,
     /// DER bytes of the private key - those are lazy loaded
     /// when the private key is used
     der_bytes: Zeroizing<Vec<u8>>,
-    algorithm: Option<KeyAlgorithm>,
-    rsa_exponent: Option<Vec<u8>>,
-    rsa_modulus: Option<Vec<u8>>,
 }
 
 impl Pkcs11PrivateKey {
-    pub fn new(remote_id: String, remote_object_type: RemoteObjectType) -> Self {
+    pub fn new(remote_id: String, algorithm: KeyAlgorithm, key_size:usize) -> Self {
         Self {
             id: remote_id,
-            object_type: remote_object_type,
             der_bytes: Zeroizing::new(vec![]),
-            algorithm: None,
+            algorithm,
+            key_size
         }
     }
 
@@ -125,6 +124,10 @@ impl PrivateKey for Pkcs11PrivateKey {
             .ok_or_else(|| MError::Cryptography("algorithm not known".to_string()))
     }
 
+    fn key_size(&self) -> usize {
+        todo!()
+    }
+
     fn rsa_private_key(&self) -> MResult<RsaPrivateKey> {
         match self.algorithm()? {
             KeyAlgorithm::Rsa => RsaPrivateKey::from_der(self.der_bytes.as_ref()).map_err(|e| {
@@ -138,6 +141,16 @@ impl PrivateKey for Pkcs11PrivateKey {
                 ))
             }
         }
+    }
+
+
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
+        Ok(if self.der_bytes.len() > 0 {
+            self.rsa_private_key()?.public_exponent.as_bytes().to_vec()
+        } else {
+            //TODO: not great but very little chance that 1/ it is different and 2/ it has any effect
+            65537_u32.to_be_bytes().to_vec()
+        })
     }
 
     fn ec_p256_private_key(&self) -> MResult<p256::SecretKey> {
