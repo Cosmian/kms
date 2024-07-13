@@ -3,10 +3,10 @@
 set -ex
 
 # --- Declare the following variables for tests
-# export TARGET=x86_64-unknown-linux-gnu
-# export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=/usr/local/openssl
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications"
+export TARGET=x86_64-unknown-linux-gnu
+export DEBUG_OR_RELEASE=debug
+export OPENSSL_DIR=/usr/local/openssl
+export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications"
 
 ROOT_FOLDER=$(pwd)
 
@@ -74,7 +74,11 @@ rm -f /tmp/*.json
 export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
 # shellcheck disable=SC2086
 # cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+counter=0
 while true; do
+  counter=$((counter + 1))
+  echo "Round: $counter"
+  # shellcheck disable=SC2086
   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
   sleep 3
 done
