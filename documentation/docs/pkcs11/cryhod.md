@@ -88,3 +88,17 @@ setx COSMIAN_PKCS11_LOGGING_LEVEL "debug"
 
 ## Creating a RSA private key and Certificate to use with CRYHOD
 
+Create an RSA key with 2048 bits and the `disk-encryption` tag
+
+```powershell
+ckms.exe rsa keys create -s 2048 -t disk-encryption
+```
+
+
+
+
+
+```shell
+Public key unique identifier: bcf07b63-54f3-429b-8c55-6ed444752a8e
+Private key unique identifier: 9aa39521-dcde-4aad-b328-9a3168beb556
+```

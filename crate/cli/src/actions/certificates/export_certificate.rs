@@ -99,7 +99,7 @@ impl ExportCertificateAction {
         };
 
         // export the object
-        let (object, export_attributes) = export_object(
+        let (unique_identifier, object, export_attributes) = export_object(
             client_connector,
             &object_id,
             false,
@@ -144,7 +144,7 @@ impl ExportCertificateAction {
 
         let mut stdout = format!(
             "The certificate {} of type {} was exported to {:?}",
-            &object_id,
+            &unique_identifier.to_string(),
             object.object_type(),
             &self.certificate_file
         );

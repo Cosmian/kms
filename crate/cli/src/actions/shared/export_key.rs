@@ -130,7 +130,7 @@ impl ExportKeyAction {
         };
 
         // export the object
-        let (object, _) = export_object(
+        let (unique_identifier, object, _) = export_object(
             kms_rest_client,
             &id,
             self.unwrap,
@@ -164,7 +164,7 @@ impl ExportKeyAction {
 
         let stdout = format!(
             "The key {} of type {} was exported to {:?}",
-            &id,
+            &unique_identifier.to_string(),
             object.object_type(),
             &self.key_file
         );
