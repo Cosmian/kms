@@ -14,7 +14,7 @@ use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
-use reqwest::Client;
+use surf::{middleware::Redirect, Client, Config};
 use tracing::{debug, info, trace};
 
 use crate::{
@@ -196,7 +196,6 @@ fn validate_chain_structure(
     // structure ends returning valid.
     let son_cert = {
         if let Some(son_idx) = hm_certificates.get(&son_issuer_id) {
-            // safe unwrap. It is guarder by the if
             certificates.get(*son_idx as usize)
         } else {
             return Ok((ValidityIndicator::Valid, _count + 1))
@@ -386,7 +385,6 @@ enum UriType {
 // the crl object as a vector of u8.
 // It retrieves files in locale and in remote (via http request).
 async fn test_and_get_resource_from_uri(
-    client: &Client,
     uri: &String,
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
@@ -422,30 +420,29 @@ async fn test_and_get_resource_from_uri(
             }
         }
     };
+
     // Retrieving the object from its location
     let crl_bytes = match uri_type {
         Some(UriType::Url(url)) => {
-            match client.get(&url).send().await {
-                Ok(response) => {
-                    // missing error conversion
-                    match response.text().await {
-                        Ok(text) => Ok(text.as_bytes().to_vec()),
-                        Err(e) => Err(KmsError::from(KmipError::ObjectNotFound(format!(
-                            "Error in getting the body of the response for the following uri: \
-                             {uri}. Error: {e:?} "
-                        )))),
-                    }
-                }
-                Err(e) => {
-                    return Err(KmsError::from(KmipError::ObjectNotFound(format!(
-                        "Unable to download CRL at the following uri {uri}: Error: {e:?}"
-                    ))))
-                }
-            }
+            let client: Client = Config::new()
+                .set_max_connections_per_host(1)
+                .set_timeout(Some(Duration::from_secs(5)))
+                .try_into()?;
+
+            tokio::task::spawn_blocking(|| async {
+                let client = client;
+                client
+                    .get(url)
+                    .middleware(Redirect::default())
+                    .recv_bytes()
+                    .await
+            })
+            .await?
+            .await?
         }
         Some(UriType::Path(path)) => {
             // Get PEM file (path should be already canonic)
-            Ok(fs::read(path::Path::new(&path))?)
+            fs::read(path::Path::new(&path))?
         }
         _ => {
             return Err(KmsError::KmipError(
@@ -453,7 +450,7 @@ async fn test_and_get_resource_from_uri(
                 "Error that should not manifest".to_string(),
             ))
         }
-    }?;
+    };
 
     // Verifying that the CRL is well signed by its issuer
     let crl = X509Crl::from_pem(crl_bytes.as_slice())?;
@@ -473,17 +470,8 @@ async fn get_crl_bytes(
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
-    let builder = reqwest::ClientBuilder::new();
-    // let mut headers = HeaderMap::new();
-    // headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    let client = builder
-        // .tcp_keepalive(Duration::from_secs(15))
-        .pool_idle_timeout(Duration::from_secs(15))
-        // .pool_max_idle_per_host(0)
-        // .default_headers(headers)
-        .build()?;
     let responses = uri_crls.iter().map(|(uri, certificate_id)| {
-        test_and_get_resource_from_uri(&client, uri, hm_certificates, certificates, certificate_id)
+        test_and_get_resource_from_uri(uri, hm_certificates, certificates, certificate_id)
     });
 
     let crl_bytes = join_all(responses)

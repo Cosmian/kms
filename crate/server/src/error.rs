@@ -1,4 +1,4 @@
-use std::{array::TryFromSliceError, sync::mpsc::SendError};
+use std::{array::TryFromSliceError, convert::Infallible, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof::reexport::crypto_core::CryptoCoreError;
@@ -9,6 +9,7 @@ use cosmian_kmip::{
 };
 use redis::ErrorKind;
 use thiserror::Error;
+use tokio::task::JoinError;
 use x509_parser::prelude::{PEMError, X509Error};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -190,8 +191,20 @@ impl From<TryFromSliceError> for KmsError {
     }
 }
 
-impl From<reqwest::Error> for KmsError {
-    fn from(e: reqwest::Error) -> Self {
+impl From<surf::Error> for KmsError {
+    fn from(e: surf::Error) -> Self {
+        Self::ClientConnectionError(e.to_string())
+    }
+}
+
+impl From<Infallible> for KmsError {
+    fn from(e: Infallible) -> Self {
+        Self::ClientConnectionError(e.to_string())
+    }
+}
+
+impl From<JoinError> for KmsError {
+    fn from(e: JoinError) -> Self {
         Self::ClientConnectionError(e.to_string())
     }
 }

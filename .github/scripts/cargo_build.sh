@@ -71,14 +71,15 @@ fi
 
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json
+# export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
 # shellcheck disable=SC2086
 # cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-counter=0
+counter=1
 while true; do
-  counter=$((counter + 1))
-  echo "Round: $counter"
   # shellcheck disable=SC2086
   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+  counter=$((counter + 1))
+  echo "Round: $counter"
   sleep 3
 done
 

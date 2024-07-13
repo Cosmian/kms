@@ -258,8 +258,8 @@ pub async fn prepare_kms_server(
         let mut app = App::new()
             .wrap(IdentityMiddleware::default())
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000)); // Set the maximum size of the JSON request payload.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
         if enable_google_cse {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
@@ -319,10 +319,7 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_disconnect_timeout(std::time::Duration::from_secs(240))
-    .tls_handshake_timeout(std::time::Duration::from_secs(240))
-    .keep_alive(std::time::Duration::from_secs(240))
-    .client_request_timeout(std::time::Duration::from_secs(240));
+    .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
         Some(b) => {

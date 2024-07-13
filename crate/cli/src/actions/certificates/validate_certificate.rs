@@ -32,7 +32,21 @@ impl ValidateCertificatesAction {
             self.unique_identifier.clone(),
             self.validity_time.clone(),
         )?;
-        let validity_indicator = client_connector.validate(request).await?.validity_indicator;
+
+        let client_connector_clone = client_connector.clone();
+        let validity_indicator = tokio::task::spawn_blocking(move || async move {
+            let client_connector = client_connector_clone;
+            client_connector
+                .validate(request)
+                .await
+                .unwrap()
+                .validity_indicator
+        })
+        .await
+        .unwrap()
+        .await;
+
+        // let validity_indicator = client_connector.validate(request).await?.validity_indicator;
         console::Stdout::new(match validity_indicator {
             ValidityIndicator::Valid => "Valid",
             ValidityIndicator::Invalid => "Invalid",

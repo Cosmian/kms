@@ -39,7 +39,6 @@ impl CertificatesCommands {
     pub async fn process(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Certify(action) => action.run(client_connector).await,
-            // Self::Create(action) => action.run(client_connector).await,
             Self::Decrypt(action) => action.run(client_connector).await,
             Self::Encrypt(action) => action.run(client_connector).await,
             Self::Export(action) => action.run(client_connector).await,
