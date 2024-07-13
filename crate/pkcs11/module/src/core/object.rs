@@ -47,7 +47,7 @@ pub enum Object {
     Profile(CK_PROFILE_ID),
     PublicKey(Arc<dyn PublicKey>),
     DataObject(Arc<dyn DataObject>),
-    RemoteObjectId(Arc<dyn RemoteObjectId>),
+    // RemoteObjectId(Arc<dyn RemoteObjectId>),
 }
 
 impl Object {
@@ -61,7 +61,7 @@ impl Object {
             }),
             Object::PublicKey(public_key) => Ok(public_key.id()),
             Object::DataObject(data) => Ok(data.id()),
-            Object::RemoteObjectId(remote_object_id) => Ok(remote_object_id.id()),
+            // Object::RemoteObjectId(remote_object_id) => Ok(remote_object_id.id()),
         }
     }
 }
@@ -77,14 +77,14 @@ impl PartialEq for Object {
             (Self::Profile(l0), Self::Profile(r0)) => l0 == r0,
             (Self::PublicKey(l0), Self::PublicKey(r0)) => l0 == r0,
             (Self::DataObject(l0), Self::DataObject(r0)) => l0 == r0,
-            (Self::RemoteObjectId(l0), Self::RemoteObjectId(r0)) => l0 == r0,
+            // (Self::RemoteObjectId(l0), Self::RemoteObjectId(r0)) => l0 == r0,
             (
                 Self::Certificate(_)
                 | Self::PrivateKey(_)
                 | Self::Profile(_)
                 | Self::PublicKey(_)
-                | Self::DataObject(_)
-                | Self::RemoteObjectId(_),
+                | Self::DataObject(_),
+                // | Self::RemoteObjectId(_),
                 _,
             ) => false,
         }
@@ -99,7 +99,7 @@ impl Object {
             Object::Profile(_) => "Profile",
             Object::PublicKey(_) => "Public Key",
             Object::DataObject(_) => "Data Object",
-            Object::RemoteObjectId(_) => "Remote Object ID",
+            // Object::RemoteObjectId(_) => "Remote Object ID",
         }
         .to_string()
     }
@@ -232,30 +232,30 @@ impl Object {
                     None
                 }
             },
-            Object::RemoteObjectId(remote_object_id) => match type_ {
-                AttributeType::Id => Some(Attribute::Id(remote_object_id.id().encode()?)),
-                AttributeType::Decrypt => match remote_object_id.remote_type() {
-                    RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
-                        Some(Attribute::Decrypt(true))
-                    }
-                    _ => Some(Attribute::Decrypt(false)),
-                },
-                AttributeType::Modulus => Some(Attribute::Modulus(2048_u32.to_be_bytes().to_vec())),
-                AttributeType::PublicExponent => {
-                    Some(Attribute::PublicExponent(65537_u32.to_be_bytes().to_vec()))
-                }
-                AttributeType::Value => {
-                    warn!(
-                        "Requesting value of Remote Object {:?}",
-                        remote_object_id.id()
-                    );
-                    Some(Attribute::Value(vec![]))
-                }
-                _ => {
-                    error!("Remote object id: type_ unimplemented: {:?}", type_);
-                    None
-                }
-            },
+            // Object::RemoteObjectId(remote_object_id) => match type_ {
+            //     AttributeType::Id => Some(Attribute::Id(remote_object_id.id().encode()?)),
+            //     AttributeType::Decrypt => match remote_object_id.remote_type() {
+            //         RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
+            //             Some(Attribute::Decrypt(true))
+            //         }
+            //         _ => Some(Attribute::Decrypt(false)),
+            //     },
+            //     AttributeType::Modulus => Some(Attribute::Modulus(2048_u32.to_be_bytes().to_vec())),
+            //     AttributeType::PublicExponent => {
+            //         Some(Attribute::PublicExponent(65537_u32.to_be_bytes().to_vec()))
+            //     }
+            //     AttributeType::Value => {
+            //         warn!(
+            //             "Requesting value of Remote Object {:?}",
+            //             remote_object_id.id()
+            //         );
+            //         Some(Attribute::Value(vec![]))
+            //     }
+            //     _ => {
+            //         error!("Remote object id: type_ unimplemented: {:?}", type_);
+            //         None
+            //     }
+            // },
         };
         debug!(
             "Object: {}, attribute: {:?} => {:?}",

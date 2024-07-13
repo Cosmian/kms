@@ -16,7 +16,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     error::Pkcs11Error,
-    kms_object::{get_kms_object, get_kms_objects, kms_decrypt, locate_kms_objects},
+    kms_object::{
+        get_kms_object, get_kms_object_attributes, get_kms_objects, kms_decrypt, locate_kms_objects,
+    },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
     pkcs11_error,
@@ -114,19 +116,17 @@ impl Backend for CkmsBackend {
         ))))
     }
 
-    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>> {
+    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn PrivateKey>>> {
         trace!("find_all_private_keys");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
-        Ok(
-            locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])?
-                .into_iter()
-                .map(|id| {
-                    Arc::new(Pkcs11PrivateKey::new(id, RemoteObjectType::PrivateKey))
-                        as Arc<dyn RemoteObjectId>
-                })
-                .collect(),
-        )
+        let mut private_keys = vec![];
+        for id in locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])? {
+            let attributes = get_kms_object_attributes(&self.kms_client, &id)?;
+            let sk = Pkcs11PrivateKey::new()
+        }
+        
+        Ok(private_keys)
     }
 
     fn find_all_public_keys(&self) -> MResult<Vec<Arc<dyn PublicKey>>> {

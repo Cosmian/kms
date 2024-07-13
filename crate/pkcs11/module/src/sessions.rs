@@ -229,7 +229,7 @@ impl Session {
                         backend()
                             .find_all_private_keys()?
                             .into_iter()
-                            .map(|c| find_ctx.insert(Arc::new(Object::RemoteObjectId(c))))
+                            .map(|c| find_ctx.insert(Arc::new(Object::PrivateKey(c))))
                             .collect::<MResult<Vec<_>>>()?;
                     }
                     pkcs11_sys::CKO_DATA => {

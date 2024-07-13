@@ -11,7 +11,7 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use tracing::{debug, trace};
+use tracing::{debug, log::info, trace};
 
 use crate::{
     core::{

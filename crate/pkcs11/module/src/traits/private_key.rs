@@ -52,15 +52,17 @@ pub trait PrivateKey: Send + Sync {
 
     /// Return the RSA modulus if the key is an RSA key
     /// In big endian
-    fn rsa_modulus(&self) -> MResult<Vec<u8>> {
-        Ok(self.rsa_private_key()?.modulus.as_bytes().to_vec())
-    }
+    fn rsa_modulus(&self) -> MResult<Vec<u8>>;
+    // {
+    //     Ok(self.rsa_private_key()?.modulus.as_bytes().to_vec())
+    // }
 
     /// Return the RSA public exponent if the key is an RSA key
     /// In big endian
-    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
-        Ok(self.rsa_private_key()?.public_exponent.as_bytes().to_vec())
-    }
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>>;
+    // {
+    //     Ok(self.rsa_private_key()?.public_exponent.as_bytes().to_vec())
+    // }
 
     /// Return the EC P256 private key if the key is an EC key
     fn ec_p256_private_key(&self) -> MResult<p256::SecretKey>;

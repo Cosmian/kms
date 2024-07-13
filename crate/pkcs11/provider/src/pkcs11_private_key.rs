@@ -20,6 +20,8 @@ pub struct Pkcs11PrivateKey {
     /// when the private key is used
     der_bytes: Zeroizing<Vec<u8>>,
     algorithm: Option<KeyAlgorithm>,
+    rsa_exponent: Option<Vec<u8>>,
+    rsa_modulus: Option<Vec<u8>>,
 }
 
 impl Pkcs11PrivateKey {
@@ -39,12 +41,17 @@ impl Pkcs11PrivateKey {
             .map_err(|e| MError::Cryptography(e.to_string()))?
             .key_bytes()
             .map_err(|e| MError::Cryptography(e.to_string()))?;
-        let algorithm = match kms_object
+        let (algorithm, rsa_exponent, rsa_key_size) = match kms_object
             .attributes
             .cryptographic_algorithm
             .ok_or_else(|| MError::Cryptography("missing cryptographic algorithm".to_string()))?
         {
-            CryptographicAlgorithm::RSA => KeyAlgorithm::Rsa,
+            CryptographicAlgorithm::RSA => {
+                let rsa_modulus = kms_object.attributes.cryptographic_length.ok_or_else(||MError::ArgumentsBad)?.to_be_bytes().to_vec();
+                let cryptographic_parameters = kms_object.attributes.cryptographic_parameters.ok_or_else(|| MError::ArgumentsBad)?;
+                let key_size = cryptographic_parameters.
+                KeyAlgorithm::Rsa
+            },
             CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
                 let curve = kms_object
                     .attributes

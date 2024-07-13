@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_operations::{Decrypt, Locate},
+    kmip_operations::{Decrypt, GetAttributes, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
         UniqueIdentifier,
@@ -188,4 +188,25 @@ pub(crate) async fn kms_decrypt_async(
     response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_string())
     })
+}
+
+pub fn get_kms_object_attributes(
+    kms_client: &KmsClient,
+    object_id: &str,
+) -> Result<Attributes, Pkcs11Error> {
+    tokio::runtime::Runtime::new()?.block_on(get_kms_object_attributes_async(kms_client, object_id))
+}
+
+pub(crate) async fn get_kms_object_attributes_async(
+    kms_client: &KmsClient,
+    object_id: &str,
+) -> Result<Attributes, Pkcs11Error> {
+    let response = kms_client
+        .get_attributes(GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_string())),
+            attribute_references: Some(references),
+        })
+        .await?;
+
+    Ok(response.attributes)
 }
