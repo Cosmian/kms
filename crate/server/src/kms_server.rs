@@ -318,11 +318,11 @@ pub async fn prepare_kms_server(
         };
 
         app.service(default_scope)
-    })
-    .client_disconnect_timeout(std::time::Duration::from_secs(5))
-    .tls_handshake_timeout(std::time::Duration::from_secs(5))
-    .keep_alive(std::time::Duration::from_secs(5))
-    .client_request_timeout(std::time::Duration::from_secs(30));
+    });
+    // .client_disconnect_timeout(std::time::Duration::from_secs(5))
+    // .tls_handshake_timeout(std::time::Duration::from_secs(5))
+    // .keep_alive(std::time::Duration::from_secs(5))
+    // .client_request_timeout(std::time::Duration::from_secs(30));
 
     Ok(match builder {
         Some(b) => {

@@ -10,6 +10,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use futures::future::join_all;
+use http::{HeaderMap, HeaderValue};
 use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
@@ -44,6 +45,23 @@ pub(crate) async fn validate_operation(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {:?}", request);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    let client = reqwest::ClientBuilder::new()
+        // .connect_timeout(Duration::from_secs(5))
+        // .tcp_keepalive(Duration::from_secs(10))
+        // .timeout(Duration::from_secs(5))
+        .pool_idle_timeout(None)
+        .pool_max_idle_per_host(1)
+        .default_headers(headers)
+        .build()
+        .map_err(|e| {
+            KmsError::from(KmipError::ObjectNotFound(format!(
+                "Unable to build Reqwest client: Error: {e:?}"
+            )))
+        })?;
+
     let certificates = match (request.unique_identifier, request.certificate) {
         (None, None) => {
             return Ok(ValidateResponse {
@@ -114,7 +132,8 @@ pub(crate) async fn validate_operation(
         structural_validity.and(date_validation)
     } else {
         info!("URI list: {uri_list:?}");
-        let mut crl_bytes_list = get_crl_bytes(uri_list, &hm_certificates, certificates).await?;
+        let mut crl_bytes_list =
+            get_crl_bytes(&client, uri_list, &hm_certificates, certificates).await?;
         info!("CRL list size: {}", crl_bytes_list.len());
 
         let revocation_status = chain_revocation_status(certificates, &mut crl_bytes_list)?;
@@ -384,6 +403,7 @@ enum UriType {
 // the crl object as a vector of u8.
 // It retrieves files in locale and in remote (via http request).
 async fn test_and_get_resource_from_uri(
+    client: &reqwest::Client,
     uri: &String,
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
@@ -422,27 +442,22 @@ async fn test_and_get_resource_from_uri(
     // Retrieving the object from its location
     let crl_bytes = match uri_type {
         Some(UriType::Url(url)) => {
-            tokio::task::spawn_blocking(move || async {
-                let url = url;
-                let response = reqwest::get(&url).await.map_err(|e| {
+            let response = client.get(&url).send().await.map_err(|e| {
+                KmsError::from(KmipError::ObjectNotFound(format!(
+                    "Unable to download CRL at the following URL {url}: Error: {e:?}"
+                )))
+            })?;
+
+            response
+                .text()
+                .await
+                .map(|text| text.as_bytes().to_vec())
+                .map_err(|e| {
                     KmsError::from(KmipError::ObjectNotFound(format!(
-                        "Unable to download CRL at the following URL {url}: Error: {e:?}"
+                        "Error in getting the body of the response for the following URL: {url}. \
+                         Error: {e:?} "
                     )))
-                })?;
-                let text = response
-                    .text()
-                    .await
-                    .map(|text| text.as_bytes().to_vec())
-                    .map_err(|e| {
-                        KmsError::from(KmipError::ObjectNotFound(format!(
-                            "Error in getting the body of the response for the following URL: \
-                             {url}. Error: {e:?} "
-                        )))
-                    })?;
-                Ok::<Vec<u8>, KmsError>(text)
-            })
-            .await?
-            .await?
+                })?
         }
         Some(UriType::Path(path)) => {
             // Get PEM file (path should be already canonic)
@@ -470,12 +485,13 @@ async fn test_and_get_resource_from_uri(
 
 // request and receive crl objects. Input: uri.
 async fn get_crl_bytes(
+    client: &reqwest::Client,
     uri_crls: Vec<(String, Vec<u8>)>,
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
     let responses = uri_crls.iter().map(|(uri, certificate_id)| {
-        test_and_get_resource_from_uri(uri, hm_certificates, certificates, certificate_id)
+        test_and_get_resource_from_uri(client, uri, hm_certificates, certificates, certificate_id)
     });
 
     let crl_bytes = join_all(responses)
