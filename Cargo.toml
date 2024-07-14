@@ -58,7 +58,6 @@ cloudproof = "3.0"
 env_logger = "0.11"
 hex = "0.4"
 http = "0.2"
-surf = { version = "2.3", default-features = false }
 native-tls = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }

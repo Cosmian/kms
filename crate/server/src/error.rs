@@ -191,12 +191,6 @@ impl From<TryFromSliceError> for KmsError {
     }
 }
 
-impl From<surf::Error> for KmsError {
-    fn from(e: surf::Error) -> Self {
-        Self::ClientConnectionError(e.to_string())
-    }
-}
-
 impl From<Infallible> for KmsError {
     fn from(e: Infallible) -> Self {
         Self::ClientConnectionError(e.to_string())

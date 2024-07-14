@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path, time::Duration};
+use std::{collections::HashMap, fs, path};
 
 use cosmian_kmip::{
     kmip::{
@@ -14,7 +14,6 @@ use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
     x509::{CrlStatus, DistPointNameRef, DistPointRef, GeneralNameRef, X509Crl, X509},
 };
-use surf::{middleware::Redirect, Client, Config};
 use tracing::{debug, info, trace};
 
 use crate::{
@@ -420,22 +419,27 @@ async fn test_and_get_resource_from_uri(
             }
         }
     };
-
     // Retrieving the object from its location
     let crl_bytes = match uri_type {
         Some(UriType::Url(url)) => {
-            let client: Client = Config::new()
-                .set_max_connections_per_host(1)
-                .set_timeout(Some(Duration::from_secs(5)))
-                .try_into()?;
-
-            tokio::task::spawn_blocking(|| async {
-                let client = client;
-                client
-                    .get(url)
-                    .middleware(Redirect::default())
-                    .recv_bytes()
+            tokio::task::spawn_blocking(move || async {
+                let url = url;
+                let response = reqwest::get(&url).await.map_err(|e| {
+                    KmsError::from(KmipError::ObjectNotFound(format!(
+                        "Unable to download CRL at the following URL {url}: Error: {e:?}"
+                    )))
+                })?;
+                let text = response
+                    .text()
                     .await
+                    .map(|text| text.as_bytes().to_vec())
+                    .map_err(|e| {
+                        KmsError::from(KmipError::ObjectNotFound(format!(
+                            "Error in getting the body of the response for the following URL: \
+                             {url}. Error: {e:?} "
+                        )))
+                    })?;
+                Ok::<Vec<u8>, KmsError>(text)
             })
             .await?
             .await?

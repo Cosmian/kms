@@ -319,7 +319,7 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_request_timeout(std::time::Duration::from_secs(10));
+    .client_request_timeout(std::time::Duration::from_secs(240));
 
     Ok(match builder {
         Some(b) => {
