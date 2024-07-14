@@ -3,12 +3,12 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, GetAttributes, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
-        UniqueIdentifier,
+        RecommendedCurve, UniqueIdentifier,
     },
 };
 use cosmian_kms_client::{batch_export_objects, export_object, ClientConf, KmsClient};
-use cosmian_pkcs11_module::traits::EncryptionAlgorithm;
-use tracing::{debug, trace};
+use cosmian_pkcs11_module::traits::{EncryptionAlgorithm, KeyAlgorithm};
+use tracing::{debug, error, trace};
 use zeroize::Zeroizing;
 
 use crate::error::Pkcs11Error;
@@ -17,7 +17,7 @@ use crate::error::Pkcs11Error;
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct KmsObject {
-    pub tags_or_id: String,
+    pub remote_id: String,
     pub object: Object,
     pub attributes: Attributes,
     pub other_tags: Vec<String>,
@@ -75,7 +75,7 @@ pub(crate) async fn get_kms_objects_async(
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
         results.push(KmsObject {
-            tags_or_id: id,
+            remote_id: id,
             object,
             attributes,
             other_tags,
@@ -118,7 +118,7 @@ pub(crate) async fn get_kms_object_async(
         .filter(|t| !t.is_empty() && !t.starts_with('_'))
         .collect::<Vec<String>>();
     Ok(KmsObject {
-        tags_or_id: id.to_string(),
+        remote_id: id.to_string(),
         object,
         attributes,
         other_tags,
@@ -204,9 +204,52 @@ pub(crate) async fn get_kms_object_attributes_async(
     let response = kms_client
         .get_attributes(GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(object_id.to_string())),
-            attribute_references: Some(references),
+            attribute_references: None,
         })
         .await?;
-
     Ok(response.attributes)
+}
+
+pub fn key_algorithm_from_attributes(attributes: &Attributes) -> Result<KeyAlgorithm, Pkcs11Error> {
+    let algorithm = match attributes.cryptographic_algorithm.ok_or_else(|| {
+        Pkcs11Error::Default("missing cryptographic algorithm in attributes".to_string())
+    })? {
+        CryptographicAlgorithm::RSA => KeyAlgorithm::Rsa,
+        CryptographicAlgorithm::ECDH | CryptographicAlgorithm::EC => {
+            let curve = attributes
+                .cryptographic_domain_parameters
+                .ok_or_else(|| {
+                    Pkcs11Error::Default(
+                        "missing cryptographic domain parameters in attributes".to_string(),
+                    )
+                })?
+                .recommended_curve
+                .ok_or_else(|| {
+                    Pkcs11Error::Default("missing recommended curve in attributes".to_string())
+                })?;
+            match curve {
+                RecommendedCurve::P256 => KeyAlgorithm::EccP256,
+                RecommendedCurve::P384 => KeyAlgorithm::EccP384,
+                RecommendedCurve::P521 => KeyAlgorithm::EccP521,
+                RecommendedCurve::CURVE448 => KeyAlgorithm::X448,
+                RecommendedCurve::CURVEED448 => KeyAlgorithm::Ed448,
+                RecommendedCurve::CURVE25519 => KeyAlgorithm::X25519,
+                RecommendedCurve::CURVEED25519 => KeyAlgorithm::Ed25519,
+                _ => {
+                    error!("Unsupported curve for EC key");
+                    return Err(Pkcs11Error::Default(
+                        "unsupported curve for EC key".to_string(),
+                    ));
+                }
+            }
+        }
+        x => {
+            error!("Unsupported cryptographic algorithm: {:?}", x);
+            return Err(Pkcs11Error::Default(format!(
+                "unsupported cryptographic algorithm: {:?}",
+                x
+            )));
+        }
+    };
+    Ok(algorithm)
 }

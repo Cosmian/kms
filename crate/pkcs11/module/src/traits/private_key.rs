@@ -28,7 +28,7 @@ use crate::{
 };
 
 pub trait PrivateKey: Send + Sync {
-    fn private_key_id(&self) -> Vec<u8>;
+    fn private_key_id(&self) -> &str;
 
     fn label(&self) -> String {
         "PrivateKey".to_string()
@@ -43,7 +43,7 @@ pub trait PrivateKey: Send + Sync {
     fn id(&self) -> Id {
         Id {
             label: self.label(),
-            hash: self.private_key_id(),
+            hash: self.private_key_id().as_bytes().to_vec(),
         }
     }
 

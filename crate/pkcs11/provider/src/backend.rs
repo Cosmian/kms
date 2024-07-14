@@ -5,7 +5,7 @@ use cosmian_kms_client::KmsClient;
 use cosmian_pkcs11_module::{
     traits::{
         Backend, Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
-        RemoteObjectId, RemoteObjectType, SearchOptions, SignatureAlgorithm, Version,
+        SearchOptions, SignatureAlgorithm, Version,
     },
     MError, MResult,
 };
@@ -17,7 +17,8 @@ use zeroize::Zeroizing;
 use crate::{
     error::Pkcs11Error,
     kms_object::{
-        get_kms_object, get_kms_object_attributes, get_kms_objects, kms_decrypt, locate_kms_objects,
+        get_kms_object, get_kms_object_attributes, get_kms_objects, key_algorithm_from_attributes,
+        kms_decrypt, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -106,7 +107,9 @@ impl Backend for CkmsBackend {
             }
         };
         let kms_object = get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8)?;
-        Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
+        Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(
+            id, kms_object,
+        )?))
     }
 
     fn find_public_key(&self, query: SearchOptions) -> MResult<Arc<dyn PublicKey>> {
@@ -123,9 +126,15 @@ impl Backend for CkmsBackend {
         let mut private_keys = vec![];
         for id in locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])? {
             let attributes = get_kms_object_attributes(&self.kms_client, &id)?;
-            let sk = Pkcs11PrivateKey::new()
+            let key_size = attributes
+                .cryptographic_length
+                .ok_or_else(|| MError::Cryptography("missing key size".to_string()))?
+                as usize;
+            let sk =
+                Pkcs11PrivateKey::new(id, key_algorithm_from_attributes(&attributes)?, key_size);
+            private_keys.push(Arc::new(sk) as Arc<dyn PrivateKey>);
         }
-        
+
         Ok(private_keys)
     }
 
@@ -167,30 +176,24 @@ impl Backend for CkmsBackend {
 
     fn decrypt(
         &self,
-        remote_object: Arc<dyn RemoteObjectId>,
+        remote_object_id: String,
         algorithm: EncryptionAlgorithm,
         ciphertext: Vec<u8>,
     ) -> MResult<Zeroizing<Vec<u8>>> {
         debug!(
             "decrypt: {:?}, cipher text length: {}",
-            remote_object,
+            remote_object_id,
             ciphertext.len()
         );
-        kms_decrypt(
-            &self.kms_client,
-            remote_object.remote_id(),
-            algorithm,
-            ciphertext,
-        )
-        .map_err(Into::into)
+        kms_decrypt(&self.kms_client, remote_object_id, algorithm, ciphertext).map_err(Into::into)
     }
 }
 
 pub(crate) struct EmptyPrivateKeyImpl;
 
 impl PrivateKey for EmptyPrivateKeyImpl {
-    fn private_key_id(&self) -> Vec<u8> {
-        vec![]
+    fn private_key_id(&self) -> &str {
+        "empty key"
     }
 
     fn label(&self) -> String {
@@ -201,12 +204,22 @@ impl PrivateKey for EmptyPrivateKeyImpl {
         Ok(vec![])
     }
 
-    fn algorithm(&self) -> MResult<KeyAlgorithm> {
-        Ok(KeyAlgorithm::Rsa)
+    fn algorithm(&self) -> KeyAlgorithm {
+        KeyAlgorithm::Rsa
+    }
+
+    fn key_size(&self) -> usize {
+        0
     }
 
     fn rsa_private_key(&self) -> MResult<RsaPrivateKey> {
         Err(MError::Todo("rsa_private_key not implemented".to_string()))
+    }
+
+    fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
+        Err(MError::Todo(
+            "rsa_public_exponent not implemented".to_string(),
+        ))
     }
 
     fn ec_p256_private_key(&self) -> MResult<SecretKey> {

@@ -57,7 +57,7 @@ mod error;
 
 pub use error::{MError, MResult};
 
-use crate::{core::attribute::AttributeType, sessions::DecryptContext, traits::RemoteObjectType};
+use crate::{core::attribute::AttributeType, sessions::DecryptContext};
 
 mod sessions;
 #[cfg(test)]
@@ -765,23 +765,20 @@ cryptoki_fn!(
                 .as_ref()
                 .ok_or(MError::OperationNotInitialized(hSession))?;
             match find_ctx.get_using_handle(hKey).as_deref() {
-                Some(Object::RemoteObjectId(remote_object)) => match remote_object.remote_type() {
-                    RemoteObjectType::PublicKey | RemoteObjectType::Certificate => {
-                        Err(MError::KeyHandleInvalid(hKey))
-                    }
-                    RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
-                        debug!(
-                            "C_DecryptInit: session: {:?}, remote_object: {:?}, mechanism: {:?}",
-                            hSession, &remote_object, &mechanism
-                        );
-                        session.decrypt_ctx = Some(DecryptContext {
-                            remote_object: remote_object.clone(),
-                            algorithm: mechanism.into(),
-                            ciphertext: None,
-                        });
-                        Ok(())
-                    }
-                },
+                Some(Object::PrivateKey(sk)) => {
+                    debug!(
+                        "C_DecryptInit: session: {:?}, remote_object: {:?}, mechanism: {:?}",
+                        hSession,
+                        &sk.id(),
+                        &mechanism
+                    );
+                    session.decrypt_ctx = Some(DecryptContext {
+                        remote_object_id: sk.private_key_id().to_string(),
+                        algorithm: mechanism.into(),
+                        ciphertext: None,
+                    });
+                    Ok(())
+                }
                 Some(_) | None => Err(MError::KeyHandleInvalid(hKey)),
             }
         })

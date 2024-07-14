@@ -31,7 +31,7 @@ use tracing::{debug, error, info};
 
 use crate::{
     core::{attribute::Attributes, compoundid::Id, object::Object},
-    traits::{backend, EncryptionAlgorithm, RemoteObjectId, SearchOptions},
+    traits::{backend, EncryptionAlgorithm, SearchOptions},
 };
 use crate::{
     // object_store::ObjectStore,
@@ -109,7 +109,7 @@ pub struct SignContext {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct DecryptContext {
-    pub remote_object: Arc<dyn RemoteObjectId>,
+    pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     /// Ciphertext stored for multipart `C_DecryptUpdate` operations.
     pub ciphertext: Option<Vec<u8>>,
@@ -164,7 +164,7 @@ impl Session {
             None => return Err(MError::OperationNotInitialized(0)),
         };
         let cleartext = backend().decrypt(
-            decrypt_ctx.remote_object.clone(),
+            decrypt_ctx.remote_object_id.clone(),
             decrypt_ctx.algorithm,
             ciphertext,
         )?;

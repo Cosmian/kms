@@ -6,7 +6,7 @@ use zeroize::Zeroizing;
 use crate::{
     traits::{
         Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
-        RemoteObjectId, SearchOptions, Version,
+        SearchOptions, Version,
     },
     MResult,
 };
@@ -58,7 +58,7 @@ pub trait Backend: Send + Sync {
 
     fn decrypt(
         &self,
-        remote_object: Arc<dyn RemoteObjectId>,
+        remote_object_id: String,
         algorithm: EncryptionAlgorithm,
         ciphertext: Vec<u8>,
     ) -> MResult<Zeroizing<Vec<u8>>>;

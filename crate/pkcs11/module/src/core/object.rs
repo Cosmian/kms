@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use log::{error, warn};
+use log::error;
 use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
 use pkcs11_sys::{
     CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
@@ -32,10 +32,7 @@ use crate::{
         attribute::{Attribute, AttributeType},
         compoundid::Id,
     },
-    traits::{
-        Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
-        RemoteObjectType,
-    },
+    traits::{Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey},
     MResult,
 };
 
@@ -140,7 +137,7 @@ impl Object {
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
                 AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
                 AttributeType::EcParams => {
-                    let algorithm = private_key.algorithm()?;
+                    let algorithm = private_key.algorithm();
                     match algorithm {
                         KeyAlgorithm::EccP256
                         | KeyAlgorithm::EccP384
@@ -149,20 +146,20 @@ impl Object {
                         | KeyAlgorithm::Ed25519
                         | KeyAlgorithm::X448
                         | KeyAlgorithm::Ed448 => Some(Attribute::EcParams(
-                            private_key.algorithm()?.to_oid()?.to_der()?,
+                            private_key.algorithm().to_oid()?.to_der()?,
                         )),
                         _ => None,
                     }
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(private_key.id().encode()?)),
-                AttributeType::KeyType => Some(Attribute::KeyType(
-                    private_key.algorithm()?.to_ck_key_type(),
-                )),
-                AttributeType::Label => Some(Attribute::Label(private_key.label())),
-                AttributeType::Modulus => {
-                    Some(Attribute::Modulus(private_key.rsa_modulus()?.to_vec()))
+                AttributeType::KeyType => {
+                    Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
                 }
+                AttributeType::Label => Some(Attribute::Label(private_key.label())),
+                AttributeType::Modulus => Some(Attribute::Modulus(
+                    private_key.key_size().to_be_bytes().to_vec(),
+                )),
                 AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
                 AttributeType::PublicExponent => Some(Attribute::PublicExponent(
