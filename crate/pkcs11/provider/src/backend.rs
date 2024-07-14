@@ -97,9 +97,7 @@ impl Backend for CkmsBackend {
     fn find_private_key(&self, query: SearchOptions) -> MResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = match query {
-            SearchOptions::Id(id) => {
-                String::from_utf8(id).map_err(|_| pkcs11_error!("find_private_key: invalid ID"))?
-            }
+            SearchOptions::Id(id) => id,
             _ => {
                 return Err(MError::Backend(Box::new(pkcs11_error!(
                     "find_private_key: find must be made using an ID"
@@ -192,12 +190,8 @@ impl Backend for CkmsBackend {
 pub(crate) struct EmptyPrivateKeyImpl;
 
 impl PrivateKey for EmptyPrivateKeyImpl {
-    fn private_key_id(&self) -> &str {
-        "empty key"
-    }
-
-    fn label(&self) -> String {
-        "PrivateKeyImpl".to_string()
+    fn remote_id(&self) -> String {
+        "empty key".to_string()
     }
 
     fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> MResult<Vec<u8>> {

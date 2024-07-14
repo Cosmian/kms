@@ -11,6 +11,7 @@ use tracing::error;
 use x509_cert::{der::Encode, spki::SubjectPublicKeyInfoOwned};
 
 pub struct Pkcs11PublicKey {
+    remote_id: String,
     /// DER bytes of the public key
     der_bytes: Vec<u8>,
     /// SHA 256 fingerprint of the public key
@@ -27,6 +28,7 @@ impl Pkcs11PublicKey {
         let der_bytes = spki.to_der()?;
         let fingerprint = sha3::Sha3_256::digest(&der_bytes).to_vec();
         Ok(Self {
+            remote_id: "".to_string(),
             der_bytes,
             fingerprint,
             algorithm,
@@ -35,6 +37,10 @@ impl Pkcs11PublicKey {
 }
 
 impl PublicKey for Pkcs11PublicKey {
+    fn remote_id(&self) -> String {
+        self.remote_id.clone()
+    }
+
     fn fingerprint(&self) -> &[u8] {
         &self.fingerprint
     }

@@ -325,7 +325,7 @@ cryptoki_fn!(
                 | CKF_WRITE_PROTECTED
                 | CKF_USER_PIN_INITIALIZED
                 | CKF_RNG
-                | CKF_HW_SLOT, /* systemd-cryptenroll() requires this to be an hardware slot to
+                | CKF_HW_SLOT, /* systemd-cryptenroll() requires this to be a hardware slot to
                                 * be detected by auto */
             ulMaxSessionCount: CK_UNAVAILABLE_INFORMATION,
             ulSessionCount: CK_UNAVAILABLE_INFORMATION,
@@ -769,11 +769,11 @@ cryptoki_fn!(
                     debug!(
                         "C_DecryptInit: session: {:?}, remote_object: {:?}, mechanism: {:?}",
                         hSession,
-                        &sk.id(),
+                        &sk.remote_id(),
                         &mechanism
                     );
                     session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: sk.private_key_id().to_string(),
+                        remote_object_id: sk.remote_id().to_string(),
                         algorithm: mechanism.into(),
                         ciphertext: None,
                     });

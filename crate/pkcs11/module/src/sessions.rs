@@ -30,7 +30,7 @@ use pkcs11_sys::{
 use tracing::{debug, error, info};
 
 use crate::{
-    core::{attribute::Attributes, compoundid::Id, object::Object},
+    core::{attribute::Attributes, object::Object},
     traits::{backend, EncryptionAlgorithm, SearchOptions},
 };
 use crate::{
@@ -53,8 +53,8 @@ static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 
 #[derive(Default)]
 pub struct FindContext {
-    /// The PKCS#11 objects manipulated by this context.
-    pub objects: HashMap<Id, (Arc<Object>, CK_OBJECT_HANDLE)>,
+    /// The PKCS#11 objects manipulated by this context; the key is the remote id.
+    pub objects: HashMap<String, (Arc<Object>, CK_OBJECT_HANDLE)>,
     pub ids: HashMap<CK_OBJECT_HANDLE, Weak<Object>>,
     /// The indexes that have not yet been read by C_FindObjects
     pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
@@ -65,7 +65,7 @@ impl FindContext {
     pub fn insert(&mut self, object: Arc<Object>) -> MResult<CK_OBJECT_HANDLE> {
         let handle = self.ids.len() as CK_OBJECT_HANDLE;
         self.ids.insert(handle, Arc::downgrade(&object));
-        let id = object.id()?;
+        let id = object.remote_id();
         trace!("object ID: {id}");
         self.objects.insert(id, (object, handle));
         trace!("inserted object with id");
@@ -78,7 +78,7 @@ impl FindContext {
         self.ids.get(&handle).and_then(|weak| weak.upgrade())
     }
 
-    pub fn get_using_id(&self, id: &Id) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
+    pub fn get_using_id(&self, id: &str) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
         self.objects.get(id).cloned()
     }
 
@@ -247,19 +247,14 @@ impl Session {
                     search_class
                 );
             }
-            SearchOptions::Label(label) => {
-                info!("load_find_context: search by label: {}", label);
-                todo!("load_find_context: search by label")
-            }
-            SearchOptions::Id(data) => {
-                let id = Id::decode(data.as_slice())?;
-                debug!("load_find_context: search by id: {}", id);
+            SearchOptions::Id(remote_id) => {
+                debug!("load_find_context: search by id: {}", remote_id);
                 let find_ctx = self
                     .find_ctx
                     .as_mut()
                     .ok_or(MError::OperationNotInitialized(0))?;
                 let (_, handle) = find_ctx
-                    .get_using_id(&id)
+                    .get_using_id(&remote_id)
                     .ok_or_else(|| MError::ArgumentsBad)?;
                 find_ctx.add_to_unread(handle);
             }

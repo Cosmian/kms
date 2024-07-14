@@ -54,19 +54,9 @@ impl Pkcs11PrivateKey {
     }
 }
 
-// impl RemoteObjectId for Pkcs11PrivateKey {
-//     fn remote_id(&self) -> String {
-//         self.id.clone()
-//     }
-//
-//     fn remote_type(&self) -> RemoteObjectType {
-//         self.object_type.clone()
-//     }
-// }
-
 impl PrivateKey for Pkcs11PrivateKey {
-    fn private_key_id(&self) -> &str {
-        &self.remote_id
+    fn remote_id(&self) -> String {
+        self.remote_id.clone()
     }
 
     fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> MResult<Vec<u8>> {

@@ -17,35 +17,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{any::Any, hash::Hash};
+use std::hash::Hash;
 
 use pkcs1::RsaPrivateKey;
 
 use crate::{
-    core::compoundid::Id,
     traits::{KeyAlgorithm, SignatureAlgorithm},
     MResult,
 };
 
 pub trait PrivateKey: Send + Sync {
-    fn private_key_id(&self) -> &str;
-
-    fn label(&self) -> String {
-        "PrivateKey".to_string()
-    }
+    /// The unique identifier of the key (in the KMS)
+    fn remote_id(&self) -> String;
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> MResult<Vec<u8>>;
 
     /// Returns the algorithm of the key; will fail if only the remote part is known
     fn algorithm(&self) -> KeyAlgorithm;
-
-    /// ID used as CKA_ID when searching objects by ID
-    fn id(&self) -> Id {
-        Id {
-            label: self.label(),
-            hash: self.private_key_id().as_bytes().to_vec(),
-        }
-    }
 
     /// Return the key size in bits
     fn key_size(&self) -> usize;
@@ -64,14 +52,14 @@ pub trait PrivateKey: Send + Sync {
 impl std::fmt::Debug for dyn PrivateKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrivateKey")
-            .field("label", &self.label())
+            .field("remote id", &self.remote_id())
             .finish_non_exhaustive()
     }
 }
 
 impl PartialEq for dyn PrivateKey {
     fn eq(&self, other: &Self) -> bool {
-        self.private_key_id() == other.private_key_id() && self.label() == other.label()
+        self.remote_id() == other.remote_id()
     }
 }
 
@@ -79,8 +67,6 @@ impl Eq for dyn PrivateKey {}
 
 impl Hash for dyn PrivateKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.private_key_id().hash(state);
-        self.label().hash(state);
+        self.remote_id().hash(state);
     }
 }

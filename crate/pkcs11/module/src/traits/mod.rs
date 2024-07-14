@@ -25,7 +25,6 @@ pub use key_algorithm::KeyAlgorithm;
 pub use once_cell;
 pub use private_key::PrivateKey;
 pub use public_key::PublicKey;
-pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
 pub use signature_algorithm::SignatureAlgorithm;
 
 use crate::{
@@ -40,7 +39,6 @@ mod encryption_algorithms;
 mod key_algorithm;
 mod private_key;
 mod public_key;
-mod remote_object_id;
 mod signature_algorithm;
 
 pub type Digest = [u8; 20];
@@ -70,8 +68,7 @@ impl DigestType {
 #[derive(Debug)]
 pub enum SearchOptions {
     All,
-    Label(String),
-    Id(Vec<u8>),
+    Id(String),
 }
 
 impl TryFrom<&Attributes> for SearchOptions {
@@ -82,9 +79,7 @@ impl TryFrom<&Attributes> for SearchOptions {
             return Ok(SearchOptions::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
-            Ok(SearchOptions::Id(id.clone()))
-        } else if let Some(Attribute::Label(label)) = attributes.get(AttributeType::Label) {
-            Ok(SearchOptions::Label(label.into()))
+            Ok(SearchOptions::Id(String::from_utf8(id.to_owned())?))
         } else {
             Ok(SearchOptions::All)
         }
