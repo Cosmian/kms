@@ -485,18 +485,18 @@ pub(crate) async fn update_object_(
     .execute(&mut **executor)
     .await?;
 
-    // delete the existing tags
-    sqlx::query(
-        PGSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
-    // Insert the new tags
+    // Update the tags
     if let Some(tags) = tags {
+        // delete the existing tags
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("delete-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
+
         for tag in tags {
             sqlx::query(
                 PGSQL_QUERIES
