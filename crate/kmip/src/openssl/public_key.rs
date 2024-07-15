@@ -189,7 +189,7 @@ pub fn openssl_public_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some(rsa_public_key.size() as i32),
+                        cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PublicKey),
                         cryptographic_usage_mask,
@@ -197,7 +197,7 @@ pub fn openssl_public_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(rsa_public_key.size() as i32),
+                cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
