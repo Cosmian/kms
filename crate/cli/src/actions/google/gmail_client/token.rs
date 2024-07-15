@@ -68,12 +68,13 @@ pub async fn retrieve_token(
     let client = reqwest::Client::new();
 
     // GoogleAuthResponse
-    let response = client
+    let response_text = client
         .post(&service_account.token_uri)
         .form(&GoogleAuthRequest::new(jwt))
         .send()
         .await?
-        .json::<GoogleAuthResponse>()
+        .text()
         .await?;
+    let response: GoogleAuthResponse = serde_json::from_str(&response_text)?;
     Ok(response.access_token)
 }

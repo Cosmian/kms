@@ -243,17 +243,16 @@ async fn certificates_by_uid(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<Vec<u8>>> {
-    let mut res = Vec::new();
-    for unique_identifier in unique_identifiers {
+    let res = futures::future::join_all(unique_identifiers.iter().map(|unique_identifier| async {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::from(KmipError::InvalidKmipObject(
                 ErrorReason::Item_Not_Found,
                 "as_str returned None in certificates_by_uid".to_string(),
             ))
         })?;
-        let certificate = certificate_by_uid(unique_identifier, kms, user, params).await;
-        res.push(certificate);
-    }
+        certificate_by_uid(unique_identifier, kms, user, params).await
+    }))
+    .await;
 
     // checking if there are any errors
     res.into_iter().collect()
