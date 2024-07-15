@@ -305,7 +305,7 @@ pub async fn prepare_kms_server(
                 // )) // Use JWT for authentication if necessary.
                 .wrap(Cors::permissive())
                 .service(xks::get_health_status)
-                .service(xks::get_key_meta_data)
+                .service(xks::get_key_metadata)
                 .service(xks::encrypt)
                 .service(xks::decrypt);
             app = app.service(xks_scope);

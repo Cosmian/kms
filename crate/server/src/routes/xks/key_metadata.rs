@@ -10,12 +10,16 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use clap::crate_version;
-use cosmian_kmip::kmip::{kmip_operations::GetAttributes, kmip_types::UniqueIdentifier};
+use cosmian_kmip::kmip::{
+    kmip_operations::GetAttributes,
+    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, trace};
 
 use crate::{
     error::KmsError,
+    kms_bail,
     result::KResult,
     routes::google_cse::{operations, GoogleCseConfig},
     KMSServer,
@@ -31,12 +35,33 @@ pub struct RequestMetadata {
     /// the service principal ending in amazonaws.com, such as ec2.amazonaws.com or
     /// “AWS Internal”. This field is REQUIRED.
     pub awsPrincipalArn: String,
-    pub kmsOperation: String,
-    pub kmsRequestId: String,
+    /// This field is OPTIONAL. It is present if and only if the KMS API request was made using
+    /// a VPC endpoint.
+    /// When present, this field indicates the VPC where the request originated (see aws:SourceVpc).
     pub awsSourceVpc: Option<String>,
+    /// This field is OPTIONAL. It is present if and only if the KMS API request was made using
+    /// a VPC endpoint.
+    /// When present, this field indicates the VPC endpoint used for the request (see aws:SourceVpce)
     pub awsSourceVpce: Option<String>,
-    pub kmsKeyArn: Option<String>,
-    pub kmsViaService: Option<String>,
+    /// This is the KMS API call that resulted in the XKS Proxy API request,
+    /// e.g. CreateKey can result in a GetKeyMetadata call. This field is REQUIRED.
+    /// The XKS Proxy MUST NOT reject a request as invalid if it sees a kmsOperation
+    /// other than those listed for this API call.
+    /// In the future, KMS may introduce a new API that can be satisfied
+    /// by calling one of the XKS APIs listed in this document.
+    /// For proxies that implement secondary authorization,
+    /// it is acceptable for XKS API requests made as part of the new KMS API to fail authorization.
+    /// It is easier for a customer to update their XKS Proxy authorization policy
+    /// than to update their XKS Proxy software.
+    pub kmsOperation: String,
+    /// This is the requestId of the call made to KMS which is visible in AWS CloudTrail.
+    /// The XKS proxy SHOULD log this field to allow a customer
+    /// to correlate AWS CloudTrail entries with log entries in the XKS Proxy.
+    /// This field typically follows the format for UUIDs
+    /// but the XKS Proxy MUST treat this as an opaque string
+    /// and MUST NOT perform any validation on its structure.
+    /// This field is REQUIRED.
+    pub kmsRequestId: String,
 }
 
 /// The HTTP body of the request contains requestMetadata fields
@@ -116,8 +141,10 @@ pub async fn get_key_metadata(
     let request = request.into_inner();
     let key_id = key_id.into_inner();
     info!(
-        "POST /kms/xks/v1/keys/{key_id}/metadata - id {}",
-        request.requestMetadata.kmsRequestId
+        "POST /kms/xks/v1/keys/{key_id}/metadata - operation: {} - id: {} - user: {}",
+        request.requestMetadata.kmsOperation,
+        request.requestMetadata.kmsRequestId,
+        request.requestMetadata.awsPrincipalArn
     );
     debug!("get metadata request: {:?}", request.requestMetadata);
     let kms = kms.into_inner();
@@ -136,9 +163,9 @@ async fn _get_key_metadata(
     key_id: String,
     kms: &Arc<KMSServer>,
 ) -> KResult<GetKeyMetadataResponse> {
-    let user = kms.get_user(req_http)?;
+    let user = request.requestMetadata.awsPrincipalArn;
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let attributes = kms
+    let response = kms
         .get_attributes(
             GetAttributes {
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
@@ -148,48 +175,43 @@ async fn _get_key_metadata(
             database_params.as_ref(),
         )
         .await?;
-    let cryptographic_algorithm =
-        attributes
-            .attributes
-            .cryptographic_algorithm
-            .ok_or_else(|| {
-                KmsError::CryptographicError("No cryptographic algorithm found".to_string())
-            })?;
-    // .map(|attributes| {
-    //     let key_spec = attributes
-    //         .cryptographic_algorithm
-    //         .as_ref()
-    //         .map(|algorithm| algorithm.to_string())
-    //         .unwrap_or_else(|| "AES_256".to_string());
-    //     let key_usage = attributes
-    //         .cryptographic_usage_mask
-    //         .as_ref()
-    //         .map(|mask| {
-    //             mask.iter()
-    //                 .filter_map(|usage| match usage {
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::ENCRYPT => {
-    //                         Some(KeyUsage::ENCRYPT)
-    //                     }
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::DECRYPT => {
-    //                         Some(KeyUsage::DECRYPT)
-    //                     }
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::SIGN => {
-    //                         Some(KeyUsage::SIGN)
-    //                     }
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::VERIFY => {
-    //                         Some(KeyUsage::VERIFY)
-    //                     }
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::WRAP => {
-    //                         Some(KeyUsage::WRAP)
-    //                     }
-    //                     cosmian_kmip::kmip::kmip_enums::CryptographicUsageMask::UNWRAP => {
-    //                         Some(KeyUsage::UNWRAP)
-    //                     }
-    //                     _ => None,
-    //                 })
-    //                 .collect()
-    //         })
-    //         .unwrap_or_default();
+    let cryptographic_algorithm = response.attributes.cryptographic_algorithm.ok_or_else(|| {
+        KmsError::CryptographicError("No cryptographic algorithm found".to_string())
+    })?;
+    let key_size = response
+        .attributes
+        .cryptographic_length
+        .ok_or_else(|| KmsError::CryptographicError("No cryptographic length found".to_string()))?;
+    let (key_spec, key_usage) = match cryptographic_algorithm {
+        CryptographicAlgorithm::AES => (
+            format!("AES_{}", key_size),
+            vec![
+                KeyUsage::ENCRYPT,
+                KeyUsage::DECRYPT,
+                KeyUsage::WRAP,
+                KeyUsage::UNWRAP,
+            ],
+        ),
+        CryptographicAlgorithm::RSA => {
+            let key_spec = format!("RSA_{}", key_size);
+            if response.attributes.get_tags().contains("_sk") {
+                // a private key
+                (
+                    key_spec,
+                    vec![KeyUsage::DECRYPT, KeyUsage::SIGN, KeyUsage::UNWRAP],
+                )
+            } else {
+                (
+                    key_spec,
+                    vec![KeyUsage::ENCRYPT, KeyUsage::VERIFY, KeyUsage::WRAP],
+                )
+            }
+        }
+        xc => {
+            kms_bail!("XKS: Unsupported cryptographic algorithm: {:?}", xc);
+        }
+    };
+
     let key_status = "ENABLED".to_string();
     Ok(GetKeyMetadataResponse {
         keySpec: key_spec,
