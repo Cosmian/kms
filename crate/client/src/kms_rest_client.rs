@@ -18,7 +18,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use http::{HeaderMap, HeaderValue, StatusCode};
-use log::debug;
+use log::trace;
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
@@ -504,10 +504,11 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(90))
-                .timeout(Duration::from_secs(90))
-                .tcp_keepalive(Duration::from_secs(90))
-                .pool_idle_timeout(Duration::from_secs(90))
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(10))
+                .tcp_keepalive(Duration::from_secs(5))
+                .pool_idle_timeout(Duration::from_secs(5))
+                .pool_max_idle_per_host(2)
                 .default_headers(headers)
                 .build()?,
             server_url,
@@ -569,7 +570,7 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
             Some(d) => {
-                debug!(
+                trace!(
                     "==>\n{}",
                     serde_json::to_string_pretty(&d).unwrap_or("[N/A]".to_string())
                 );
@@ -581,7 +582,7 @@ impl KmsClient {
         let status_code = response.status();
         if status_code.is_success() {
             let response = response.json::<R>().await?;
-            debug!(
+            trace!(
                 "<==\n{}",
                 serde_json::to_string_pretty(&response).unwrap_or("[N/A]".to_string())
             );
@@ -603,7 +604,7 @@ impl KmsClient {
         let mut request = self.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
 
-        debug!(
+        trace!(
             "==>\n{}",
             serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
         );
@@ -614,7 +615,7 @@ impl KmsClient {
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
-            debug!(
+            trace!(
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
             );

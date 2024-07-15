@@ -319,14 +319,11 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_disconnect_timeout(std::time::Duration::from_secs(90))
-    .tls_handshake_timeout(std::time::Duration::from_secs(90))
-    .keep_alive(std::time::Duration::from_secs(90))
-    .max_connection_rate(2048)
-    .max_connections(100_000)
-    .workers(24)
-    .worker_max_blocking_threads(2048)
-    .client_request_timeout(std::time::Duration::from_secs(90));
+    .client_disconnect_timeout(std::time::Duration::from_secs(0))
+    .tls_handshake_timeout(std::time::Duration::from_secs(5))
+    .keep_alive(std::time::Duration::from_secs(5))
+    .shutdown_timeout(30)
+    .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
         Some(b) => {

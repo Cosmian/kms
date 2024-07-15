@@ -25,6 +25,7 @@ impl actix_web::error::ResponseError for KmsError {
 
             KmsError::DatabaseError(_)
             | KmsError::ConversionError(_)
+            | KmsError::ClientConnectionError(_)
             | KmsError::CryptographicError(_)
             | KmsError::Redis(_)
             | KmsError::Findex(_)

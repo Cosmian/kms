@@ -59,6 +59,10 @@ pub enum KmsError {
     ServerError(String),
 
     // Any actions of the user which is not allowed
+    #[error("REST client connection error: {0}")]
+    ClientConnectionError(String),
+
+    // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
 
@@ -183,6 +187,12 @@ impl From<QueryPayloadError> for KmsError {
 impl From<TryFromSliceError> for KmsError {
     fn from(e: TryFromSliceError) -> Self {
         Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<reqwest::Error> for KmsError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::ClientConnectionError(e.to_string())
     }
 }
 

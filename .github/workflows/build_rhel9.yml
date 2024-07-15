@@ -102,7 +102,6 @@ jobs:
       - name: Build and tests
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-          RUST_LOG: cosmian_kms_server=trace
 
           POSTGRES_USER: kms
           PGUSER: kms

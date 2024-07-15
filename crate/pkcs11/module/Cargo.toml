@@ -24,9 +24,9 @@ p256 = { version = "0.13.2", default-features = false, features = [
 pkcs1 = "0.7.5"
 pkcs11_sys = { path = "../sys" }
 rand = "0.8.5"
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.204", features = ["derive"] }
 strum_macros = "0.26.4"
-thiserror = "1.0.61"
+thiserror = "1.0.62"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 zeroize = "1.8.1"

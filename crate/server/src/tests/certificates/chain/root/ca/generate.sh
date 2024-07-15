@@ -1,15 +1,13 @@
 #!/bin/sh
 
-set -e
-
 echo "removing old configurations"
 rm -rf certs crl newcerts private intermediate
 rm index.*
 rm serial*
-rm test1
-rm test2
 rm chain_t0.pem
 rm chain_t1.pem
+
+set -ex
 
 ## making CA Environment
 
@@ -123,7 +121,7 @@ openssl ca -config openssl_int.cnf \
 cat intermediate/certs/ca-chain.cert.pem intermediate/crl/intermediate.crl.pem > chain_t1.pem
 
 openssl verify -crl_check -CAfile chain_t1.pem \
-      intermediate/certs/leaf1.cert.pem
+      intermediate/certs/leaf1.cert.pem || true
 
 openssl verify -crl_check -CAfile chain_t1.pem \
       intermediate/certs/leaf2.cert.pem

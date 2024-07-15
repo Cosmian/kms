@@ -5,8 +5,8 @@ set -ex
 # --- Declare the following variables for tests
 # export TARGET=x86_64-unknown-linux-gnu
 # export DEBUG_OR_RELEASE=debug
-# export OPENSSL_DIR=~/Documents/openssl_builds/test_new_build
-# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse"
+# export OPENSSL_DIR=/usr/local/openssl
+# export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications"
 
 ROOT_FOLDER=$(pwd)
 
@@ -74,6 +74,16 @@ rm -f /tmp/*.json
 export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
 # shellcheck disable=SC2086
 cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+
+# Uncomment this code to run tests indefinitely
+# counter=1
+# while true; do
+#   # shellcheck disable=SC2086
+#   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+#   counter=$((counter + 1))
+#   echo "Round: $counter"
+#   sleep 3
+# done
 
 rm -rf target/"$TARGET"/debian
 rm -rf target/"$TARGET"/generate-rpm
