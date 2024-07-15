@@ -11,6 +11,7 @@ use cosmian_kms_client::{
 };
 use pem::PemError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use crate::actions::google::GoogleApiError;
 
@@ -141,6 +142,12 @@ impl From<Utf8Error> for CliError {
 impl From<std::string::FromUtf8Error> for CliError {
     fn from(e: std::string::FromUtf8Error) -> Self {
         Self::Default(e.to_string())
+    }
+}
+
+impl From<JoinError> for CliError {
+    fn from(e: JoinError) -> Self {
+        Self::KmsClientError(e.to_string())
     }
 }
 

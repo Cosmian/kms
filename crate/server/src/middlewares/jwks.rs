@@ -78,39 +78,30 @@ impl JwksManager {
     async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
         let client = reqwest::Client::new();
 
-        let jwks_downloads = uris
-            .iter()
-            .map(|jwks_uri| {
-                let client = &client;
-                let jwks_uri = jwks_uri.clone();
-                async move {
-                    tracing::debug!("fetching {jwks_uri}");
-                    match client.get(&jwks_uri).send().await {
-                        Ok(resp) => match resp.json::<JWKS>().await {
-                            Ok(jwks) => {
-                                tracing::info!("+ fetched {jwks_uri}");
-                                Some((jwks_uri, jwks))
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Unable to get content as JWKS for `{jwks_uri}`: {e}"
-                                );
-                                None
-                            }
-                        },
-                        Err(e) => {
-                            tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
-                            None
-                        }
+        let mut jwks_map = HashMap::new();
+
+        for jwks_uri in uris {
+            let client = &client;
+            let jwks_uri = jwks_uri.clone();
+            let jwks_download = async move {
+                tracing::debug!("fetching {jwks_uri}");
+                match client.get(&jwks_uri).send().await {
+                    Ok(resp) => resp.json::<JWKS>().await.ok().map(|jwks| {
+                        tracing::info!("+ fetched {jwks_uri}");
+                        (jwks_uri, jwks)
+                    }),
+                    Err(e) => {
+                        tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
+                        None
                     }
                 }
-            })
-            .collect::<Vec<_>>();
+            };
 
-        futures::future::join_all(jwks_downloads)
-            .await
-            .into_iter()
-            .flatten()
-            .collect::<HashMap<_, _>>()
+            if let Some(jwks) = jwks_download.await {
+                jwks_map.insert(jwks.0, jwks.1);
+            }
+        }
+
+        jwks_map
     }
 }

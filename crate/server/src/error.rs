@@ -197,6 +197,12 @@ impl From<Infallible> for KmsError {
     }
 }
 
+impl From<reqwest::Error> for KmsError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::ClientConnectionError(e.to_string())
+    }
+}
+
 impl From<JoinError> for KmsError {
     fn from(e: JoinError) -> Self {
         Self::ClientConnectionError(e.to_string())

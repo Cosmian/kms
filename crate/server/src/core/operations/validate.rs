@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path};
+use std::{collections::HashMap, fs, path, time::Duration};
 
 use cosmian_kmip::{
     kmip::{
@@ -9,7 +9,6 @@ use cosmian_kmip::{
     KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use futures::future::join_all;
 use http::{HeaderMap, HeaderValue};
 use openssl::{
     asn1::{Asn1OctetStringRef, Asn1Time},
@@ -25,6 +24,7 @@ use crate::{
 };
 
 const HEAD: &[u8] = b"head";
+const MAX_RETRY_COUNT: u32 = 2;
 
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity.
@@ -49,11 +49,11 @@ pub(crate) async fn validate_operation(
     let mut headers = HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
-        // .connect_timeout(Duration::from_secs(5))
-        // .tcp_keepalive(Duration::from_secs(10))
-        // .timeout(Duration::from_secs(5))
-        .pool_idle_timeout(None)
-        .pool_max_idle_per_host(1)
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(10))
+        .tcp_keepalive(Duration::from_secs(5))
+        .pool_idle_timeout(Duration::from_secs(5))
+        .pool_max_idle_per_host(2)
         .default_headers(headers)
         .build()
         .map_err(|e| {
@@ -243,16 +243,17 @@ async fn certificates_by_uid(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<Vec<u8>>> {
-    let res = join_all(unique_identifiers.iter().map(|unique_identifier| async {
+    let mut res = Vec::new();
+    for unique_identifier in unique_identifiers {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::from(KmipError::InvalidKmipObject(
                 ErrorReason::Item_Not_Found,
                 "as_str returned None in certificates_by_uid".to_string(),
             ))
         })?;
-        certificate_by_uid(unique_identifier, kms, user, params).await
-    }))
-    .await;
+        let certificate = certificate_by_uid(unique_identifier, kms, user, params).await;
+        res.push(certificate);
+    }
 
     // checking if there are any errors
     res.into_iter().collect()
@@ -272,24 +273,22 @@ async fn certificate_by_uid(
         user,
         params,
     )
-    .await;
-    match uid_own {
-        Err(e) => Err(e),
-        Ok(kms_object) => {
-            if let Object::Certificate {
-                certificate_type: _,
-                certificate_value,
-            } = kms_object.object
-            {
-                Ok(certificate_value)
-            } else {
-                Err(KmsError::from(KmipError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    String::from("Requested a Certificate Object, got a ")
-                        + &kms_object.object.object_type().to_string(),
-                )))
-            }
-        }
+    .await?;
+
+    if let Object::Certificate {
+        certificate_type: _,
+        certificate_value,
+    } = uid_own.object
+    {
+        Ok(certificate_value)
+    } else {
+        Err(KmsError::from(KmipError::InvalidKmipObject(
+            ErrorReason::Invalid_Object_Type,
+            format!(
+                "Requested a Certificate Object, got a {}",
+                uid_own.object.object_type()
+            ),
+        )))
     }
 }
 
@@ -442,22 +441,29 @@ async fn test_and_get_resource_from_uri(
     // Retrieving the object from its location
     let crl_bytes = match uri_type {
         Some(UriType::Url(url)) => {
-            let response = client.get(&url).send().await.map_err(|e| {
-                KmsError::from(KmipError::ObjectNotFound(format!(
-                    "Unable to download CRL at the following URL {url}: Error: {e:?}"
-                )))
-            })?;
-
-            response
-                .text()
-                .await
-                .map(|text| text.as_bytes().to_vec())
-                .map_err(|e| {
-                    KmsError::from(KmipError::ObjectNotFound(format!(
-                        "Error in getting the body of the response for the following URL: {url}. \
-                         Error: {e:?} "
-                    )))
-                })?
+            let mut retry_count = 0;
+            loop {
+                let response = client.get(&url).send().await?;
+                if response.status().is_success() {
+                    return response
+                        .text()
+                        .await
+                        .map(|text| text.as_bytes().to_vec())
+                        .map_err(|e| {
+                            KmsError::from(KmipError::ObjectNotFound(format!(
+                                "Error in getting the body of the response for the following URL: \
+                                 {url}. Error: {e:?} "
+                            )))
+                        });
+                } else {
+                    retry_count += 1;
+                    if retry_count >= MAX_RETRY_COUNT {
+                        return Err(KmsError::from(KmipError::ObjectNotFound(format!(
+                            "The CRL at the following URL {url} is not available"
+                        ))));
+                    }
+                }
+            }
         }
         Some(UriType::Path(path)) => {
             // Get PEM file (path should be already canonic)
@@ -490,15 +496,21 @@ async fn get_crl_bytes(
     hm_certificates: &HashMap<Vec<u8>, u8>,
     certificates: &[X509],
 ) -> KResult<Vec<Vec<u8>>> {
-    let responses = uri_crls.iter().map(|(uri, certificate_id)| {
-        test_and_get_resource_from_uri(client, uri, hm_certificates, certificates, certificate_id)
-    });
-
-    let crl_bytes = join_all(responses)
-        .await
-        .into_iter()
-        .flatten()
-        .collect::<Vec<Vec<_>>>();
+    let crl_bytes = futures::future::join_all(uri_crls.into_iter().map(
+        move |(uri, certificate_id)| async move {
+            test_and_get_resource_from_uri(
+                client,
+                &uri,
+                hm_certificates,
+                certificates,
+                &certificate_id,
+            )
+            .await
+        },
+    ))
+    .await
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
 
     Ok(crl_bytes)
 }
