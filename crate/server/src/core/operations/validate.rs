@@ -90,13 +90,12 @@ pub(crate) async fn validate_operation(
     let hm_certificates = index_certificates(certificates)?;
 
     // Getting root certificate from indexing
-    let root_idx = if let Some(root_idx) = hm_certificates.get(HEAD) {
-        root_idx
-    } else {
+    let Some(root_idx) = hm_certificates.get(HEAD) else {
         return Ok(ValidateResponse {
             validity_indicator: ValidityIndicator::Invalid,
         })
     };
+
     let root_x509 = certificates.get(*root_idx as usize).ok_or_else(|| {
         KmsError::from(KmipError::InvalidKmipObject(
             ErrorReason::Item_Not_Found,
@@ -219,9 +218,7 @@ fn validate_chain_structure(
             return Ok((ValidityIndicator::Valid, _count + 1))
         }
     };
-    let son_cert = if let Some(son_cert) = son_cert {
-        son_cert
-    } else {
+    let Some(son_cert) = son_cert else {
         return Ok((ValidityIndicator::Invalid, _count + 1))
     };
     let root_pkey = root.public_key()?;
@@ -337,9 +334,9 @@ fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<
         HEAD.to_vec()
     };
     let crl_dp = certificate.crl_distribution_points();
-    match crl_dp {
-        None => Ok(vec![]),
-        Some(crl_dp) => {
+    crl_dp.map_or_else(
+        || Ok(vec![]),
+        |crl_dp| {
             let crl_size = crl_dp.len();
             let uri_list = &mut Vec::<String>::new();
             for i in 0..crl_size {
@@ -358,11 +355,11 @@ fn get_crl_uri_from_certificate(certificate: &X509) -> KResult<Vec<(String, Vec<
                 .map(|x| (x.clone(), certificate_hash.clone()))
                 .collect();
             Ok(res)
-        }
-    }
+        },
+    )
 }
 
-fn crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
+const fn crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
     match status {
         CrlStatus::NotRevoked => ValidityIndicator::Valid,
         CrlStatus::RemoveFromCrl(_) => ValidityIndicator::Invalid,

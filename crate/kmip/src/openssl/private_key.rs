@@ -495,21 +495,21 @@ mod tests {
         // PKCS#X
         let object = openssl_private_key_to_kmip(private_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PrivateKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material: KeyMaterial::ByteString(key_value),
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
+
         if kft == KeyFormatType::PKCS8 {
             let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
             assert_eq!(private_key_.id(), id);
@@ -553,20 +553,19 @@ mod tests {
         let object =
             openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey, mask).unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PrivateKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material: KeyMaterial::ByteString(key_value),
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         let private_key_ =
             PKey::from_ec_key(EcKey::private_key_from_der(&key_value).unwrap()).unwrap();
@@ -599,48 +598,29 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PrivateKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let (
-            modulus,
-            private_exponent,
-            public_exponent,
-            p,
-            q,
-            prime_exponent_p,
-            prime_exponent_q,
-            crt_coefficient,
-        ) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentRSAPrivateKey {
-                                modulus,
-                                private_exponent,
-                                public_exponent,
-                                p,
-                                q,
-                                prime_exponent_p,
-                                prime_exponent_q,
-                                crt_coefficient,
-                            },
-                        ..
-                    },
-                ..
-            } => (
-                modulus,
-                private_exponent,
-                public_exponent,
-                p,
-                q,
-                prime_exponent_p,
-                prime_exponent_q,
-                crt_coefficient,
-            ),
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material:
+                        KeyMaterial::TransparentRSAPrivateKey {
+                            modulus,
+                            private_exponent,
+                            public_exponent,
+                            p,
+                            q,
+                            prime_exponent_p,
+                            prime_exponent_q,
+                            crt_coefficient,
+                        },
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         let private_key_ = PKey::from_rsa(
             Rsa::from_private_components(
@@ -691,24 +671,23 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PrivateKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let (d, recommended_curve) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentECPrivateKey {
-                                d,
-                                recommended_curve,
-                            },
-                        ..
-                    },
-                ..
-            } => (d, recommended_curve),
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material:
+                        KeyMaterial::TransparentECPrivateKey {
+                            d,
+                            recommended_curve,
+                        },
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         assert_eq!(recommended_curve, curve);
 

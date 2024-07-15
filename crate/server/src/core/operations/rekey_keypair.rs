@@ -20,7 +20,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub async fn rekey_keypair(
+pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,

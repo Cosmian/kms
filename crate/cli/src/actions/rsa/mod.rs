@@ -48,8 +48,8 @@ pub enum EncryptionAlgorithm {
 impl Display for EncryptionAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EncryptionAlgorithm::CkmRsaPkcsOaep => write!(f, "ckm-rsa-pkcs-oaep"),
-            EncryptionAlgorithm::CkmRsaAesKeyWrap => write!(f, "ckm-rsa-aes-key-wrap"),
+            Self::CkmRsaPkcsOaep => write!(f, "ckm-rsa-pkcs-oaep"),
+            Self::CkmRsaAesKeyWrap => write!(f, "ckm-rsa-aes-key-wrap"),
             #[cfg(not(feature = "fips"))]
             EncryptionAlgorithm::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
         }
@@ -72,15 +72,15 @@ pub enum HashFn {
 impl Display for HashFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HashFn::Sha1 => write!(f, "sha1"),
-            HashFn::Sha224 => write!(f, "sha224"),
-            HashFn::Sha256 => write!(f, "sha256"),
-            HashFn::Sha384 => write!(f, "sha384"),
-            HashFn::Sha512 => write!(f, "sha512"),
-            HashFn::Sha3_224 => write!(f, "sha3-224"),
-            HashFn::Sha3_256 => write!(f, "sha3-256"),
-            HashFn::Sha3_384 => write!(f, "sha3-384"),
-            HashFn::Sha3_512 => write!(f, "sha3-512"),
+            Self::Sha1 => write!(f, "sha1"),
+            Self::Sha224 => write!(f, "sha224"),
+            Self::Sha256 => write!(f, "sha256"),
+            Self::Sha384 => write!(f, "sha384"),
+            Self::Sha512 => write!(f, "sha512"),
+            Self::Sha3_224 => write!(f, "sha3-224"),
+            Self::Sha3_256 => write!(f, "sha3-256"),
+            Self::Sha3_384 => write!(f, "sha3-384"),
+            Self::Sha3_512 => write!(f, "sha3-512"),
         }
     }
 }
@@ -88,15 +88,15 @@ impl Display for HashFn {
 impl From<HashFn> for HashingAlgorithm {
     fn from(value: HashFn) -> Self {
         match value {
-            HashFn::Sha1 => HashingAlgorithm::SHA1,
-            HashFn::Sha224 => HashingAlgorithm::SHA224,
-            HashFn::Sha256 => HashingAlgorithm::SHA256,
-            HashFn::Sha384 => HashingAlgorithm::SHA384,
-            HashFn::Sha512 => HashingAlgorithm::SHA512,
-            HashFn::Sha3_224 => HashingAlgorithm::SHA3224,
-            HashFn::Sha3_256 => HashingAlgorithm::SHA3256,
-            HashFn::Sha3_384 => HashingAlgorithm::SHA3384,
-            HashFn::Sha3_512 => HashingAlgorithm::SHA3512,
+            HashFn::Sha1 => Self::SHA1,
+            HashFn::Sha224 => Self::SHA224,
+            HashFn::Sha256 => Self::SHA256,
+            HashFn::Sha384 => Self::SHA384,
+            HashFn::Sha512 => Self::SHA512,
+            HashFn::Sha3_224 => Self::SHA3224,
+            HashFn::Sha3_256 => Self::SHA3256,
+            HashFn::Sha3_384 => Self::SHA3384,
+            HashFn::Sha3_512 => Self::SHA3512,
         }
     }
 }

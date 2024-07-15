@@ -129,7 +129,7 @@ impl KeyBlock {
     /// * an optional byte vector
     ///
     #[must_use]
-    pub fn counter_iv_nonce(&self) -> Option<&Vec<u8>> {
+    pub const fn counter_iv_nonce(&self) -> Option<&Vec<u8>> {
         match &self.key_wrapping_data {
             Some(kwd) => kwd.iv_counter_nonce.as_ref(),
             None => None,
@@ -156,9 +156,8 @@ impl KeyBlock {
         let attributes = self.key_value.attributes()?;
 
         // Retrieve the links attribute from the object attributes, if it exists
-        let links = match &attributes.link {
-            Some(links) => links,
-            None => return Ok(None),
+        let Some(links) = &attributes.link else {
+            return Ok(None)
         };
 
         // If there are no links, return None

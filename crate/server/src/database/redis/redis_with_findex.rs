@@ -37,9 +37,9 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
-pub const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-pub const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Find the intersection of all the sets
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
@@ -48,7 +48,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
 }
 
-pub struct RedisWithFindex {
+pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
@@ -57,11 +57,11 @@ pub struct RedisWithFindex {
 }
 
 impl RedisWithFindex {
-    pub async fn instantiate(
+    pub(crate) async fn instantiate(
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
-    ) -> KResult<RedisWithFindex> {
+    ) -> KResult<Self> {
         // derive a Findex Key
         // let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
@@ -80,10 +80,10 @@ impl RedisWithFindex {
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key).await?);
+        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key)?);
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
-        let permissions_db = PermissionsDB::new(findex.clone(), label).await?;
+        let permissions_db = PermissionsDB::new(findex.clone(), label)?;
         Ok(Self {
             objects_db,
             permissions_db,
@@ -93,7 +93,7 @@ impl RedisWithFindex {
         })
     }
 
-    pub fn master_key_from_password(
+    pub(crate) fn master_key_from_password(
         master_password: &str,
     ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
         let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
@@ -554,12 +554,12 @@ impl Database for RedisWithFindex {
             .collect::<KResult<HashSet<String>>>()?;
         trace!("find: uids before permissions: {:?}", uids);
         // if the user is not the owner, we need to check the permissions
-        let permissions = if !user_must_be_owner {
+        let permissions = if user_must_be_owner {
+            HashMap::new()
+        } else {
             self.permissions_db
                 .list_user_permissions(&self.findex_key, user)
                 .await?
-        } else {
-            HashMap::new()
         };
 
         // fetch the corresponding objects
@@ -572,10 +572,10 @@ impl Database for RedisWithFindex {
                     redis_db_object.state == state
                 } else {
                     true
-                }) && (if user != redis_db_object.owner {
-                    permissions.contains_key(uid)
-                } else {
+                }) && (if redis_db_object.owner == user {
                     true
+                } else {
+                    permissions.contains_key(uid)
                 })
             })
             .map(|(uid, redis_db_object)| {

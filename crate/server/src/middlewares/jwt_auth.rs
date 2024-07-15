@@ -27,7 +27,7 @@ pub struct JwtAuth {
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(jwt_configurations: Option<Arc<Vec<JwtConfig>>>) -> Self {
+    pub const fn new(jwt_configurations: Option<Arc<Vec<JwtConfig>>>) -> Self {
         Self { jwt_configurations }
     }
 }
@@ -174,7 +174,7 @@ pub struct JwtAuthClaim {
 
 impl JwtAuthClaim {
     #[must_use]
-    pub fn new(email: String) -> Self {
+    pub const fn new(email: String) -> Self {
         Self { email }
     }
 }

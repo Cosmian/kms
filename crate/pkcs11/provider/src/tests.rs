@@ -50,7 +50,9 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
         ctx.owner_client_conf.clone()
     });
 
-    CkmsBackend::instantiate(owner_client_conf.initialize_kms_client(None, None)?)
+    Ok(CkmsBackend::instantiate(
+        owner_client_conf.initialize_kms_client(None, None)?,
+    ))
 }
 
 async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
@@ -127,7 +129,7 @@ fn test_backend() -> Result<(), Pkcs11Error> {
     assert_eq!(data_objects.len(), 2);
     let mut labels = data_objects
         .iter()
-        .map(|dao| dao.label().clone())
+        .map(|dao| dao.label())
         .collect::<Vec<String>>();
     labels.sort();
     assert_eq!(labels, vec!["vol1".to_string(), "vol2".to_string()]);

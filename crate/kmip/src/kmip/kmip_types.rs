@@ -691,9 +691,9 @@ pub enum LinkedObjectIdentifier {
 impl Display for LinkedObjectIdentifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            LinkedObjectIdentifier::TextString(s) => write!(f, "{s}"),
-            LinkedObjectIdentifier::Enumeration(e) => write!(f, "{e}"),
-            LinkedObjectIdentifier::Index(i) => write!(f, "{i}"),
+            Self::TextString(s) => write!(f, "{s}"),
+            Self::Enumeration(e) => write!(f, "{e}"),
+            Self::Index(i) => write!(f, "{i}"),
         }
     }
 }
@@ -701,9 +701,9 @@ impl Display for LinkedObjectIdentifier {
 impl From<UniqueIdentifier> for LinkedObjectIdentifier {
     fn from(value: UniqueIdentifier) -> Self {
         match value {
-            UniqueIdentifier::TextString(s) => LinkedObjectIdentifier::TextString(s),
-            UniqueIdentifier::Enumeration(e) => LinkedObjectIdentifier::Enumeration(e),
-            UniqueIdentifier::Integer(i) => LinkedObjectIdentifier::Index(i64::from(i)),
+            UniqueIdentifier::TextString(s) => Self::TextString(s),
+            UniqueIdentifier::Enumeration(e) => Self::Enumeration(e),
+            UniqueIdentifier::Integer(i) => Self::Index(i64::from(i)),
         }
     }
 }
@@ -1205,7 +1205,7 @@ pub struct CertificateAttributes {
 
 impl CertificateAttributes {
     pub fn parse_subject_line(subject_line: &str) -> Result<Self, KmipError> {
-        let mut certificate_attributes = CertificateAttributes::default();
+        let mut certificate_attributes = Self::default();
 
         for component in subject_line.split(',') {
             let mut parts = component.splitn(2, '=');
@@ -1271,7 +1271,7 @@ pub enum AttributeReference {
 impl AttributeReference {
     #[must_use]
     pub fn tags_reference() -> Self {
-        AttributeReference::Vendor(VendorAttributeReference {
+        Self::Vendor(VendorAttributeReference {
             vendor_identification: VENDOR_ID_COSMIAN.to_string(),
             attribute_name: VENDOR_ATTR_TAG.to_string(),
         })
@@ -1725,15 +1725,15 @@ impl TryFrom<HashingAlgorithm> for MessageDigest {
 
     fn try_from(hashing_algorithm: HashingAlgorithm) -> Result<Self, Self::Error> {
         match hashing_algorithm {
-            HashingAlgorithm::SHA1 => Ok(MessageDigest::sha1()),
-            HashingAlgorithm::SHA224 => Ok(MessageDigest::sha224()),
-            HashingAlgorithm::SHA256 => Ok(MessageDigest::sha256()),
-            HashingAlgorithm::SHA384 => Ok(MessageDigest::sha384()),
-            HashingAlgorithm::SHA512 => Ok(MessageDigest::sha512()),
-            HashingAlgorithm::SHA3224 => Ok(MessageDigest::sha3_224()),
-            HashingAlgorithm::SHA3256 => Ok(MessageDigest::sha3_256()),
-            HashingAlgorithm::SHA3384 => Ok(MessageDigest::sha3_384()),
-            HashingAlgorithm::SHA3512 => Ok(MessageDigest::sha3_512()),
+            HashingAlgorithm::SHA1 => Ok(Self::sha1()),
+            HashingAlgorithm::SHA224 => Ok(Self::sha224()),
+            HashingAlgorithm::SHA256 => Ok(Self::sha256()),
+            HashingAlgorithm::SHA384 => Ok(Self::sha384()),
+            HashingAlgorithm::SHA512 => Ok(Self::sha512()),
+            HashingAlgorithm::SHA3224 => Ok(Self::sha3_224()),
+            HashingAlgorithm::SHA3256 => Ok(Self::sha3_256()),
+            HashingAlgorithm::SHA3384 => Ok(Self::sha3_384()),
+            HashingAlgorithm::SHA3512 => Ok(Self::sha3_512()),
             h => Err(kmip_error!(
                 "Unsupported hash function: {h:?} for the openssl Message Digest provider"
             )),
@@ -1975,9 +1975,9 @@ pub enum UniqueIdentifier {
 impl Display for UniqueIdentifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            UniqueIdentifier::TextString(s) => write!(f, "{s}"),
-            UniqueIdentifier::Enumeration(e) => write!(f, "{e}"),
-            UniqueIdentifier::Integer(i) => write!(f, "{i}"),
+            Self::TextString(s) => write!(f, "{s}"),
+            Self::Enumeration(e) => write!(f, "{e}"),
+            Self::Integer(i) => write!(f, "{i}"),
         }
     }
 }
@@ -2003,7 +2003,7 @@ impl UniqueIdentifier {
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            UniqueIdentifier::TextString(s) => Some(s),
+            Self::TextString(s) => Some(s),
             _ => None,
         }
     }
@@ -2012,9 +2012,9 @@ impl UniqueIdentifier {
 impl From<LinkedObjectIdentifier> for UniqueIdentifier {
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
-            LinkedObjectIdentifier::TextString(s) => UniqueIdentifier::TextString(s),
-            LinkedObjectIdentifier::Enumeration(e) => UniqueIdentifier::Enumeration(e),
-            LinkedObjectIdentifier::Index(i) => UniqueIdentifier::Integer(i as i32),
+            LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
+            LinkedObjectIdentifier::Enumeration(e) => Self::Enumeration(e),
+            LinkedObjectIdentifier::Index(i) => Self::Integer(i as i32),
         }
     }
 }
@@ -2039,7 +2039,7 @@ pub struct ProtocolVersion {
 /// for the implementation here
 impl Default for ProtocolVersion {
     fn default() -> Self {
-        ProtocolVersion {
+        Self {
             protocol_version_major: 2,
             protocol_version_minor: 1,
         }
@@ -2129,14 +2129,14 @@ pub enum Credential {
 
 impl Credential {
     #[allow(dead_code)]
-    fn value(&self) -> u32 {
+    const fn value(&self) -> u32 {
         match *self {
-            Credential::UsernameAndPassword { .. } => 0x0000_0001,
-            Credential::Device { .. } => 0x0000_0002,
-            Credential::Attestation { .. } => 0x0000_0003,
-            Credential::OneTimePassword { .. } => 0x0000_0004,
-            Credential::HashedPassword { .. } => 0x0000_0005,
-            Credential::Ticket { .. } => 0x0000_0006,
+            Self::UsernameAndPassword { .. } => 0x0000_0001,
+            Self::Device { .. } => 0x0000_0002,
+            Self::Attestation { .. } => 0x0000_0003,
+            Self::OneTimePassword { .. } => 0x0000_0004,
+            Self::HashedPassword { .. } => 0x0000_0005,
+            Self::Ticket { .. } => 0x0000_0006,
         }
     }
 }
@@ -2147,7 +2147,7 @@ impl Serialize for Credential {
         S: serde::Serializer,
     {
         match self {
-            Credential::UsernameAndPassword { username, password } => {
+            Self::UsernameAndPassword { username, password } => {
                 let mut st = serializer.serialize_struct("UsernameAndPassword", 2)?;
                 st.serialize_field("Username", username)?;
                 if let Some(password) = password {
@@ -2155,7 +2155,7 @@ impl Serialize for Credential {
                 }
                 st.end()
             }
-            Credential::Device {
+            Self::Device {
                 device_serial_number,
                 password,
                 device_identifier,
@@ -2184,7 +2184,7 @@ impl Serialize for Credential {
                 }
                 st.end()
             }
-            Credential::Attestation {
+            Self::Attestation {
                 nonce,
                 attestation_type,
                 attestation_measurement,
@@ -2201,7 +2201,7 @@ impl Serialize for Credential {
                 }
                 st.end()
             }
-            Credential::OneTimePassword {
+            Self::OneTimePassword {
                 username,
                 password,
                 one_time_password,
@@ -2214,7 +2214,7 @@ impl Serialize for Credential {
                 st.serialize_field("OneTimePassword", one_time_password)?;
                 st.end()
             }
-            Credential::HashedPassword {
+            Self::HashedPassword {
                 username,
                 timestamp,
                 hashing_algorithm,
@@ -2229,7 +2229,7 @@ impl Serialize for Credential {
                 st.serialize_field("HashedPassword", hashed_password)?;
                 st.end()
             }
-            Credential::Ticket {
+            Self::Ticket {
                 ticket_type,
                 ticket_value,
             } => {
@@ -2623,22 +2623,16 @@ pub enum ValidityIndicator {
 
 impl ValidityIndicator {
     #[must_use]
-    pub fn and(&self, vi: ValidityIndicator) -> ValidityIndicator {
+    pub const fn and(&self, vi: Self) -> Self {
         match (self, vi) {
-            (ValidityIndicator::Valid, ValidityIndicator::Valid) => ValidityIndicator::Valid,
-            (ValidityIndicator::Invalid, _) | (_, ValidityIndicator::Invalid) => {
-                ValidityIndicator::Invalid
-            }
-            _ => ValidityIndicator::Unknown,
+            (Self::Valid, Self::Valid) => Self::Valid,
+            (Self::Invalid, _) | (_, Self::Invalid) => Self::Invalid,
+            _ => Self::Unknown,
         }
     }
 
     #[must_use]
-    pub fn from_bool(b: bool) -> ValidityIndicator {
-        if b {
-            ValidityIndicator::Valid
-        } else {
-            ValidityIndicator::Invalid
-        }
+    pub const fn from_bool(b: bool) -> Self {
+        if b { Self::Valid } else { Self::Invalid }
     }
 }

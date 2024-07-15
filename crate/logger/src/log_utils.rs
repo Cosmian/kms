@@ -10,13 +10,17 @@ static LOG_INIT: Once = Once::new();
 pub fn log_init(default_value: &str) {
     LOG_INIT.call_once(|| {
         if std::env::var("RUST_BACKTRACE").is_err() {
-            std::env::set_var("RUST_BACKTRACE", "1");
+            unsafe {
+                std::env::set_var("RUST_BACKTRACE", "1");
+            }
         }
 
-        if let Ok(current_value) = std::env::var("RUST_LOG") {
-            std::env::set_var("RUST_LOG", current_value);
-        } else {
-            std::env::set_var("RUST_LOG", default_value);
+        unsafe {
+            if let Ok(current_value) = std::env::var("RUST_LOG") {
+                std::env::set_var("RUST_LOG", current_value);
+            } else {
+                std::env::set_var("RUST_LOG", default_value);
+            }
         }
 
         tracing_setup();

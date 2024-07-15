@@ -12,7 +12,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn locate(
+pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
     state: Option<StateEnumeration>,

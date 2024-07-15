@@ -41,11 +41,11 @@ impl RemovedLocationsFinder for DummyDB {
 }
 
 async fn clear_all(mgr: &mut ConnectionManager) -> KResult<()> {
-    redis::cmd("FLUSHDB").query_async(mgr).await?;
+    redis::cmd("FLUSHDB").query_async::<_, ()>(mgr).await?;
     Ok(())
 }
 
-pub async fn test_objects_db() -> KResult<()> {
+pub(crate) async fn test_objects_db() -> KResult<()> {
     //log_init("test_objects_db=info");
     trace!("test_objects_db");
 
@@ -54,7 +54,7 @@ pub async fn test_objects_db() -> KResult<()> {
     let mgr = ConnectionManager::new(client).await?;
 
     let db_key = SymmetricKey::new(&mut rng);
-    let o_db = ObjectsDB::new(mgr.clone(), db_key).await?;
+    let o_db = ObjectsDB::new(mgr.clone(), db_key)?;
 
     // single upsert - get - delete
     let uid = "test_objects_db";
@@ -93,7 +93,7 @@ pub async fn test_objects_db() -> KResult<()> {
     Ok(())
 }
 
-pub async fn test_permissions_db() -> KResult<()> {
+pub(crate) async fn test_permissions_db() -> KResult<()> {
     // generate the findex key
     let mut rng = CsRng::from_entropy();
     let findex_key = SymmetricKey::new(&mut rng);
@@ -108,7 +108,7 @@ pub async fn test_permissions_db() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label).await?;
+    let permissions_db = PermissionsDB::new(findex, label)?;
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db
@@ -348,7 +348,7 @@ pub async fn test_permissions_db() -> KResult<()> {
     Ok(())
 }
 
-pub async fn test_corner_case() -> KResult<()> {
+pub(crate) async fn test_corner_case() -> KResult<()> {
     // generate the findex key
     let mut rng = CsRng::from_entropy();
     let findex_key = SymmetricKey::new(&mut rng);
@@ -363,7 +363,7 @@ pub async fn test_corner_case() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label).await?;
+    let permissions_db = PermissionsDB::new(findex, label)?;
 
     // remove a permission that does not exist
     permissions_db

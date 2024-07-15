@@ -86,7 +86,7 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliErr
     import_revoked_certificate_encrypt("prime256v1").await
 }
 
-pub fn validate_certificate(
+pub(crate) fn validate_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     certificates: Vec<String>,
@@ -107,7 +107,7 @@ pub fn validate_certificate(
     }
     if let Some(d) = date {
         args.push("--validity-time".to_owned());
-        args.push(d.clone());
+        args.push(d);
     }
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -196,7 +196,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
-            leaf1_certificate_id.clone(),
+            leaf1_certificate_id,
         ],
         None,
     )?;
@@ -228,9 +228,9 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "certificates",
         vec![],
         vec![
-            intermediate_certificate_id.clone(),
+            intermediate_certificate_id,
             root_certificate_id.clone(),
-            leaf2_certificate_id.clone(),
+            leaf2_certificate_id,
         ],
         // Date: 15/04/2048
         Some("4804152030Z".to_string()),
@@ -245,7 +245,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         vec![],
-        vec![root_certificate_id.clone()],
+        vec![root_certificate_id],
         None,
     )?;
 

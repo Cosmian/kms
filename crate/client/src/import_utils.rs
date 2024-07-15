@@ -45,11 +45,10 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
             }
         });
         // add the tags to the attributes
-        let attributes = if let Some(attributes) = import_attributes {
-            attributes
-        } else {
-            object.attributes().cloned().unwrap_or_default()
-        };
+        let attributes = import_attributes.map_or_else(
+            || object.attributes().cloned().unwrap_or_default(),
+            |attributes| attributes,
+        );
         (key_wrap_type, attributes)
     };
 

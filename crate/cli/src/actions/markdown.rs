@@ -13,7 +13,7 @@ pub struct MarkdownAction {
 }
 
 impl MarkdownAction {
-    pub async fn process(&self, cmd: &Command) -> Result<(), CliError> {
+    pub fn process(&self, cmd: &Command) -> Result<(), CliError> {
         let mut output = String::new();
         writeln!(
             output,

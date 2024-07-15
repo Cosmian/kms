@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// Import a new object
-pub async fn import(
+pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -346,7 +346,6 @@ async fn process_private_key(
             tags,
             replace_existing,
         )
-        .await
     }
 
     // Process a "standard" private key
@@ -419,24 +418,13 @@ fn single_operation(
         object_attributes.clone_from(&attributes);
     }
     if replace_existing {
-        AtomicOperation::Upsert((
-            uid,
-            object,
-            attributes,
-            tags.clone(),
-            StateEnumeration::Active,
-        ))
+        AtomicOperation::Upsert((uid, object, attributes, tags, StateEnumeration::Active))
     } else {
-        AtomicOperation::Create((
-            uid.clone(),
-            object,
-            attributes,
-            tags.clone().unwrap_or_default(),
-        ))
+        AtomicOperation::Create((uid, object, attributes, tags.unwrap_or_default()))
     }
 }
 
-async fn process_pkcs12(
+fn process_pkcs12(
     private_key_id: &str,
     object: Object,
     request_attributes: Attributes,
@@ -590,7 +578,7 @@ async fn process_pkcs12(
         replace_existing,
         leaf_certificate,
         leaf_certificate_attributes,
-        leaf_certificate_uid.clone(),
+        leaf_certificate_uid,
     ));
 
     let mut parent_certificate_id: Option<String> = None;

@@ -85,46 +85,46 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
 
     fn try_from(type_: CK_ATTRIBUTE_TYPE) -> MResult<Self> {
         match type_ {
-            CKA_ALWAYS_AUTHENTICATE => Ok(AttributeType::AlwaysAuthenticate),
-            CKA_ALWAYS_SENSITIVE => Ok(AttributeType::AlwaysSensitive),
-            CKA_APPLICATION => Ok(AttributeType::Application),
-            CKA_CERTIFICATE_CATEGORY => Ok(AttributeType::CertificateCategory),
-            CKA_CERTIFICATE_TYPE => Ok(AttributeType::CertificateType),
-            CKA_CLASS => Ok(AttributeType::Class),
-            CKA_COEFFICIENT => Ok(AttributeType::Coefficient),
-            CKA_DECRYPT => Ok(AttributeType::Decrypt),
-            CKA_EC_PARAMS => Ok(AttributeType::EcParams),
-            CKA_EC_POINT => Ok(AttributeType::EcPoint),
-            CKA_ENCRYPT => Ok(AttributeType::Encrypt),
-            CKA_EXPONENT_1 => Ok(AttributeType::Exponent1),
-            CKA_EXPONENT_2 => Ok(AttributeType::Exponent2),
-            CKA_EXTRACTABLE => Ok(AttributeType::Extractable),
-            CKA_ID => Ok(AttributeType::Id),
-            CKA_ISSUER => Ok(AttributeType::Issuer),
-            CKA_KEY_TYPE => Ok(AttributeType::KeyType),
-            CKA_LABEL => Ok(AttributeType::Label),
-            CKA_MODULUS => Ok(AttributeType::Modulus),
-            CKA_MODULUS_BITS => Ok(AttributeType::ModulusBits),
-            CKA_NEVER_EXTRACTABLE => Ok(AttributeType::NeverExtractable),
-            CKA_PRIME_1 => Ok(AttributeType::Prime1),
-            CKA_PRIME_2 => Ok(AttributeType::Prime2),
-            CKA_PRIVATE => Ok(AttributeType::Private),
-            CKA_PRIVATE_EXPONENT => Ok(AttributeType::PrivateExponent),
-            CKA_PROFILE_ID => Ok(AttributeType::ProfileId),
-            CKA_PUBLIC_EXPONENT => Ok(AttributeType::PublicExponent),
-            CKA_SENSITIVE => Ok(AttributeType::Sensitive),
-            CKA_SIGN => Ok(AttributeType::Sign),
-            CKA_SIGN_RECOVER => Ok(AttributeType::SignRecover),
-            CKA_SERIAL_NUMBER => Ok(AttributeType::SerialNumber),
-            CKA_SUBJECT => Ok(AttributeType::Subject),
-            CKA_TOKEN => Ok(AttributeType::Token),
-            CKA_TRUSTED => Ok(AttributeType::Trusted),
-            CKA_UNWRAP => Ok(AttributeType::Unwrap),
-            CKA_VALUE => Ok(AttributeType::Value),
-            CKA_VALUE_LEN => Ok(AttributeType::ValueLen),
-            CKA_VERIFY => Ok(AttributeType::Verify),
-            CKA_VERIFY_RECOVER => Ok(AttributeType::VerifyRecover),
-            CKA_WRAP => Ok(AttributeType::Wrap),
+            CKA_ALWAYS_AUTHENTICATE => Ok(Self::AlwaysAuthenticate),
+            CKA_ALWAYS_SENSITIVE => Ok(Self::AlwaysSensitive),
+            CKA_APPLICATION => Ok(Self::Application),
+            CKA_CERTIFICATE_CATEGORY => Ok(Self::CertificateCategory),
+            CKA_CERTIFICATE_TYPE => Ok(Self::CertificateType),
+            CKA_CLASS => Ok(Self::Class),
+            CKA_COEFFICIENT => Ok(Self::Coefficient),
+            CKA_DECRYPT => Ok(Self::Decrypt),
+            CKA_EC_PARAMS => Ok(Self::EcParams),
+            CKA_EC_POINT => Ok(Self::EcPoint),
+            CKA_ENCRYPT => Ok(Self::Encrypt),
+            CKA_EXPONENT_1 => Ok(Self::Exponent1),
+            CKA_EXPONENT_2 => Ok(Self::Exponent2),
+            CKA_EXTRACTABLE => Ok(Self::Extractable),
+            CKA_ID => Ok(Self::Id),
+            CKA_ISSUER => Ok(Self::Issuer),
+            CKA_KEY_TYPE => Ok(Self::KeyType),
+            CKA_LABEL => Ok(Self::Label),
+            CKA_MODULUS => Ok(Self::Modulus),
+            CKA_MODULUS_BITS => Ok(Self::ModulusBits),
+            CKA_NEVER_EXTRACTABLE => Ok(Self::NeverExtractable),
+            CKA_PRIME_1 => Ok(Self::Prime1),
+            CKA_PRIME_2 => Ok(Self::Prime2),
+            CKA_PRIVATE => Ok(Self::Private),
+            CKA_PRIVATE_EXPONENT => Ok(Self::PrivateExponent),
+            CKA_PROFILE_ID => Ok(Self::ProfileId),
+            CKA_PUBLIC_EXPONENT => Ok(Self::PublicExponent),
+            CKA_SENSITIVE => Ok(Self::Sensitive),
+            CKA_SIGN => Ok(Self::Sign),
+            CKA_SIGN_RECOVER => Ok(Self::SignRecover),
+            CKA_SERIAL_NUMBER => Ok(Self::SerialNumber),
+            CKA_SUBJECT => Ok(Self::Subject),
+            CKA_TOKEN => Ok(Self::Token),
+            CKA_TRUSTED => Ok(Self::Trusted),
+            CKA_UNWRAP => Ok(Self::Unwrap),
+            CKA_VALUE => Ok(Self::Value),
+            CKA_VALUE_LEN => Ok(Self::ValueLen),
+            CKA_VERIFY => Ok(Self::Verify),
+            CKA_VERIFY_RECOVER => Ok(Self::VerifyRecover),
+            CKA_WRAP => Ok(Self::Wrap),
             _ => Err(MError::AttributeTypeInvalid(type_)),
         }
     }
@@ -176,96 +176,96 @@ pub enum Attribute {
 
 impl Attribute {
     #[must_use]
-    pub fn attribute_type(&self) -> AttributeType {
+    pub const fn attribute_type(&self) -> AttributeType {
         match self {
-            Attribute::AlwaysAuthenticate(_) => AttributeType::AlwaysAuthenticate,
-            Attribute::AlwaysSensitive(_) => AttributeType::AlwaysSensitive,
-            Attribute::Application(_) => AttributeType::Application,
-            Attribute::CertificateCategory(_) => AttributeType::CertificateCategory,
-            Attribute::CertificateType(_) => AttributeType::CertificateType,
-            Attribute::Class(_) => AttributeType::Class,
-            Attribute::Coefficient(_) => AttributeType::Coefficient,
-            Attribute::Decrypt(_) => AttributeType::Decrypt,
-            Attribute::EcParams(_) => AttributeType::EcParams,
-            Attribute::EcPoint(_) => AttributeType::EcPoint,
-            Attribute::Encrypt(_) => AttributeType::Encrypt,
-            Attribute::Exponent1(_) => AttributeType::Exponent1,
-            Attribute::Exponent2(_) => AttributeType::Exponent2,
-            Attribute::Extractable(_) => AttributeType::Extractable,
-            Attribute::Id(_) => AttributeType::Id,
-            Attribute::Issuer(_) => AttributeType::Issuer,
-            Attribute::KeyType(_) => AttributeType::KeyType,
-            Attribute::Label(_) => AttributeType::Label,
-            Attribute::Modulus(_) => AttributeType::Modulus,
-            Attribute::ModulusBits(_) => AttributeType::ModulusBits,
-            Attribute::NeverExtractable(_) => AttributeType::NeverExtractable,
-            Attribute::Prime1(_) => AttributeType::Prime1,
-            Attribute::Prime2(_) => AttributeType::Prime2,
-            Attribute::Private(_) => AttributeType::Private,
-            Attribute::PrivateExponent(_) => AttributeType::PrivateExponent,
-            Attribute::ProfileId(_) => AttributeType::ProfileId,
-            Attribute::PublicExponent(_) => AttributeType::PublicExponent,
-            Attribute::Sensitive(_) => AttributeType::Sensitive,
-            Attribute::SerialNumber(_) => AttributeType::SerialNumber,
-            Attribute::Sign(_) => AttributeType::Sign,
-            Attribute::SignRecover(_) => AttributeType::SignRecover,
-            Attribute::Subject(_) => AttributeType::Subject,
-            Attribute::Token(_) => AttributeType::Token,
-            Attribute::Trusted(_) => AttributeType::Trusted,
-            Attribute::Unwrap(_) => AttributeType::Unwrap,
-            Attribute::Value(_) => AttributeType::Value,
-            Attribute::ValueLen(_) => AttributeType::ValueLen,
-            Attribute::Verify(_) => AttributeType::Verify,
-            Attribute::VerifyRecover(_) => AttributeType::VerifyRecover,
-            Attribute::Wrap(_) => AttributeType::Wrap,
+            Self::AlwaysAuthenticate(_) => AttributeType::AlwaysAuthenticate,
+            Self::AlwaysSensitive(_) => AttributeType::AlwaysSensitive,
+            Self::Application(_) => AttributeType::Application,
+            Self::CertificateCategory(_) => AttributeType::CertificateCategory,
+            Self::CertificateType(_) => AttributeType::CertificateType,
+            Self::Class(_) => AttributeType::Class,
+            Self::Coefficient(_) => AttributeType::Coefficient,
+            Self::Decrypt(_) => AttributeType::Decrypt,
+            Self::EcParams(_) => AttributeType::EcParams,
+            Self::EcPoint(_) => AttributeType::EcPoint,
+            Self::Encrypt(_) => AttributeType::Encrypt,
+            Self::Exponent1(_) => AttributeType::Exponent1,
+            Self::Exponent2(_) => AttributeType::Exponent2,
+            Self::Extractable(_) => AttributeType::Extractable,
+            Self::Id(_) => AttributeType::Id,
+            Self::Issuer(_) => AttributeType::Issuer,
+            Self::KeyType(_) => AttributeType::KeyType,
+            Self::Label(_) => AttributeType::Label,
+            Self::Modulus(_) => AttributeType::Modulus,
+            Self::ModulusBits(_) => AttributeType::ModulusBits,
+            Self::NeverExtractable(_) => AttributeType::NeverExtractable,
+            Self::Prime1(_) => AttributeType::Prime1,
+            Self::Prime2(_) => AttributeType::Prime2,
+            Self::Private(_) => AttributeType::Private,
+            Self::PrivateExponent(_) => AttributeType::PrivateExponent,
+            Self::ProfileId(_) => AttributeType::ProfileId,
+            Self::PublicExponent(_) => AttributeType::PublicExponent,
+            Self::Sensitive(_) => AttributeType::Sensitive,
+            Self::SerialNumber(_) => AttributeType::SerialNumber,
+            Self::Sign(_) => AttributeType::Sign,
+            Self::SignRecover(_) => AttributeType::SignRecover,
+            Self::Subject(_) => AttributeType::Subject,
+            Self::Token(_) => AttributeType::Token,
+            Self::Trusted(_) => AttributeType::Trusted,
+            Self::Unwrap(_) => AttributeType::Unwrap,
+            Self::Value(_) => AttributeType::Value,
+            Self::ValueLen(_) => AttributeType::ValueLen,
+            Self::Verify(_) => AttributeType::Verify,
+            Self::VerifyRecover(_) => AttributeType::VerifyRecover,
+            Self::Wrap(_) => AttributeType::Wrap,
         }
     }
 
     #[must_use]
     pub fn as_raw_value(&self) -> Vec<u8> {
         match self {
-            Attribute::AlwaysAuthenticate(bool)
-            | Attribute::AlwaysSensitive(bool)
-            | Attribute::Decrypt(bool)
-            | Attribute::Encrypt(bool)
-            | Attribute::Extractable(bool)
-            | Attribute::NeverExtractable(bool)
-            | Attribute::Private(bool)
-            | Attribute::Sensitive(bool)
-            | Attribute::Sign(bool)
-            | Attribute::SignRecover(bool)
-            | Attribute::Token(bool)
-            | Attribute::Trusted(bool)
-            | Attribute::Unwrap(bool)
-            | Attribute::Verify(bool)
-            | Attribute::VerifyRecover(bool)
-            | Attribute::Wrap(bool) => {
+            Self::AlwaysAuthenticate(bool)
+            | Self::AlwaysSensitive(bool)
+            | Self::Decrypt(bool)
+            | Self::Encrypt(bool)
+            | Self::Extractable(bool)
+            | Self::NeverExtractable(bool)
+            | Self::Private(bool)
+            | Self::Sensitive(bool)
+            | Self::Sign(bool)
+            | Self::SignRecover(bool)
+            | Self::Token(bool)
+            | Self::Trusted(bool)
+            | Self::Unwrap(bool)
+            | Self::Verify(bool)
+            | Self::VerifyRecover(bool)
+            | Self::Wrap(bool) => {
                 CK_BBOOL::to_ne_bytes(if *bool { CK_TRUE } else { CK_FALSE }).to_vec()
             }
-            Attribute::CertificateCategory(int)
-            | Attribute::CertificateType(int)
-            | Attribute::Class(int)
-            | Attribute::KeyType(int)
-            | Attribute::ModulusBits(int)
-            | Attribute::ProfileId(int)
-            | Attribute::ValueLen(int) => int.to_ne_bytes().to_vec(),
-            Attribute::Coefficient(bytes)
-            | Attribute::EcParams(bytes)
-            | Attribute::EcPoint(bytes)
-            | Attribute::Exponent1(bytes)
-            | Attribute::Exponent2(bytes)
-            | Attribute::Id(bytes)
-            | Attribute::Issuer(bytes)
-            | Attribute::Modulus(bytes)
-            | Attribute::Prime1(bytes)
-            | Attribute::Prime2(bytes)
-            | Attribute::PrivateExponent(bytes)
-            | Attribute::PublicExponent(bytes)
-            | Attribute::SerialNumber(bytes)
-            | Attribute::Subject(bytes)
-            | Attribute::Value(bytes) => bytes.clone(),
-            Attribute::Application(c_string) => c_string.as_bytes().to_vec(),
-            Attribute::Label(string) => string.as_bytes().to_vec(),
+            Self::CertificateCategory(int)
+            | Self::CertificateType(int)
+            | Self::Class(int)
+            | Self::KeyType(int)
+            | Self::ModulusBits(int)
+            | Self::ProfileId(int)
+            | Self::ValueLen(int) => int.to_ne_bytes().to_vec(),
+            Self::Coefficient(bytes)
+            | Self::EcParams(bytes)
+            | Self::EcPoint(bytes)
+            | Self::Exponent1(bytes)
+            | Self::Exponent2(bytes)
+            | Self::Id(bytes)
+            | Self::Issuer(bytes)
+            | Self::Modulus(bytes)
+            | Self::Prime1(bytes)
+            | Self::Prime2(bytes)
+            | Self::PrivateExponent(bytes)
+            | Self::PublicExponent(bytes)
+            | Self::SerialNumber(bytes)
+            | Self::Subject(bytes)
+            | Self::Value(bytes) => bytes.clone(),
+            Self::Application(c_string) => c_string.as_bytes().to_vec(),
+            Self::Label(string) => string.as_bytes().to_vec(),
         }
     }
 }
@@ -292,67 +292,61 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
 
         let attr = match attr_type {
             AttributeType::AlwaysAuthenticate => {
-                Ok(Attribute::AlwaysAuthenticate(try_u8_into_bool(val)?))
+                Ok(Self::AlwaysAuthenticate(try_u8_into_bool(val)?))
             }
-            AttributeType::AlwaysSensitive => {
-                Ok(Attribute::AlwaysSensitive(try_u8_into_bool(val)?))
+            AttributeType::AlwaysSensitive => Ok(Self::AlwaysSensitive(try_u8_into_bool(val)?)),
+            AttributeType::Application => {
+                Ok(Self::Application(CString::from_vec_with_nul(val.to_vec())?))
             }
-            AttributeType::Application => Ok(Attribute::Application(CString::from_vec_with_nul(
-                val.to_vec(),
-            )?)),
-            AttributeType::CertificateCategory => Ok(Attribute::CertificateCategory(
+            AttributeType::CertificateCategory => Ok(Self::CertificateCategory(
                 CK_CERTIFICATE_CATEGORY::from_ne_bytes(val.try_into()?),
             )),
-            AttributeType::CertificateType => Ok(Attribute::CertificateType(
+            AttributeType::CertificateType => Ok(Self::CertificateType(
                 CK_CERTIFICATE_TYPE::from_ne_bytes(val.try_into()?),
             )),
-            AttributeType::Class => Ok(Attribute::Class(CK_OBJECT_CLASS::from_ne_bytes(
-                val.try_into()?,
-            ))),
-            AttributeType::Coefficient => Ok(Attribute::Coefficient(val.to_vec())),
-            AttributeType::Decrypt => Ok(Attribute::Decrypt(try_u8_into_bool(val)?)),
-            AttributeType::EcParams => Ok(Attribute::EcParams(val.to_vec())),
-            AttributeType::EcPoint => Ok(Attribute::EcPoint(val.to_vec())),
-            AttributeType::Encrypt => Ok(Attribute::Encrypt(try_u8_into_bool(val)?)),
-            AttributeType::Exponent1 => Ok(Attribute::Exponent1(val.to_vec())),
-            AttributeType::Exponent2 => Ok(Attribute::Exponent2(val.to_vec())),
-            AttributeType::Extractable => Ok(Attribute::Extractable(try_u8_into_bool(val)?)),
-            AttributeType::Id => Ok(Attribute::Id(val.to_vec())),
-            AttributeType::Issuer => Ok(Attribute::Issuer(val.to_vec())),
-            AttributeType::KeyType => Ok(Attribute::KeyType(CK_KEY_TYPE::from_ne_bytes(
-                val.try_into()?,
-            ))),
-            AttributeType::Label => Ok(Attribute::Label(String::from_utf8(val.to_vec())?)),
-            AttributeType::Modulus => Ok(Attribute::Modulus(val.to_vec())),
-            AttributeType::ModulusBits => Ok(Attribute::ModulusBits(CK_ULONG::from_ne_bytes(
-                val.try_into()?,
-            ))),
-            AttributeType::NeverExtractable => {
-                Ok(Attribute::NeverExtractable(try_u8_into_bool(val)?))
+            AttributeType::Class => {
+                Ok(Self::Class(CK_OBJECT_CLASS::from_ne_bytes(val.try_into()?)))
             }
-            AttributeType::Prime1 => Ok(Attribute::Prime1(val.to_vec())),
-            AttributeType::Prime2 => Ok(Attribute::Prime2(val.to_vec())),
-            AttributeType::Private => Ok(Attribute::Private(try_u8_into_bool(val)?)),
-            AttributeType::PrivateExponent => Ok(Attribute::PrivateExponent(val.to_vec())),
-            AttributeType::ProfileId => Ok(Attribute::ProfileId(CK_ULONG::from_ne_bytes(
-                val.try_into()?,
-            ))),
-            AttributeType::PublicExponent => Ok(Attribute::PublicExponent(val.to_vec())),
-            AttributeType::Sensitive => Ok(Attribute::Sensitive(try_u8_into_bool(val)?)),
-            AttributeType::SerialNumber => Ok(Attribute::SerialNumber(val.to_vec())),
-            AttributeType::Subject => Ok(Attribute::Subject(val.to_vec())),
-            AttributeType::Sign => Ok(Attribute::Sign(try_u8_into_bool(val)?)),
-            AttributeType::SignRecover => Ok(Attribute::SignRecover(try_u8_into_bool(val)?)),
-            AttributeType::Token => Ok(Attribute::Token(try_u8_into_bool(val)?)),
-            AttributeType::Trusted => Ok(Attribute::Trusted(try_u8_into_bool(val)?)),
-            AttributeType::Unwrap => Ok(Attribute::Unwrap(try_u8_into_bool(val)?)),
-            AttributeType::Value => Ok(Attribute::Value(val.to_vec())),
-            AttributeType::ValueLen => Ok(Attribute::ValueLen(CK_ULONG::from_ne_bytes(
-                val.try_into()?,
-            ))),
-            AttributeType::Verify => Ok(Attribute::Verify(try_u8_into_bool(val)?)),
-            AttributeType::VerifyRecover => Ok(Attribute::VerifyRecover(try_u8_into_bool(val)?)),
-            AttributeType::Wrap => Ok(Attribute::Wrap(try_u8_into_bool(val)?)),
+            AttributeType::Coefficient => Ok(Self::Coefficient(val.to_vec())),
+            AttributeType::Decrypt => Ok(Self::Decrypt(try_u8_into_bool(val)?)),
+            AttributeType::EcParams => Ok(Self::EcParams(val.to_vec())),
+            AttributeType::EcPoint => Ok(Self::EcPoint(val.to_vec())),
+            AttributeType::Encrypt => Ok(Self::Encrypt(try_u8_into_bool(val)?)),
+            AttributeType::Exponent1 => Ok(Self::Exponent1(val.to_vec())),
+            AttributeType::Exponent2 => Ok(Self::Exponent2(val.to_vec())),
+            AttributeType::Extractable => Ok(Self::Extractable(try_u8_into_bool(val)?)),
+            AttributeType::Id => Ok(Self::Id(val.to_vec())),
+            AttributeType::Issuer => Ok(Self::Issuer(val.to_vec())),
+            AttributeType::KeyType => {
+                Ok(Self::KeyType(CK_KEY_TYPE::from_ne_bytes(val.try_into()?)))
+            }
+            AttributeType::Label => Ok(Self::Label(String::from_utf8(val.to_vec())?)),
+            AttributeType::Modulus => Ok(Self::Modulus(val.to_vec())),
+            AttributeType::ModulusBits => {
+                Ok(Self::ModulusBits(CK_ULONG::from_ne_bytes(val.try_into()?)))
+            }
+            AttributeType::NeverExtractable => Ok(Self::NeverExtractable(try_u8_into_bool(val)?)),
+            AttributeType::Prime1 => Ok(Self::Prime1(val.to_vec())),
+            AttributeType::Prime2 => Ok(Self::Prime2(val.to_vec())),
+            AttributeType::Private => Ok(Self::Private(try_u8_into_bool(val)?)),
+            AttributeType::PrivateExponent => Ok(Self::PrivateExponent(val.to_vec())),
+            AttributeType::ProfileId => {
+                Ok(Self::ProfileId(CK_ULONG::from_ne_bytes(val.try_into()?)))
+            }
+            AttributeType::PublicExponent => Ok(Self::PublicExponent(val.to_vec())),
+            AttributeType::Sensitive => Ok(Self::Sensitive(try_u8_into_bool(val)?)),
+            AttributeType::SerialNumber => Ok(Self::SerialNumber(val.to_vec())),
+            AttributeType::Subject => Ok(Self::Subject(val.to_vec())),
+            AttributeType::Sign => Ok(Self::Sign(try_u8_into_bool(val)?)),
+            AttributeType::SignRecover => Ok(Self::SignRecover(try_u8_into_bool(val)?)),
+            AttributeType::Token => Ok(Self::Token(try_u8_into_bool(val)?)),
+            AttributeType::Trusted => Ok(Self::Trusted(try_u8_into_bool(val)?)),
+            AttributeType::Unwrap => Ok(Self::Unwrap(try_u8_into_bool(val)?)),
+            AttributeType::Value => Ok(Self::Value(val.to_vec())),
+            AttributeType::ValueLen => Ok(Self::ValueLen(CK_ULONG::from_ne_bytes(val.try_into()?))),
+            AttributeType::Verify => Ok(Self::Verify(try_u8_into_bool(val)?)),
+            AttributeType::VerifyRecover => Ok(Self::VerifyRecover(try_u8_into_bool(val)?)),
+            AttributeType::Wrap => Ok(Self::Wrap(try_u8_into_bool(val)?)),
         };
 
         debug!("Attribute {:?} => {:?}", attribute, attr);
@@ -416,6 +410,6 @@ impl Deref for Attributes {
 
 impl From<Vec<Attribute>> for Attributes {
     fn from(value: Vec<Attribute>) -> Self {
-        Attributes(value)
+        Self(value)
     }
 }

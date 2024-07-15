@@ -86,6 +86,7 @@ where
 #[macro_export]
 macro_rules! cryptoki_fn {
     (fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
+        #[allow(unreachable_pub)]
         #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub extern "C" fn $name($($arg: $type),*) -> CK_RV {
@@ -93,6 +94,7 @@ macro_rules! cryptoki_fn {
         }
     };
     (unsafe fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
+        #[allow(unreachable_pub)]
         #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub unsafe extern "C" fn $name($($arg: $type),*) -> CK_RV {
@@ -571,11 +573,8 @@ cryptoki_fn!(
                 .as_ref()
                 .ok_or_else(|| MError::OperationNotInitialized)?
                 .objects;
-            let object = match object_store.get(hObject as usize) {
-                Some(object) => object,
-                None => {
-                    return Err(MError::ObjectHandleInvalid(hObject));
-                }
+            let Some(object) = object_store.get(hObject as usize) else {
+                return Err(MError::ObjectHandleInvalid(hObject));
             };
             let template = if ulCount > 0 {
                 if pTemplate.is_null() {
@@ -660,12 +659,9 @@ cryptoki_fn!(
         not_null!(phObject);
         not_null!(pulObjectCount);
         sessions::session(hSession, |session| -> MResult<()> {
-            let find_ctx = match &mut session.find_ctx {
-                Some(find_ctx) => find_ctx,
-                None => {
-                    unsafe { *pulObjectCount = 0 };
-                    return Err(MError::OperationNotInitialized);
-                }
+            let Some(find_ctx) = &mut session.find_ctx else {
+                unsafe { *pulObjectCount = 0 };
+                return Err(MError::OperationNotInitialized);
             };
             debug!(
                 "C_FindObjects: objects still available: {:?}",
@@ -902,9 +898,8 @@ cryptoki_fn!(
                 .as_ref()
                 .ok_or(MError::OperationNotInitialized)?
                 .objects;
-            let private_key = match object_store.get(hKey as usize) {
-                Some(Object::PrivateKey(private_key)) => private_key,
-                Some(_) | None => return Err(MError::KeyHandleInvalid(hKey)),
+            let Some(Object::PrivateKey(private_key)) = object_store.get(hKey as usize) else {
+                return Err(MError::KeyHandleInvalid(hKey))
             };
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
             session.sign_ctx = Some(SignContext {

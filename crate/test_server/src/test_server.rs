@@ -32,7 +32,7 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// with a default configuration.
 /// Otherwise we get: "Address already in use (os error 98)"
 /// for N-1 tests.
-pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     ONCE.get_or_try_init(_start_default_test_kms_server)
@@ -70,8 +70,7 @@ pub async fn start_test_server_with_options(
     use_https: bool,
     use_client_cert: bool,
 ) -> Result<TestsContext, ClientError> {
-    let server_params =
-        generate_server_params(port, use_jwt_token, use_https, use_client_cert).await?;
+    let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)?;
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
@@ -162,7 +161,7 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
     Ok(())
 }
 
-async fn generate_server_params(
+fn generate_server_params(
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
@@ -212,7 +211,6 @@ async fn generate_server_params(
         ..Default::default()
     };
     ServerParams::try_from(clap_config)
-        .await
         .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))
 }
 
@@ -244,9 +242,9 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
             let p = root_dir.join("certificates/owner/owner.client.acme.com.old.format.p12");
             Some(
                 p.to_str()
-                    .ok_or(ClientError::Default(
-                        "Can't convert path to string".to_string(),
-                    ))?
+                    .ok_or_else(|| {
+                        ClientError::Default("Can't convert path to string".to_string())
+                    })?
                     .to_string(),
             )
         } else {
@@ -280,9 +278,7 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
         let p = root_dir.join("certificates/user/user.client.acme.com.old.format.p12");
         Some(
             p.to_str()
-                .ok_or(ClientError::Default(
-                    "Can't convert path to string".to_string(),
-                ))?
+                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_string()))?
                 .to_string(),
         )
     };

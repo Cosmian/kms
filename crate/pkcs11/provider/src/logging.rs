@@ -8,7 +8,7 @@ use tracing_subscriber::{
 
 static TRACING_INIT: Once = Once::new();
 
-pub fn initialize_logging(log_name: &str, level: Option<Level>, log_home: Option<String>) {
+pub(crate) fn initialize_logging(log_name: &str, level: Option<Level>, log_home: Option<String>) {
     TRACING_INIT.call_once(|| {
         init(log_name, level, log_home).unwrap_or_else(|e| {
             eprintln!("Failed to initialize logging: {e}");

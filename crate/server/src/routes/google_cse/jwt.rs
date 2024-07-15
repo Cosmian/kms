@@ -46,8 +46,10 @@ fn jwt_authorization_config_application(
         "gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
     ));
 
-    let jwt_audience =
-        Some(std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()));
+    let jwt_audience = Some(
+        std::env::var("KMS_GOOGLE_CSE_AUDIENCE")
+            .unwrap_or_else(|_| "cse-authorization".to_string()),
+    );
 
     Arc::new(JwtConfig {
         jwt_issuer_uri,
@@ -70,7 +72,7 @@ pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<Strin
 }
 
 /// Decode a json web token (JWT) used for Google CSE
-pub async fn decode_jwt_authorization_token(
+pub(crate) fn decode_jwt_authorization_token(
     jwt_config: &Arc<JwtConfig>,
     token: &str,
 ) -> KResult<(UserClaim, JwtTokenHeaders)> {
@@ -141,7 +143,7 @@ pub struct GoogleCseConfig {
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-pub async fn validate_tokens(
+pub(crate) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
@@ -178,7 +180,7 @@ pub async fn validate_tokens(
         ))
     })?;
     let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(jwt_config, authorization_token).await?;
+        decode_jwt_authorization_token(jwt_config, authorization_token)?;
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
@@ -305,8 +307,10 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        unsafe {
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        }
         let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
@@ -314,7 +318,6 @@ mod tests {
             jwt_authorization_config.get("drive").unwrap(),
             &wrap_request.authorization,
         )
-        .await
         .unwrap();
         info!("AUTHORIZATION token: {:?}", authorization_token);
         info!("AUTHORIZATION token headers: {:?}", jwt_headers);

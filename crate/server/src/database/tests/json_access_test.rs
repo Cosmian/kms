@@ -24,7 +24,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn json_access<DB: Database>(
+pub(crate) async fn json_access<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
     // log_init("debug");

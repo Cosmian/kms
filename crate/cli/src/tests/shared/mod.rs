@@ -1,9 +1,9 @@
-pub use destroy::destroy;
-pub use export::export_key;
-pub use get_attributes::get_attributes;
-pub use import::import_key;
-pub use locate::locate;
-pub use revoke::revoke;
+pub(crate) use destroy::destroy;
+pub(crate) use export::export_key;
+pub(crate) use get_attributes::get_attributes;
+pub(crate) use import::import_key;
+pub(crate) use locate::locate;
+pub(crate) use revoke::revoke;
 
 mod destroy;
 mod export;

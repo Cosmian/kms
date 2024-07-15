@@ -38,7 +38,7 @@ use crate::{
 /// Export an object
 ///
 /// This function is used by the KMIP Export and Get operations
-pub async fn export_get(
+pub(crate) async fn export_get(
     kms: &KMS,
     request: impl Into<Export>,
     operation_type: ObjectOperationType,

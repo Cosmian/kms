@@ -10,12 +10,12 @@ use crate::{
 };
 
 // Default Google JWT issuer URI
-pub const GOOGLE_JWT_ISSUER_URI: &str = "https://accounts.google.com";
+pub(crate) const GOOGLE_JWT_ISSUER_URI: &str = "https://accounts.google.com";
 
 // Default Google JWT Set URI
-pub const GOOGLE_JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
+pub(crate) const GOOGLE_JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-pub async fn generate_google_jwt() -> String {
+pub(crate) async fn generate_google_jwt() -> String {
     #[derive(Deserialize)]
     struct RefreshToken {
         pub id_token: String,
@@ -48,7 +48,7 @@ pub async fn generate_google_jwt() -> String {
     id_token
 }
 
-pub async fn google_cse_auth() -> KResult<GoogleCseConfig> {
+pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
     let mut uris = google_cse::list_jwks_uri();
     uris.push(JwtAuthConfig::uri(
         GOOGLE_JWT_ISSUER_URI,

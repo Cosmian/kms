@@ -40,7 +40,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub struct CachedSqlCipher {
+pub(crate) struct CachedSqlCipher {
     path: PathBuf,
     cache: KMSSqliteCache,
 }
@@ -51,7 +51,7 @@ const KMS_SQLITE_CACHE_SIZE: usize = 100;
 impl CachedSqlCipher {
     /// Instantiate a new `CachedSqlCipher`
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
+    pub(crate) fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
         if clear_database && path.exists() && path.is_dir() {
             remove_dir_content(path)?;
         }

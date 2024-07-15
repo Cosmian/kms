@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[tokio::test]
-pub async fn test() -> Result<(), KmsError> {
+pub(crate) async fn test() -> Result<(), KmsError> {
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
@@ -23,7 +23,7 @@ pub async fn test() -> Result<(), KmsError> {
     let leaf2_cert = fs::read(leaf2_path)?;
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     let request = Validate {
         certificate: Some([root_cert.clone()].to_vec()),
@@ -100,7 +100,7 @@ pub async fn test() -> Result<(), KmsError> {
 }
 
 #[tokio::test]
-pub async fn test_kms() -> Result<(), KmsError> {
+pub(crate) async fn test_kms() -> Result<(), KmsError> {
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
@@ -112,7 +112,7 @@ pub async fn test_kms() -> Result<(), KmsError> {
     let leaf2_cert = fs::read(leaf2_path)?;
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     // add certificates to kms
     // root

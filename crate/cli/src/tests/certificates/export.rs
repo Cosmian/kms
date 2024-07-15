@@ -97,11 +97,12 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let cert_x509_der = match &cert {
-        Object::Certificate {
-            certificate_value, ..
-        } => certificate_value,
-        _ => panic!("wrong object type"),
+    let Object::Certificate {
+        certificate_value: cert_x509_der,
+        ..
+    } = &cert
+    else {
+        panic!("wrong object type")
     };
     assert_eq!(
         cert_x509_der.clone(),
@@ -122,11 +123,12 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let issuer_cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let issuer_cert_x509_der = match &issuer_cert {
-        Object::Certificate {
-            certificate_value, ..
-        } => certificate_value,
-        _ => panic!("wrong object type"),
+    let Object::Certificate {
+        certificate_value: issuer_cert_x509_der,
+        ..
+    } = &issuer_cert
+    else {
+        panic!("wrong object type")
     };
     assert_eq!(
         issuer_cert_x509_der.clone(),
@@ -263,7 +265,7 @@ async fn test_import_p12_rsa() {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn export_certificate(
+pub(crate) fn export_certificate(
     cli_conf_path: &str,
     certificate_id: &str,
     certificate_file: &str,

@@ -12,7 +12,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn create(
+pub(crate) async fn create(
     kms: &KMS,
     request: Create,
     owner: &str,
@@ -24,7 +24,7 @@ pub async fn create(
     }
 
     let (object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => kms.create_symmetric_key_and_tags(&request)?,
+        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => {
             kms.create_private_key_and_tags(&request, owner, params)
                 .await?

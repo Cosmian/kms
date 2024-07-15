@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Dispatch operation depending on the TTLV tag
-pub async fn dispatch(
+pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,

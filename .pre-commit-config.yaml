@@ -138,7 +138,7 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.25
+    rev: v1.0.27
     hooks:
       - id: cargo-format
       # - id: dprint-toml-fix
@@ -149,10 +149,11 @@ repos:
       - id: renew-kms-markdown
       - id: docker-compose-up
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth, --skip, test_cse_private_key_sign, --skip, test_cse_private_key_decrypt]
-      # - id: cargo-outdated
+        args: [--, --skip, test_wrap_auth, --skip, google_cse]
       - id: clippy-autofix-all
+      - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
       - id: clippy-autofix-others
       - id: clippy-all-targets-all-features
       - id: cargo-format # in last du to clippy fixes

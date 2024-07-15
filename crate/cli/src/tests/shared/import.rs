@@ -25,7 +25,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn import_key(
+pub(crate) fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
@@ -182,7 +182,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
 }
 
 #[allow(dead_code)]
-pub fn export_import_test(
+pub(crate) fn export_import_test(
     cli_conf_path: &str,
     sub_command: &str,
     private_key_id: &str,

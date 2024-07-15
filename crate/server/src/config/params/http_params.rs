@@ -36,7 +36,7 @@ impl HttpParams {
     }
 
     #[must_use]
-    pub fn is_running_https(&self) -> bool {
+    pub const fn is_running_https(&self) -> bool {
         matches!(self, Self::Https(_))
     }
 }
@@ -44,16 +44,16 @@ impl HttpParams {
 impl fmt::Debug for HttpParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HttpParams::Https(ParsedPkcs12_2 {
+            Self::Https(ParsedPkcs12_2 {
                 cert: Some(x509), ..
             }) => f
                 .debug_tuple("Https server certificate CN")
                 .field(&x509.subject_name())
                 .finish(),
-            HttpParams::Https(ParsedPkcs12_2 { cert: None, .. }) => {
+            Self::Https(ParsedPkcs12_2 { cert: None, .. }) => {
                 write!(f, "Https server certificate CN unknown. THIS IS AN ERROR")
             }
-            HttpParams::Http => write!(f, "Http"),
+            Self::Http => write!(f, "Http"),
         }
     }
 }

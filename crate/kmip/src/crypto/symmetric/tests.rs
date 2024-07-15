@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[test]
-pub fn test_aes() {
+pub(crate) fn test_aes() {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();

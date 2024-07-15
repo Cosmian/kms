@@ -141,7 +141,10 @@ impl ExportKeyAction {
         .await?;
 
         // write the object to a file
-        if self.key_format != ExportKeyFormat::JsonTtlv {
+        if self.key_format == ExportKeyFormat::JsonTtlv {
+            // save it to a file
+            write_kmip_object_to_file(&object, &self.key_file)?;
+        } else {
             // export the bytes only
             let bytes = {
                 let mut bytes = object.key_block()?.key_bytes()?;
@@ -157,9 +160,6 @@ impl ExportKeyAction {
                 bytes
             };
             write_bytes_to_file(&bytes, &self.key_file)?;
-        } else {
-            // save it to a file
-            write_kmip_object_to_file(&object, &self.key_file)?;
         }
 
         let stdout = format!(

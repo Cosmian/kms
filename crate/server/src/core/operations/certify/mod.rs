@@ -63,7 +63,7 @@ const X509_VERSION3: i32 = 2;
 /// Certify a certificate
 /// This operation is used to issue a certificate based on a public key, a CSR or a key pair
 /// The certificate can be self-signed or signed by another certificate
-pub async fn certify(
+pub(crate) async fn certify(
     kms: &KMS,
     request: Certify,
     user: &str,
@@ -289,7 +289,7 @@ async fn get_subject(
                         .attributes
                         .as_ref()
                         .and_then(|attributes| attributes.unique_identifier.clone())
-                        .unwrap_or(request_id.clone()); //overwrite the current certificate
+                        .unwrap_or_else(|| request_id.clone());
                     return Ok(Subject::Certificate(
                         certificate_id,
                         kmip_certificate_to_openssl(&owm.object)?,
@@ -545,7 +545,7 @@ fn build_and_sign_certificate(
     request: Certify,
 ) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
     // recover the attributes
-    let mut attributes = request.attributes.clone().unwrap_or_default();
+    let mut attributes = request.attributes.unwrap_or_default();
 
     // remove any link that helped identify the issuer
     // these will be properly re-added later

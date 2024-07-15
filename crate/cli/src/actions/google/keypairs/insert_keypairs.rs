@@ -30,7 +30,7 @@ pub struct InsertKeypairsAction {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct KeyFile {
+pub(crate) struct KeyFile {
     kacls_url: String,
     wrapped_private_key: String,
 }

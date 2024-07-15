@@ -153,7 +153,7 @@ pub struct MessageBatchItem {
 
 impl MessageBatchItem {
     #[must_use]
-    pub fn new(request: Operation) -> Self {
+    pub const fn new(request: Operation) -> Self {
         Self {
             operation: request.operation_enum(),
             ephemeral: None,
@@ -475,7 +475,7 @@ pub struct MessageResponseBatchItem {
 
 impl MessageResponseBatchItem {
     #[must_use]
-    pub fn new(result_status: ResultStatusEnumeration) -> Self {
+    pub const fn new(result_status: ResultStatusEnumeration) -> Self {
         Self {
             result_status,
             operation: None,
@@ -489,7 +489,10 @@ impl MessageResponseBatchItem {
     }
 
     #[must_use]
-    pub fn new_with_response(result_status: ResultStatusEnumeration, response: Operation) -> Self {
+    pub const fn new_with_response(
+        result_status: ResultStatusEnumeration,
+        response: Operation,
+    ) -> Self {
         Self {
             result_status,
             operation: Some(response.operation_enum()),

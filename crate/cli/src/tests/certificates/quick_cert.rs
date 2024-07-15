@@ -24,7 +24,7 @@ use crate::{
 };
 
 // if logs are required, declare in bash: `export RUST_LOG="cosmian_kms_server=debug,cosmian_kms_cli=debug"`
-pub fn certify(
+pub(crate) fn certify(
     cli_conf_path: &str,
     ca: &str,
     subject: Option<String>,
@@ -82,7 +82,7 @@ fn get_file_as_byte_vec(filename: &str) -> Vec<u8> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn export(
+pub(crate) fn export(
     cli_conf_path: &str,
     sub_command: &str,
     tags_args: Option<&[&str]>,
@@ -141,7 +141,7 @@ pub fn export(
     ))
 }
 
-pub fn revoke(
+pub(crate) fn revoke(
     cli_conf_path: &str,
     sub_command: &str,
     certificate_id: &str,
@@ -168,7 +168,7 @@ pub fn revoke(
     ))
 }
 
-pub fn destroy(
+pub(crate) fn destroy(
     cli_conf_path: &str,
     sub_command: &str,
     certificate_id: &str,
@@ -192,7 +192,7 @@ pub fn destroy(
 
 #[tokio::test]
 #[ignore] //This feature will be completely refactored
-pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
+pub(crate) async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
@@ -334,7 +334,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
 
 #[tokio::test]
 #[ignore] //This feature will be completely refactored
-pub async fn test_certify_with_csr() -> Result<(), CliError> {
+pub(crate) async fn test_certify_with_csr() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let _tmp_path = tmp_dir.into_path();

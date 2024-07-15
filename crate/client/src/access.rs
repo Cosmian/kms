@@ -126,11 +126,9 @@ impl fmt::Display for ObjectOwnedResponse {
             self.state,
             if self.is_wrapped { "[Wrapped]" } else { "" },
             self.object_id,
-            if let Some(format) = self.attributes.key_format_type {
-                format.to_string()
-            } else {
-                String::new()
-            }
+            self.attributes
+                .key_format_type
+                .map_or_else(String::new, |format| format.to_string())
         )
     }
 }

@@ -31,13 +31,18 @@ async fn main() -> KResult<()> {
 
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
-        std::env::set_var("RUST_BACKTRACE", "1");
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
     }
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var(
-            "RUST_LOG",
-            "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info",
-        );
+        unsafe {
+            std::env::set_var(
+                "RUST_LOG",
+                "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,\
+                 mysql=info",
+            );
+        }
     }
 
     // Load variable from a .env file
@@ -89,7 +94,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
-    let server_params = ServerParams::try_from(clap_config).await?;
+    let server_params = ServerParams::try_from(clap_config)?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");

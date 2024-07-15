@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-pub const SUB_COMMAND: &str = "access-rights";
+pub(crate) const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
 fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
@@ -121,7 +121,7 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError
 }
 
 #[tokio::test]
-pub async fn test_ownership_and_grant() -> Result<(), CliError> {
+pub(crate) async fn test_ownership_and_grant() -> Result<(), CliError> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -256,7 +256,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_grant_error() -> Result<(), CliError> {
+pub(crate) async fn test_grant_error() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -297,7 +297,7 @@ pub async fn test_grant_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_revoke_access() -> Result<(), CliError> {
+pub(crate) async fn test_revoke_access() -> Result<(), CliError> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -391,7 +391,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_list_access_rights() -> Result<(), CliError> {
+pub(crate) async fn test_list_access_rights() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -415,14 +415,14 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_list_access_rights_error() -> Result<(), CliError> {
+pub(crate) async fn test_list_access_rights_error() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     assert!(list_access(&ctx.user_client_conf_path, "BAD KEY").is_err());
     Ok(())
 }
 
 #[tokio::test]
-pub async fn test_list_owned_objects() -> Result<(), CliError> {
+pub(crate) async fn test_list_owned_objects() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -459,7 +459,7 @@ pub async fn test_list_owned_objects() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_access_right_obtained() -> Result<(), CliError> {
+pub(crate) async fn test_access_right_obtained() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -492,7 +492,7 @@ pub async fn test_access_right_obtained() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
+pub(crate) async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -602,7 +602,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
+pub(crate) async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
     // std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -641,7 +641,7 @@ pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError>
 }
 
 #[tokio::test]
-pub async fn test_grant_multiple_operations() -> Result<(), CliError> {
+pub(crate) async fn test_grant_multiple_operations() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 

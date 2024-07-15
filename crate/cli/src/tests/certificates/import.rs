@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn import_certificate(
+pub(crate) fn import_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,

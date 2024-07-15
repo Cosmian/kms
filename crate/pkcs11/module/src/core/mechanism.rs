@@ -140,17 +140,17 @@ impl From<Mechanism> for CK_MECHANISM_TYPE {
 impl From<Mechanism> for SignatureAlgorithm {
     fn from(mechanism: Mechanism) -> Self {
         match mechanism {
-            Mechanism::Ecdsa => SignatureAlgorithm::Ecdsa,
-            Mechanism::RsaPkcs => SignatureAlgorithm::RsaPkcs1v15Raw,
-            Mechanism::RsaPkcsSha1 => SignatureAlgorithm::RsaPkcs1v15Sha1,
-            Mechanism::RsaPkcsSha256 => SignatureAlgorithm::RsaPkcs1v15Sha256,
-            Mechanism::RsaPkcsSha384 => SignatureAlgorithm::RsaPkcs1v15Sha512,
-            Mechanism::RsaPkcsSha512 => SignatureAlgorithm::RsaPkcs1v15Sha384,
+            Mechanism::Ecdsa => Self::Ecdsa,
+            Mechanism::RsaPkcs => Self::RsaPkcs1v15Raw,
+            Mechanism::RsaPkcsSha1 => Self::RsaPkcs1v15Sha1,
+            Mechanism::RsaPkcsSha256 => Self::RsaPkcs1v15Sha256,
+            Mechanism::RsaPkcsSha384 => Self::RsaPkcs1v15Sha512,
+            Mechanism::RsaPkcsSha512 => Self::RsaPkcs1v15Sha384,
             Mechanism::RsaPss {
                 digest_algorithm,
                 mask_generation_function,
                 salt_length,
-            } => SignatureAlgorithm::RsaPss {
+            } => Self::RsaPss {
                 digest: digest_algorithm,
                 mask_generation_function,
                 salt_length,
@@ -162,7 +162,7 @@ impl From<Mechanism> for SignatureAlgorithm {
 impl From<Mechanism> for EncryptionAlgorithm {
     fn from(mechanism: Mechanism) -> Self {
         match mechanism {
-            Mechanism::RsaPkcs => EncryptionAlgorithm::RsaPkcs1v15,
+            Mechanism::RsaPkcs => Self::RsaPkcs1v15,
             x => panic!("Unsupported encryption algorithm: {x:?}"),
         }
     }

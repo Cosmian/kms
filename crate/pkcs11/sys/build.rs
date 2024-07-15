@@ -32,7 +32,7 @@ mod generate {
 // limitations under the License."#;
 
     #[derive(Debug)]
-    pub struct CargoCallbacks;
+    pub(crate) struct CargoCallbacks;
 
     impl callbacks::ParseCallbacks for CargoCallbacks {
         // https://github.com/rust-lang/rust-bindgen/issues/1594
@@ -159,7 +159,7 @@ mod generate {
         format!("src/pkcs11_{}.rs", std::env::consts::FAMILY)
     }
 
-    pub fn generate_main() {
+    pub(crate) fn generate_main() {
         println!("cargo:rerun-if-changed=pkcs11.h");
 
         let bindings = bindgen::Builder::default()

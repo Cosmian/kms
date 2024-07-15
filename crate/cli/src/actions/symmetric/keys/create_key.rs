@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-pub enum SymmetricAlgorithm {
+pub(crate) enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,
     Aes,

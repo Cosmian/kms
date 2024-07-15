@@ -32,12 +32,12 @@ use crate::{
 
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
-pub struct MySqlPool {
+pub(crate) struct MySqlPool {
     pool: Pool<MySql>,
 }
 
 impl MySqlPool {
-    pub async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
+    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
         let options = MySqlConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -360,18 +360,7 @@ pub(crate) async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let rows: Vec<MySqlRow> = if !uid_or_tags.starts_with('[') {
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("select-object")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(user)
-        .bind(uid_or_tags)
-        .fetch_optional(executor)
-        .await?
-        .map_or(vec![], |row| vec![row])
-    } else {
+    let rows: Vec<MySqlRow> = if uid_or_tags.starts_with('[') {
         // deserialize the array to an HashSet
         let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
             .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
@@ -397,6 +386,17 @@ where
 
         // Execute the query
         query.fetch_all(executor).await?
+    } else {
+        sqlx::query(
+            MYSQL_QUERIES
+                .get("select-object")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(user)
+        .bind(uid_or_tags)
+        .fetch_optional(executor)
+        .await?
+        .map_or(vec![], |row| vec![row])
     };
 
     // process the rows and find the tags
@@ -854,12 +854,12 @@ fn to_qualified_uids(
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        let attrs = if !raw.is_empty() {
+        let attrs = if raw.is_empty() {
+            Attributes::default()
+        } else {
             let attrs: Attributes =
                 serde_json::from_slice(&raw).context("failed deserializing attributes")?;
             attrs
-        } else {
-            Attributes::default()
         };
 
         uids.push((

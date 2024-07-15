@@ -16,7 +16,7 @@ mod insert_keypairs;
 mod list_keypairs;
 mod obliterate_keypairs;
 
-pub const KEYPAIRS_ENDPOINT: &str = "/settings/cse/keypairs/";
+pub(crate) const KEYPAIRS_ENDPOINT: &str = "/settings/cse/keypairs/";
 
 /// Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
 #[derive(Subcommand)]

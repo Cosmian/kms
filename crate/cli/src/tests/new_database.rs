@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[tokio::test]
-pub async fn test_new_database() -> Result<(), CliError> {
+pub(crate) async fn test_new_database() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -33,7 +33,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_secrets_bad() -> Result<(), CliError> {
+pub(crate) async fn test_secrets_bad() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
     let bad_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
@@ -52,7 +52,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
+pub(crate) async fn test_conf_does_not_exist() -> Result<(), CliError> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -66,7 +66,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_secrets_key_bad() -> Result<(), CliError> {
+pub(crate) async fn test_secrets_key_bad() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;

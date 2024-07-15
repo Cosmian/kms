@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-pub fn revoke(
+pub(crate) fn revoke(
     cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,

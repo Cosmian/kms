@@ -32,7 +32,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn create_key_pair(
+pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,

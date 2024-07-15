@@ -23,7 +23,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn tags<DB: Database>(
+pub(crate) async fn tags<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
     verify_attributes: bool,
 ) -> KResult<()> {

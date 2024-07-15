@@ -21,7 +21,7 @@ use http::{HeaderMap, HeaderValue, StatusCode};
 use log::trace;
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{
     access::{
@@ -455,10 +455,9 @@ impl KmsClient {
         accept_invalid_certs: bool,
         allowed_tee_tls_cert: Option<Certificate>,
     ) -> Result<Self, ClientError> {
-        let server_url = match server_url.strip_suffix('/') {
-            Some(s) => s.to_string(),
-            None => server_url.to_string(),
-        };
+        let server_url = server_url
+            .strip_suffix('/')
+            .map_or_else(|| server_url.to_string(), std::string::ToString::to_string);
 
         let mut headers = HeaderMap::new();
         if let Some(bearer_token) = bearer_token {
@@ -572,7 +571,7 @@ impl KmsClient {
             Some(d) => {
                 trace!(
                     "==>\n{}",
-                    serde_json::to_string_pretty(&d).unwrap_or("[N/A]".to_string())
+                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_string())
                 );
                 self.client.post(server_url).json(d).send().await?
             }
@@ -584,7 +583,7 @@ impl KmsClient {
             let response = response.json::<R>().await?;
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&response).unwrap_or("[N/A]".to_string())
+                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return Ok(response)
         }
@@ -606,7 +605,7 @@ impl KmsClient {
 
         trace!(
             "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
         );
         request = request.json(&ttlv);
 
@@ -617,7 +616,7 @@ impl KmsClient {
             let ttlv = response.json::<TTLV>().await?;
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
         }
@@ -626,12 +625,6 @@ impl KmsClient {
         let p = handle_error(endpoint, response).await?;
         Err(ClientError::RequestFailed(p))
     }
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct ErrorPayload {
-    pub error: String,
-    pub messages: Option<Vec<String>>,
 }
 
 /// Some errors are returned by the Middleware without going through our own error manager.
@@ -643,14 +636,14 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
     Ok(format!(
         "{}: {}",
         endpoint,
-        if !text.is_empty() {
-            text
-        } else {
+        if text.is_empty() {
             match status {
                 StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
                 StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
                 _ => format!("{status} {text}"),
             }
+        } else {
+            text
         }
     ))
 }
@@ -658,7 +651,7 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
 /// Build a `TLSClient` to use with a KMS running inside a tee
 /// The TLS verification is the basic one but also include the verification of the leaf certificate
 /// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
-pub fn build_tls_client_tee(
+pub(crate) fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,
 ) -> Result<ClientBuilder, ClientError> {
@@ -673,13 +666,13 @@ pub fn build_tls_client_tee(
     });
     root_cert_store.add_trust_anchors(trust_anchors);
 
-    let verifier = if !accept_invalid_certs {
+    let verifier = if accept_invalid_certs {
+        LeafCertificateVerifier::new(leaf_cert, Arc::new(NoVerifier))
+    } else {
         LeafCertificateVerifier::new(
             leaf_cert,
             Arc::new(WebPkiVerifier::new(root_cert_store, None)),
         )
-    } else {
-        LeafCertificateVerifier::new(leaf_cert, Arc::new(NoVerifier))
     };
 
     let config = rustls::ClientConfig::builder()

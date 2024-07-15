@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-pub fn locate(
+pub(crate) fn locate(
     cli_conf_path: &str,
     tags: Option<&[&str]>,
     algorithm: Option<&str>,
@@ -212,7 +212,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
+pub(crate) async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -300,7 +300,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
+pub(crate) async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 

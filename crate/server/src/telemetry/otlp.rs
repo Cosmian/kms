@@ -5,7 +5,7 @@ use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
 
 use crate::{error::KmsError, result::KResult};
 
-pub fn init_otlp_tracer(url: String) -> KResult<opentelemetry_sdk::trace::Tracer> {
+pub(crate) fn init_otlp_tracer(url: String) -> KResult<opentelemetry_sdk::trace::Tracer> {
     opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(

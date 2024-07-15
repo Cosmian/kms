@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use super::ClientError;
 
-pub type ClientResult<R> = Result<R, ClientError>;
+pub(crate) type ClientResult<R> = Result<R, ClientError>;
 
 #[allow(dead_code)]
-pub trait RestClientResultHelper<T> {
+pub(crate) trait RestClientResultHelper<T> {
     fn context(self, context: &str) -> ClientResult<T>;
     fn with_context<D, O>(self, op: O) -> ClientResult<T>
     where

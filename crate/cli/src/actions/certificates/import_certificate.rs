@@ -305,12 +305,12 @@ impl ImportCertificateAction {
     }
 
     fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
-        self.certificate_file
-            .as_ref()
-            .ok_or(CliError::InvalidRequest(format!(
+        self.certificate_file.as_ref().ok_or_else(|| {
+            CliError::InvalidRequest(format!(
                 "Certificate file parameter is MANDATORY for {:?} format",
                 self.input_format
-            )))
+            ))
+        })
     }
 
     /// Import the certificates in reverse order (from root to leaf)
