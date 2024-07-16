@@ -666,9 +666,10 @@ cryptoki_fn!(
                     return Err(MError::OperationNotInitialized(hSession));
                 }
             };
-            debug!(
+            trace!(
                 "C_FindObjects: session: {:?}, objects still available: {:?}",
-                hSession, find_ctx.unread_indexes
+                hSession,
+                find_ctx.unread_indexes
             );
             if find_ctx.unread_indexes.is_empty() {
                 info!(
@@ -684,9 +685,10 @@ cryptoki_fn!(
                 .drain(0..max_objects)
                 .collect::<Vec<_>>();
             info!(
-                "C_FindObjects: session: {:?}, returning {} objects",
+                "C_FindObjects: session: {:?}, returning {} object with handles {:?}",
                 hSession,
-                handles.len()
+                handles.len(),
+                handles
             );
             let output = unsafe { slice::from_raw_parts_mut(phObject, max_objects) };
             output.copy_from_slice(handles.as_slice());

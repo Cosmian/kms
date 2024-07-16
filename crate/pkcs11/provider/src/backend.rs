@@ -9,8 +9,6 @@ use cosmian_pkcs11_module::{
     },
     MError, MResult,
 };
-use p256::SecretKey;
-use pkcs1::RsaPrivateKey;
 use tracing::{debug, trace, warn};
 use zeroize::Zeroizing;
 
@@ -124,10 +122,9 @@ impl Backend for CkmsBackend {
         let mut private_keys = vec![];
         for id in locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])? {
             let attributes = get_kms_object_attributes(&self.kms_client, &id)?;
-            let key_size = attributes
-                .cryptographic_length
-                .ok_or_else(|| MError::Cryptography("missing key size".to_string()))?
-                as usize;
+            let key_size = attributes.cryptographic_length.ok_or_else(|| {
+                MError::Cryptography("find_all_private_keys: missing key size".to_string())
+            })? as usize;
             let sk =
                 Pkcs11PrivateKey::new(id, key_algorithm_from_attributes(&attributes)?, key_size);
             private_keys.push(Arc::new(sk) as Arc<dyn PrivateKey>);
@@ -206,19 +203,13 @@ impl PrivateKey for EmptyPrivateKeyImpl {
         0
     }
 
-    fn rsa_private_key(&self) -> MResult<RsaPrivateKey> {
-        Err(MError::Todo("rsa_private_key not implemented".to_string()))
+    fn pkcs8_der_bytes(&self) -> MResult<Zeroizing<Vec<u8>>> {
+        Ok(Zeroizing::new(vec![]))
     }
 
     fn rsa_public_exponent(&self) -> MResult<Vec<u8>> {
         Err(MError::Todo(
             "rsa_public_exponent not implemented".to_string(),
-        ))
-    }
-
-    fn ec_p256_private_key(&self) -> MResult<SecretKey> {
-        Err(MError::Todo(
-            "`p256`_private_key not implemented".to_string(),
         ))
     }
 }

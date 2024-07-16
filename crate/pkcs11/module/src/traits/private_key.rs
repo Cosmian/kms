@@ -19,7 +19,7 @@
 
 use std::hash::Hash;
 
-use pkcs1::RsaPrivateKey;
+use zeroize::Zeroizing;
 
 use crate::{
     traits::{KeyAlgorithm, SignatureAlgorithm},
@@ -38,15 +38,13 @@ pub trait PrivateKey: Send + Sync {
     /// Return the key size in bits
     fn key_size(&self) -> usize;
 
-    /// Return the RSA private key if the key is an RSA key
-    fn rsa_private_key(&self) -> MResult<RsaPrivateKey>;
+    /// Return the DER bytes of the private key
+    /// This is a lazy loaded value
+    fn pkcs8_der_bytes(&self) -> MResult<Zeroizing<Vec<u8>>>;
 
     /// Return the RSA public exponent if the key is an RSA key
     /// In big endian
     fn rsa_public_exponent(&self) -> MResult<Vec<u8>>;
-
-    /// Return the EC P256 private key if the key is an EC key
-    fn ec_p256_private_key(&self) -> MResult<p256::SecretKey>;
 }
 
 impl std::fmt::Debug for dyn PrivateKey {

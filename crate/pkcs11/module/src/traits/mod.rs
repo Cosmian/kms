@@ -79,7 +79,7 @@ impl TryFrom<&Attributes> for SearchOptions {
             return Ok(SearchOptions::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
-            Ok(SearchOptions::Id(String::from_utf8(id.to_owned())?))
+            Ok(SearchOptions::Id(id.to_owned()))
         } else {
             Ok(SearchOptions::All)
         }

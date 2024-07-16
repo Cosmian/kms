@@ -148,7 +148,7 @@ pub enum Attribute {
     Exponent1(Vec<u8>),
     Exponent2(Vec<u8>),
     Extractable(bool),
-    Id(Vec<u8>),
+    Id(String),
     Issuer(Vec<u8>),
     KeyType(CK_KEY_TYPE),
     Label(String),
@@ -256,7 +256,6 @@ impl Attribute {
             | Attribute::EcPoint(bytes)
             | Attribute::Exponent1(bytes)
             | Attribute::Exponent2(bytes)
-            | Attribute::Id(bytes)
             | Attribute::Issuer(bytes)
             | Attribute::Modulus(bytes)
             | Attribute::Prime1(bytes)
@@ -268,6 +267,7 @@ impl Attribute {
             | Attribute::Value(bytes) => bytes.clone(),
             Attribute::Application(c_string) => c_string.as_bytes().to_vec(),
             Attribute::Label(string) => string.as_bytes().to_vec(),
+            Attribute::Id(string) => string.as_bytes().to_vec(),
         }
     }
 }
@@ -319,7 +319,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
             AttributeType::Exponent1 => Ok(Attribute::Exponent1(val.to_vec())),
             AttributeType::Exponent2 => Ok(Attribute::Exponent2(val.to_vec())),
             AttributeType::Extractable => Ok(Attribute::Extractable(try_u8_into_bool(val)?)),
-            AttributeType::Id => Ok(Attribute::Id(val.to_vec())),
+            AttributeType::Id => Ok(Attribute::Id(String::from_utf8(val.to_vec())?)),
             AttributeType::Issuer => Ok(Attribute::Issuer(val.to_vec())),
             AttributeType::KeyType => Ok(Attribute::KeyType(CK_KEY_TYPE::from_ne_bytes(
                 val.try_into()?,

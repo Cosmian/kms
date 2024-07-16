@@ -44,18 +44,6 @@ pub enum Object {
     // RemoteObjectId(Arc<dyn RemoteObjectId>),
 }
 
-impl Object {
-    pub fn remote_id(&self) -> String {
-        match self {
-            Object::Certificate(cert) => cert.remote_id(),
-            Object::PrivateKey(private_key) => private_key.remote_id(),
-            Object::Profile(id) => id.to_string(),
-            Object::PublicKey(public_key) => public_key.remote_id(),
-            Object::DataObject(data) => data.remote_id(),
-        }
-    }
-}
-
 //  #[derive(PartialEq)] fails to compile because it tries to move the Box<_>ed
 //  values.
 //  https://github.com/rust-lang/rust/issues/78808#issuecomment-723304465
@@ -82,6 +70,16 @@ impl PartialEq for Object {
 }
 
 impl Object {
+    pub fn remote_id(&self) -> String {
+        match self {
+            Object::Certificate(cert) => cert.remote_id(),
+            Object::PrivateKey(private_key) => private_key.remote_id(),
+            Object::Profile(id) => id.to_string(),
+            Object::PublicKey(public_key) => public_key.remote_id(),
+            Object::DataObject(data) => data.remote_id(),
+        }
+    }
+
     pub fn name(&self) -> String {
         match self {
             Object::Certificate(_) => "Certificate",
@@ -102,7 +100,7 @@ impl Object {
                 )),
                 AttributeType::CertificateType => Some(Attribute::CertificateType(CKC_X_509)),
                 AttributeType::Class => Some(Attribute::Class(CKO_CERTIFICATE)),
-                AttributeType::Id => Some(Attribute::Id(cert.remote_id().as_bytes().to_vec())),
+                AttributeType::Id => Some(Attribute::Id(cert.remote_id().clone())),
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label("Certificate".to_string())),
                 AttributeType::Token => Some(Attribute::Token(true)),
@@ -145,9 +143,7 @@ impl Object {
                     }
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
-                AttributeType::Id => {
-                    Some(Attribute::Id(private_key.remote_id().as_bytes().to_vec()))
-                }
+                AttributeType::Id => Some(Attribute::Id(private_key.remote_id().clone())),
                 AttributeType::KeyType => {
                     Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
                 }
@@ -165,7 +161,20 @@ impl Object {
                 AttributeType::SignRecover => Some(Attribute::SignRecover(false)),
                 AttributeType::Token => Some(Attribute::Token(true)),
                 AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
-                AttributeType::Value => Some(Attribute::Value((-1_i32).to_be_bytes().to_vec())),
+                AttributeType::Value => match private_key.algorithm() {
+                    KeyAlgorithm::Rsa => {
+                        Some(Attribute::Value(private_key.pkcs8_der_bytes()?.to_vec()))
+                    }
+                    KeyAlgorithm::EccP256
+                    | KeyAlgorithm::EccP384
+                    | KeyAlgorithm::EccP521
+                    | KeyAlgorithm::Ed25519
+                    | KeyAlgorithm::X25519
+                    | KeyAlgorithm::X448
+                    | KeyAlgorithm::Ed448 => {
+                        Some(Attribute::Value(private_key.pkcs8_der_bytes()?.to_vec()))
+                    }
+                },
                 _ => {
                     error!("private_key: type_ unimplemented: {:?}", type_);
                     None
@@ -189,7 +198,7 @@ impl Object {
                     Some(Attribute::PublicExponent(pk.rsa_public_exponent()?))
                 }
                 AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
-                AttributeType::Id => Some(Attribute::Id(pk.remote_id().as_bytes().to_vec())),
+                AttributeType::Id => Some(Attribute::Id(pk.remote_id().clone())),
                 AttributeType::EcPoint => {
                     if !pk.algorithm().is_ecc() {
                         return Ok(None);
@@ -214,7 +223,7 @@ impl Object {
             },
             Object::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
-                AttributeType::Id => Some(Attribute::Id(data.remote_id().as_bytes().to_vec())),
+                AttributeType::Id => Some(Attribute::Id(data.remote_id().clone())),
                 // TODO(BGR) should we hold zeroizable values here ?
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
@@ -234,23 +243,4 @@ impl Object {
         );
         Ok(attribute)
     }
-
-    // #[must_use]
-    // pub fn matches(&self, others: &Attributes) -> bool {
-    //     if let Some(class) = others.get(AttributeType::Class) {
-    //         if *class != self.attribute(AttributeType::Class).unwrap() {
-    //             return false;
-    //         }
-    //     }
-    //     for other in &**others {
-    //         if let Some(attr) = self.attribute(other.attribute_type()) {
-    //             if *other != attr {
-    //                 return false;
-    //             }
-    //         } else {
-    //             return false;
-    //         }
-    //     }
-    //     true
-    // }
 }

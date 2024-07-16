@@ -87,10 +87,10 @@ impl FindContext {
         self.objects.len()
     }
 
-    // /// Clear the unread index
-    // fn clear_unread(&mut self) {
-    //     self.unread_indexes.clear();
-    // }
+    /// Clear the unread index
+    fn clear_unread(&mut self) {
+        self.unread_indexes.clear();
+    }
 
     /// Add to the unread index
     fn add_to_unread(&mut self, handle: CK_OBJECT_HANDLE) {
@@ -197,69 +197,90 @@ impl Session {
         }
         let search_class = template.get_class()?;
         let search_options = SearchOptions::try_from(&template)?;
-        debug!(
-            "load_find_context: loading for class: {:?} and options: {:?} from template {:?}",
-            search_class, search_options, template
+        trace!(
+            "load_find_context: loading for class: {:?} and options: {:?}, from template {:?}",
+            search_class,
+            search_options,
+            template
         );
         // initialize empty find context
         let find_ctx = self.find_ctx.get_or_insert_with(Default::default);
         let initial_size = find_ctx.len();
         match search_options {
             SearchOptions::All => {
+                find_ctx.clear_unread();
                 match search_class {
                     pkcs11_sys::CKO_CERTIFICATE => {
                         template.ensure_X509_or_none()?;
-                        backend()
+                        let res = backend()
                             .find_all_certificates()?
                             .into_iter()
-                            .map(|c| {
-                                info!("load_find_context: adding certificate");
-                                find_ctx.insert(Arc::new(Object::Certificate(c)))
-                            })
+                            .map(|c| find_ctx.insert(Arc::new(Object::Certificate(c))))
                             .collect::<MResult<Vec<_>>>()?;
+                        debug!(
+                            "load_find_context: added {} certificates with handles: {:?}",
+                            res.len(),
+                            res
+                        );
                     }
                     pkcs11_sys::CKO_PUBLIC_KEY => {
-                        backend()
+                        let res = backend()
                             .find_all_public_keys()?
                             .into_iter()
                             .map(|c| find_ctx.insert(Arc::new(Object::PublicKey(c))))
                             .collect::<MResult<Vec<_>>>()?;
+                        debug!(
+                            "load_find_context: added {} public keys with handles: {:?}",
+                            res.len(),
+                            res
+                        );
                     }
                     pkcs11_sys::CKO_PRIVATE_KEY => {
-                        backend()
+                        let res = backend()
                             .find_all_private_keys()?
                             .into_iter()
                             .map(|c| find_ctx.insert(Arc::new(Object::PrivateKey(c))))
                             .collect::<MResult<Vec<_>>>()?;
+                        debug!(
+                            "load_find_context: added {} private keys with handles: {:?}",
+                            res.len(),
+                            res
+                        );
                     }
                     pkcs11_sys::CKO_DATA => {
-                        backend()
+                        let res = backend()
                             .find_all_data_objects()?
                             .into_iter()
                             .map(|c| find_ctx.insert(Arc::new(Object::DataObject(c))))
                             .collect::<MResult<Vec<_>>>()?;
+                        debug!(
+                            "load_find_context: added {} data objects with handles: {:?}",
+                            res.len(),
+                            res
+                        );
                     }
                     o => return Err(MError::Todo(format!("Object not supported: {o}"))),
                 }
-                info!(
-                    "load_find_context: added {} objects for search class {}",
-                    find_ctx.len() - initial_size,
-                    search_class
-                );
             }
             SearchOptions::Id(remote_id) => {
-                debug!("load_find_context: search by id: {}", remote_id);
                 let find_ctx = self
                     .find_ctx
                     .as_mut()
                     .ok_or(MError::OperationNotInitialized(0))?;
-                let (_, handle) = find_ctx
+                let (object, handle) = find_ctx
                     .get_using_id(&remote_id)
                     .ok_or_else(|| MError::ArgumentsBad)?;
+                debug!(
+                    "load_find_context: search by id: {} -> handle: {} -> object: {}:{}",
+                    remote_id,
+                    handle,
+                    object.name(),
+                    object.remote_id()
+                );
+                find_ctx.clear_unread();
                 find_ctx.add_to_unread(handle);
             }
         }
-
         Ok(())
     }
 }
