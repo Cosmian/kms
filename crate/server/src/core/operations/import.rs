@@ -634,6 +634,11 @@ pub(crate) fn add_imported_links_to_attributes(
     attributes: &mut Attributes,
     links_to_add: &Attributes,
 ) {
+    trace!(
+        "Adding imported links to attributes: attributes={:?}, links_to_add={:?}",
+        attributes,
+        links_to_add
+    );
     if let Some(new_links) = links_to_add.link.as_ref() {
         match attributes.link.as_mut() {
             Some(existing_links) => {
@@ -648,4 +653,8 @@ pub(crate) fn add_imported_links_to_attributes(
             }
         }
     }
+    trace!(
+        "Added imported links to attributes: attributes={:?}",
+        attributes
+    );
 }

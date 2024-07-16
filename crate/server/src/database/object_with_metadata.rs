@@ -4,6 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::{mysql::MySqlRow, postgres::PgRow, sqlite::SqliteRow, Row};
 
@@ -11,7 +12,7 @@ use super::{state_from_string, DBObject};
 use crate::{error::KmsError, result::KResultHelper};
 
 /// An object with its metadata such as permissions and state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ObjectWithMetadata {
     pub(crate) id: String,
     pub(crate) object: Object,

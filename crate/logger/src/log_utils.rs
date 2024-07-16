@@ -7,17 +7,19 @@ static LOG_INIT: Once = Once::new();
 /// # Panics
 ///
 /// Will panic if we cannot set global tracing subscriber
-pub fn log_init(paths: &str) {
+pub fn log_init(default_value: &str) {
     LOG_INIT.call_once(|| {
         if std::env::var("RUST_BACKTRACE").is_err() {
             std::env::set_var("RUST_BACKTRACE", "1");
         }
 
-        if let Ok(old_value) = std::env::var("RUST_LOG") {
-            let new_value = format!("{old_value},{paths}");
-            std::env::set_var("RUST_LOG", new_value);
-            tracing_setup();
+        if let Ok(current_value) = std::env::var("RUST_LOG") {
+            std::env::set_var("RUST_LOG", current_value);
+        } else {
+            std::env::set_var("RUST_LOG", default_value);
         }
+
+        tracing_setup();
     });
 }
 

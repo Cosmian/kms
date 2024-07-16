@@ -64,6 +64,10 @@ pub async fn get_attributes(
         params,
     )
     .await?;
+    trace!(
+        "Retrieved object for get attributes: {:?}",
+        serde_json::to_string(&owm)
+    );
     let object_type = owm.object.object_type();
 
     let attributes = match &owm.object {
@@ -100,7 +104,7 @@ pub async fn get_attributes(
                     .vendor_attributes
                     .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link.clone_from(&attributes.link);
+                default_attributes.link.clone_from(&owm.attributes.link);
                 default_attributes
             }
         }
@@ -124,13 +128,14 @@ pub async fn get_attributes(
                     .vendor_attributes
                     .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link.clone_from(&attributes.link);
+                default_attributes.link.clone_from(&owm.attributes.link);
                 default_attributes
             }
         }
         Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
+            attributes.link.clone_from(&owm.attributes.link);
             *attributes
         }
     };

@@ -265,7 +265,7 @@ async fn certificate_by_uid(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<u8>> {
-    let uid_own = retrieve_object_for_operation(
+    let uid_owm = retrieve_object_for_operation(
         unique_identifier,
         ObjectOperationType::Validate,
         kms,
@@ -277,7 +277,7 @@ async fn certificate_by_uid(
     if let Object::Certificate {
         certificate_type: _,
         certificate_value,
-    } = uid_own.object
+    } = uid_owm.object
     {
         Ok(certificate_value)
     } else {
@@ -285,7 +285,7 @@ async fn certificate_by_uid(
             ErrorReason::Invalid_Object_Type,
             format!(
                 "Requested a Certificate Object, got a {}",
-                uid_own.object.object_type()
+                uid_owm.object.object_type()
             ),
         )))
     }
