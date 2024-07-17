@@ -39,9 +39,11 @@ use crate::{
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::enum_clike_unportable_variant)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
+    PKCS7 = 0x8000_0001,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
@@ -121,7 +123,7 @@ pub enum KeyFormatType {
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
     PKCS10 = 0x17,
-    // Available slot 0x8880_0001,
+    PKCS7 = 0x8880_0001,
     // Available slot 0x8880_0002,
     // Available slot 0x8880_0003,
     // Available slot 0x8880_0004,
@@ -1230,7 +1232,9 @@ impl CertificateAttributes {
                 "CN" => value.clone_into(&mut certificate_attributes.certificate_subject_cn),
                 "O" => value.clone_into(&mut certificate_attributes.certificate_subject_o),
                 "OU" => value.clone_into(&mut certificate_attributes.certificate_subject_ou),
-                "Email" => value.clone_into(&mut certificate_attributes.certificate_subject_email),
+                "emailAddress" => {
+                    value.clone_into(&mut certificate_attributes.certificate_subject_email)
+                }
                 "C" => value.clone_into(&mut certificate_attributes.certificate_subject_c),
                 "ST" => value.clone_into(&mut certificate_attributes.certificate_subject_st),
                 "L" => value.clone_into(&mut certificate_attributes.certificate_subject_l),
