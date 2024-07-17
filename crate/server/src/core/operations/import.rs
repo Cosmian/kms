@@ -413,6 +413,11 @@ fn single_operation(
     attributes: Attributes,
     uid: String,
 ) -> AtomicOperation {
+    // Sync the Object::Attributes with input Attributes
+    let mut object = object;
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.clone_from(&attributes);
+    }
     if replace_existing {
         AtomicOperation::Upsert((
             uid,

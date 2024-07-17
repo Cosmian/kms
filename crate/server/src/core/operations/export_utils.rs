@@ -603,8 +603,7 @@ async fn post_process_pkcs12_for_private_key(
         .context("export: unable to parse the private key to openssl")?;
 
     let mut cert_owm =
-        retrieve_certificate_for_private_key(&owm.object, operation_type, kms, user, params)
-            .await?;
+        retrieve_certificate_for_private_key(owm, operation_type, kms, user, params).await?;
     let certificate = kmip_certificate_to_openssl(&cert_owm.object)?;
 
     // retrieve the certificate chain
