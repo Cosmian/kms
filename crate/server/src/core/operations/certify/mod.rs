@@ -132,26 +132,24 @@ pub async fn certify(
                 unique_identifier,
             )
         }
-        Subject::KeypairAndSubjectName(unique_identifier, keypair_data, _) => {
+        Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
             // update the private key attributes with the public key identifier
-            let mut private_key_attributes = keypair_data.private_key_object.attributes()?.clone();
-            private_key_attributes.add_link(
+            keypair_data.private_key_object.attributes_mut()?.add_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
             );
             // update the private key attributes with a link to the certificate
-            private_key_attributes.add_link(
+            keypair_data.private_key_object.attributes_mut()?.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the public key attributes with a link to the private key
-            let mut public_key_attributes = keypair_data.public_key_object.attributes()?.clone();
-            public_key_attributes.add_link(
+            keypair_data.public_key_object.attributes_mut()?.add_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
             // update the public key attributes with a link to the certificate
-            public_key_attributes.add_link(
+            keypair_data.public_key_object.attributes_mut()?.add_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
@@ -171,16 +169,16 @@ pub async fn certify(
                     // upsert the private key
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
-                        keypair_data.private_key_object,
-                        private_key_attributes,
+                        keypair_data.private_key_object.clone(),
+                        keypair_data.private_key_object.attributes()?.clone(),
                         Some(keypair_data.private_key_tags),
                         StateEnumeration::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
                         keypair_data.public_key_id.to_string(),
-                        keypair_data.public_key_object,
-                        public_key_attributes,
+                        keypair_data.public_key_object.clone(),
+                        keypair_data.public_key_object.attributes()?.clone(),
                         Some(keypair_data.public_key_tags),
                         StateEnumeration::Active,
                     )),
