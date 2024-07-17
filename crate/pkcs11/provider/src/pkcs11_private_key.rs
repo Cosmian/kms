@@ -5,7 +5,7 @@ use cosmian_pkcs11_module::{
     MError, MResult,
 };
 use pkcs1::{der::Decode, RsaPrivateKey};
-use tracing::{error, info};
+use tracing::error;
 use zeroize::Zeroizing;
 
 use crate::kms_object::{key_algorithm_from_attributes, KmsObject};
@@ -41,7 +41,6 @@ impl Pkcs11PrivateKey {
                 .key_bytes()
                 .map_err(|e| MError::Cryptography(e.to_string()))?,
         ));
-        info!("attributes: {:?}", kms_object.attributes);
         let key_size = kms_object.attributes.cryptographic_length.ok_or_else(|| {
             MError::Cryptography("try_from_kms_object: missing key size".to_string())
         })? as usize;

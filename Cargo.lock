@@ -1431,6 +1431,7 @@ dependencies = [
  "pkcs1",
  "pkcs11_sys",
  "rand",
+ "rsa",
  "serde",
  "serial_test",
  "strum_macros 0.26.4",

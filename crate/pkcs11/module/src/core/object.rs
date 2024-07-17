@@ -21,16 +21,18 @@ use std::sync::Arc;
 
 use log::error;
 use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
+use pkcs1::EncodeRsaPrivateKey;
 use pkcs11_sys::{
     CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
 };
+use rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey};
 use tracing::debug;
 
 use crate::{
     core::attribute::{Attribute, AttributeType},
     traits::{Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey},
-    MResult,
+    MError, MResult,
 };
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -163,7 +165,17 @@ impl Object {
                 AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
                 AttributeType::Value => match private_key.algorithm() {
                     KeyAlgorithm::Rsa => {
-                        Some(Attribute::Value(private_key.pkcs8_der_bytes()?.to_vec()))
+                        let der_bytes = private_key.pkcs8_der_bytes()?;
+                        RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref())
+                            .map(|sk| sk.to_pkcs1_der())
+                            .map_err(|e| {
+                                error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                                MError::Cryptography(
+                                    "Failed to fetch the PKCS1 DER bytes".to_string(),
+                                )
+                            })?
+                            .map(|sd| Attribute::Value(sd.as_bytes().to_vec()))
+                            .ok()
                     }
                     KeyAlgorithm::EccP256
                     | KeyAlgorithm::EccP384

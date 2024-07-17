@@ -667,7 +667,7 @@ cryptoki_fn!(
                 }
             };
             trace!(
-                "C_FindObjects: session: {:?}, objects still available: {:?}",
+                "C_FindObjects: session: {:?}, objects available: {:?}",
                 hSession,
                 find_ctx.unread_indexes
             );

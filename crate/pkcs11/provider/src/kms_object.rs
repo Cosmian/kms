@@ -101,7 +101,7 @@ pub(crate) async fn get_kms_object_async(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Result<KmsObject, Pkcs11Error> {
-    let (id, object, attributes) = export_object(
+    let (id, object, _) = export_object(
         kms_client,
         object_id_or_tags,
         true,
@@ -111,7 +111,8 @@ pub(crate) async fn get_kms_object_async(
     )
     .await?;
 
-    let attributes = attributes.unwrap_or_default();
+    // Get request does not return attributes, try to get them form the object
+    let attributes = object.attributes().map(|a| a.clone()).unwrap_or_default();
     let other_tags = attributes
         .get_tags()
         .into_iter()

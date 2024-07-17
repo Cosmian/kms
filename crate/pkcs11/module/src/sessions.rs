@@ -27,7 +27,7 @@ use once_cell::sync::Lazy;
 use pkcs11_sys::{
     CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG, CK_ULONG_PTR,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use crate::{
     core::{attribute::Attributes, object::Object},
