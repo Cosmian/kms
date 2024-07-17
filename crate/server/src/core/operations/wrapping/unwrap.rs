@@ -56,11 +56,7 @@ pub async fn unwrap_key(
         ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
         ObjectType::PublicKey | ObjectType::Certificate => {
             let attributes = match object_type {
-                ObjectType::PublicKey => unwrapping_key
-                    .object
-                    .attributes()
-                    .with_context(|| format!("no attributes found for the {object_type}"))?
-                    .clone(),
+                ObjectType::PublicKey => unwrapping_key.attributes,
                 ObjectType::Certificate => unwrapping_key.attributes,
                 _ => unreachable!("unwrap_key: unsupported object type: {object_type}"),
             };
