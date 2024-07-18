@@ -106,13 +106,13 @@ impl Object {
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label("Certificate".to_string())),
                 AttributeType::Token => Some(Attribute::Token(true)),
-                AttributeType::Trusted => Some(Attribute::Trusted(false)),
+                AttributeType::Trusted => Some(Attribute::Trusted(true)),
                 AttributeType::SerialNumber => {
                     cert.serial_number().map(Attribute::SerialNumber).ok()
                 }
                 AttributeType::Subject => cert.subject().map(Attribute::Subject).ok(),
                 AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
-                AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
                 AttributeType::Modulus => {
                     Some(Attribute::Modulus(cert.public_key()?.rsa_modulus()?))
                 }

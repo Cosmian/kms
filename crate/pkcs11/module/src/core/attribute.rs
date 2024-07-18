@@ -32,7 +32,7 @@ use pkcs11_sys::{
     CK_KEY_TYPE, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_TRUE, CK_ULONG,
 };
 use strum_macros::Display;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::{MError, MResult};
 
@@ -357,7 +357,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
             AttributeType::Wrap => Ok(Attribute::Wrap(try_u8_into_bool(val)?)),
         };
 
-        debug!("Attribute {:?} => {:?}", attribute, attr);
+        trace!("Attribute {:?} => {:?}", attribute, attr);
         attr
     }
 }

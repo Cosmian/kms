@@ -438,6 +438,12 @@ cryptoki_fn!(
             return Err(MError::SessionParallelNotSupported);
         }
         unsafe { *phSession = sessions::create(flags) };
+        info!(
+            "C_OpenSession: slot: {:?}, flags: {:?}, session: {}",
+            slotID,
+            flags,
+            unsafe { *phSession }
+        );
         Ok(())
     }
 );
@@ -445,6 +451,7 @@ cryptoki_fn!(
 cryptoki_fn!(
     fn C_CloseSession(hSession: CK_SESSION_HANDLE) {
         initialized!();
+        info!("C_CloseSession: session: {:?}", hSession);
         if sessions::close(hSession) {
             return Ok(());
         }
@@ -479,6 +486,13 @@ cryptoki_fn!(
             ulDeviceError: 0,
         };
         unsafe { *pInfo = info };
+        trace!(
+            "C_GetSessionInfo: session: {:?}, slot: {:?}, state: {:?}, flags: {:?}",
+            hSession,
+            SLOT_ID,
+            state,
+            flags
+        );
         Ok(())
     }
 );
@@ -590,6 +604,12 @@ cryptoki_fn!(
                     .type_
                     .try_into()
                     .map_err(|_| MError::AttributeTypeInvalid(attribute.type_))?;
+                info!(
+                    "C_GetAttributeValue: session: {:?}, object: {:?}, type: {:?}",
+                    hSession,
+                    object.remote_id(),
+                    type_.to_string(),
+                );
                 if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
                     attribute.ulValueLen = value.len() as CK_ULONG;
@@ -606,12 +626,6 @@ cryptoki_fn!(
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
-                info!(
-                    "C_GetAttributeValue: session: {:?}, object: {:?}, type: {:?}",
-                    hSession,
-                    hObject,
-                    type_.to_string(),
-                );
             }
             Ok(())
         })
@@ -642,6 +656,7 @@ cryptoki_fn!(
             .into();
 
         sessions::session(hSession, |session| -> MResult<()> {
+            info!("C_FindObjectsInit: session: {:?}, load context", hSession);
             session.load_find_context(template)
         })
     }
