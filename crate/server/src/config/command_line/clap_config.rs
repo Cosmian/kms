@@ -19,6 +19,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
+            enable_xks_service: false,
             telemetry: TelemetryConfig::default(),
         }
     }

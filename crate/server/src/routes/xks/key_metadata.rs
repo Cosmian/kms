@@ -153,7 +153,7 @@ pub async fn get_key_metadata(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => e.into(),
+        Err(e) => HttpResponse::from_error(e),
     }
 }
 

@@ -254,7 +254,7 @@ pub async fn prepare_kms_server(
 
     // Should we enable the AWS XKS Service ?
     // https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md
-    let enable_xks = kms_server.params.enable_xks_service.is_some();
+    let enable_xks = kms_server.params.enable_xks_service;
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -295,19 +295,21 @@ pub async fn prepare_kms_server(
         }
 
         if enable_xks {
+            // TODO: sig4 authentication
             // let enable_sig4 =...
             // The scope for the AWS XKS endpoints is served from /kms/xks/v1
             // which is the default used by AWS
             let xks_scope = web::scope("/kms/xks/v1")
+                // TODO: sig4 authentication
                 // .wrap(Condition::new(
                 //     enable_sig4,
                 //     sig4,
-                // )) // Use JWT for authentication if necessary.
+                // ))
                 .wrap(Cors::permissive())
                 .service(xks::get_health_status)
-                .service(xks::get_key_metadata)
-                .service(xks::encrypt)
-                .service(xks::decrypt);
+                .service(xks::get_key_metadata);
+            // .service(xks::encrypt)
+            // .service(xks::decrypt);
             app = app.service(xks_scope);
         }
 
