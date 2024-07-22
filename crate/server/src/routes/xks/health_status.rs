@@ -43,10 +43,10 @@ use tracing::info;
 use crate::KMSServer;
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 #[allow(non_snake_case)]
 pub struct GetHealthStatusRequest {
-    requestMetadata: RequestMetadata,
+    pub requestMetadata: RequestMetadata,
 }
 
 /// Request Payload Parameters: The HTTP body of the request only contains the requestMetadata.
@@ -61,7 +61,7 @@ pub struct RequestMetadata {
     /// This field typically follows the format for UUIDs
     /// but the XKS Proxy MUST treat this as an opaque string and
     /// MUST NOT perform any validation on its structure. This field is REQUIRED.
-    kmsRequestId: String,
+    pub kmsRequestId: String,
 
     /// This is the KMS API call that resulted in the XKS Proxy API request.
     /// This field is REQUIRED.
@@ -71,43 +71,44 @@ pub struct RequestMetadata {
     /// to get health status for publishing to CloudWatch metrics.
     /// The XKS Proxy MUST NOT reject a request as invalid if it sees a kmsOperation
     /// other than those listed for this API call.
-    kmsOperation: String,
+    pub kmsOperation: String,
 }
 
 // External Key Manager Details
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]
-struct EkmFleetDetails {
+pub struct EkmFleetDetails {
     /// Unique identifier for the external key manager in the external key manager cluster.
-    id: String,
+    pub id: String,
     /// Model of the external key manager. This SHOULD include the product name,
     /// version of the hardware and any other information that would be useful
     /// in troubleshooting and estimating TPS capacity.
-    model: String,
+    pub model: String,
     /// Status of health check on the external key manager from XKS proxy.
     /// The possible statuses are ACTIVE, DEGRADED and UNAVAILABLE. ACTIVE means that
     /// external key manager is healthy, DEGRADED means that external key manager is unhealthy
     /// but can still serve traffic and UNAVAILABLE means that
     /// external key manager is unable to serve traffic.
-    healthStatus: String,
+    pub healthStatus: String,
 }
 
 /// Response Payload Parameters: The HTTP body of the response contains
 /// the health status of the XKS Proxy and the external key manager.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]
-struct GetHealthStatusResponse {
+pub struct GetHealthStatusResponse {
     ///  Size of XKS proxy fleet. This MUST be an integer greater than zero.
-    xksProxyFleetSize: u16,
+    pub xksProxyFleetSize: u16,
     /// Name of the XKS Proxy vendor, this could be different from the name
     /// of the external key manager vendor.
     /// Both MUST be included even if they are the same.
-    xksProxyVendor: String,
+    pub xksProxyVendor: String,
     /// Model of the XKS Proxy. This SHOULD include the product name and version.
-    xksProxyModel: String,
+    pub xksProxyModel: String,
     /// Name of the external key manager vendor.
-    ekmVendor: String,
-    ekmFleetDetails: Vec<EkmFleetDetails>,
+    pub ekmVendor: String,
+    /// External Key Manager Details
+    pub ekmFleetDetails: Vec<EkmFleetDetails>,
 }
 
 #[post("/health")]

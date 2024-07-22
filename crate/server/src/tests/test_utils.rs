@@ -1,5 +1,6 @@
 use std::{env::temp_dir, path::PathBuf, sync::Arc};
 
+use actix_cors::Cors;
 use actix_http::Request;
 use actix_web::{
     body::MessageBody,
@@ -18,7 +19,9 @@ use crate::{
     config::{ClapConfig, DBConfig, HttpConfig, ServerParams},
     kms_bail,
     result::KResult,
-    routes, KMSServer,
+    routes,
+    routes::xks,
+    KMSServer,
 };
 
 #[allow(dead_code)]
@@ -85,6 +88,20 @@ pub async fn test_app(
         .service(routes::google_cse::private_key_decrypt);
     app = app.service(google_cse_scope);
 
+    // The scope for AWS XKS
+    let xks_scope = web::scope("/kms/xks/v1")
+        // TODO: sig4 authentication
+        // .wrap(Condition::new(
+        //     enable_sig4,
+        //     sig4,
+        // ))
+        .wrap(Cors::permissive())
+        .service(xks::get_health_status)
+        .service(xks::get_key_metadata)
+        .service(xks::encrypt)
+        .service(xks::decrypt);
+    app = app.service(xks_scope);
+
     test::init_service(app).await
 }
 
@@ -126,14 +143,12 @@ where
         .set_json(&operation)
         .to_request();
     let res = call_service(app, req).await;
-    println!("Res: {:?}", res.status());
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
             String::from_utf8(read_body(res).await.to_vec()).unwrap_or("[N/A".to_string())
         );
     }
-    println!("OK before bytes");
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
 }

@@ -1,9 +1,9 @@
+pub use decrypt_::{decrypt, DecryptRequest, DecryptResponse};
+pub use encrypt_::{encrypt, EncryptRequest, EncryptResponse};
+use serde::{Deserialize, Serialize};
+
 mod decrypt_;
 mod encrypt_;
-
-pub use decrypt_::decrypt;
-pub use encrypt_::encrypt;
-use serde::{Deserialize, Serialize};
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -48,4 +48,17 @@ pub struct RequestMetadata {
     /// This field is OPTIONAL. If present, it indicates the AWS service that called the KMS API
     /// on behalf of a customer (see kms:ViaService)
     pub kmsViaService: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
+pub enum EncrytionAlgorithm {
+    AES_GCM,
+}
+
+/// Ciphertext Data Integrity Value Algorithm
+#[derive(Debug, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
+pub enum CdivAlgorithm {
+    SHA_256,
 }

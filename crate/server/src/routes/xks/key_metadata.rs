@@ -76,16 +76,16 @@ pub struct RequestMetadata {
 ///     }
 /// }
 /// ```
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 #[allow(non_snake_case)]
 pub struct GetKeyMetadataRequest {
-    requestMetadata: RequestMetadata,
+    pub requestMetadata: RequestMetadata,
 }
 
 // Defined per XKS Proxy API spec.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq, Deserialize)]
 #[allow(clippy::upper_case_acronyms)]
-enum KeyUsage {
+pub enum KeyUsage {
     ENCRYPT,
     DECRYPT,
     SIGN,
@@ -102,13 +102,13 @@ enum KeyUsage {
 ///     "keyStatus": "ENABLED"
 /// }
 /// ```
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Deserialize)]
 #[allow(non_snake_case)]
-struct GetKeyMetadataResponse {
+pub struct GetKeyMetadataResponse {
     /// Specifies the type of external key.
     /// This field is REQUIRED.
     /// The XKS Proxy must use the string AES_256 to indicate a 256-bit AES key.
-    keySpec: String,
+    pub keySpec: String,
     /// Specifies an array of cryptographic operations for which external key can be used.
     /// This field is REQUIRED.
     /// The XKS Proxy must use the strings ENCRYPT and DECRYPT (all uppercase)
@@ -116,12 +116,12 @@ struct GetKeyMetadataResponse {
     /// The XKS Proxy response MAY include additional values supported by that external key,
     /// e.g. PKCS11-based HSMs additionally support DERIVE, SIGN, VERIFY, WRAP, UNWRAP.
     /// The response MUST NOT contain more than ten keyUsage values.
-    keyUsage: Vec<KeyUsage>,
+    pub keyUsage: Vec<KeyUsage>,
     /// Specifies the state of the external key.
     /// The supported values are ENABLED and DISABLED. This field is REQUIRED.
     /// If neither the external key manager nor the XKS Proxy support disabling individual keys,
     /// the XKS Proxy MUST return ENABLED for this field.
-    keyStatus: String,
+    pub keyStatus: String,
 }
 
 #[post("keys/{key_id}/metadata")]
