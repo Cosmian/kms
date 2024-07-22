@@ -12,3 +12,4 @@ mod curve_25519_tests;
 mod kmip_messages;
 #[cfg(not(feature = "fips"))]
 mod kmip_server_tests;
+mod xks;

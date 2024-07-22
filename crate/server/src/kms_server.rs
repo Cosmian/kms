@@ -307,9 +307,9 @@ pub async fn prepare_kms_server(
                 // ))
                 .wrap(Cors::permissive())
                 .service(xks::get_health_status)
-                .service(xks::get_key_metadata);
-            // .service(xks::encrypt)
-            // .service(xks::decrypt);
+                .service(xks::get_key_metadata)
+                .service(xks::encrypt)
+                .service(xks::decrypt);
             app = app.service(xks_scope);
         }
 

@@ -38,13 +38,9 @@ use actix_web::{
 };
 use clap::crate_version;
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace};
+use tracing::info;
 
-use crate::{
-    result::KResult,
-    routes::google_cse::{operations, GoogleCseConfig},
-    KMSServer,
-};
+use crate::KMSServer;
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Deserialize, Debug)]

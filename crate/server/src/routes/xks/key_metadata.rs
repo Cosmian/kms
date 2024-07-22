@@ -9,21 +9,14 @@ use actix_web::{
     web::{Data, Json, Path},
     HttpRequest, HttpResponse,
 };
-use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_operations::GetAttributes,
     kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
 };
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
-use crate::{
-    error::KmsError,
-    kms_bail,
-    result::KResult,
-    routes::google_cse::{operations, GoogleCseConfig},
-    KMSServer,
-};
+use crate::{error::KmsError, kms_bail, result::KResult, KMSServer};
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
