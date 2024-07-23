@@ -119,65 +119,46 @@ jobs:
           if-no-files-found: error
 
   pyo3-mac:
-    runs-on: macos-12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mac-version: macos-12
+            archive-name: kms_python_macos_intel
+            target: x86_64-apple-darwin
+
+          - mac-version: macos-14
+            archive-name: kms_python_macos_arm
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.mac-version }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.12
           cache: pip # caching pip dependencies
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-06-09
+          components: rustfmt, clippy
 
       - name: Prerequisites for macos
         run: |
           set -x
-          rustup target add x86_64-apple-darwin
 
-          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
-          pip3 install maturin
+          pip3 install maturin==1.2.3
 
       - name: Python maturin build
         run: |
           set -x
           cd crate/pyo3
-          maturin build --release --target x86_64-apple-darwin
+          maturin build --release --target ${{ matrix.target }} --target-dir target_python
 
       - name: Upload WHL for MacOS
         uses: actions/upload-artifact@v3
         with:
-          name: kms_python_macos_intel
-          path: target/wheels/*macosx*.whl
-          retention-days: 1
-          if-no-files-found: error
-
-  pyo3-mac14:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-          cache: pip # caching pip dependencies
-
-      - name: Prerequisites for macos
-        run: |
-          set -x
-          rustup target add aarch64-apple-darwin
-
-          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
-          pip3 install maturin
-
-      - name: Python maturin build
-        run: |
-          set -x
-          cd crate/pyo3
-          maturin build --release --target aarch64-apple-darwin
-
-      - name: Upload WHL for MacOS
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_python_macos_arm
+          name: ${{ matrix.archive-name }}
           path: target/wheels/*macosx*.whl
           retention-days: 1
           if-no-files-found: error
