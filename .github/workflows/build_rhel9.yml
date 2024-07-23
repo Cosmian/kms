@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: ${{ inputs.archive-name }}
     container:
-      image: alvistack/rhel-9
+      image: redhat/ubi9
 
     steps:
       - name: Display cpuinfo
@@ -77,12 +77,7 @@ jobs:
         run: |
           set -x
 
-          # Disable subscription manager
-          sed -i "s/enabled=1/enabled=0/g" /etc/yum/pluginconf.d/subscription-manager.conf
-          rm -rfv /var/cache/yum/*
-          yum clean all
-
-          yum -y install curl wget
+          yum -y install wget
           yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
 
       - uses: dtolnay/rust-toolchain@master
