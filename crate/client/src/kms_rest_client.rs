@@ -505,7 +505,7 @@ impl KmsClient {
             client: builder
                 // .connect_timeout(Duration::from_secs(10))
                 // .timeout(Duration::from_secs(10))
-                .tcp_keepalive(Duration::from_secs(25))
+                // .tcp_keepalive(Duration::from_secs(5))
                 // .pool_idle_timeout(Duration::from_secs(5))
                 .pool_max_idle_per_host(0)
                 .default_headers(headers)
@@ -619,29 +619,6 @@ impl KmsClient {
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
-        } else {
-            let endpoint = "/kmip/2_1";
-            let server_url = format!("{}{endpoint}", self.server_url);
-            let mut request = self.client.post(&server_url);
-            let ttlv = to_ttlv(kmip_request)?;
-
-            trace!(
-                "==>\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-            );
-            request = request.json(&ttlv);
-
-            let response = request.send().await?;
-
-            let status_code = response.status();
-            if status_code.is_success() {
-                let ttlv = response.json::<TTLV>().await?;
-                trace!(
-                    "<==\n{}",
-                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-                );
-                return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
-            }
         }
 
         // process error

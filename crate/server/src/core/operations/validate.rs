@@ -49,15 +49,15 @@ pub(crate) async fn validate_operation(
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {:?}", request);
 
-    let mut headers = HeaderMap::new();
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    // let mut headers = HeaderMap::new();
+    // headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
         // .connect_timeout(Duration::from_secs(10))
         // .timeout(Duration::from_secs(10))
-        .tcp_keepalive(Duration::from_secs(15))
+        // .tcp_keepalive(Duration::from_secs(15))
         // .pool_idle_timeout(Duration::from_secs(5))
         .pool_max_idle_per_host(0)
-        .default_headers(headers)
+        // .default_headers(headers)
         .build()
         .map_err(|e| {
             KmsError::Certificate(format!("Unable to build Reqwest client: Error: {e:?}"))
@@ -313,7 +313,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
         openssl::x509::X509StoreContextRef::verify_cert,
     )?;
 
-    debug!("Result of the verification: {result:?}");
+    debug!("Result of the function verify_cert: {result:?}");
     if !result {
         return Ok(ValidityIndicator::Invalid);
     }
@@ -369,30 +369,47 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
             Some(UriType::Url(url)) => {
                 let mut retry_count = 0;
                 for _ in 0..MAX_RETRY_COUNT {
-                    let response = client.get(&url).send().await?;
-                    if response.status().is_success() {
-                        let crl_bytes = response
-                            .text()
-                            .await
-                            .map(|text| text.as_bytes().to_vec())
-                            .map_err(|e| {
-                                KmsError::Certificate(format!(
-                                    "Error in getting the body of the response for the following \
-                                     URL: {url}. Error: {e:?} "
-                                ))
-                            })?;
-                        crl_bytes_list.push(crl_bytes);
-                        break;
-                    } else {
-                        retry_count += 1;
-                        warn!(
-                            "The CRL at the following URL {url} is not available. Retry count \
-                             {retry_count}",
-                        );
-                        if retry_count >= MAX_RETRY_COUNT {
-                            return Err(KmsError::Certificate(format!(
-                                "The CRL at the following URL {url} is not available"
-                            )));
+                    let response_result = client.get(&url).send().await;
+                    match response_result {
+                        Ok(response) => {
+                            let response_status = response.status();
+                            if response_status.is_success() {
+                                let crl_bytes = response
+                                    .text()
+                                    .await
+                                    .map(|text| text.as_bytes().to_vec())
+                                    .map_err(|e| {
+                                        KmsError::Certificate(format!(
+                                            "Error in getting the body of the response for the \
+                                             following URL: {url}. Error: {e:?} "
+                                        ))
+                                    })?;
+                                crl_bytes_list.push(crl_bytes);
+                                break;
+                            } else {
+                                retry_count += 1;
+                                warn!(
+                                    "The CRL at the following URL {url} is not available. Retry \
+                                     count {retry_count}. Status: {response_status}",
+                                );
+                                if retry_count >= MAX_RETRY_COUNT {
+                                    return Err(KmsError::Certificate(format!(
+                                        "The CRL at the following URL {url} is not available"
+                                    )));
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            retry_count += 1;
+                            warn!(
+                                "Error getting the CRL at the following URL {url}. Retry count \
+                                 {retry_count}. Error: {error:?}",
+                            );
+                            if retry_count >= MAX_RETRY_COUNT {
+                                return Err(KmsError::Certificate(format!(
+                                    "The CRL at the following URL {url} is not available"
+                                )));
+                            }
                         }
                     }
                 }
@@ -429,10 +446,8 @@ async fn verify_crls(
             certificate.subject_name()
         );
         if idx > 0 {
-            debug!("Number of CRL {}", crls.len());
             for crl in crls {
                 let crl = X509Crl::from_pem(crl.as_slice())?;
-                debug!("Verifying that the certificate is not revoked");
                 let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
                 debug!("Verifying that the certificate is not revoked: result: {res:?}");
                 if res == ValidityIndicator::Invalid {
@@ -474,7 +489,8 @@ async fn verify_crls(
             debug!("Direct verification: Verifying that the certificate is not revoked");
             let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
             debug!(
-                "Direct verificationVerifying that the certificate is not revoked: result: {res:?}"
+                "Direct verification: Verifying that the certificate is not revoked: result: \
+                 {res:?}"
             );
             if res == ValidityIndicator::Invalid {
                 debug!("Direct verification: Certificate is revoked or removed from CRL");

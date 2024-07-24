@@ -34,7 +34,7 @@ pub(crate) fn certify(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
 
     let mut args = vec!["create".to_owned()];
     if let Some(subject) = subject {
@@ -129,7 +129,7 @@ pub(crate) fn export(
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     println!("output: {output:?}");
@@ -179,7 +179,7 @@ pub(crate) fn destroy(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     if output.status.success() {

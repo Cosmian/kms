@@ -42,7 +42,7 @@ pub fn wrap(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "wrap".to_owned(),
@@ -95,7 +95,7 @@ pub fn unwrap(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "unwrap".to_owned(),

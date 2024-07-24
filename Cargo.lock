@@ -2511,6 +2511,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
+ "cosmian_logger",
  "criterion",
  "serde_json",
  "tokio",
