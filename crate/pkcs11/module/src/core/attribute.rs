@@ -32,7 +32,7 @@ use pkcs11_sys::{
     CK_KEY_TYPE, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_TRUE, CK_ULONG,
 };
 use strum_macros::Display;
-use tracing::trace;
+use tracing::{error, trace};
 
 use crate::{MError, MResult};
 
@@ -280,6 +280,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
         let attr_type = AttributeType::try_from(attribute.type_)?;
         let val = if attribute.ulValueLen > 0 {
             if attribute.pValue.is_null() {
+                error!("Attribute {:?} has a null pointer", attribute);
                 return Err(MError::NullPtr);
             }
             unsafe {

@@ -26,7 +26,7 @@ use pkcs11_sys::{
     CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
 };
-use rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey};
+use rsa::{pkcs8::DecodePrivateKey, traits::PublicKeyParts, RsaPrivateKey};
 use tracing::debug;
 
 use crate::{
@@ -150,14 +150,24 @@ impl Object {
                     Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
                 }
                 AttributeType::Label => Some(Attribute::Label("Private Key".to_string())),
-                AttributeType::Modulus => Some(Attribute::Modulus(
-                    private_key.key_size().to_be_bytes().to_vec(),
-                )),
+                AttributeType::Modulus => {
+                    let der_bytes = private_key.pkcs8_der_bytes()?;
+                    let sk = RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref()).map_err(|e| {
+                        error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                        MError::Cryptography("Failed to fetch the PKCS1 DER bytes".to_string())
+                    })?;
+                    Some(Attribute::Modulus(sk.n().to_bytes_be()))
+                }
                 AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
-                AttributeType::PublicExponent => Some(Attribute::PublicExponent(
-                    private_key.rsa_public_exponent()?.to_vec(),
-                )),
+                AttributeType::PublicExponent => {
+                    let der_bytes = private_key.pkcs8_der_bytes()?;
+                    let sk = RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref()).map_err(|e| {
+                        error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                        MError::Cryptography("Failed to fetch the PKCS1 DER bytes".to_string())
+                    })?;
+                    Some(Attribute::PublicExponent(sk.e().to_bytes_be()))
+                }
                 AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
                 AttributeType::Sign => Some(Attribute::Sign(true)),
                 AttributeType::SignRecover => Some(Attribute::SignRecover(false)),
@@ -174,8 +184,9 @@ impl Object {
                                     "Failed to fetch the PKCS1 DER bytes".to_string(),
                                 )
                             })?
-                            .map(|sd| Attribute::Value(sd.as_bytes().to_vec()))
+                            .map(|sd| Attribute::Value(sd.to_bytes().to_vec()))
                             .ok()
+                        // Some(Attribute::Value(der_bytes.to_vec()))
                     }
                     KeyAlgorithm::EccP256
                     | KeyAlgorithm::EccP384
