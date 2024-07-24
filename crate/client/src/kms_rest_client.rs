@@ -619,6 +619,29 @@ impl KmsClient {
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+        } else {
+            let endpoint = "/kmip/2_1";
+            let server_url = format!("{}{endpoint}", self.server_url);
+            let mut request = self.client.post(&server_url);
+            let ttlv = to_ttlv(kmip_request)?;
+
+            trace!(
+                "==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+            );
+            request = request.json(&ttlv);
+
+            let response = request.send().await?;
+
+            let status_code = response.status();
+            if status_code.is_success() {
+                let ttlv = response.json::<TTLV>().await?;
+                trace!(
+                    "<==\n{}",
+                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                );
+                return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+            }
         }
 
         // process error
