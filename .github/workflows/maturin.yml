@@ -32,14 +32,14 @@ jobs:
           # build openssl
           pushd .
           cd /tmp
-          wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz
-          tar -xf openssl-1.1.1w.tar.gz
-          cd openssl-1.1.1w
+          wget https://openssl.org/source/old/1.1.1/openssl-1.1.1v.tar.gz
+          tar -xf openssl-1.1.1v.tar.gz
+          cd openssl-1.1.1v
           ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
           make -j
           sudo make install_sw
           cd ..
-          rm -rf openssl-1.1.1w*
+          rm -rf openssl-1.1.1v*
           popd
 
           cd crate/pyo3/python
@@ -91,14 +91,14 @@ jobs:
           # build openssl
           pushd .
           cd /tmp
-          wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz
-          tar -xf openssl-1.1.1w.tar.gz
-          cd openssl-1.1.1w
+          wget https://openssl.org/source/old/1.1.1/openssl-1.1.1v.tar.gz
+          tar -xf openssl-1.1.1v.tar.gz
+          cd openssl-1.1.1v
           ./Configure --cross-compile-prefix=x86_64-w64-mingw32- mingw64 --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
           make -j
           sudo make install_sw
           cd ..
-          rm -rf openssl-1.1.1w*
+          rm -rf openssl-1.1.1v*
           popd
 
           cd crate/pyo3/python
