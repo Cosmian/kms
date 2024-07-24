@@ -32,7 +32,7 @@ use openssl::{
     hash::MessageDigest,
     x509::{X509Req, X509},
 };
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{
@@ -544,6 +544,7 @@ fn build_and_sign_certificate(
     subject: &Subject,
     request: Certify,
 ) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
+    debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
 
@@ -554,7 +555,7 @@ fn build_and_sign_certificate(
     attributes.remove_link(LinkType::PublicKeyLink);
 
     // Create an X509 struct with the desired certificate information.
-    let mut x509_builder = X509::builder().unwrap();
+    let mut x509_builder = X509::builder()?;
 
     // Handle the subject name and public key
     x509_builder.set_version(X509_VERSION3)?;
@@ -577,10 +578,6 @@ fn build_and_sign_certificate(
             .as_ref(),
     )?;
 
-    // Set the issuer name and private key
-    x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
-
     // add subject extensions
     subject
         .extensions()?
@@ -593,11 +590,16 @@ fn build_and_sign_certificate(
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
     {
         let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+        debug!("OpenSSL Extensions: {}", extensions_as_str);
         let context = x509_builder.x509v3_context(issuer.certificate(), None);
         x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
             .into_iter()
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
+
+    // Set the issuer name and private key
+    x509_builder.set_issuer_name(issuer.subject_name())?;
+    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
 
     let x509 = x509_builder.build();
 
