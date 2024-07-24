@@ -4,10 +4,11 @@ use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
 use actix_web::{
     dev::ServerHandle,
-    middleware::Condition,
+    middleware::{Condition, ErrorHandlers},
     web::{self, Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
+use http::StatusCode;
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
@@ -28,6 +29,7 @@ use crate::{
         access, add_new_database, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip, ms_dke, xks,
+        xks::{xks_json_error_handler, xks_key_not_found_handler, xks_path_not_found_handler},
     },
     KMSServer,
 };
@@ -297,15 +299,23 @@ pub async fn prepare_kms_server(
         if enable_xks {
             // TODO: sig4 authentication
             // let enable_sig4 =...
-            // The scope for the AWS XKS endpoints is served from /kms/xks/v1
+            // The scope for the AWS XKS endpoints is served from /aws/kms/xks/v1
             // which is the default used by AWS
-            let xks_scope = web::scope("/kms/xks/v1")
+            let xks_scope = web::scope("/aws")
                 // TODO: sig4 authentication
                 // .wrap(Condition::new(
                 //     enable_sig4,
                 //     sig4,
                 // ))
                 .wrap(Cors::permissive())
+                .wrap(
+                    ErrorHandlers::new().handler(StatusCode::NOT_FOUND, xks_path_not_found_handler),
+                )
+                .wrap(
+                    ErrorHandlers::new()
+                        .handler(StatusCode::IM_A_TEAPOT, xks_key_not_found_handler),
+                )
+                .app_data(JsonConfig::default().error_handler(xks_json_error_handler))
                 .service(xks::get_health_status)
                 .service(xks::get_key_metadata)
                 .service(xks::encrypt)

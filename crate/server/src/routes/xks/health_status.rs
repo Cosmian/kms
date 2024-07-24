@@ -111,7 +111,7 @@ pub struct GetHealthStatusResponse {
     pub ekmFleetDetails: Vec<EkmFleetDetails>,
 }
 
-#[post("/health")]
+#[post("/kms/xks/v1/health")]
 pub async fn get_health_status(
     _req_http: HttpRequest,
     request: Json<GetHealthStatusRequest>,
@@ -119,7 +119,7 @@ pub async fn get_health_status(
 ) -> HttpResponse {
     let request = request.into_inner();
     info!(
-        "POST /kms/xks/v1/health - id {} - operation {}",
+        "POST /aws/kms/xks/v1/health - request id {} - operation {}",
         request.requestMetadata.kmsRequestId, request.requestMetadata.kmsOperation
     );
 

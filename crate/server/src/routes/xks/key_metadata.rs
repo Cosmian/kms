@@ -16,7 +16,10 @@ use cosmian_kmip::kmip::{
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
-use crate::{error::KmsError, kms_bail, result::KResult, KMSServer};
+use crate::{
+    routes::xks::{XksErrorName, XksErrorReply},
+    KMSServer,
+};
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -124,7 +127,7 @@ pub struct GetKeyMetadataResponse {
     pub keyStatus: String,
 }
 
-#[post("keys/{key_id}/metadata")]
+#[post("/kms/xks/v1/keys/{key_id}/metadata")]
 pub async fn get_key_metadata(
     req_http: HttpRequest,
     key_id: Path<String>,
@@ -155,9 +158,14 @@ async fn _get_key_metadata(
     request: GetKeyMetadataRequest,
     key_id: String,
     kms: &Arc<KMSServer>,
-) -> KResult<GetKeyMetadataResponse> {
+) -> Result<GetKeyMetadataResponse, XksErrorReply> {
     let user = request.requestMetadata.awsPrincipalArn;
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+    let database_params = kms
+        .get_sqlite_enc_secrets(&req_http)
+        .map_err(|e| XksErrorReply {
+            errorName: XksErrorName::InternalException,
+            errorMessage: Some(e.to_string()),
+        })?;
     let response = kms
         .get_attributes(
             GetAttributes {
@@ -167,14 +175,26 @@ async fn _get_key_metadata(
             &user,
             database_params.as_ref(),
         )
-        .await?;
-    let cryptographic_algorithm = response.attributes.cryptographic_algorithm.ok_or_else(|| {
-        KmsError::CryptographicError("No cryptographic algorithm found".to_string())
-    })?;
+        .await
+        .map_err(|e| XksErrorReply {
+            errorName: XksErrorName::KeyNotFoundException,
+            errorMessage: Some(e.to_string()),
+        })?;
+    let cryptographic_algorithm =
+        response
+            .attributes
+            .cryptographic_algorithm
+            .ok_or_else(|| XksErrorReply {
+                errorName: XksErrorName::InternalException,
+                errorMessage: Some("No cryptographic algorithm found".to_string()),
+            })?;
     let key_size = response
         .attributes
         .cryptographic_length
-        .ok_or_else(|| KmsError::CryptographicError("No cryptographic length found".to_string()))?;
+        .ok_or_else(|| XksErrorReply {
+            errorName: XksErrorName::InternalException,
+            errorMessage: Some("No cryptographic length found".to_string()),
+        })?;
     let (key_spec, key_usage) = match cryptographic_algorithm {
         CryptographicAlgorithm::AES => (
             format!("AES_{}", key_size),
@@ -201,7 +221,10 @@ async fn _get_key_metadata(
             }
         }
         xc => {
-            kms_bail!("XKS: Unsupported cryptographic algorithm: {:?}", xc);
+            return Err(XksErrorReply {
+                errorName: XksErrorName::UnsupportedOperationException,
+                errorMessage: Some(format!("Unsupported cryptographic algorithm: {:?}", xc)),
+            })
         }
     };
 

@@ -176,7 +176,7 @@ pub struct EncryptResponse {
     pub ciphertextDataIntegrityValue: Option<String>,
 }
 
-#[post("keys/{key_id}/encrypt")]
+#[post("/kms/xks/v1/keys/{key_id}/encrypt")]
 pub async fn encrypt(
     req_http: HttpRequest,
     key_id: Path<String>,

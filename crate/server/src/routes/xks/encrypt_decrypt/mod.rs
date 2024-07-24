@@ -25,7 +25,7 @@ pub struct RequestMetadata {
     pub awsSourceVpce: Option<String>,
     /// This is the ARN of the KMS Key on which the Decrypt, ReDecrypt, GenerateDataKey
     /// or GenerateDataKeyWithoutPlaintext API was invoked. This field is REQUIRED.
-    pub kwsKeyArn: String,
+    pub kmsKeyArn: String,
     /// This is the KMS API call that resulted in the XKS Proxy API request,
     /// e.g. CreateKey can result in a GetKeyMetadata call. This field is REQUIRED.
     /// The XKS Proxy MUST NOT reject a request as invalid if it sees a kmsOperation

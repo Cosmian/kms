@@ -122,7 +122,7 @@ pub struct DecryptResponse {
     pub plaintext: String,
 }
 
-#[post("keys/{key_id}/decrypt")]
+#[post("/kms/xks/v1/keys/{key_id}/decrypt")]
 pub async fn decrypt(
     req_http: HttpRequest,
     key_id: Path<String>,
