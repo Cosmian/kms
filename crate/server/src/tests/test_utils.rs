@@ -22,11 +22,11 @@ use crate::{
 };
 
 #[allow(dead_code)]
-pub fn https_clap_config() -> ClapConfig {
+pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
-pub fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
+pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfig {
     let tmp_dir = temp_dir();
     let uuid = Uuid::new_v4();
     let sqlite_path = tmp_dir.join(format!("{uuid}.sqlite"));
@@ -52,12 +52,12 @@ pub fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> ClapConfi
     }
 }
 
-pub async fn test_app(
+pub(crate) async fn test_app(
     google_cse_kacls_url: Option<String>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(google_cse_kacls_url);
 
-    let server_params = ServerParams::try_from(clap_config).await.unwrap();
+    let server_params = ServerParams::try_from(clap_config).unwrap();
 
     let kms_server = Arc::new(
         KMSServer::instantiate(server_params)
@@ -88,7 +88,7 @@ pub async fn test_app(
     test::init_service(app).await
 }
 
-pub async fn post<B, O, R, S>(app: &S, operation: O) -> KResult<R>
+pub(crate) async fn post<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -104,7 +104,7 @@ where
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
-            String::from_utf8(read_body(res).await.to_vec()).unwrap_or("[N/A".to_string())
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
         );
     }
     let body = read_body(res).await;
@@ -113,7 +113,7 @@ where
     Ok(result)
 }
 
-pub async fn post_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
+pub(crate) async fn post_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
 where
     O: Serialize,
     R: DeserializeOwned,
@@ -130,7 +130,7 @@ where
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
-            String::from_utf8(read_body(res).await.to_vec()).unwrap_or("[N/A".to_string())
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
         );
     }
     println!("OK before bytes");

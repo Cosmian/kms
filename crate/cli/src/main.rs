@@ -94,7 +94,7 @@ async fn main_() -> Result<(), CliError> {
 
     if let CliCommands::Markdown(action) = opts.command {
         let command = <Cli as CommandFactory>::command();
-        action.process(&command).await?;
+        action.process(&command)?;
         return Ok(())
     }
 
@@ -102,7 +102,7 @@ async fn main_() -> Result<(), CliError> {
 
     match opts.command {
         CliCommands::Login(action) => action.process(&conf_path).await?,
-        CliCommands::Logout(action) => action.process(&conf_path).await?,
+        CliCommands::Logout(action) => action.process(&conf_path)?,
         command => {
             let conf = ClientConf::load(&conf_path)?;
             let kms_rest_client =

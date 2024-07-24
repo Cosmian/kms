@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn create_rsa_4096_bits_key_pair(
+pub(crate) fn create_rsa_4096_bits_key_pair(
     cli_conf_path: &str,
     tags: &[&str],
 ) -> Result<(String, String), CliError> {
@@ -51,7 +51,7 @@ pub fn create_rsa_4096_bits_key_pair(
 }
 
 #[tokio::test]
-pub async fn test_rsa_create_key_pair() -> Result<(), CliError> {
+pub(crate) async fn test_rsa_create_key_pair() -> Result<(), CliError> {
     // log_init("trace");
 
     // from specs

@@ -80,7 +80,7 @@ fn build_mask_from_curve(
 /// - NIST.FIPS.186-5
 ///
 /// TODO - Discriminate between EC, ECDH and ECDSA.
-fn build_algorithm_from_curve(
+const fn build_algorithm_from_curve(
     curve: RecommendedCurve,
 ) -> Result<CryptographicAlgorithm, KmipError> {
     let algorithm = match curve {

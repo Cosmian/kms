@@ -12,7 +12,7 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-pub async fn revoke(
+pub(crate) async fn revoke(
     kms_rest_client: &KmsClient,
     key_id: &str,
     revocation_reason: &str,

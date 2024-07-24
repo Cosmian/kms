@@ -8,7 +8,7 @@ use openssl::{
 /// A certificate Issuer is constructed from a unique identifier and
 ///  - either a private key and a certificate.
 ///  - or a private key, a subject name and a certificate.
-pub enum Issuer<'a> {
+pub(crate) enum Issuer<'a> {
     PrivateKeyAndCertificate(
         UniqueIdentifier,
         /// Private key
@@ -26,35 +26,35 @@ pub enum Issuer<'a> {
 }
 
 impl<'a> Issuer<'a> {
-    pub fn unique_identifier(&self) -> &UniqueIdentifier {
+    pub(crate) const fn unique_identifier(&self) -> &UniqueIdentifier {
         match self {
             Issuer::PrivateKeyAndCertificate(unique_identifier, _, _) => unique_identifier,
             Issuer::PrivateKeyAndSubjectName(unique_identifier, _, _) => unique_identifier,
         }
     }
 
-    pub fn private_key(&self) -> &PKeyRef<Private> {
+    pub(crate) fn private_key(&self) -> &PKeyRef<Private> {
         match self {
             Issuer::PrivateKeyAndCertificate(_, private_key, _) => private_key.as_ref(),
             Issuer::PrivateKeyAndSubjectName(_, private_key, _) => private_key.as_ref(),
         }
     }
 
-    pub fn subject_name(&self) -> &X509NameRef {
+    pub(crate) fn subject_name(&self) -> &X509NameRef {
         match self {
             Issuer::PrivateKeyAndCertificate(_, _, certificate) => certificate.subject_name(),
             Issuer::PrivateKeyAndSubjectName(_, _, subject_name) => subject_name,
         }
     }
 
-    pub fn certificate(&self) -> Option<&X509Ref> {
+    pub(crate) fn certificate(&self) -> Option<&X509Ref> {
         match self {
             Issuer::PrivateKeyAndCertificate(_, _, certificate) => Some(certificate.as_ref()),
             Issuer::PrivateKeyAndSubjectName(_, _, _) => None,
         }
     }
 
-    pub fn not_after(&self) -> Option<&Asn1TimeRef> {
+    pub(crate) fn not_after(&self) -> Option<&Asn1TimeRef> {
         match self {
             Issuer::PrivateKeyAndCertificate(_, _, certificate) => Some(certificate.not_after()),
             Issuer::PrivateKeyAndSubjectName(_, _, _) => None,

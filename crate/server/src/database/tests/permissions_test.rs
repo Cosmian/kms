@@ -7,7 +7,7 @@ use crate::{
     core::extra_database_params::ExtraDatabaseParams, database::Database, result::KResult,
 };
 
-pub async fn permissions<DB: Database>(
+pub(crate) async fn permissions<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
     // log_init("debug");

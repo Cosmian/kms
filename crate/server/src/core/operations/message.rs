@@ -19,7 +19,7 @@ use crate::{
 ///
 /// The items are processed sequentially.
 /// Each item may fail but a response is still sent back.
-pub async fn message(
+pub(crate) async fn message(
     kms: &KMS,
     request: Message,
     owner: &str,

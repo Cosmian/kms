@@ -118,9 +118,8 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let p12 = match &server_params.http_params {
-        config::HttpParams::Https(p12) => p12,
-        _ => kms_bail!("http/s: a PKCS#12 file must be provided"),
+    let config::HttpParams::Https(p12) = &server_params.http_params else {
+        kms_bail!("http/s: a PKCS#12 file must be provided")
     };
 
     // Create and configure an SSL acceptor with the certificate and key
@@ -240,7 +239,7 @@ pub async fn prepare_kms_server(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
-            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()),
+            authorization: google_cse::jwt_authorization_config(jwks_manager),
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,

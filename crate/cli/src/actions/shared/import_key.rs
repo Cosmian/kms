@@ -18,7 +18,7 @@ use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
 use crate::{actions::console, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone)]
-pub enum ImportKeyFormat {
+pub(crate) enum ImportKeyFormat {
     JsonTtlv,
     Pem,
     Sec1,

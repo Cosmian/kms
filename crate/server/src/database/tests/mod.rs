@@ -39,7 +39,7 @@ fn get_redis_url() -> String {
     }
 }
 
-async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
+fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
     let dir = PathBuf::from("/tmp");
 
     // generate a database key
@@ -52,7 +52,7 @@ async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParam
     }
     std::fs::create_dir_all(&dir_path).unwrap();
 
-    let db = CachedSqlCipher::instantiate(&dir_path, true).await?;
+    let db = CachedSqlCipher::instantiate(&dir_path, true)?;
     let params = ExtraDatabaseParams {
         group_id: 0,
         key: db_key,
@@ -99,7 +99,7 @@ async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDataba
 }
 
 #[tokio::test]
-pub async fn test_redis_with_findex() -> KResult<()> {
+pub(crate) async fn test_redis_with_findex() -> KResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
@@ -116,21 +116,21 @@ pub async fn test_redis_with_findex() -> KResult<()> {
 }
 
 #[tokio::test]
-pub async fn test_sql_cipher() -> KResult<()> {
-    json_access(&get_sql_cipher().await?).await?;
-    find_attributes(&get_sql_cipher().await?).await?;
-    owner(&get_sql_cipher().await?).await?;
-    permissions(&get_sql_cipher().await?).await?;
-    tags(&get_sql_cipher().await?, true).await?;
-    tx_and_list(&get_sql_cipher().await?).await?;
-    atomic(&get_sql_cipher().await?).await?;
-    upsert(&get_sql_cipher().await?).await?;
-    crud(&get_sql_cipher().await?).await?;
+pub(crate) async fn test_sql_cipher() -> KResult<()> {
+    json_access(&get_sql_cipher()?).await?;
+    find_attributes(&get_sql_cipher()?).await?;
+    owner(&get_sql_cipher()?).await?;
+    permissions(&get_sql_cipher()?).await?;
+    tags(&get_sql_cipher()?, true).await?;
+    tx_and_list(&get_sql_cipher()?).await?;
+    atomic(&get_sql_cipher()?).await?;
+    upsert(&get_sql_cipher()?).await?;
+    crud(&get_sql_cipher()?).await?;
     Ok(())
 }
 
 #[tokio::test]
-pub async fn test_sqlite() -> KResult<()> {
+pub(crate) async fn test_sqlite() -> KResult<()> {
     find_attributes(&get_sqlite().await?).await?;
     json_access(&get_sqlite().await?).await?;
     owner(&get_sqlite().await?).await?;
@@ -144,7 +144,7 @@ pub async fn test_sqlite() -> KResult<()> {
 }
 
 #[tokio::test]
-pub async fn test_pgsql() -> KResult<()> {
+pub(crate) async fn test_pgsql() -> KResult<()> {
     json_access(&get_pgsql().await?).await?;
     find_attributes(&get_pgsql().await?).await?;
     owner(&get_pgsql().await?).await?;
@@ -158,7 +158,7 @@ pub async fn test_pgsql() -> KResult<()> {
 }
 
 #[tokio::test]
-pub async fn test_mysql() -> KResult<()> {
+pub(crate) async fn test_mysql() -> KResult<()> {
     crud(&get_mysql().await?).await?;
     upsert(&get_mysql().await?).await?;
     tx_and_list(&get_mysql().await?).await?;

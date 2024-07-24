@@ -31,14 +31,14 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub struct PgPool {
+pub(crate) struct PgPool {
     pool: Pool<Postgres>,
 }
 
 impl PgPool {
     /// Instantiate a new `Postgres` database
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
+    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
         let options = PgConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -361,18 +361,7 @@ pub(crate) async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
-    let rows: Vec<PgRow> = if !uid_or_tags.starts_with('[') {
-        sqlx::query(
-            PGSQL_QUERIES
-                .get("select-object")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid_or_tags)
-        .bind(user)
-        .fetch_optional(executor)
-        .await?
-        .map_or(vec![], |row| vec![row])
-    } else {
+    let rows: Vec<PgRow> = if uid_or_tags.starts_with('[') {
         // deserialize the array to an HashSet
         let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
             .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
@@ -405,6 +394,17 @@ where
 
         // Execute the query
         query.fetch_all(executor).await?
+    } else {
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("select-object")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid_or_tags)
+        .bind(user)
+        .fetch_optional(executor)
+        .await?
+        .map_or(vec![], |row| vec![row])
     };
 
     // process the rows and find the tags

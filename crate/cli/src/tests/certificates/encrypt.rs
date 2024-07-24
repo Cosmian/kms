@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// Encrypts a file using the given public key and access policy.
-pub fn encrypt(
+pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_file: &str,
     certificate_id: &str,
@@ -53,7 +53,7 @@ pub fn encrypt(
 }
 
 /// Decrypt a file using the given private key
-pub fn decrypt(
+pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,

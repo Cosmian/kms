@@ -60,7 +60,7 @@ pub(crate) struct RedisDbObject {
 }
 
 impl RedisDbObject {
-    pub fn new(
+    pub(crate) const fn new(
         object: Object,
         owner: String,
         state: StateEnumeration,
@@ -76,7 +76,7 @@ impl RedisDbObject {
         }
     }
 
-    pub fn keywords(&self) -> HashSet<Keyword> {
+    pub(crate) fn keywords(&self) -> HashSet<Keyword> {
         let mut keywords = self
             .tags
             .as_ref()
@@ -96,7 +96,7 @@ impl RedisDbObject {
     }
 }
 
-pub const DB_KEY_LENGTH: usize = 32;
+pub(crate) const DB_KEY_LENGTH: usize = 32;
 
 pub(crate) struct ObjectsDB {
     mgr: ConnectionManager,
@@ -105,7 +105,10 @@ pub(crate) struct ObjectsDB {
 }
 
 impl ObjectsDB {
-    pub async fn new(mgr: ConnectionManager, db_key: SymmetricKey<DB_KEY_LENGTH>) -> KResult<Self> {
+    pub(crate) fn new(
+        mgr: ConnectionManager,
+        db_key: SymmetricKey<DB_KEY_LENGTH>,
+    ) -> KResult<Self> {
         Ok(Self {
             mgr,
             dem: Aes256Gcm::new(&db_key),
@@ -149,12 +152,16 @@ impl ObjectsDB {
         Ok(redis_db_object)
     }
 
-    pub async fn object_create(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
+    pub(crate) async fn object_create(
+        &self,
+        uid: &str,
+        redis_db_object: &RedisDbObject,
+    ) -> KResult<()> {
         let res: usize = self
             .mgr
             .clone()
             .set_nx(
-                ObjectsDB::object_key(uid),
+                Self::object_key(uid),
                 self.encrypt_object(uid, redis_db_object)?,
             )
             .await?;
@@ -165,19 +172,23 @@ impl ObjectsDB {
         }
     }
 
-    pub async fn object_upsert(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
+    pub(crate) async fn object_upsert(
+        &self,
+        uid: &str,
+        redis_db_object: &RedisDbObject,
+    ) -> KResult<()> {
         self.mgr
             .clone()
-            .set(
-                ObjectsDB::object_key(uid),
+            .set::<_, _, ()>(
+                Self::object_key(uid),
                 self.encrypt_object(uid, redis_db_object)?,
             )
             .await?;
         Ok(())
     }
 
-    pub async fn object_get(&self, uid: &str) -> KResult<Option<RedisDbObject>> {
-        let ciphertext: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
+    pub(crate) async fn object_get(&self, uid: &str) -> KResult<Option<RedisDbObject>> {
+        let ciphertext: Vec<u8> = self.mgr.clone().get(Self::object_key(uid)).await?;
         if ciphertext.is_empty() {
             return Ok(None)
         }
@@ -187,18 +198,18 @@ impl ObjectsDB {
     }
 
     #[allow(dead_code)]
-    pub async fn object_delete(&self, uid: &str) -> KResult<()> {
-        self.mgr.clone().del(ObjectsDB::object_key(uid)).await?;
+    pub(crate) async fn object_delete(&self, uid: &str) -> KResult<()> {
+        self.mgr.clone().del::<_, ()>(Self::object_key(uid)).await?;
         Ok(())
     }
 
-    pub async fn objects_get(
+    pub(crate) async fn objects_get(
         &self,
         uids: &HashSet<String>,
     ) -> KResult<HashMap<String, RedisDbObject>> {
         let mut pipeline = pipe();
         for uid in uids {
-            pipeline.get(ObjectsDB::object_key(uid));
+            pipeline.get(Self::object_key(uid));
         }
         let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
         let mut results = HashMap::new();
@@ -213,13 +224,13 @@ impl ObjectsDB {
         Ok(results)
     }
 
-    pub async fn atomic(&self, operations: &[RedisOperation]) -> KResult<()> {
+    pub(crate) async fn atomic(&self, operations: &[RedisOperation]) -> KResult<()> {
         // first check if all created objects do not already exist
         // watching them, will lock them until the end of the transaction
         let mut pipeline = pipe();
         for operation in operations {
             if let RedisOperation::Create(uid, _) = operation {
-                let key = ObjectsDB::object_key(uid);
+                let key = Self::object_key(uid);
                 pipeline.cmd("WATCH").arg(&key).ignore();
                 pipeline.exists(&key);
             }
@@ -231,7 +242,7 @@ impl ObjectsDB {
             pipe()
                 .cmd("UNWATCH")
                 .ignore()
-                .query_async(&mut self.mgr.clone())
+                .query_async::<_, ()>(&mut self.mgr.clone())
                 .await?;
             kms_bail!("one or more objects already exist")
         }
@@ -242,22 +253,22 @@ impl ObjectsDB {
             match operation {
                 RedisOperation::Upsert(uid, redis_db_object) => {
                     pipeline.set(
-                        ObjectsDB::object_key(uid),
+                        Self::object_key(uid),
                         self.encrypt_object(uid, redis_db_object)?,
                     );
                 }
                 RedisOperation::Delete(uid) => {
-                    pipeline.del(ObjectsDB::object_key(uid));
+                    pipeline.del(Self::object_key(uid));
                 }
                 RedisOperation::Create(uid, redis_dn_object) => {
                     pipeline.set(
-                        ObjectsDB::object_key(uid),
+                        Self::object_key(uid),
                         self.encrypt_object(uid, redis_dn_object)?,
                     );
                 }
             }
         }
-        pipeline.query_async(&mut self.mgr.clone()).await?;
+        pipeline.query_async::<_, ()>(&mut self.mgr.clone()).await?;
         Ok(())
     }
 
@@ -266,9 +277,9 @@ impl ObjectsDB {
     /// # Warning
     /// This is definitive
     #[cfg(test)]
-    pub async fn clear_all(&self) -> KResult<()> {
+    pub(crate) async fn clear_all(&self) -> KResult<()> {
         redis::cmd("FLUSHDB")
-            .query_async(&mut self.mgr.clone())
+            .query_async::<_, ()>(&mut self.mgr.clone())
             .await?;
         Ok(())
     }

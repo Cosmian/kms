@@ -1,10 +1,10 @@
 mod certify;
-pub mod encrypt;
+pub(crate) mod encrypt;
 mod export;
 mod get_attributes;
-pub mod import;
-pub mod openssl;
-pub mod quick_cert;
-pub mod validate;
+pub(crate) mod import;
+pub(crate) mod openssl;
+pub(crate) mod quick_cert;
+pub(crate) mod validate;
 
 pub(crate) const SUB_COMMAND: &str = "certificates";

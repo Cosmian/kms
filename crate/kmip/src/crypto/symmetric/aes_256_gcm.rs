@@ -23,13 +23,10 @@ pub struct AesGcmSystem {
 
 impl AesGcmSystem {
     pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipError> {
-        let key_block = match symmetric_key {
-            Object::SymmetricKey { key_block } => key_block,
-            _ => {
-                return Err(KmipError::NotSupported(
-                    "Expected a KMIP Symmetric Key".to_owned(),
-                ))
-            }
+        let Object::SymmetricKey { key_block } = symmetric_key else {
+            return Err(KmipError::NotSupported(
+                "Expected a KMIP Symmetric Key".to_owned(),
+            ))
         };
         let mut symmetric_key: [u8; AES_256_GCM_KEY_LENGTH] =
             key_block.key_bytes()?.to_vec().try_into()?;
@@ -148,7 +145,7 @@ impl DecryptionSystem for AesGcmSystem {
         let tag: [u8; AES_256_GCM_MAC_LENGTH] = request
             .authenticated_encryption_tag
             .clone()
-            .unwrap_or(vec![0_u8; AES_256_GCM_MAC_LENGTH])
+            .unwrap_or_else(|| vec![0_u8; AES_256_GCM_MAC_LENGTH])
             .try_into()?;
 
         // Recover nonce.

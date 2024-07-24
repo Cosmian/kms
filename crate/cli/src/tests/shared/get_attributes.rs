@@ -10,7 +10,7 @@ use crate::{
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
-pub fn get_attributes(
+pub(crate) fn get_attributes(
     cli_conf_path: &str,
     uid: &str,
     attribute_tags: &[AttributeTag],

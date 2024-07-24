@@ -55,7 +55,7 @@ fn get_default_conf_path() -> Result<PathBuf, ClientError> {
 }
 
 /// used for serialization
-fn not(b: &bool) -> bool {
+const fn not(b: &bool) -> bool {
     !*b
 }
 
@@ -299,32 +299,42 @@ mod tests {
     use super::{get_default_conf_path, ClientConf, KMS_CLI_CONF_ENV};
 
     #[test]
-    pub fn test_load() {
+    pub(crate) fn test_load() {
         // valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
 
         // another valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
 
         // Default conf file
-        env::remove_var(KMS_CLI_CONF_ENV);
+        unsafe {
+            env::remove_var(KMS_CLI_CONF_ENV);
+        }
         let _ = fs::remove_file(get_default_conf_path().unwrap());
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
         assert!(get_default_conf_path().unwrap().exists());
 
         // invalid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         let e = ClientConf::load(&conf_path).err().unwrap().to_string();
         assert!(e.contains("missing field `kms_server_url`"));
 
         // with a file
-        env::remove_var(KMS_CLI_CONF_ENV);
+        unsafe {
+            env::remove_var(KMS_CLI_CONF_ENV);
+        }
         let conf_path =
             ClientConf::location(Some(PathBuf::from("test_data/configs/kms.json"))).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());

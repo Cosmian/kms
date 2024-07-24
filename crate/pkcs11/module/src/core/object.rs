@@ -77,7 +77,7 @@ impl PartialEq for Object {
 impl Object {
     pub fn attribute(&self, type_: AttributeType) -> Option<Attribute> {
         let attribute = match self {
-            Object::Certificate(cert) => match type_ {
+            Self::Certificate(cert) => match type_ {
                 AttributeType::CertificateCategory => Some(Attribute::CertificateCategory(
                     CK_CERTIFICATE_CATEGORY_UNSPECIFIED,
                 )),
@@ -104,7 +104,7 @@ impl Object {
                     None
                 }
             },
-            Object::PrivateKey(private_key) => match type_ {
+            Self::PrivateKey(private_key) => match type_ {
                 AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
                 AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
@@ -163,7 +163,7 @@ impl Object {
                     None
                 }
             },
-            Object::Profile(id) => match type_ {
+            Self::Profile(id) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PROFILE)),
                 AttributeType::ProfileId => Some(Attribute::ProfileId(*id)),
                 AttributeType::Token => Some(Attribute::Token(true)),
@@ -173,7 +173,7 @@ impl Object {
                     None
                 }
             },
-            Object::PublicKey(pk) => match type_ {
+            Self::PublicKey(pk) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PUBLIC_KEY)),
                 AttributeType::Label => Some(Attribute::Label(pk.label())),
                 AttributeType::Modulus => {
@@ -212,7 +212,7 @@ impl Object {
                     None
                 }
             },
-            Object::DataObject(data) => match type_ {
+            Self::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
                 AttributeType::Id => Some(Attribute::Id(
                     crate::core::compoundid::encode(&crate::core::compoundid::Id {
@@ -231,7 +231,7 @@ impl Object {
                     None
                 }
             },
-            Object::RemoteObjectId(remote_object_id) => {
+            Self::RemoteObjectId(remote_object_id) => {
                 if type_ == AttributeType::Id {
                     Some(Attribute::Id(
                         remote_object_id.remote_id().as_bytes().to_vec(),

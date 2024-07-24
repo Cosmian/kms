@@ -21,7 +21,11 @@ use crate::{
     },
 };
 
-pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(), CliError> {
+pub(crate) fn destroy(
+    cli_conf_path: &str,
+    sub_command: &str,
+    key_id: &str,
+) -> Result<(), CliError> {
     let args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
         .iter()
         .map(std::string::ToString::to_string)

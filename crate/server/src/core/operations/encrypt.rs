@@ -41,7 +41,7 @@ use crate::{
 
 const EMPTY_SLICE: &[u8] = &[];
 
-pub async fn encrypt(
+pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
     user: &str,
@@ -152,12 +152,12 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
-                .unwrap_or(
+                .unwrap_or_else(|| {
                     key_block
                         .cryptographic_algorithm()
                         .copied()
-                        .unwrap_or(CryptographicAlgorithm::AES),
-                );
+                        .unwrap_or(CryptographicAlgorithm::AES)
+                });
             let block_cipher_mode = request
                 .cryptographic_parameters
                 .as_ref()

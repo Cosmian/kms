@@ -244,7 +244,7 @@ fn bench_rsa_encrypt(
     });
 
     let mut group = c.benchmark_group("RSA tests");
-    group.bench_function(&format!("{name} {key_size}bit encryption"), |b| {
+    group.bench_function(format!("{name} {key_size}bit encryption"), |b| {
         b.to_async(&runtime).iter(|| async {
             let _ = encrypt(
                 &kms_rest_client,
@@ -283,7 +283,7 @@ fn bench_rsa_decrypt(
     });
 
     let mut group = c.benchmark_group("RSA tests");
-    group.bench_function(&format!("{name} {key_size}bit decryption"), |b| {
+    group.bench_function(format!("{name} {key_size}bit decryption"), |b| {
         b.to_async(&runtime).iter(|| async {
             let () = decrypt(&kms_rest_client, &sk, &ciphertext, cryptographic_parameters).await;
         });

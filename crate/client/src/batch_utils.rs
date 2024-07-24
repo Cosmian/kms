@@ -13,7 +13,7 @@ use crate::{ClientError, KmsClient};
 /// If the operation was successful, the result is the response payload.
 /// If the operation failed, the result is an error message.
 /// The response list is guaranteed to have the same length as the operations list.
-pub async fn batch_operations(
+pub(crate) async fn batch_operations(
     kms_rest_client: &KmsClient,
     operations: Vec<Operation>,
 ) -> Result<Vec<Result<Operation, String>>, ClientError> {

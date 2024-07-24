@@ -30,7 +30,7 @@ use crate::{
     tests::{google_cse::utils::generate_google_jwt, test_utils},
 };
 
-pub mod utils;
+pub(crate) mod utils;
 
 // Default JWT issuer URI
 #[cfg(test)]
@@ -41,7 +41,7 @@ const JWT_ISSUER_URI: &str = "https://accounts.google.com";
 const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
 /// Read all bytes from a file
-pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
+pub(crate) fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
     let mut buffer = Vec::new();
     File::open(file)
         .with_context(|| format!("could not open the file {}", file.as_ref().display()))?
@@ -52,7 +52,7 @@ pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
 }
 
 /// Read an object from KMIP JSON TTLV bytes slice
-pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> {
+pub(crate) fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> {
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file".to_owned())?;
@@ -132,8 +132,10 @@ fn test_ossl_sign_verify() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_private_key_sign() -> KResult<()> {
-    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+    unsafe {
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+    }
     cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
 
     let jwt = generate_google_jwt().await;
@@ -204,8 +206,10 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_private_key_decrypt() -> KResult<()> {
-    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-    std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+    unsafe {
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
+    }
 
     cosmian_logger::log_utils::log_init("info,cosmian_kms_server=trace");
 

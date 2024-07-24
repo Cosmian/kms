@@ -4,7 +4,7 @@ use cosmian_kmip::{kmip::kmip_operations::ErrorReason, KmipError};
 use cosmian_kms_client::ClientError;
 use thiserror::Error;
 
-pub mod result;
+pub(crate) mod result;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
@@ -43,18 +43,18 @@ impl Pkcs11Error {}
 impl From<KmipError> for Pkcs11Error {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
-            KmipError::NotSupported(s) => Self::NotSupported(s),
-            KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(s) => Self::NotSupported(s),
-            KmipError::OpenSSL(s) => Self::NotSupported(s),
-            KmipError::InvalidSize(s) => Self::NotSupported(s),
-            KmipError::InvalidTag(s) => Self::NotSupported(s),
-            KmipError::Derivation(s) => Self::NotSupported(s),
-            KmipError::ConversionError(s) => Self::NotSupported(s),
-            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::InvalidKmipValue(r, s)
+            | KmipError::InvalidKmipObject(r, s)
+            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::NotSupported(s)
+            | KmipError::KmipNotSupported(_, s)
+            | KmipError::Default(s)
+            | KmipError::OpenSSL(s)
+            | KmipError::InvalidSize(s)
+            | KmipError::InvalidTag(s)
+            | KmipError::Derivation(s)
+            | KmipError::ConversionError(s)
+            | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

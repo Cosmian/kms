@@ -9,7 +9,7 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
 /// A PKCS11 Certificate is a Certificate that wraps data from a KMS object
 #[derive(Debug)]
-pub struct Pkcs11Certificate {
+pub(crate) struct Pkcs11Certificate {
     pub certificate: X509Certificate,
     pub label: String,
 }

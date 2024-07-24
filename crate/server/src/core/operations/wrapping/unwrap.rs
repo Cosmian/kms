@@ -23,7 +23,7 @@ use crate::{
 ///
 /// # Returns
 /// * `KResult<()>`         - the result of the operation
-pub async fn unwrap_key(
+pub(crate) async fn unwrap_key(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,

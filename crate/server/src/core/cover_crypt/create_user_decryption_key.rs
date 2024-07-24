@@ -25,7 +25,7 @@ use crate::{
 ///
 /// The attributes of the `Create` request must contain the
 /// `Access Policy`
-pub async fn create_user_decryption_key(
+pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_request: &Create,
@@ -77,9 +77,7 @@ async fn create_user_decryption_key_(
                 return false
             }
 
-            let attributes = if let Ok(attributes) = owm.object.attributes() {
-                attributes
-            } else {
+            let Ok(attributes) = owm.object.attributes() else {
                 return false
             };
 
@@ -118,7 +116,7 @@ async fn create_user_decryption_key_(
 #[allow(unused)]
 //TODO: there is noway to distinguish between the creation of a user decryption key pair and a master key pair
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
-pub async fn create_user_decryption_key_pair(
+pub(crate) async fn create_user_decryption_key_pair(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_key_pair_request: &CreateKeyPair,

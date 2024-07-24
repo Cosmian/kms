@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
 
-pub mod result;
+pub(crate) mod result;
 
 #[derive(Error, Debug)]
 pub enum KmipError {

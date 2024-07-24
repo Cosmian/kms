@@ -38,8 +38,8 @@ pub struct Stdout {
 
 impl Stdout {
     #[must_use]
-    pub fn new(stdout: &str) -> Stdout {
-        Stdout {
+    pub fn new(stdout: &str) -> Self {
+        Self {
             stdout: stdout.to_string(),
             ..Default::default()
         }
@@ -92,7 +92,7 @@ impl Stdout {
 
     pub fn write(&self) -> Result<(), CliError> {
         let json_format_from_env = std::env::var(KMS_CLI_FORMAT)
-            .unwrap_or(CLI_DEFAULT_FORMAT.to_string())
+            .unwrap_or_else(|_| CLI_DEFAULT_FORMAT.to_string())
             .to_lowercase()
             == CLI_JSON_FORMAT;
 

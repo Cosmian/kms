@@ -20,7 +20,7 @@ fn run_cli_command(owner_client_conf_path: &str) {
 }
 
 #[tokio::test]
-pub async fn test_all_authentications() -> Result<(), CliError> {
+pub(crate) async fn test_all_authentications() -> Result<(), CliError> {
     // let us not make other test cases fail
     const PORT: u16 = 9999;
     // plaintext no auth

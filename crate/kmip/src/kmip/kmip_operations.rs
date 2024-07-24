@@ -139,65 +139,63 @@ pub enum Operation {
 
 impl Operation {
     #[must_use]
-    pub fn direction(&self) -> Direction {
+    pub const fn direction(&self) -> Direction {
         match self {
-            Operation::Import(_)
-            | Operation::Certify(_)
-            | Operation::Create(_)
-            | Operation::CreateKeyPair(_)
-            | Operation::Export(_)
-            | Operation::Get(_)
-            | Operation::GetAttributes(_)
-            | Operation::Encrypt(_)
-            | Operation::Decrypt(_)
-            | Operation::Locate(_)
-            | Operation::Revoke(_)
-            | Operation::ReKeyKeyPair(_)
-            | Operation::Destroy(_)
-            | Operation::Validate(_) => Direction::Request,
+            Self::Import(_)
+            | Self::Certify(_)
+            | Self::Create(_)
+            | Self::CreateKeyPair(_)
+            | Self::Export(_)
+            | Self::Get(_)
+            | Self::GetAttributes(_)
+            | Self::Encrypt(_)
+            | Self::Decrypt(_)
+            | Self::Locate(_)
+            | Self::Revoke(_)
+            | Self::ReKeyKeyPair(_)
+            | Self::Destroy(_)
+            | Self::Validate(_) => Direction::Request,
 
-            Operation::ImportResponse(_)
-            | Operation::CertifyResponse(_)
-            | Operation::CreateResponse(_)
-            | Operation::CreateKeyPairResponse(_)
-            | Operation::ExportResponse(_)
-            | Operation::GetResponse(_)
-            | Operation::GetAttributesResponse(_)
-            | Operation::EncryptResponse(_)
-            | Operation::DecryptResponse(_)
-            | Operation::LocateResponse(_)
-            | Operation::RevokeResponse(_)
-            | Operation::ReKeyKeyPairResponse(_)
-            | Operation::DestroyResponse(_)
-            | Operation::ValidateResponse(_) => Direction::Response,
+            Self::ImportResponse(_)
+            | Self::CertifyResponse(_)
+            | Self::CreateResponse(_)
+            | Self::CreateKeyPairResponse(_)
+            | Self::ExportResponse(_)
+            | Self::GetResponse(_)
+            | Self::GetAttributesResponse(_)
+            | Self::EncryptResponse(_)
+            | Self::DecryptResponse(_)
+            | Self::LocateResponse(_)
+            | Self::RevokeResponse(_)
+            | Self::ReKeyKeyPairResponse(_)
+            | Self::DestroyResponse(_)
+            | Self::ValidateResponse(_) => Direction::Response,
         }
     }
 
     #[must_use]
-    pub fn operation_enum(&self) -> OperationEnumeration {
+    pub const fn operation_enum(&self) -> OperationEnumeration {
         match self {
-            Operation::Import(_) | Operation::ImportResponse(_) => OperationEnumeration::Import,
-            Operation::Certify(_) | Operation::CertifyResponse(_) => OperationEnumeration::Certify,
-            Operation::Create(_) | Operation::CreateResponse(_) => OperationEnumeration::Create,
-            Operation::CreateKeyPair(_) | Operation::CreateKeyPairResponse(_) => {
+            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
+            Self::Certify(_) | Self::CertifyResponse(_) => OperationEnumeration::Certify,
+            Self::Create(_) | Self::CreateResponse(_) => OperationEnumeration::Create,
+            Self::CreateKeyPair(_) | Self::CreateKeyPairResponse(_) => {
                 OperationEnumeration::CreateKeyPair
             }
-            Operation::Export(_) | Operation::ExportResponse(_) => OperationEnumeration::Export,
-            Operation::Get(_) | Operation::GetResponse(_) => OperationEnumeration::Get,
-            Operation::GetAttributes(_) | Operation::GetAttributesResponse(_) => {
+            Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
+            Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
+            Self::GetAttributes(_) | Self::GetAttributesResponse(_) => {
                 OperationEnumeration::GetAttributes
             }
-            Operation::Encrypt(_) | Operation::EncryptResponse(_) => OperationEnumeration::Encrypt,
-            Operation::Decrypt(_) | Operation::DecryptResponse(_) => OperationEnumeration::Decrypt,
-            Operation::Locate(_) | Operation::LocateResponse(_) => OperationEnumeration::Locate,
-            Operation::Revoke(_) | Operation::RevokeResponse(_) => OperationEnumeration::Revoke,
-            Operation::ReKeyKeyPair(_) | Operation::ReKeyKeyPairResponse(_) => {
+            Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
+            Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
+            Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
                 OperationEnumeration::RekeyKeyPair
             }
-            Operation::Destroy(_) | Operation::DestroyResponse(_) => OperationEnumeration::Destroy,
-            Operation::Validate(_) | Operation::ValidateResponse(_) => {
-                OperationEnumeration::Validate
-            }
+            Self::Destroy(_) | Self::DestroyResponse(_) => OperationEnumeration::Destroy,
+            Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
         }
     }
 
@@ -613,7 +611,7 @@ impl Export {
     /// let export_request = Export::new("1234", false, None, None);
     /// ```
     #[must_use]
-    pub fn new(
+    pub const fn new(
         uid: UniqueIdentifier,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,
@@ -661,7 +659,7 @@ impl From<Get> for Export {
     // This is used to convert a GetRequest to an ExportRequest
     // to use the common code of export-utils
     fn from(get: Get) -> Self {
-        Export {
+        Self {
             unique_identifier: get.unique_identifier,
             key_format_type: get.key_format_type,
             key_wrap_type: get.key_wrap_type,
@@ -747,7 +745,7 @@ impl Get {
     /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_string()), false, None, None);
     /// ```
     #[must_use]
-    pub fn new(
+    pub const fn new(
         unique_identifier: UniqueIdentifier,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,

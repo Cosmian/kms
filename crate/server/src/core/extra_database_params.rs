@@ -35,6 +35,6 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
             .try_into()
             .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
         let key = Secret::<AES_256_GCM_KEY_LENGTH>::from_unprotected_bytes(&mut key_bytes);
-        Ok(ExtraDatabaseParams { group_id, key })
+        Ok(Self { group_id, key })
     }
 }

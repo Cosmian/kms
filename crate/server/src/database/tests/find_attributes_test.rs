@@ -24,7 +24,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn find_attributes<DB: Database>(
+pub(crate) async fn find_attributes<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
     // log_init("debug");

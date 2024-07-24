@@ -35,7 +35,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn export_key(
+pub(crate) fn export_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
@@ -89,7 +89,7 @@ pub fn export_key(
 }
 
 #[tokio::test]
-pub async fn test_export_sym() -> Result<(), CliError> {
+pub(crate) async fn test_export_sym() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -150,7 +150,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
+pub(crate) async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

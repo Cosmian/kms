@@ -16,7 +16,7 @@ use crate::{database::KMSServer, result::KResult};
 /// List objects owned by the current user
 /// i.e. objects for which the user has full access
 #[get("/access/owned")]
-pub async fn list_owned_objects(
+pub(crate) async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
@@ -37,7 +37,7 @@ pub async fn list_owned_objects(
 /// List objects not owned by the user but for which an access
 /// has been obtained by the user
 #[get("/access/obtained")]
-pub async fn list_access_rights_obtained(
+pub(crate) async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
@@ -57,7 +57,7 @@ pub async fn list_access_rights_obtained(
 
 /// List access rights for an object
 #[get("/access/list/{object_id}")]
-pub async fn list_accesses(
+pub(crate) async fn list_accesses(
     req: HttpRequest,
     object_id: Path<(String,)>,
     kms: Data<Arc<KMSServer>>,
@@ -79,7 +79,7 @@ pub async fn list_accesses(
 
 /// Grant an access right for an object, given a `userid`
 #[post("/access/grant")]
-pub async fn grant_access(
+pub(crate) async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
@@ -110,7 +110,7 @@ pub async fn grant_access(
 
 /// Revoke an access authorization for an object, given a `userid`
 #[post("/access/revoke")]
-pub async fn revoke_access(
+pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,

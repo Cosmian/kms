@@ -8,7 +8,7 @@ use crate::result::KResult;
 /// function) in SQL databases.
 /// This trait contains default naming which are overridden
 /// by implementation if needed
-pub trait PlaceholderTrait {
+pub(crate) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -66,7 +66,7 @@ pub trait PlaceholderTrait {
     }
 }
 
-pub enum MySqlPlaceholder {}
+pub(crate) enum MySqlPlaceholder {}
 impl PlaceholderTrait for MySqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
@@ -112,7 +112,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         format!("{}(object, '$.object_type')", Self::JSON_FN_EXTRACT_TEXT)
     }
 }
-pub enum PgSqlPlaceholder {}
+pub(crate) enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
@@ -123,7 +123,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
 }
-pub enum SqlitePlaceholder {}
+pub(crate) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
 
 /// Builds a SQL query depending on `attributes` and `state` constraints,
@@ -132,7 +132,7 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// The different placeholder for variable binding is handled by trait specification.
 // TODO  although this is a select query, it is complex and the occurrence is unlikely,
 // TODO  protection against SQL Injection is not covered here
-pub fn query_from_attributes<P: PlaceholderTrait>(
+pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     user: &str,

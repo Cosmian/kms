@@ -40,7 +40,7 @@ const ALL_TAGS: [Tag; 10] = [
     Tag::PublicKey,
 ];
 
-pub async fn get_attributes(
+pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
     user: &str,

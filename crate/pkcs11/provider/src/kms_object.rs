@@ -16,20 +16,20 @@ use crate::error::Pkcs11Error;
 /// A wrapper around a KMS KMIP object.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct KmsObject {
+pub(crate) struct KmsObject {
     pub object: Object,
     pub attributes: Attributes,
     pub other_tags: Vec<String>,
 }
 
-pub fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
+pub(crate) fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
     let conf_path = ClientConf::location(None)?;
     let conf = ClientConf::load(&conf_path)?;
     let kms_client = conf.initialize_kms_client(None, None)?;
     Ok(kms_client)
 }
 
-pub fn locate_kms_objects(
+pub(crate) fn locate_kms_objects(
     kms_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<String>, Pkcs11Error> {
@@ -43,7 +43,7 @@ pub(crate) async fn locate_kms_objects_async(
     locate_objects(kms_client, tags).await
 }
 
-pub fn get_kms_objects(
+pub(crate) fn get_kms_objects(
     kms_client: &KmsClient,
     tags: &[String],
     key_format_type: KeyFormatType,
@@ -66,7 +66,7 @@ pub(crate) async fn get_kms_objects_async(
     trace!("Found objects: {:?}", responses);
     let mut results = vec![];
     for response in responses {
-        let (object, attributes) = response.map_err(|e| Pkcs11Error::ServerError(e.to_string()))?;
+        let (object, attributes) = response.map_err(Pkcs11Error::ServerError)?;
         let other_tags = attributes
             .get_tags()
             .into_iter()
@@ -107,7 +107,7 @@ async fn locate_objects(
     Ok(uniques_identifiers)
 }
 
-pub fn kms_decrypt(
+pub(crate) fn kms_decrypt(
     kms_client: &KmsClient,
     key_id: String,
     encryption_algorithm: EncryptionAlgorithm,

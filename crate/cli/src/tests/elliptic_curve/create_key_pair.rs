@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn create_ec_key_pair(
+pub(crate) fn create_ec_key_pair(
     cli_conf_path: &str,
     curve: &str,
     tags: &[&str],
@@ -54,7 +54,7 @@ pub fn create_ec_key_pair(
 }
 
 #[tokio::test]
-pub async fn test_create_key_pair() -> Result<(), CliError> {
+pub(crate) async fn test_create_key_pair() -> Result<(), CliError> {
     // from specs
     let ctx = start_default_test_kms_server().await;
     create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["tag1", "tag2"])?;

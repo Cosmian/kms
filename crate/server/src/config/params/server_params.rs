@@ -57,7 +57,7 @@ pub struct ServerParams {
 }
 
 impl ServerParams {
-    pub async fn try_from(conf: ClapConfig) -> KResult<Self> {
+    pub fn try_from(conf: ClapConfig) -> KResult<Self> {
         let http_params = HttpParams::try_from(&conf.http)?;
 
         // Should we verify the client TLS certificates?

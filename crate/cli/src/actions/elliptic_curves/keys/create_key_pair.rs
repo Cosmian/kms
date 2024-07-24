@@ -31,14 +31,14 @@ pub enum Curve {
 }
 
 impl From<Curve> for RecommendedCurve {
-    fn from(curve: Curve) -> RecommendedCurve {
+    fn from(curve: Curve) -> Self {
         match curve {
             #[cfg(not(feature = "fips"))]
             Curve::NistP192 => RecommendedCurve::P192,
-            Curve::NistP224 => RecommendedCurve::P224,
-            Curve::NistP256 => RecommendedCurve::P256,
-            Curve::NistP384 => RecommendedCurve::P384,
-            Curve::NistP521 => RecommendedCurve::P521,
+            Curve::NistP224 => Self::P224,
+            Curve::NistP256 => Self::P256,
+            Curve::NistP384 => Self::P384,
+            Curve::NistP521 => Self::P521,
             #[cfg(not(feature = "fips"))]
             Curve::X25519 => RecommendedCurve::CURVE25519,
             #[cfg(not(feature = "fips"))]

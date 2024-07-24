@@ -3,7 +3,7 @@ use crate::kmip::{
     kmip_types::{CryptographicAlgorithm, HashingAlgorithm, PaddingMethod},
 };
 
-pub fn rsa_parameters(
+pub(crate) fn rsa_parameters(
     key_wrapping_data: &KeyWrappingData,
 ) -> (CryptographicAlgorithm, PaddingMethod, HashingAlgorithm) {
     key_wrapping_data

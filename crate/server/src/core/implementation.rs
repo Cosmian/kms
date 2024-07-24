@@ -40,9 +40,10 @@ impl KMS {
             shared_config.db_params.as_mut()
         {
             match &mut db_params {
-                DbParams::SqliteEnc(db_path) => Box::new(
-                    CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
-                ),
+                DbParams::SqliteEnc(db_path) => Box::new(CachedSqlCipher::instantiate(
+                    db_path,
+                    shared_config.clear_db_on_start,
+                )?),
                 DbParams::Sqlite(db_path) => Box::new(
                     SqlitePool::instantiate(
                         &db_path.join("kms.db"),
@@ -86,7 +87,6 @@ impl KMS {
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
-        &self,
         request: &Create,
     ) -> KResult<(Object, HashSet<String>)> {
         let attributes = &request.attributes;

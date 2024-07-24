@@ -30,14 +30,14 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub struct SqlitePool {
+pub(crate) struct SqlitePool {
     pool: Pool<Sqlite>,
 }
 
 impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
+    pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
         let options = SqliteConnectOptions::new()
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -364,18 +364,7 @@ pub(crate) async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let rows: Vec<SqliteRow> = if !uid_or_tags.starts_with('[') {
-        sqlx::query(
-            SQLITE_QUERIES
-                .get("select-object")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid_or_tags)
-        .bind(user)
-        .fetch_optional(executor)
-        .await?
-        .map_or(vec![], |row| vec![row])
-    } else {
+    let rows: Vec<SqliteRow> = if uid_or_tags.starts_with('[') {
         // deserialize the array to an HashSet
         let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
             .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
@@ -410,6 +399,17 @@ where
 
         // Execute the query
         query.fetch_all(executor).await?
+    } else {
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("select-object")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid_or_tags)
+        .bind(user)
+        .fetch_optional(executor)
+        .await?
+        .map_or(vec![], |row| vec![row])
     };
 
     // process the rows and find the tags
@@ -864,12 +864,12 @@ fn to_qualified_uids(
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
         trace!("to_qualified_uids: raw: {raw:?}");
-        let attrs = if !raw.is_empty() {
+        let attrs = if raw.is_empty() {
+            Attributes::default()
+        } else {
             let attrs: Attributes =
                 serde_json::from_slice(&raw).context("failed deserializing attributes")?;
             attrs
-        } else {
-            Attributes::default()
         };
         uids.push((
             row.get::<String, _>(0),

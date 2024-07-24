@@ -109,7 +109,7 @@ where
     impl PostFix for Object {
         fn post_fix(self, tag: &str) -> Result<Self> {
             let object_type = ObjectType::try_from(tag)?;
-            Ok(Object::post_fix(object_type, self))
+            Ok(Self::post_fix(object_type, self))
         }
     }
     value.post_fix(s.tag.as_str())

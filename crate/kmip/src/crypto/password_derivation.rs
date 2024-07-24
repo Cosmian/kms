@@ -81,7 +81,7 @@ fn test_password_derivation() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let my_weak_password = "doglover1234".as_bytes().to_vec();
+    let my_weak_password = b"doglover1234".to_vec();
     let secure_mk = derive_key_from_password::<32>(&my_weak_password).unwrap();
 
     assert_eq!(secure_mk.len(), 32);
@@ -93,7 +93,7 @@ fn test_password_derivation_bad_size() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let my_weak_password = "123princ3ss".as_bytes().to_vec();
+    let my_weak_password = b"123princ3ss".to_vec();
     let secure_mk_res = derive_key_from_password::<13>(&my_weak_password);
 
     assert!(secure_mk_res.is_err());

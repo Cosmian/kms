@@ -1,7 +1,7 @@
 use regex::{Regex, RegexBuilder};
 
 /// Extract the `key_uid` (prefixed by a pattern) from a text
-pub fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str> {
+pub(crate) fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str> {
     let formatted = format!(r"^\s*{pattern}: (?P<uid>.+?)[\s\.]*?$");
     let uid_regex: Regex = RegexBuilder::new(formatted.as_str())
         .multi_line(true)
@@ -13,27 +13,27 @@ pub fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str> {
 }
 
 /// Extract the private key from a test.
-pub fn extract_private_key(text: &str) -> Option<&str> {
+pub(crate) fn extract_private_key(text: &str) -> Option<&str> {
     extract_uid(text, "Private key unique identifier")
 }
 
 /// Extract the public key from a test.
-pub fn extract_public_key(text: &str) -> Option<&str> {
+pub(crate) fn extract_public_key(text: &str) -> Option<&str> {
     extract_uid(text, "Public key unique identifier")
 }
 
 /// Extract the imported key id
-pub fn extract_unique_identifier(text: &str) -> Option<&str> {
+pub(crate) fn extract_unique_identifier(text: &str) -> Option<&str> {
     extract_uid(text, "Unique identifier")
 }
 
 /// Extract the decryption user key from a test.
-pub fn extract_user_key(text: &str) -> Option<&str> {
+pub(crate) fn extract_user_key(text: &str) -> Option<&str> {
     extract_uid(text, "Unique identifier")
 }
 
 /// Extract the database secret from a test
-pub fn extract_database_secret(text: &str) -> Option<&str> {
+pub(crate) fn extract_database_secret(text: &str) -> Option<&str> {
     let formatted = r"entry of your KMS_CLI_CONF\):\s*?(?P<uid>[a-zA-Z0-9=]+)$";
     let uid_regex = RegexBuilder::new(formatted)
         .multi_line(true)

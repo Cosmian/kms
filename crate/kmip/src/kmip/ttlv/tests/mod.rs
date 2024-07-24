@@ -27,13 +27,13 @@ use crate::{
     },
 };
 
-pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
+pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
         key: Zeroizing::from(key_value.to_vec()),
     }
 }
 
-pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
+pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Box::new(Attributes {
@@ -47,7 +47,7 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     }
 }
 
-pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
+pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
@@ -58,13 +58,13 @@ pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     }
 }
 
-pub fn aes_key(key_value: &[u8]) -> Object {
+pub(crate) fn aes_key(key_value: &[u8]) -> Object {
     Object::SymmetricKey {
         key_block: aes_key_block(key_value),
     }
 }
 
-pub fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![TTLV {
@@ -74,7 +74,7 @@ pub fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyValue".to_string(),
         value: TTLValue::Structure(vec![
@@ -112,7 +112,7 @@ pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyBlock".to_string(),
         value: TTLValue::Structure(vec![
@@ -135,7 +135,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "SymmetricKey".to_string(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
@@ -663,7 +663,7 @@ fn test_aes_key_full() {
 }
 
 #[test]
-pub fn test_attributes_with_links() {
+pub(crate) fn test_attributes_with_links() {
     //log_init("info");
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
@@ -671,7 +671,7 @@ pub fn test_attributes_with_links() {
 }
 
 #[test]
-pub fn test_import_correct_object() {
+pub(crate) fn test_import_correct_object() {
     //log_init("info,hyper=info,reqwest=info");
 
     // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
@@ -694,7 +694,7 @@ pub fn test_import_correct_object() {
 }
 
 #[test]
-pub fn test_create() {
+pub(crate) fn test_create() {
     let attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -782,7 +782,7 @@ fn get_key_block() -> KeyBlock {
 }
 
 #[test]
-pub fn test_message_request() {
+pub(crate) fn test_message_request() {
     //log_init("info,hyper=info,reqwest=info");
 
     let req = Message {
@@ -840,7 +840,7 @@ pub fn test_message_request() {
 }
 
 #[test]
-pub fn test_message_response() {
+pub(crate) fn test_message_response() {
     //log_init("info,hyper=info,reqwest=info");
 
     let res = MessageResponse {
@@ -929,7 +929,7 @@ pub fn test_message_response() {
 }
 
 #[test]
-pub fn test_message_enforce_enum() {
+pub(crate) fn test_message_enforce_enum() {
     //log_init("info,hyper=info,reqwest=info");
 
     // check Message request serializer reinforcement

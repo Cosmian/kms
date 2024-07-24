@@ -18,7 +18,9 @@ use crate::{
     result::KResult,
 };
 
-pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
+pub(crate) async fn owner<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
+) -> KResult<()> {
     // log_init("debug");
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();

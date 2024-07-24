@@ -223,13 +223,13 @@ impl From<SendError<ServerHandle>> for KmsError {
 
 impl From<redis::RedisError> for KmsError {
     fn from(err: redis::RedisError) -> Self {
-        KmsError::Redis(err.to_string())
+        Self::Redis(err.to_string())
     }
 }
 
 impl From<KmsError> for redis::RedisError {
     fn from(val: KmsError) -> Self {
-        redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
+        Self::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 

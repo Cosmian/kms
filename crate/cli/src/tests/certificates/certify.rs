@@ -30,7 +30,7 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub struct CertifyOp {
+pub(crate) struct CertifyOp {
     issuer_certificate_key_id: Option<String>,
     issuer_private_key_id: Option<String>,
     csr_file: Option<String>,
@@ -45,7 +45,7 @@ pub struct CertifyOp {
     tags: Option<Vec<String>>,
 }
 
-pub fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
+pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -460,7 +460,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     let certificate_id = certify(
         &ctx.owner_client_conf_path,
         CertifyOp {
-            public_key_id_to_certify: Some(public_key_id.clone()),
+            public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
@@ -495,7 +495,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
     let certificate_id = certify(
         &ctx.owner_client_conf_path,
         CertifyOp {
-            public_key_id_to_certify: Some(public_key_id.clone()),
+            public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
@@ -622,7 +622,7 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
     let certificate_id = certify(
         &ctx.owner_client_conf_path,
         CertifyOp {
-            public_key_id_to_certify: Some(public_key_id.clone()),
+            public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
             ),
@@ -726,9 +726,9 @@ async fn test_certify_validate_certificates() -> Result<(), CliError> {
         "certificates",
         vec![],
         vec![
-            intermediate_certificate_id.clone(),
-            root_certificate_id.clone(),
-            leaf_certificate_id.clone(),
+            intermediate_certificate_id,
+            root_certificate_id,
+            leaf_certificate_id,
         ],
         None,
     )?;

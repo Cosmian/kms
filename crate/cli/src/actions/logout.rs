@@ -13,7 +13,7 @@ use crate::error::CliError;
 pub struct LogoutAction;
 
 impl LogoutAction {
-    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
         let mut conf = ClientConf::load(conf_path)?;
         conf.kms_access_token = None;
         conf.save(conf_path)?;

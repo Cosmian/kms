@@ -19,7 +19,7 @@ use crate::{
 
 /// Generate KMIP generic key pair
 #[post("/kmip/2_1")]
-pub async fn kmip(
+pub(crate) async fn kmip(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMSServer>>,

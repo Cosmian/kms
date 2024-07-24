@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Destroy a KMIP Object
-pub async fn destroy_operation(
+pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
     user: &str,

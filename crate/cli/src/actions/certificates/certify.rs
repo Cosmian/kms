@@ -23,7 +23,7 @@ use crate::{actions::console, error::CliError};
 
 /// The algorithm to use for the keypair generation
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-pub enum Algorithm {
+pub(crate) enum Algorithm {
     #[cfg(not(feature = "fips"))]
     NistP192,
     NistP224,
@@ -50,10 +50,10 @@ impl Display for Algorithm {
         match self {
             #[cfg(not(feature = "fips"))]
             Algorithm::NistP192 => write!(f, "nist-p192"),
-            Algorithm::NistP224 => write!(f, "nist-p224"),
-            Algorithm::NistP256 => write!(f, "nist-p256"),
-            Algorithm::NistP384 => write!(f, "nist-p384"),
-            Algorithm::NistP521 => write!(f, "nist-p521"),
+            Self::NistP224 => write!(f, "nist-p224"),
+            Self::NistP256 => write!(f, "nist-p256"),
+            Self::NistP384 => write!(f, "nist-p384"),
+            Self::NistP521 => write!(f, "nist-p521"),
             #[cfg(not(feature = "fips"))]
             Algorithm::X25519 => write!(f, "x25519"),
             #[cfg(not(feature = "fips"))]
@@ -64,9 +64,9 @@ impl Display for Algorithm {
             Algorithm::Ed448 => write!(f, "ed448"),
             #[cfg(not(feature = "fips"))]
             Algorithm::RSA1024 => write!(f, "rsa1024"),
-            Algorithm::RSA2048 => write!(f, "rsa2048"),
-            Algorithm::RSA3072 => write!(f, "rsa3072"),
-            Algorithm::RSA4096 => write!(f, "rsa4096"),
+            Self::RSA2048 => write!(f, "rsa2048"),
+            Self::RSA3072 => write!(f, "rsa3072"),
+            Self::RSA4096 => write!(f, "rsa4096"),
         }
     }
 }

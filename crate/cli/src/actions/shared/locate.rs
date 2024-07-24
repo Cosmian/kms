@@ -148,12 +148,12 @@ impl LocateObjectsAction {
 
         let response = kms_rest_client.locate(locate).await?;
         if let Some(ids) = response.unique_identifiers {
-            if !ids.is_empty() {
+            if ids.is_empty() {
+                console::Stdout::new("No object found.").write()?;
+            } else {
                 let mut stdout = console::Stdout::new("List of unique identifiers:");
                 stdout.set_unique_identifiers(ids);
                 stdout.write()?;
-            } else {
-                console::Stdout::new("No object found.").write()?;
             }
         } else {
             console::Stdout::new("No object found.").write()?;

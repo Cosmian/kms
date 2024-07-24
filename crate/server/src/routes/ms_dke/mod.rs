@@ -85,13 +85,16 @@ pub struct KeyData {
 }
 
 #[get("/version")]
-pub async fn version(req_http: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
+pub(crate) async fn version(
+    req_http: HttpRequest,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(req_http)?);
     Ok(Json(crate_version!().to_string()))
 }
 
 #[get("/{key_name}")]
-pub async fn get_key(
+pub(crate) async fn get_key(
     req_http: HttpRequest,
     path: Path<String>,
     kms: Data<Arc<KMSServer>>,
@@ -195,7 +198,7 @@ pub struct EncryptedData {
 }
 
 #[post("/{key_name}/{key_id}/decrypt")]
-pub async fn decrypt(
+pub(crate) async fn decrypt(
     req_http: HttpRequest,
     wrap_request: Json<EncryptedData>,
     path: Path<(String, String)>,
