@@ -7,7 +7,7 @@ static LOG_INIT: Once = Once::new();
 /// # Panics
 ///
 /// Will panic if we cannot set global tracing subscriber
-pub fn log_init(default_value: &str) {
+pub fn log_init(default_value: Option<&str>) {
     LOG_INIT.call_once(|| {
         if std::env::var("RUST_BACKTRACE").is_err() {
             unsafe {
@@ -18,8 +18,8 @@ pub fn log_init(default_value: &str) {
         unsafe {
             if let Ok(current_value) = std::env::var("RUST_LOG") {
                 std::env::set_var("RUST_LOG", current_value);
-            } else {
-                std::env::set_var("RUST_LOG", default_value);
+            } else if let Some(input_value) = default_value {
+                std::env::set_var("RUST_LOG", input_value);
             }
         }
 

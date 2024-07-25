@@ -87,7 +87,9 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     // Set up environment variables and logging options if RUST_LOG if defined
-    // log_init("info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info");
+    cosmian_logger::log_utils::log_init(Some(
+        "info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info",
+    ));
 
     let opts = Cli::parse();
 

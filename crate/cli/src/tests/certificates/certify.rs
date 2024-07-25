@@ -408,7 +408,7 @@ fn check_public_and_private_key_linked(
 
 #[tokio::test]
 async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -524,7 +524,7 @@ async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> 
 
 #[tokio::test]
 async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=info");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -574,7 +574,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_renew_a_certificate() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=info");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -630,7 +630,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_issue_with_subject_name() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -673,7 +673,7 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=info");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -712,7 +712,7 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug");
+    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

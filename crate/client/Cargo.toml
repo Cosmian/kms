@@ -29,7 +29,6 @@ rustls = { workspace = true, features = ["dangerous_configuration"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true}
 tracing = "0.1"
 url = { workspace = true }
 webpki-roots = "0.22"

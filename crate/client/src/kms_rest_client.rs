@@ -632,7 +632,7 @@ impl KmsClient {
                 // this is hyper known issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
                 // the bug is hard to reproduce and happens randomly and almost exclusively in Github CI (network bandwith limitation?)
                 // we retry once in case of error after a small arbitrary delay (required for pool connection availability)
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                // tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 warn!("Retry sending POST after error: {e:?}");
                 let mut new_request = self.client.post(&server_url);
                 new_request = new_request.json(&ttlv);

@@ -220,6 +220,10 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
             break;
         }
         for certificate in &certificates_copy {
+            if sorted_chains.len() == certificates.len() {
+                debug!("All certificates have been sorted");
+                break;
+            }
             let ski_1 = certificate
                 .subject_key_id()
                 .map(openssl::asn1::Asn1OctetStringRef::as_slice)

@@ -24,6 +24,7 @@ argon2 = "0.5"
 base58 = "0.2"
 bitflags = "2.6"
 chrono = { workspace = true }
+cosmian_logger = { path = "../logger" }
 cloudproof = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
