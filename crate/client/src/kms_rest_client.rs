@@ -504,11 +504,11 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(10))
-                .tcp_keepalive(Duration::from_secs(5))
-                .pool_idle_timeout(Duration::from_secs(0))
-                .pool_max_idle_per_host(0)
+                .connect_timeout(Duration::from_secs(45)) // Default: no connect timeout
+                .timeout(Duration::from_secs(45)) // default: no timeout
+                .tcp_keepalive(Duration::from_secs(45)) // default: ?
+                .pool_idle_timeout(Duration::from_secs(0)) // default: 90s
+                .pool_max_idle_per_host(0) // default: max usize value
                 .default_headers(headers)
                 .build()?,
             server_url,
