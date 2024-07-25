@@ -163,6 +163,10 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     let mut certificates_copy: Vec<X509> = certificates.to_vec();
     let mut indexes_to_remove = vec![];
 
+    // First step, identify root and leaf
+    // Each of this certificate can be identified with their SKI and AKI
+    // Root has the same SKI and AKI
+    // And only a leaf can omit AKI and SKI
     for (index, certificate) in certificates_copy.iter().enumerate() {
         let ski = certificate
             .subject_key_id()
@@ -173,7 +177,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
             .map(openssl::asn1::Asn1OctetStringRef::as_slice)
             .unwrap_or_default();
         trace!(
-            "Finding root: iterate on certificate: AKI: {}, SKI: {}",
+            "Finding root (or leaf): iterate on certificate: AKI: {}, SKI: {}",
             hex::encode(aki),
             hex::encode(ski)
         );
@@ -189,11 +193,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         }
 
         if aki.is_empty() && ski.is_empty() {
-            trace!(
-                "Leaf found: AKI: {}, SKI: {}",
-                hex::encode(aki),
-                hex::encode(ski)
-            );
+            trace!("Leaf found without AKI nor SKI",);
             sorted_chains.push(certificate.to_owned());
             indexes_to_remove.push(index);
         }
@@ -209,7 +209,16 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         certificates_copy.remove(index);
     }
 
+    debug!(
+        "Root and possibly leaf removed from initial certificate list. Left: {}",
+        certificates_copy.len()
+    );
+    // since certificates are not in the right order, we need to loop on the number of certificates
     for _ in 0..certificates.len() {
+        if sorted_chains.len() == certificates.len() {
+            debug!("All certificates have been sorted");
+            break;
+        }
         for certificate in &certificates_copy {
             let ski_1 = certificate
                 .subject_key_id()
@@ -219,7 +228,13 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
                 .authority_key_id()
                 .map(openssl::asn1::Asn1OctetStringRef::as_slice)
                 .unwrap_or_default();
-            trace!("Iterate on certificate: {:?}", certificate.subject_name());
+            trace!(
+                "Trying to find the certificate position on the sorted list: {:?}, AKI: {}, SKI: \
+                 {}",
+                certificate.subject_name(),
+                hex::encode(aki_1),
+                hex::encode(ski_1),
+            );
 
             for (idx, sorted_certificate) in sorted_chains.clone().iter().enumerate() {
                 let ski_2 = sorted_certificate
@@ -370,10 +385,6 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
             Some(UriType::Url(url)) => {
                 let mut retry_count = 0;
                 for _ in 0..MAX_RETRY_COUNT {
-                    let client = reqwest::ClientBuilder::new()
-                        .pool_max_idle_per_host(0)
-                        .build()?;
-
                     let response_result = client.get(&url).send().await;
                     match response_result {
                         Ok(response) => {
