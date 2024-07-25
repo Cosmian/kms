@@ -22,7 +22,7 @@ pub fn create_user_decryption_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec![
         "keys",
         "create-user-key",

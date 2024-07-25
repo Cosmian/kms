@@ -23,7 +23,7 @@ pub(crate) fn create_ec_key_pair(
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec!["keys", "create", "--curve", curve];
     // add tags
     for tag in tags {

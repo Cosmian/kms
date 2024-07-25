@@ -50,7 +50,7 @@ pub(crate) struct CertifyOp {
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec!["certify".to_owned()];
     if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_key_id {
         args.push("--issuer-certificate-id".to_owned());
@@ -434,7 +434,7 @@ async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -473,7 +473,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -517,7 +517,7 @@ async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> 
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -567,7 +567,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id.clone()],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -623,7 +623,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
         vec![root_id, intermediate_id, renewed_certificate_id.clone()],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -666,7 +666,7 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -705,7 +705,7 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
         vec![certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -742,7 +742,7 @@ async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result
         vec![certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }
@@ -783,7 +783,7 @@ async fn test_issue_with_subject_name_self_signed_with_extensions() -> Result<()
         vec![certificate_id],
         None,
     )?;
-    //assert_eq!("Valid\n", validation);
+    assert_eq!("Valid\n", validation);
 
     Ok(())
 }

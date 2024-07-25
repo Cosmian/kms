@@ -27,7 +27,7 @@ pub(crate) fn encrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["encrypt"];
     args.append(&mut input_files.to_vec());
@@ -69,7 +69,7 @@ pub(crate) fn decrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec!["decrypt", input_file, "--key-id", private_key_id];
     args.push("--encryption-algorithm");
     let encryption_algorithm = encryption_algorithm.to_string();
@@ -102,7 +102,7 @@ pub(crate) fn decrypt(
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> Result<(), CliError> {
     // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
     // log_init(
-    //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
+    //     "cosmian_kms_cli=info,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
     let ctx = start_default_test_kms_server().await;
@@ -174,7 +174,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> Result<(), CliError> {
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliError> {
     // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
     // log_init(
-    //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
+    //     "cosmian_kms_cli=info,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
     let ctx = start_default_test_kms_server().await;
@@ -259,7 +259,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> Result<(), CliError> {
     // log_init(
-    //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
+    //     "cosmian_kms_cli=info,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
     let ctx = start_default_test_kms_server().await;
 

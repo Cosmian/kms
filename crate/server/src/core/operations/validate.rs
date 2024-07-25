@@ -52,9 +52,9 @@ pub(crate) async fn validate_operation(
     let mut headers = HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(10))
-        .tcp_keepalive(Duration::from_secs(15))
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(5))
+        .tcp_keepalive(Duration::from_secs(3))
         .pool_idle_timeout(Duration::from_secs(0))
         .pool_max_idle_per_host(0)
         .default_headers(headers)
@@ -370,6 +370,10 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
             Some(UriType::Url(url)) => {
                 let mut retry_count = 0;
                 for _ in 0..MAX_RETRY_COUNT {
+                    let client = reqwest::ClientBuilder::new()
+                        .pool_max_idle_per_host(0)
+                        .build()?;
+
                     let response_result = client.get(&url).send().await;
                     match response_result {
                         Ok(response) => {

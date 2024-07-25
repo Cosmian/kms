@@ -635,11 +635,10 @@ impl KmsClient {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 warn!("Retry sending POST after error: {e:?}");
                 let mut new_request = self.client.post(&server_url);
-                let ttlv = to_ttlv(kmip_request)?;
                 new_request = new_request.json(&ttlv);
 
                 // Retry once
-                match new_request.send().await {
+                match new_request.timeout(Duration::from_secs(5)).send().await {
                     Ok(response) => {
                         let status_code = response.status();
                         debug!("Retry sending POST OK. Status: {status_code}");

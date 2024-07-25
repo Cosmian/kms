@@ -25,7 +25,7 @@ async fn test_view_policy() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -41,7 +41,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -64,7 +64,7 @@ async fn test_create_policy() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "create",
@@ -91,7 +91,7 @@ pub async fn rename(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let args = vec![
         "policy",
         "rename-attribute",
@@ -119,7 +119,7 @@ pub async fn add(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let args = vec![
         "policy",
         "add-attribute",
@@ -146,7 +146,7 @@ pub async fn disable(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let args = vec![
         "policy",
         "disable-attribute",
@@ -173,7 +173,7 @@ pub async fn remove(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    //cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let args = vec![
         "policy",
         "remove-attribute",
