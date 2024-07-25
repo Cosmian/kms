@@ -39,6 +39,7 @@ use crate::{
 pub struct KmsClient {
     pub server_url: String,
     client: Client,
+    headers: HeaderMap,
 }
 
 impl KmsClient {
@@ -504,13 +505,14 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(45)) // Default: no connect timeout
-                .timeout(Duration::from_secs(45)) // default: no timeout
-                .tcp_keepalive(Duration::from_secs(45)) // default: ?
-                .pool_idle_timeout(Duration::from_secs(0)) // default: 90s
+                // .connect_timeout(Duration::from_secs(45)) // Default: no connect timeout
+                // .timeout(Duration::from_secs(45)) // default: no timeout
+                // .tcp_keepalive(Duration::from_secs(45)) // default: ?
+                // .pool_idle_timeout(Duration::from_secs(0)) // default: 90s
                 .pool_max_idle_per_host(0) // default: max usize value
-                .default_headers(headers)
+                .default_headers(headers.clone())
                 .build()?,
+            headers,
             server_url,
         })
     }
@@ -632,13 +634,18 @@ impl KmsClient {
                 // this is hyper known issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
                 // the bug is hard to reproduce and happens randomly and almost exclusively in Github CI (network bandwith limitation?)
                 // we retry once in case of error after a small arbitrary delay (required for pool connection availability)
-                // tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                // std::thread::sleep(std::time::Duration::from_secs(2));
+                // tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let client = ClientBuilder::new()
+                    .default_headers(self.headers.clone())
+                    .pool_max_idle_per_host(0) // default: max usize value
+                    .build()?;
                 warn!("Retry sending POST after error: {e:?}");
-                let mut new_request = self.client.post(&server_url);
+                let mut new_request = client.post(&server_url);
                 new_request = new_request.json(&ttlv);
 
                 // Retry once
-                match new_request.timeout(Duration::from_secs(5)).send().await {
+                match new_request.send().await {
                     Ok(response) => {
                         let status_code = response.status();
                         debug!("Retry sending POST OK. Status: {status_code}");

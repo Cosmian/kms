@@ -18,12 +18,12 @@ pub fn log_init(default_value: Option<&str>) {
         unsafe {
             if let Ok(current_value) = std::env::var("RUST_LOG") {
                 std::env::set_var("RUST_LOG", current_value);
+                tracing_setup();
             } else if let Some(input_value) = default_value {
                 std::env::set_var("RUST_LOG", input_value);
+                tracing_setup();
             }
         }
-
-        tracing_setup();
     });
 }
 

@@ -78,7 +78,7 @@ rm -f /tmp/*.json
 # Uncomment this code to run tests indefinitely
 counter=1
 while true; do
-  export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
+  # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
   # shellcheck disable=SC2086
   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
   counter=$((counter + 1))
