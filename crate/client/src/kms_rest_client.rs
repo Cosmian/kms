@@ -627,9 +627,12 @@ impl KmsClient {
                 Err(ClientError::RequestFailed(p))
             }
             Err(e) => {
-                // std::thread::sleep(std::time::Duration::from_secs(1));
-                // there is an hyper issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
-                // we retry once in case of error
+                // Since Validate KMIP operation requires to fetch CRLs (potentially on external websites), there is a network racy problem with hyper library.occuring
+                // in KMS CLI cargo tests.
+                // this is hyper known issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
+                // the bug is hard to reproduce and happens randomly and almost exclusively in Github CI (network bandwith limitation?)
+                // we retry once in case of error after a small arbitrary delay (required for pool connection availability)
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 warn!("Retry sending POST after error: {e:?}");
                 let mut new_request = self.client.post(&server_url);
                 let ttlv = to_ttlv(kmip_request)?;
