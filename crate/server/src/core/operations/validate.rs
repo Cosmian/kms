@@ -49,15 +49,15 @@ pub(crate) async fn validate_operation(
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {:?}", request);
 
-    // let mut headers = HeaderMap::new();
-    // headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    let mut headers = HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
-        // .connect_timeout(Duration::from_secs(10))
-        // .timeout(Duration::from_secs(10))
-        // .tcp_keepalive(Duration::from_secs(15))
-        // .pool_idle_timeout(Duration::from_secs(5))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(10))
+        .tcp_keepalive(Duration::from_secs(15))
+        .pool_idle_timeout(Duration::from_secs(0))
         .pool_max_idle_per_host(0)
-        // .default_headers(headers)
+        .default_headers(headers)
         .build()
         .map_err(|e| {
             KmsError::Certificate(format!("Unable to build Reqwest client: Error: {e:?}"))

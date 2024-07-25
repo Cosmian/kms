@@ -22,6 +22,7 @@ use log::trace;
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::Serialize;
+use tracing::{debug, error, warn};
 
 use crate::{
     access::{
@@ -503,10 +504,10 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                // .connect_timeout(Duration::from_secs(10))
-                // .timeout(Duration::from_secs(10))
-                // .tcp_keepalive(Duration::from_secs(5))
-                // .pool_idle_timeout(Duration::from_secs(5))
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(10))
+                .tcp_keepalive(Duration::from_secs(5))
+                .pool_idle_timeout(Duration::from_secs(0))
                 .pool_max_idle_per_host(0)
                 .default_headers(headers)
                 .build()?,
@@ -609,9 +610,7 @@ impl KmsClient {
         );
         request = request.json(&ttlv);
 
-        let response_result = request.send().await;
-
-        match response_result {
+        match request.send().await {
             Ok(response) => {
                 let status_code = response.status();
                 if status_code.is_success() {
@@ -627,9 +626,39 @@ impl KmsClient {
                 let p = handle_error(endpoint, response).await?;
                 Err(ClientError::RequestFailed(p))
             }
-            Err(e) => Err(ClientError::RequestFailed(format!(
-                "Sending POST failed with error: {e:?}"
-            ))),
+            Err(e) => {
+                // std::thread::sleep(std::time::Duration::from_secs(1));
+                // there is an hyper issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
+                // we retry once in case of error
+                warn!("Retry sending POST after error: {e:?}");
+                let mut new_request = self.client.post(&server_url);
+                let ttlv = to_ttlv(kmip_request)?;
+                new_request = new_request.json(&ttlv);
+
+                // Retry once
+                match new_request.send().await {
+                    Ok(response) => {
+                        let status_code = response.status();
+                        debug!("Retry sending POST OK. Status: {status_code}");
+                        if status_code.is_success() {
+                            let ttlv = response.json::<TTLV>().await?;
+                            return from_ttlv(&ttlv)
+                                .map_err(|e| ClientError::ResponseFailed(e.to_string()))
+                        }
+
+                        // process error
+                        let p = handle_error(endpoint, response).await?;
+                        Err(ClientError::RequestFailed(p))
+                    }
+                    Err(e) => {
+                        error!("Retry sending POST failed. Error: {e:?}");
+
+                        Err(ClientError::RequestFailed(format!(
+                            "Retry Sending POST failed with error: {e:?}"
+                        )))
+                    }
+                }
+            }
         }
     }
 }

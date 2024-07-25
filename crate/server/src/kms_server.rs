@@ -319,11 +319,11 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_disconnect_timeout(std::time::Duration::from_secs(5)) // default: 5s
-    .tls_handshake_timeout(std::time::Duration::from_secs(3)) // default: 3s
-    .keep_alive(std::time::Duration::from_secs(5)) // default: 5s
-    .shutdown_timeout(30) // default: 30s
-    .client_request_timeout(std::time::Duration::from_secs(5)); // default: 5s
+    .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
+    .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s
+    .keep_alive(std::time::Duration::from_secs(30)) // default: 5s
+    .shutdown_timeout(180) // default: 30s
+    .client_request_timeout(std::time::Duration::from_secs(30)); // default: 5s
 
     Ok(match builder {
         Some(b) => {
