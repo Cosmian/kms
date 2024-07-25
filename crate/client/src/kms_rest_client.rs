@@ -609,21 +609,28 @@ impl KmsClient {
         );
         request = request.json(&ttlv);
 
-        let response = request.send().await?;
+        let response_result = request.send().await;
 
-        let status_code = response.status();
-        if status_code.is_success() {
-            let ttlv = response.json::<TTLV>().await?;
-            trace!(
-                "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-            );
-            return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+        match response_result {
+            Ok(response) => {
+                let status_code = response.status();
+                if status_code.is_success() {
+                    let ttlv = response.json::<TTLV>().await?;
+                    trace!(
+                        "<==\n{}",
+                        serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                    );
+                    return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+                }
+
+                // process error
+                let p = handle_error(endpoint, response).await?;
+                Err(ClientError::RequestFailed(p))
+            }
+            Err(e) => Err(ClientError::RequestFailed(format!(
+                "Sending POST failed with error: {e:?}"
+            ))),
         }
-
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        Err(ClientError::RequestFailed(p))
     }
 }
 
