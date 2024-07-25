@@ -1233,7 +1233,7 @@ impl CertificateAttributes {
                 "O" => value.clone_into(&mut certificate_attributes.certificate_subject_o),
                 "OU" => value.clone_into(&mut certificate_attributes.certificate_subject_ou),
                 "emailAddress" => {
-                    value.clone_into(&mut certificate_attributes.certificate_subject_email)
+                    value.clone_into(&mut certificate_attributes.certificate_subject_email);
                 }
                 "C" => value.clone_into(&mut certificate_attributes.certificate_subject_c),
                 "ST" => value.clone_into(&mut certificate_attributes.certificate_subject_st),
