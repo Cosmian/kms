@@ -463,7 +463,7 @@ impl KmsClient {
         self.get_no_ttlv("/version", None::<&()>).await
     }
 
-    /// This operation requests google_cse status of the server
+    /// This operation requests `google_cse` status of the server
     pub async fn google_cse_status(&self) -> Result<StatusResponse, ClientError> {
         self.get_no_ttlv("/google_cse/status", None::<&()>).await
     }
