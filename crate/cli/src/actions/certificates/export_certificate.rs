@@ -15,6 +15,7 @@ pub enum CertificateExportFormat {
     JsonTtlv,
     Pem,
     Pkcs12,
+    Pkcs7,
 }
 
 /// Export a certificate from the KMS
@@ -23,6 +24,7 @@ pub enum CertificateExportFormat {
 /// - in TTLV JSON KMIP format (json-ttlv)
 /// - in X509 PEM format (pem)
 /// - in PKCS12 format including private key and certificate file (pkcs12)
+/// - in PKCS7 format including the entire certificates chain (pkcs7)
 ///
 /// For PKCS#12, the `unique_id` should be that of the private key, not the certificate.
 ///
@@ -96,6 +98,7 @@ impl ExportCertificateAction {
             CertificateExportFormat::Pkcs12 => {
                 (KeyFormatType::PKCS12, self.pkcs12_password.as_deref())
             }
+            CertificateExportFormat::Pkcs7 => (KeyFormatType::PKCS7, None),
         };
 
         // export the object
@@ -125,6 +128,12 @@ impl ExportCertificateAction {
                     }
                     CertificateExportFormat::Pkcs12 => {
                         cli_bail!("PKCS12 format is not supported for certificates only");
+                    }
+                    CertificateExportFormat::Pkcs7 => {
+                        // save the pem to a file
+                        let pem =
+                            pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
+                        write_bytes_to_file(pem.to_string().as_bytes(), &self.certificate_file)?;
                     }
                 }
             }
