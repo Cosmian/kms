@@ -1,4 +1,7 @@
-use std::{collections::HashSet, fs, path, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    fs, path,
+};
 
 use cosmian_kmip::{
     kmip::{
@@ -17,8 +20,7 @@ use openssl::{
         X509Crl, X509StoreContext, X509,
     },
 };
-use reqwest::header::{HeaderMap, HeaderValue};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},
@@ -27,7 +29,9 @@ use crate::{
     result::KResult,
 };
 
-const MAX_RETRY_COUNT: u32 = 2;
+lazy_static::lazy_static! {
+    static ref CRL_CACHE_MAP: std::sync::RwLock<HashMap<String, Vec<u8>>> = std::sync::RwLock::new(HashMap::new());
+}
 
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity.
@@ -48,18 +52,6 @@ pub(crate) async fn validate_operation(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {:?}", request);
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    let client = reqwest::ClientBuilder::new()
-        .tcp_keepalive(Duration::from_secs(30))
-        .http2_keep_alive_while_idle(false)
-        .pool_max_idle_per_host(0)
-        .default_headers(headers)
-        .build()
-        .map_err(|e| {
-            KmsError::Certificate(format!("Unable to build Reqwest client: Error: {e:?}"))
-        })?;
 
     debug!("Get input certificates as bytes");
     let (certificates, certificates_number) = match (request.unique_identifier, request.certificate)
@@ -95,52 +87,31 @@ pub(crate) async fn validate_operation(
 
     debug!("Number of certificates in chain: {certificates_number}");
     if certificates.len() != certificates_number {
-        error!(
+        return Err(KmsError::Certificate(
             "Number of certificates found in database and number of certificates in request do \
              not match"
-        );
-        return Ok(ValidateResponse {
-            validity_indicator: ValidityIndicator::Invalid,
-        })
+                .to_string(),
+        ));
     };
 
+    // Convert the certificates from bytes to X509
     let certificates = certificates
         .into_iter()
         .map(|cert| X509::from_der(cert.as_slice()))
         .collect::<Result<Vec<X509>, _>>()?;
 
+    // Sort the certificates in the chain according the issuing order
     let sorted_certificates = if certificates.len() > 1 {
         index_certificates(&certificates)?
     } else {
         certificates.clone()
     };
 
-    let signature_validity = verify_chain_signature(&sorted_certificates)?;
-    debug!("Verifying chain signature: {signature_validity:?}");
-    if signature_validity == ValidityIndicator::Invalid {
-        return Ok(ValidateResponse {
-            validity_indicator: ValidityIndicator::Invalid,
-        });
-    }
+    verify_chain_signature(&sorted_certificates)?;
+    validate_chain_date(&certificates, request.validity_time)?;
+    verify_crls(sorted_certificates).await?;
 
-    let date_validity = validate_chain_date(&certificates, request.validity_time)?;
-    debug!("Verifying if the certificate chain has not expired: result: {date_validity:?}");
-    if date_validity == ValidityIndicator::Invalid {
-        return Ok(ValidateResponse {
-            validity_indicator: ValidityIndicator::Invalid,
-        });
-    }
-
-    let crl_status_validity = verify_crls(&client, sorted_certificates).await?;
-    debug!(
-        "Verifying if the certificate chain has revoked elements: result: {crl_status_validity:?}"
-    );
-    if crl_status_validity == ValidityIndicator::Invalid {
-        return Ok(ValidateResponse {
-            validity_indicator: ValidityIndicator::Invalid,
-        });
-    }
-
+    debug!("Exiting in success");
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,
     })
@@ -211,7 +182,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         "Root and possibly leaf removed from initial certificate list. Left: {}",
         certificates_copy.len()
     );
-    // since certificates are not in the right order, we need to loop on the number of certificates
+    // since certificates are not in the right order, we need to loop on the number of certificates - worst case
     for _ in 0..certificates.len() {
         if sorted_chains.len() == certificates.len() {
             debug!("All certificates have been sorted");
@@ -298,7 +269,9 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
 fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     if certificates.is_empty() {
-        return Ok(ValidityIndicator::Invalid);
+        return Err(KmsError::Certificate(
+            "Certificate chain is empty".to_string(),
+        ));
     }
 
     // Create a new X509 store builder
@@ -332,7 +305,9 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
 
     debug!("Result of the function verify_cert: {result:?}");
     if !result {
-        return Ok(ValidityIndicator::Invalid);
+        return Err(KmsError::Certificate(
+            "Result of the function verify_cert: {result:?}".to_string(),
+        ));
     }
 
     // verify signatures in cascade
@@ -344,11 +319,10 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
         .public_key()?;
     for cert in certificates {
         if !cert.verify(&issuer_public_key)? {
-            warn!(
+            return Err(KmsError::Certificate(format!(
                 "Failed to verify the certificate: {:?}",
                 cert.subject_name()
-            );
-            return Ok(ValidityIndicator::Invalid);
+            )));
         }
         issuer_public_key = cert.public_key()?;
     }
@@ -361,9 +335,13 @@ enum UriType {
     Path(String),
 }
 
-async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResult<Vec<Vec<u8>>> {
-    trace!("get_crl_bytes: entering");
-    let mut crl_bytes_list = Vec::<Vec<u8>>::new();
+async fn get_crl_bytes(
+    uri_list: Vec<String>,
+    crls: &mut HashMap<String, Vec<u8>>,
+) -> KResult<HashMap<String, Vec<u8>>> {
+    trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
+
+    let mut result = HashMap::new();
 
     for uri in uri_list {
         // checking whether the resource is an URL or a Pathname
@@ -384,40 +362,47 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
         // Retrieving the object from its location
         match uri_type {
             Some(UriType::Url(url)) => {
-                let mut retry_count = 0;
-                for _ in 0..MAX_RETRY_COUNT {
-                    let response = client.get(&url).send().await?;
-                    if response.status().is_success() {
-                        let crl_bytes = response
-                            .text()
+                if crls.contains_key(&url) {
+                    debug!("CRL list already contains key: {url}");
+                    crls.get(&url).and_then(|v| result.insert(url, v.clone()));
+                    continue;
+                }
+                let response = reqwest::Client::new().get(&url).send().await?;
+                debug!("after getting CRL: url: {url}");
+                if response.status().is_success() {
+                    let crl_bytes =
+                        response
+                            .bytes()
                             .await
-                            .map(|text| text.as_bytes().to_vec())
+                            .map(|text| text.to_vec())
                             .map_err(|e| {
                                 KmsError::Certificate(format!(
                                     "Error in getting the body of the response for the following \
                                      URL: {url}. Error: {e:?} "
                                 ))
                             })?;
-                        crl_bytes_list.push(crl_bytes);
-                        break;
-                    } else {
-                        retry_count += 1;
-                        warn!(
-                            "The CRL at the following URL {url} is not available. Retry count \
-                             {retry_count}",
-                        );
-                        if retry_count >= MAX_RETRY_COUNT {
-                            return Err(KmsError::Certificate(format!(
-                                "The CRL at the following URL {url} is not available"
-                            )));
-                        }
-                    }
+
+                    crls.insert(url.clone(), crl_bytes.clone());
+                    result.insert(url, crl_bytes);
+                    break;
+                } else {
+                    return Err(KmsError::Certificate(format!(
+                        "The CRL at the following URL {url} is not available. Status: {}",
+                        response.status()
+                    )));
                 }
             }
             Some(UriType::Path(path)) => {
                 // Get PEM file (path should be already canonic)
+                if crls.contains_key(&path) {
+                    debug!("CRL list already contains key: {path}");
+                    crls.get(&path).and_then(|v| result.insert(path, v.clone()));
+                    continue;
+                }
+
                 let crl_bytes = fs::read(path::Path::new(&path))?;
-                crl_bytes_list.push(crl_bytes);
+                crls.insert(path.clone(), crl_bytes.clone());
+                result.insert(path, crl_bytes);
             }
             _ => {
                 return Err(KmsError::Certificate(
@@ -427,78 +412,95 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
         };
     }
 
-    trace!(
+    debug!(
         "get_crl_bytes: exiting in success with {} CRLs",
-        crl_bytes_list.len()
+        result.len()
     );
-    Ok(crl_bytes_list)
+    Ok(result)
 }
 
-async fn verify_crls(
-    client: &reqwest::Client,
-    certificates: Vec<X509>,
-) -> KResult<ValidityIndicator> {
-    let mut crls = Vec::<Vec<u8>>::new();
+// TODO(ecse): I cannot get rid of the clippy warning:
+// ```help: consider using an async-aware `Mutex` type or ensuring the `MutexGuard` is dropped before calling await```
+// I tried to use `tokio::sync::Mutex` (and indeed it is a async-aware `Mutex` but we loose the lock on the HashMap)
+#[allow(clippy::await_holding_lock)]
+async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
+    let mut crls = CRL_CACHE_MAP
+        .write()
+        .expect("a read mutex on the CRL cache failed");
+
+    let mut parent_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
         debug!(
             "[{idx}] Verifying certificate: subject: {:?}",
             certificate.subject_name()
         );
+
+        // Test if certificate is in parent CRL
         if idx > 0 {
-            for crl in crls {
-                let crl = X509Crl::from_pem(crl.as_slice())?;
+            for (crl_path, crl_value) in &parent_crls {
+                let crl = X509Crl::from_pem(crl_value.as_slice())?;
+                trace!("CRL deserialized OK: {crl_path}");
                 let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
-                debug!("Verifying that the certificate is not revoked: result: {res:?}");
+                debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
-                    debug!("Certificate is revoked or removed from CRL");
-                    return Ok(ValidityIndicator::Invalid)
+                    return Err(KmsError::Certificate(
+                        "Certificate is revoked or removed from CRL".to_string(),
+                    ));
                 }
             }
         }
-        let uri_list = match certificate.crl_distribution_points() {
-            None => vec![],
-            Some(crl_dp) => {
-                let crl_size = crl_dp.len();
-                let mut uri_list = Vec::<String>::new();
-                for i in 0..crl_size {
-                    let crl_uri = crl_dp
-                        .get(i)
-                        .and_then(DistPointRef::distpoint)
-                        .and_then(DistPointNameRef::fullname)
-                        .and_then(|x| x.get(0))
-                        .and_then(GeneralNameRef::uri);
-                    if let Some(crl_uri) = crl_uri {
+        if let Some(crl_dp) = certificate.crl_distribution_points() {
+            let crl_size = crl_dp.len();
+            let mut uri_list = Vec::<String>::new();
+            for i in 0..crl_size {
+                let crl_uri = crl_dp
+                    .get(i)
+                    .and_then(DistPointRef::distpoint)
+                    .and_then(DistPointNameRef::fullname)
+                    .and_then(|x| x.get(0))
+                    .and_then(GeneralNameRef::uri);
+                if let Some(crl_uri) = crl_uri {
+                    if !uri_list.contains(&crl_uri.to_string()) {
                         uri_list.push(crl_uri.to_string());
                         debug!("Found CRL URI: {crl_uri}");
                     }
                 }
-                uri_list
             }
-        };
+            // uri_list
+            parent_crls = get_crl_bytes(uri_list, &mut crls).await?;
 
-        crls = get_crl_bytes(client, uri_list).await?;
-        debug!("Number of CRL found {}", crls.len());
-        for crl in crls.clone() {
-            // Verifying that the CRL is properly signed by its issuer
-            let crl = X509Crl::from_pem(crl.as_slice())?;
-            let cert_key = &certificate.public_key()?;
-            if crl.verify(cert_key)? {
-                return Err(KmsError::Certificate("Invalid CRL signature".to_string()))
-            };
-            debug!("Direct verification: Verifying that the certificate is not revoked");
-            let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
-            debug!(
-                "Direct verification: Verifying that the certificate is not revoked: result: \
-                 {res:?}"
-            );
-            if res == ValidityIndicator::Invalid {
-                debug!("Direct verification: Certificate is revoked or removed from CRL");
-                return Ok(ValidityIndicator::Invalid)
+            for (crl_path, crl_value) in &parent_crls {
+                debug!(
+                    "Iterating on CRL list: {crl_path}, CRL value Length: {}",
+                    crl_value.len()
+                );
+
+                // Verifying that the CRL is properly signed by its issuer
+                let crl = X509Crl::from_pem(crl_value.as_slice())?;
+                trace!("CRL deserialized OK: {crl_path}");
+
+                // Except when this is a leaf certificate (CRL are always signed by CA)
+                let cert_key = certificate.public_key()?;
+                debug!("Get certificate public key OK: {cert_key:?}");
+                if crl.verify(&cert_key)? {
+                    return Err(KmsError::Certificate(format!(
+                        "Invalid CRL signature: {:?}",
+                        crl.issuer_name()
+                    )))
+                };
+
+                let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
+                debug!("Revocation status: result: {res:?}");
+                if res == ValidityIndicator::Invalid {
+                    return Err(KmsError::Certificate(
+                        "Certificate is revoked or removed from CRL".to_string(),
+                    ));
+                }
             }
         }
     }
-    debug!("verify_crls: exiting in success");
+    trace!("verify_crls: exiting in success");
     Ok(ValidityIndicator::Valid)
 }
 
@@ -557,7 +559,7 @@ async fn certificate_by_uid(
 }
 
 fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<ValidityIndicator> {
-    let current_date = if let Some(date) = date {
+    let current_date = if let Some(date) = date.clone() {
         Asn1Time::from_str(date.as_str())
     } else {
         Asn1Time::days_from_now(0)
@@ -565,9 +567,16 @@ fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<V
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
-            //let certificate = X509::from_der(certificate)?;
             let validation = validate_date(certificate, &current_date)?;
-            Ok(acc.and(validation))
+            if validation == ValidityIndicator::Invalid {
+                Err(KmsError::Certificate(format!(
+                    "According to this date ({date:?}), the following certificate will be invalid \
+                     {:?}",
+                    certificate.subject_name()
+                )))
+            } else {
+                Ok(acc.and(validation))
+            }
         })
 }
 

@@ -70,6 +70,7 @@ pub async fn start_test_server_with_options(
     use_https: bool,
     use_client_cert: bool,
 ) -> Result<TestsContext, ClientError> {
+    cosmian_logger::log_utils::log_init(None);
     let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)?;
 
     // Create a (object owner) conf

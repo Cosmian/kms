@@ -197,12 +197,12 @@ async fn test_validate_cli() -> Result<(), CliError> {
             leaf1_certificate_id,
         ],
         None,
-    )?;
+    );
     info!(
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
-         test1_res: {test1_res}"
+         test1_res: {test1_res:?}"
     );
-    assert_eq!(test1_res, "Invalid\n");
+    assert!(test1_res.is_err());
 
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -219,7 +219,7 @@ async fn test_validate_cli() -> Result<(), CliError> {
         "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
-    assert_eq!("Valid\n", test2_res);
+    assert!(test2_res.contains("Valid"));
 
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -232,12 +232,12 @@ async fn test_validate_cli() -> Result<(), CliError> {
         ],
         // Date: 15/04/2048
         Some("4804152030Z".to_string()),
-    )?;
+    );
     info!(
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
-         leaf2's expiration date. test3_res: {test3_res}"
+         leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert_eq!(test3_res, "Invalid\n");
+    assert!(test3_res.is_err());
 
     let test4_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -248,7 +248,7 @@ async fn test_validate_cli() -> Result<(), CliError> {
     )?;
 
     info!("validate chain only. Must be valid.");
-    assert_eq!("Valid\n", test4_res);
+    assert!(test4_res.contains("Valid"));
 
     info!("validate tests successfully passed");
     Ok(())

@@ -32,7 +32,7 @@ async fn main() -> KResult<()> {
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
         unsafe {
-            std::env::set_var("RUST_BACKTRACE", "1");
+            std::env::set_var("RUST_BACKTRACE", "full");
         }
     }
     if std::env::var("RUST_LOG").is_err() {
