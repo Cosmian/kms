@@ -32,7 +32,6 @@ impl ValidateCertificatesAction {
             &self.unique_identifier,
             self.validity_time.clone(),
         )?;
-
         let validity_indicator = client_connector.validate(request).await?.validity_indicator;
         console::Stdout::new(match validity_indicator {
             ValidityIndicator::Valid => "Valid",

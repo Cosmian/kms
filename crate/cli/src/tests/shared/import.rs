@@ -38,7 +38,7 @@ pub(crate) fn import_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
@@ -142,7 +142,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
+    cosmian_logger::log_utils::log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test

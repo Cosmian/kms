@@ -89,13 +89,7 @@ redis = { version = "0.23", features = [
 # implementations depending on the operating system. On linux, it will
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
-reqwest = { workspace = true, features = [
-    "json",
-    "multipart",
-    "native-tls",
-    "stream",
-    "blocking",
-] }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.4", default-features = false, features = [

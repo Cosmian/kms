@@ -226,7 +226,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -246,7 +246,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -264,7 +264,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {

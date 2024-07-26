@@ -21,7 +21,6 @@ use cosmian_kms_cli::{
     error::CliError,
 };
 use cosmian_kms_client::ClientConf;
-use cosmian_logger::log_utils::log_init;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -88,7 +87,8 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     // Set up environment variables and logging options if RUST_LOG if defined
-    log_init("info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info");
+    // Ex: RUST_LOG=info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info
+    cosmian_logger::log_utils::log_init(None);
 
     let opts = Cli::parse();
 

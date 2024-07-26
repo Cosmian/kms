@@ -9,7 +9,6 @@ use cosmian_kmip::{
     KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use http::{HeaderMap, HeaderValue};
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
@@ -18,6 +17,7 @@ use openssl::{
         X509Crl, X509StoreContext, X509,
     },
 };
+use reqwest::header::{HeaderMap, HeaderValue};
 use tracing::{debug, error, trace, warn};
 
 use crate::{
@@ -52,10 +52,8 @@ pub(crate) async fn validate_operation(
     let mut headers = HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
-        // .connect_timeout(Duration::from_secs(10))
-        // .timeout(Duration::from_secs(10))
-        .tcp_keepalive(Duration::from_secs(15))
-        // .pool_idle_timeout(Duration::from_secs(5))
+        .tcp_keepalive(Duration::from_secs(30))
+        .http2_keep_alive_while_idle(false)
         .pool_max_idle_per_host(0)
         .default_headers(headers)
         .build()
@@ -163,6 +161,10 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     let mut certificates_copy: Vec<X509> = certificates.to_vec();
     let mut indexes_to_remove = vec![];
 
+    // First step, identify root and leaf
+    // Each of this certificate can be identified with their SKI and AKI
+    // Root has the same SKI and AKI
+    // And only a leaf can omit AKI and SKI
     for (index, certificate) in certificates_copy.iter().enumerate() {
         let ski = certificate
             .subject_key_id()
@@ -173,7 +175,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
             .map(openssl::asn1::Asn1OctetStringRef::as_slice)
             .unwrap_or_default();
         trace!(
-            "Finding root: iterate on certificate: AKI: {}, SKI: {}",
+            "Finding root (or leaf): iterate on certificate: AKI: {}, SKI: {}",
             hex::encode(aki),
             hex::encode(ski)
         );
@@ -189,11 +191,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         }
 
         if aki.is_empty() && ski.is_empty() {
-            trace!(
-                "Leaf found: AKI: {}, SKI: {}",
-                hex::encode(aki),
-                hex::encode(ski)
-            );
+            trace!("Leaf found without AKI nor SKI",);
             sorted_chains.push(certificate.to_owned());
             indexes_to_remove.push(index);
         }
@@ -209,8 +207,21 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         certificates_copy.remove(index);
     }
 
+    debug!(
+        "Root and possibly leaf removed from initial certificate list. Left: {}",
+        certificates_copy.len()
+    );
+    // since certificates are not in the right order, we need to loop on the number of certificates
     for _ in 0..certificates.len() {
+        if sorted_chains.len() == certificates.len() {
+            debug!("All certificates have been sorted");
+            break;
+        }
         for certificate in &certificates_copy {
+            if sorted_chains.len() == certificates.len() {
+                debug!("All certificates have been sorted");
+                break;
+            }
             let ski_1 = certificate
                 .subject_key_id()
                 .map(openssl::asn1::Asn1OctetStringRef::as_slice)
@@ -219,7 +230,13 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
                 .authority_key_id()
                 .map(openssl::asn1::Asn1OctetStringRef::as_slice)
                 .unwrap_or_default();
-            trace!("Iterate on certificate: {:?}", certificate.subject_name());
+            trace!(
+                "Trying to find the certificate position on the sorted list: {:?}, AKI: {}, SKI: \
+                 {}",
+                certificate.subject_name(),
+                hex::encode(aki_1),
+                hex::encode(ski_1),
+            );
 
             for (idx, sorted_certificate) in sorted_chains.clone().iter().enumerate() {
                 let ski_2 = sorted_certificate
@@ -313,7 +330,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
         openssl::x509::X509StoreContextRef::verify_cert,
     )?;
 
-    debug!("Result of the verification: {result:?}");
+    debug!("Result of the function verify_cert: {result:?}");
     if !result {
         return Ok(ValidityIndicator::Invalid);
     }
@@ -429,10 +446,8 @@ async fn verify_crls(
             certificate.subject_name()
         );
         if idx > 0 {
-            debug!("Number of CRL {}", crls.len());
             for crl in crls {
                 let crl = X509Crl::from_pem(crl.as_slice())?;
-                debug!("Verifying that the certificate is not revoked");
                 let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
                 debug!("Verifying that the certificate is not revoked: result: {res:?}");
                 if res == ValidityIndicator::Invalid {
@@ -474,7 +489,8 @@ async fn verify_crls(
             debug!("Direct verification: Verifying that the certificate is not revoked");
             let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
             debug!(
-                "Direct verificationVerifying that the certificate is not revoked: result: {res:?}"
+                "Direct verification: Verifying that the certificate is not revoked: result: \
+                 {res:?}"
             );
             if res == ValidityIndicator::Invalid {
                 debug!("Direct verification: Certificate is revoked or removed from CRL");
