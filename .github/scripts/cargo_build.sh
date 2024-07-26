@@ -80,7 +80,7 @@ counter=1
 while true; do
   # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
   # shellcheck disable=SC2086
-  cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+  cargo test -j 1 --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
   counter=$((counter + 1))
   echo "Round: $counter"
   # reset
