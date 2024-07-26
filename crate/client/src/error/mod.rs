@@ -75,6 +75,12 @@ impl From<reqwest::Error> for ClientError {
     }
 }
 
+impl From<reqwest::header::InvalidHeaderValue> for ClientError {
+    fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
+        Self::Default(e.to_string())
+    }
+}
+
 impl From<io::Error> for ClientError {
     fn from(e: io::Error) -> Self {
         Self::Default(e.to_string())

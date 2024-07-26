@@ -17,11 +17,14 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use http::{HeaderMap, HeaderValue, StatusCode};
 use log::trace;
-use reqwest::{Client, ClientBuilder, Identity, Response};
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client, ClientBuilder, Identity, Response, StatusCode,
+};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::Serialize;
+use tracing::{debug, error, warn};
 
 use crate::{
     access::{
@@ -503,11 +506,9 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                // .connect_timeout(Duration::from_secs(10))
-                // .timeout(Duration::from_secs(10))
-                .tcp_keepalive(Duration::from_secs(25))
-                // .pool_idle_timeout(Duration::from_secs(5))
-                .pool_max_idle_per_host(0)
+                .tcp_keepalive(Duration::from_secs(45)) // default: ?
+                .http2_keep_alive_while_idle(false)
+                .pool_max_idle_per_host(0) // default: max usize value
                 .default_headers(headers)
                 .build()?,
             server_url,
@@ -609,44 +610,59 @@ impl KmsClient {
         );
         request = request.json(&ttlv);
 
-        let response = request.send().await?;
+        match request.send().await {
+            Ok(response) => {
+                let status_code = response.status();
+                if status_code.is_success() {
+                    let ttlv = response.json::<TTLV>().await?;
+                    trace!(
+                        "<==\n{}",
+                        serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                    );
+                    return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+                }
 
-        let status_code = response.status();
-        if status_code.is_success() {
-            let ttlv = response.json::<TTLV>().await?;
-            trace!(
-                "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-            );
-            return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
-        } else {
-            let endpoint = "/kmip/2_1";
-            let server_url = format!("{}{endpoint}", self.server_url);
-            let mut request = self.client.post(&server_url);
-            let ttlv = to_ttlv(kmip_request)?;
+                // process error
+                let p = handle_error(endpoint, response).await?;
+                Err(ClientError::RequestFailed(p))
+            }
+            Err(e) => {
+                // Since Validate KMIP operation requires to fetch CRLs (potentially on external websites), there is a network racy problem with hyper library.occuring
+                // in KMS CLI cargo tests.
+                // this is hyper known issue where hyper selects a dead connection from its pool: https://github.com/hyperium/hyper/issues/2136
+                // the bug is hard to reproduce and happens randomly and almost exclusively in Github CI (network bandwith limitation?)
+                // we retry once in case of error after a small arbitrary delay (required for pool connection availability)
+                // std::thread::sleep(std::time::Duration::from_secs(2));
+                // tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                warn!("Sending POST after error: {e}");
+                let mut new_request = self.client.post(&server_url);
+                new_request = new_request.json(&ttlv);
 
-            trace!(
-                "==>\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-            );
-            request = request.json(&ttlv);
+                // Retry once
+                match new_request.timeout(Duration::from_secs(1)).send().await {
+                    Ok(response) => {
+                        let status_code = response.status();
+                        debug!("Retry sending POST OK. Status: {status_code}");
+                        if status_code.is_success() {
+                            let ttlv = response.json::<TTLV>().await?;
+                            return from_ttlv(&ttlv)
+                                .map_err(|e| ClientError::ResponseFailed(e.to_string()))
+                        }
 
-            let response = request.send().await?;
+                        // process error
+                        let p = handle_error(endpoint, response).await?;
+                        Err(ClientError::RequestFailed(p))
+                    }
+                    Err(e) => {
+                        error!("Retry sending POST failed. Error: {e}");
 
-            let status_code = response.status();
-            if status_code.is_success() {
-                let ttlv = response.json::<TTLV>().await?;
-                trace!(
-                    "<==\n{}",
-                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
-                );
-                return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
+                        Err(ClientError::RequestFailed(format!(
+                            "Retry Sending POST failed with error: {e}"
+                        )))
+                    }
+                }
             }
         }
-
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        Err(ClientError::RequestFailed(p))
     }
 }
 

@@ -197,7 +197,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[tokio::test]
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
-    // log_init("info");
+    cosmian_logger::log_utils::log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -253,7 +253,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
-    // log_init("info");
+    cosmian_logger::log_utils::log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -297,7 +297,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
-    // log_init("info");
+    cosmian_logger::log_utils::log_init(None);
 
     let clap_config = https_clap_config();
 

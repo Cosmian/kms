@@ -11,7 +11,7 @@ use crate::{
     config::ServerParams, error::KmsError, tests::test_utils::https_clap_config, KMSServer,
 };
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
     // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
@@ -99,7 +99,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     Result::Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
     // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
