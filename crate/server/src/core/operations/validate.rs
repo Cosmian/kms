@@ -52,10 +52,8 @@ pub(crate) async fn validate_operation(
     let mut headers = HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     let client = reqwest::ClientBuilder::new()
-        // .connect_timeout(Duration::from_secs(30))
-        // .timeout(Duration::from_secs(30))
-        // .tcp_keepalive(Duration::from_secs(30))
-        // .pool_idle_timeout(Duration::from_secs(0))
+        .tcp_keepalive(Duration::from_secs(30))
+        .http2_keep_alive_while_idle(false)
         .pool_max_idle_per_host(0)
         .default_headers(headers)
         .build()

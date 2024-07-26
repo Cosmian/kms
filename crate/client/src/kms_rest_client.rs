@@ -39,7 +39,6 @@ use crate::{
 pub struct KmsClient {
     pub server_url: String,
     client: Client,
-    headers: HeaderMap,
 }
 
 impl KmsClient {
@@ -505,14 +504,11 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                // .connect_timeout(Duration::from_secs(45)) // Default: no connect timeout
-                // .timeout(Duration::from_secs(45)) // default: no timeout
-                // .tcp_keepalive(Duration::from_secs(45)) // default: ?
-                // .pool_idle_timeout(Duration::from_secs(0)) // default: 90s
+                .tcp_keepalive(Duration::from_secs(45)) // default: ?
+                .http2_keep_alive_while_idle(false)
                 .pool_max_idle_per_host(0) // default: max usize value
                 .default_headers(headers.clone())
                 .build()?,
-            headers,
             server_url,
         })
     }
@@ -636,16 +632,12 @@ impl KmsClient {
                 // we retry once in case of error after a small arbitrary delay (required for pool connection availability)
                 // std::thread::sleep(std::time::Duration::from_secs(2));
                 // tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                let client = ClientBuilder::new()
-                    .default_headers(self.headers.clone())
-                    .pool_max_idle_per_host(0) // default: max usize value
-                    .build()?;
-                warn!("Retry sending POST after error: {e:?}");
-                let mut new_request = client.post(&server_url);
+                warn!("Sending POST after error: {e}");
+                let mut new_request = self.client.post(&server_url);
                 new_request = new_request.json(&ttlv);
 
                 // Retry once
-                match new_request.send().await {
+                match new_request.timeout(Duration::from_secs(5)).send().await {
                     Ok(response) => {
                         let status_code = response.status();
                         debug!("Retry sending POST OK. Status: {status_code}");
@@ -660,10 +652,10 @@ impl KmsClient {
                         Err(ClientError::RequestFailed(p))
                     }
                     Err(e) => {
-                        error!("Retry sending POST failed. Error: {e:?}");
+                        error!("Retry sending POST failed. Error: {e}");
 
                         Err(ClientError::RequestFailed(format!(
-                            "Retry Sending POST failed with error: {e:?}"
+                            "Retry Sending POST failed with error: {e}"
                         )))
                     }
                 }
