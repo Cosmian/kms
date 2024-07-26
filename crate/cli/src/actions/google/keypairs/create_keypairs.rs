@@ -20,6 +20,15 @@ use serde::{Deserialize, Serialize};
 use super::KEYPAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
+const RSA4096: usize = 4096;
+
+/// Extension configuration
+const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
+    keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
+    extendedKeyUsage=emailProtection
+    crlDistributionPoints=URI:http://cse.cosmian.com/crl.pem\
+";
+
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 /// metadata for a user.
 #[derive(Parser)]
@@ -77,21 +86,29 @@ struct KaclsKeyMetadata {
 }
 
 impl CreateKeypairsAction {
+    async fn wrap_key(
+        key_id: &str,
+        csekey_id: &str,
+        kms_rest_client: &KmsClient,
+    ) -> Result<String, CliError> {
+        let (wrapped_private_key_object, _) =
+            export_object(kms_rest_client, key_id, false, Some(csekey_id), false, None).await?;
+
+        Ok(general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?))
+    }
+
     async fn post_keypair(
         gmail_client: &GmailClient,
-        cert_file: &str,
-        email: &str,
-        wrapped_private_key: &str,
-        kacls_url: &str,
+        cert_file: String,
+        wrapped_private_key: String,
+        kacls_url: String,
     ) -> Result<(), CliError> {
-        tracing::info!("Processing {email:?}.");
-
         let key_pair_info = KeyPairInfo {
-            pkcs7: cert_file.to_string(),
+            pkcs7: cert_file,
             privateKeyMetadata: vec![PrivateKeyMetadata {
                 kaclsKeyMetadata: KaclsKeyMetadata {
-                    kaclsUri: kacls_url.to_string(),
-                    kaclsData: wrapped_private_key.to_string(),
+                    kaclsUri: kacls_url,
+                    kaclsData: wrapped_private_key,
                 },
             }],
         };
@@ -99,12 +116,7 @@ impl CreateKeypairsAction {
         let response = gmail_client
             .post(KEYPAIRS_ENDPOINT, serde_json::to_string(&key_pair_info)?)
             .await?;
-        let res = GmailClient::handle_response(response).await;
-        match res {
-            Ok(()) => tracing::info!("Keypair inserted for {email:?}."),
-            Err(error) => tracing::info!("Error inserting keypair for {email:?} : {error:?}"),
-        }
-        Ok(())
+        GmailClient::handle_response(response).await
     }
 
     pub async fn run(
@@ -112,33 +124,29 @@ impl CreateKeypairsAction {
         conf_path: &PathBuf,
         kms_rest_client: &KmsClient,
     ) -> Result<(), CliError> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id).await?;
+        let gmail_client = GmailClient::new(conf_path, &self.user_id);
 
-        let kacls_url = kms_rest_client.google_cse_status().await?.kacls_url;
+        let kacls_url = kms_rest_client.google_cse_status();
 
-        let create_key_pair_request = create_rsa_key_pair_request(Vec::<String>::new(), 4096)?;
+        // Create a RSA 4096 keypair for the user
+        let create_key_pair_request = create_rsa_key_pair_request(Vec::<String>::new(), RSA4096)?;
 
         // Query the KMS to create RSA KEYPAIRS_ENDPOINT and get the key pair ids
         let create_key_pair_response = kms_rest_client
             .create_key_pair(create_key_pair_request)
             .await?;
 
-        let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-        let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
+        let private_key_unique_identifier = create_key_pair_response
+            .private_key_unique_identifier
+            .to_string();
+        let public_key_unique_identifier = create_key_pair_response.public_key_unique_identifier;
 
         // Export wrapped private key with google CSE key
-        let (wrapped_private_key_object, _) = export_object(
+        let wrapped_private_key = Self::wrap_key(
+            &private_key_unique_identifier,
+            &self.csekey_id,
             kms_rest_client,
-            &private_key_unique_identifier.to_string(),
-            true,
-            Some(&self.csekey_id),
-            false,
-            None,
-        )
-        .await?;
-
-        let wrapped_private_key =
-            general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?);
+        );
 
         // Sign created public key with issuer private key
         let mut attributes = Attributes {
@@ -156,12 +164,7 @@ impl CreateKeypairsAction {
             LinkedObjectIdentifier::TextString(self.issuer_private_key_id.clone()),
         );
 
-        let extension_config = "[ v3_ca ]
-            keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
-            extendedKeyUsage=emailProtection
-            crlDistributionPoints=URI:http://cse.cosmian.com/crl.pem\
-        ";
-        attributes.set_x509_extension_file(extension_config.as_bytes().to_vec());
+        attributes.set_x509_extension_file(EXTENSION_CONFIG.to_vec());
 
         let certify_request = Certify {
             unique_identifier,
@@ -183,33 +186,35 @@ impl CreateKeypairsAction {
             &certificate_unique_identifier.to_string(),
             false,
             None,
-            true,
+            false,
             Some(KeyFormatType::PKCS7),
         )
         .await?;
 
-        let pkcs7_bytes = match pkcs7_object {
+        let email = &self.user_id;
+        match pkcs7_object {
             Object::Certificate {
                 certificate_value, ..
-            } => Ok(certificate_value),
-            _ => Err(CliError::ServerError("failed creating PKCS7".to_string())),
-        };
-
-        match pkcs7_bytes {
-            Ok(bytes) => {
-                let pem = pem::Pem::new(String::from("PKCS7"), bytes);
+            } => {
+                let pem = pem::Pem::new(String::from("PKCS7"), certificate_value);
                 let pem_string = pem::encode(&pem);
+                tracing::info!("Processing {email:?}.");
                 Self::post_keypair(
-                    &gmail_client,
-                    &pem_string,
-                    &self.user_id,
-                    &wrapped_private_key,
-                    &kacls_url,
+                    &gmail_client.await?,
+                    pem_string,
+                    wrapped_private_key.await?,
+                    kacls_url.await?.kacls_url,
                 )
                 .await?;
+                tracing::info!("Keypair inserted for {email:?}.");
             }
-            Err(e) => return Err(CliError::ServerError(format!("{e:?}"))),
-        }
+            _ => {
+                tracing::info!("Error inserting keypair for {email:?}");
+                Err(CliError::ServerError(
+                    "Error inserting keypair for {email:?}".to_string(),
+                ))?
+            }
+        };
         Ok(())
     }
 }

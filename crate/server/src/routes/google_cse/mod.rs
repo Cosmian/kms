@@ -50,7 +50,7 @@ impl From<CseErrorReply> for HttpResponse {
     }
 }
 
-/// Get the status for Google CSE
+/// Get the status for Google CSE and the URL of the deployed KACLS (Key Access Control List Service)
 #[get("/status")]
 pub(crate) async fn get_status(
     req: HttpRequest,

@@ -38,6 +38,7 @@ use crate::{
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
+/// The PKCS7 format is a Cosmian extension from KMIP.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
 pub enum CertificateType {
@@ -81,6 +82,7 @@ pub enum SplitKeyMethod {
 /// | Type | Default Key Format Type |
 /// |------|-------------------------|
 /// | Certificate | X.509 |
+/// | Certificate | PKCS#7 |
 /// | Certificate Request | PKCS#10 |
 /// | Opaque Object | Opaque |
 /// | PGP Key | Raw |
