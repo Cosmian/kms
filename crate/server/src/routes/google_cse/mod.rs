@@ -50,7 +50,7 @@ impl From<CseErrorReply> for HttpResponse {
     }
 }
 
-/// Get the status for Google CSE
+/// Get the status for Google CSE and the URL of the deployed KACLS (Key Access Control List Service)
 #[get("/status")]
 pub(crate) async fn get_status(
     req: HttpRequest,
@@ -60,7 +60,7 @@ pub(crate) async fn get_status(
     info!("GET /google_cse/status {}", kms.get_user(&req));
     let cse_config = cse_config.as_ref().clone().ok_or_else(|| {
         KmsError::ServerError(
-            "Unable to get a reference from as_ref of the Google CSE configuration".to_string(),
+            "Unable to get a reference from as_ref of the Google CSE configuration".to_owned(),
         )
     })?;
     Ok(Json(operations::get_status(&cse_config.kacls_url)))

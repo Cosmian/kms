@@ -117,7 +117,9 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
     ))
 }
 
-fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
+pub(crate) fn import_root_and_intermediate(
+    ctx: &TestsContext,
+) -> CliResult<(String, String, String)> {
     // import Root CA
     let root_ca_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,

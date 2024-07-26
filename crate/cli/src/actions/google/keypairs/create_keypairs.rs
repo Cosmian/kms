@@ -6,11 +6,12 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
     export_object,
     kmip::{
+        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::Certify,
         kmip_types::{
-            Attributes, CertificateAttributes, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
+            Attributes, CertificateAttributes, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, VendorAttribute,
         },
     },
     KmsClient,
@@ -19,6 +20,14 @@ use serde::{Deserialize, Serialize};
 
 use super::KEYPAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+
+const RSA_4096: usize = 4096;
+
+/// Extension configuration
+const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
+    keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
+    extendedKeyUsage=emailProtection
+";
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 /// metadata for a user.
@@ -79,19 +88,16 @@ struct KaclsKeyMetadata {
 impl CreateKeypairsAction {
     async fn post_keypair(
         gmail_client: &GmailClient,
-        cert_file: &str,
-        email: &str,
-        wrapped_private_key: &str,
-        kacls_url: &str,
+        certificate_value: Vec<u8>,
+        wrapped_private_key: String,
+        kacls_url: String,
     ) -> Result<(), CliError> {
-        tracing::info!("Processing {email:?}.");
-
         let key_pair_info = KeyPairInfo {
-            pkcs7: cert_file.to_string(),
+            pkcs7: pem::encode(&pem::Pem::new(String::from("PKCS7"), certificate_value)),
             privateKeyMetadata: vec![PrivateKeyMetadata {
                 kaclsKeyMetadata: KaclsKeyMetadata {
-                    kaclsUri: kacls_url.to_string(),
-                    kaclsData: wrapped_private_key.to_string(),
+                    kaclsUri: kacls_url,
+                    kaclsData: wrapped_private_key,
                 },
             }],
         };
@@ -99,12 +105,7 @@ impl CreateKeypairsAction {
         let response = gmail_client
             .post(KEYPAIRS_ENDPOINT, serde_json::to_string(&key_pair_info)?)
             .await?;
-        let res = GmailClient::handle_response(response).await;
-        match res {
-            Ok(()) => tracing::info!("Keypair inserted for {email:?}."),
-            Err(error) => tracing::info!("Error inserting keypair for {email:?} : {error:?}"),
-        }
-        Ok(())
+        GmailClient::handle_response(response).await
     }
 
     pub async fn run(
@@ -112,62 +113,53 @@ impl CreateKeypairsAction {
         conf_path: &PathBuf,
         kms_rest_client: &KmsClient,
     ) -> Result<(), CliError> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id).await?;
+        let gmail_client = GmailClient::new(conf_path, &self.user_id);
 
-        let kacls_url = kms_rest_client.google_cse_status().await?.kacls_url;
-
-        let create_key_pair_request = create_rsa_key_pair_request(Vec::<String>::new(), 4096)?;
+        let kacls_url = kms_rest_client.google_cse_status();
 
         // Query the KMS to create RSA KEYPAIRS_ENDPOINT and get the key pair ids
-        let create_key_pair_response = kms_rest_client
-            .create_key_pair(create_key_pair_request)
+        let created_key_pair = kms_rest_client
+            .create_key_pair(create_rsa_key_pair_request(Vec::<String>::new(), RSA_4096)?)
             .await?;
-
-        let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-        let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
         // Export wrapped private key with google CSE key
         let (wrapped_private_key_object, _) = export_object(
             kms_rest_client,
-            &private_key_unique_identifier.to_string(),
-            true,
+            &created_key_pair.private_key_unique_identifier.to_string(),
+            false,
             Some(&self.csekey_id),
             false,
             None,
         )
         .await?;
-
         let wrapped_private_key =
             general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?);
 
         // Sign created public key with issuer private key
-        let mut attributes = Attributes {
+        let attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
+            certificate_attributes: Some(Box::new(CertificateAttributes::parse_subject_line(
+                &self.subject_name,
+            )?)),
+            link: Some(vec![Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    self.issuer_private_key_id.clone(),
+                ),
+            }]),
+            vendor_attributes: Some(vec![VendorAttribute {
+                vendor_identification: VENDOR_ID_COSMIAN.to_string(),
+                attribute_name: VENDOR_ATTR_X509_EXTENSION.to_string(),
+                attribute_value: EXTENSION_CONFIG.to_vec(),
+            }]),
             ..Attributes::default()
         };
-        let unique_identifier = Some(UniqueIdentifier::TextString(
-            public_key_unique_identifier.to_string(),
-        ));
-        attributes.certificate_attributes = Some(Box::new(
-            CertificateAttributes::parse_subject_line(&self.subject_name)?,
-        ));
-        attributes.set_link(
-            LinkType::PrivateKeyLink,
-            LinkedObjectIdentifier::TextString(self.issuer_private_key_id.clone()),
-        );
 
-        let extension_config = "[ v3_ca ]
-            keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
-            extendedKeyUsage=emailProtection
-            crlDistributionPoints=URI:http://cse.cosmian.com/crl.pem\
-        ";
-        attributes.set_x509_extension_file(extension_config.as_bytes().to_vec());
+        let unique_identifier = created_key_pair.public_key_unique_identifier;
 
         let certify_request = Certify {
-            unique_identifier,
+            unique_identifier: Some(unique_identifier),
             attributes: Some(attributes),
-            certificate_request_value: None,
-            certificate_request_type: None,
             ..Certify::default()
         };
 
@@ -183,33 +175,33 @@ impl CreateKeypairsAction {
             &certificate_unique_identifier.to_string(),
             false,
             None,
-            true,
+            false,
             Some(KeyFormatType::PKCS7),
         )
         .await?;
 
-        let pkcs7_bytes = match pkcs7_object {
-            Object::Certificate {
-                certificate_value, ..
-            } => Ok(certificate_value),
-            _ => Err(CliError::ServerError("failed creating PKCS7".to_string())),
+        let email = &self.user_id;
+        if let Object::Certificate {
+            certificate_value, ..
+        } = pkcs7_object
+        {
+            tracing::info!("Processing {email:?}.");
+            Self::post_keypair(
+                &gmail_client.await?,
+                certificate_value,
+                wrapped_private_key,
+                kacls_url.await?.kacls_url,
+            )
+            .await?;
+            tracing::info!("Keypair inserted for {email:?}.");
+        } else {
+            tracing::info!(
+                "Error inserting keypair for {email:?} - exported object is not a Certificate"
+            );
+            Err(CliError::ServerError(format!(
+                "Error inserting keypair for {email:?} - exported object is not a Certificate"
+            )))?;
         };
-
-        match pkcs7_bytes {
-            Ok(bytes) => {
-                let pem = pem::Pem::new(String::from("PKCS7"), bytes);
-                let pem_string = pem::encode(&pem);
-                Self::post_keypair(
-                    &gmail_client,
-                    &pem_string,
-                    &self.user_id,
-                    &wrapped_private_key,
-                    &kacls_url,
-                )
-                .await?;
-            }
-            Err(e) => return Err(CliError::ServerError(format!("{e:?}"))),
-        }
         Ok(())
     }
 }

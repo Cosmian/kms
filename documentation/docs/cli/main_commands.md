@@ -751,7 +751,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy", "pkcs7"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
@@ -1941,9 +1941,3 @@ key pair must validate against Google's S/MIME certificate profiles.
 ` <KEYPAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
 
 `--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
-
-
-
-
-
-

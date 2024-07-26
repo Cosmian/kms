@@ -12,6 +12,7 @@ use cosmian_kmip::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
+    KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 #[cfg(not(feature = "fips"))]
@@ -150,12 +151,18 @@ pub(crate) async fn export_get(
                     )
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
-                    post_process_pkcs7(kms, operation_type, user, params, &mut owm).await?;
+                    owm = post_process_pkcs7(kms, operation_type, user, params, owm).await?;
                 }
-                if *key_format_type != KeyFormatType::X509
+                #[cfg(feature = "fips")]
+                let is_wrong_format = *key_format_type != KeyFormatType::X509
+                    && *key_format_type != KeyFormatType::PKCS7
+                    && *key_format_type != KeyFormatType::PKCS12;
+                #[cfg(not(feature = "fips"))]
+                let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12
-                {
+                    && *key_format_type != KeyFormatType::Pkcs12Legacy;
+                if is_wrong_format {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
                         key_format_type
@@ -754,21 +761,21 @@ async fn post_process_pkcs7(
     operation_type: ObjectOperationType,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
-    owm: &mut ObjectWithMetadata,
-) -> Result<(), KmsError> {
+    owm: ObjectWithMetadata,
+) -> Result<ObjectWithMetadata, KmsError> {
     // convert the cert to openssl
     let certificate = kmip_certificate_to_openssl(&owm.object)
         .context("export: unable to parse the certificate to openssl")?;
 
     let mut cert_owm = owm.clone();
 
-    // Create the PKCS7 structure
-    let mut chain: Stack<X509> = Stack::new()?;
     let leaf_cert = certificate.clone();
     let public_key_id = cert_owm
         .attributes
         .get_link(LinkType::PublicKeyLink)
-        .unwrap();
+        .ok_or_else(|| {
+            KmipError::Default("No Public Key found in the leaf certificate".to_owned())
+        })?;
     let public_key_owm = retrieve_object_for_operation(
         &public_key_id.to_string(),
         operation_type,
@@ -789,6 +796,9 @@ async fn post_process_pkcs7(
         .await?;
         let pkey = kmip_private_key_to_openssl(&private_key_owm.object)
             .context("export: unable to parse the private key to openssl")?;
+
+        // Create the PKCS7 structure
+        let mut chain: Stack<X509> = Stack::new()?;
 
         // Retrieve the certificate chain
         while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
@@ -816,11 +826,11 @@ async fn post_process_pkcs7(
         )?;
 
         // Modify initial owm
-        owm.object = Object::Certificate {
+        cert_owm.object = Object::Certificate {
             certificate_type: CertificateType::PKCS7,
             certificate_value: pkcs7.to_der()?,
         };
     }
 
-    Ok(())
+    Ok(cert_owm)
 }

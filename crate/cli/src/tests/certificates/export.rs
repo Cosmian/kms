@@ -10,7 +10,12 @@ use cosmian_kms_client::{
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 use kms_test_server::start_default_test_kms_server;
-use openssl::pkcs12::Pkcs12;
+use openssl::{
+    pkcs12::Pkcs12,
+    pkcs7::Pkcs7,
+    stack::Stack,
+    x509::{store::X509StoreBuilder, X509},
+};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -22,7 +27,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         certificates::{
-            certify::{certify, create_self_signed_cert, CertifyOp},
+            certify::{certify, create_self_signed_cert, import_root_and_intermediate, CertifyOp},
             import::{import_certificate, ImportCertificateInput},
         },
         shared::export_key,
@@ -262,6 +267,100 @@ async fn test_import_p12_rsa() {
     );
 }
 
+#[tokio::test]
+async fn test_export_pkcs7() -> Result<(), CliError> {
+    let tmp_dir = TempDir::new().unwrap();
+
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+    // import signers
+    let (root_ca_id, _, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::RSA4096),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            issuer_private_key_id: Some(issuer_private_key_id.clone()),
+            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            ..CertifyOp::default()
+        },
+    )?;
+
+    let tmp_exported_pkcs7: std::path::PathBuf = tmp_dir.path().join("exported_p7.p7pem");
+
+    // Export the pkcs7
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &certificate_id,
+        tmp_exported_pkcs7.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs7),
+        None,
+        false,
+    )?;
+
+    let p7_bytes = std::fs::read(tmp_exported_pkcs7).unwrap();
+    let pkcs7 = Pkcs7::from_pem(p7_bytes.as_slice()).unwrap();
+
+    // Build certs stack for verification
+    let certs = Stack::new().unwrap();
+
+    let mut store_builder = X509StoreBuilder::new().unwrap();
+    let tmp_exported_int: std::path::PathBuf = tmp_dir.path().join("exported_int.pem");
+    let tmp_exported_root: std::path::PathBuf = tmp_dir.path().join("exported_root.pem");
+
+    // Export intermediate cert
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &issuer_private_key_id,
+        tmp_exported_int.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12),
+        Some("secret".to_owned()),
+        false,
+    )?;
+    let int_bytes = std::fs::read(tmp_exported_int).unwrap();
+    let p12 = Pkcs12::from_der(int_bytes.as_slice()).unwrap();
+    let parsed_p12 = p12.parse2("secret").unwrap();
+    let int_cert = parsed_p12.cert.unwrap();
+
+    store_builder.add_cert(int_cert).unwrap();
+
+    // Export root cert
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &root_ca_id,
+        tmp_exported_root.to_str().unwrap(),
+        Some(CertificateExportFormat::Pem),
+        None,
+        false,
+    )?;
+    let root_bytes = std::fs::read(tmp_exported_root).unwrap();
+    let root_ca = X509::from_pem(&root_bytes).unwrap();
+
+    store_builder.add_cert(root_ca).unwrap();
+
+    let store = store_builder.build();
+
+    // Validate certificate
+    let mut output = Vec::new();
+    pkcs7
+        .verify(
+            &certs,
+            &store,
+            Some(&[]),
+            Some(&mut output),
+            openssl::pkcs7::Pkcs7Flags::empty(),
+        )
+        .unwrap();
+    assert!(output.is_empty());
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn export_certificate(
     cli_conf_path: &str,
@@ -288,12 +387,14 @@ pub(crate) fn export_certificate(
             CertificateExportFormat::Pem => "pem",
             CertificateExportFormat::Pkcs12 => "pkcs12",
             CertificateExportFormat::Pkcs12Legacy => "pkcs12-legacy",
+            CertificateExportFormat::Pkcs7 => "pkcs7",
         };
         #[cfg(feature = "fips")]
         let arg_value = match certificate_format {
             CertificateExportFormat::JsonTtlv => "json-ttlv",
             CertificateExportFormat::Pem => "pem",
             CertificateExportFormat::Pkcs12 => "pkcs12",
+            CertificateExportFormat::Pkcs7 => "pkcs7",
         };
         args.push(arg_value.to_owned());
     }
