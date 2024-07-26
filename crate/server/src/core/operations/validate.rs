@@ -386,49 +386,30 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
             Some(UriType::Url(url)) => {
                 let mut retry_count = 0;
                 for _ in 0..MAX_RETRY_COUNT {
-                    let response_result = client.get(&url).send().await;
-                    match response_result {
-                        Ok(response) => {
-                            let response_status = response.status();
-                            if response_status.is_success() {
-                                let crl_bytes = response
-                                    .text()
-                                    .await
-                                    .map(|text| text.as_bytes().to_vec())
-                                    .map_err(|e| {
-                                        KmsError::Certificate(format!(
-                                            "Error in getting the body of the response for the \
-                                             following URL: {url}. Error: {e:?} "
-                                        ))
-                                    })?;
-                                crl_bytes_list.push(crl_bytes);
-                                break;
-                            } else {
-                                retry_count += 1;
-                                warn!(
-                                    "The CRL at the following URL {url} is not available. Retry \
-                                     count {retry_count}. Status: {response_status}",
-                                );
-                                if retry_count >= MAX_RETRY_COUNT {
-                                    return Err(KmsError::Certificate(format!(
-                                        "The CRL at the following URL {url} is not available \
-                                         after {MAX_RETRY_COUNT} retries"
-                                    )));
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            retry_count += 1;
-                            warn!(
-                                "Error getting the CRL at the following URL {url}. Retry count \
-                                 {retry_count}. Error: {error:?}",
-                            );
-                            if retry_count >= MAX_RETRY_COUNT {
-                                return Err(KmsError::Certificate(format!(
-                                    "The CRL at the following URL {url} is not available after \
-                                     {MAX_RETRY_COUNT} retries"
-                                )));
-                            }
+                    let response = client.get(&url).send().await?;
+                    if response.status().is_success() {
+                        let crl_bytes = response
+                            .text()
+                            .await
+                            .map(|text| text.as_bytes().to_vec())
+                            .map_err(|e| {
+                                KmsError::Certificate(format!(
+                                    "Error in getting the body of the response for the following \
+                                     URL: {url}. Error: {e:?} "
+                                ))
+                            })?;
+                        crl_bytes_list.push(crl_bytes);
+                        break;
+                    } else {
+                        retry_count += 1;
+                        warn!(
+                            "The CRL at the following URL {url} is not available. Retry count \
+                             {retry_count}",
+                        );
+                        if retry_count >= MAX_RETRY_COUNT {
+                            return Err(KmsError::Certificate(format!(
+                                "The CRL at the following URL {url} is not available"
+                            )));
                         }
                     }
                 }

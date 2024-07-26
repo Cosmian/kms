@@ -56,7 +56,7 @@ url = { workspace = true }
 uuid = { workspace = true }
 x509-cert = { version = "0.2", features = ["pem"] }
 zeroize = { workspace = true }
-
+futures = "0.3"
 [dev-dependencies]
 actix-rt = { workspace = true }
 actix-server = { workspace = true }

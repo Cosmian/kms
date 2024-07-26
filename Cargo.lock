@@ -1301,6 +1301,7 @@ dependencies = [
  "cosmian_kms_server",
  "cosmian_logger",
  "der",
+ "futures",
  "jwt-simple",
  "kms_test_server",
  "oauth2",

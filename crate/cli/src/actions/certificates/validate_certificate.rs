@@ -32,8 +32,10 @@ impl ValidateCertificatesAction {
             self.unique_identifier.clone(),
             self.validity_time.clone(),
         )?;
-
-        let validity_indicator = client_connector.validate(request).await?.validity_indicator;
+        let validity_indicator =
+            futures::executor::block_on(async { client_connector.validate(request).await })?
+                .validity_indicator;
+        // let validity_indicator = client_connector.validate(request).await?.validity_indicator;
         console::Stdout::new(match validity_indicator {
             ValidityIndicator::Valid => "Valid",
             ValidityIndicator::Invalid => "Invalid",
