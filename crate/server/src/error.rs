@@ -192,7 +192,7 @@ impl From<TryFromSliceError> for KmsError {
 
 impl From<reqwest::Error> for KmsError {
     fn from(e: reqwest::Error) -> Self {
-        Self::ClientConnectionError(e.to_string())
+        Self::ClientConnectionError(format!("{e}: details: {e:?}"))
     }
 }
 
