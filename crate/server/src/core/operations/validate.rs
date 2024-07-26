@@ -365,7 +365,6 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
     trace!("get_crl_bytes: entering");
     let mut crl_bytes_list = Vec::<Vec<u8>>::new();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     for uri in uri_list {
         // checking whether the resource is an URL or a Pathname
         let uri_type = if let Ok(url) = url::Url::parse(&uri) {
@@ -412,7 +411,8 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
                                 );
                                 if retry_count >= MAX_RETRY_COUNT {
                                     return Err(KmsError::Certificate(format!(
-                                        "The CRL at the following URL {url} is not available"
+                                        "The CRL at the following URL {url} is not available \
+                                         after {MAX_RETRY_COUNT} retries"
                                     )));
                                 }
                             }
@@ -425,7 +425,8 @@ async fn get_crl_bytes(client: &reqwest::Client, uri_list: Vec<String>) -> KResu
                             );
                             if retry_count >= MAX_RETRY_COUNT {
                                 return Err(KmsError::Certificate(format!(
-                                    "The CRL at the following URL {url} is not available"
+                                    "The CRL at the following URL {url} is not available after \
+                                     {MAX_RETRY_COUNT} retries"
                                 )));
                             }
                         }
