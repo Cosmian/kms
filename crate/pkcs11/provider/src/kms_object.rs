@@ -62,8 +62,15 @@ pub(crate) async fn get_kms_objects_async(
     key_format_type: KeyFormatType,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     let key_ids = locate_objects(kms_client, tags).await?;
-    let responses =
-        batch_export_objects(kms_client, key_ids, true, None, true, Some(key_format_type)).await?;
+    let responses = batch_export_objects(
+        kms_client,
+        key_ids,
+        true,
+        None,
+        false,
+        Some(key_format_type),
+    )
+    .await?;
     trace!("Found objects: {:?}", responses);
     let mut results = vec![];
     for response in responses {

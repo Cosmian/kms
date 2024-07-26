@@ -43,7 +43,15 @@ pub enum Object {
     Profile(CK_PROFILE_ID),
     PublicKey(Arc<dyn PublicKey>),
     DataObject(Arc<dyn DataObject>),
-    // RemoteObjectId(Arc<dyn RemoteObjectId>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ObjectType {
+    Certificate,
+    PrivateKey,
+    Profile,
+    PublicKey,
+    DataObject,
 }
 
 //  #[derive(PartialEq)] fails to compile because it tries to move the Box<_>ed
@@ -57,14 +65,12 @@ impl PartialEq for Object {
             (Self::Profile(l0), Self::Profile(r0)) => l0 == r0,
             (Self::PublicKey(l0), Self::PublicKey(r0)) => l0 == r0,
             (Self::DataObject(l0), Self::DataObject(r0)) => l0 == r0,
-            // (Self::RemoteObjectId(l0), Self::RemoteObjectId(r0)) => l0 == r0,
             (
                 Self::Certificate(_)
                 | Self::PrivateKey(_)
                 | Self::Profile(_)
                 | Self::PublicKey(_)
                 | Self::DataObject(_),
-                // | Self::RemoteObjectId(_),
                 _,
             ) => false,
         }
@@ -72,6 +78,16 @@ impl PartialEq for Object {
 }
 
 impl Object {
+    pub fn object_type(&self) -> ObjectType {
+        match self {
+            Object::Certificate(_) => ObjectType::Certificate,
+            Object::PrivateKey(_) => ObjectType::PrivateKey,
+            Object::Profile(_) => ObjectType::Profile,
+            Object::PublicKey(_) => ObjectType::PublicKey,
+            Object::DataObject(_) => ObjectType::DataObject,
+        }
+    }
+
     pub fn remote_id(&self) -> String {
         match self {
             Object::Certificate(cert) => cert.remote_id(),
@@ -102,7 +118,7 @@ impl Object {
                 )),
                 AttributeType::CertificateType => Some(Attribute::CertificateType(CKC_X_509)),
                 AttributeType::Class => Some(Attribute::Class(CKO_CERTIFICATE)),
-                AttributeType::Id => Some(Attribute::Id(cert.remote_id().clone())),
+                AttributeType::Id => Some(Attribute::Id(cert.private_key_id())),
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
                 AttributeType::Label => Some(Attribute::Label("Certificate".to_string())),
                 AttributeType::Token => Some(Attribute::Token(true)),

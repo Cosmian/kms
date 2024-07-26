@@ -1,4 +1,7 @@
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{CertificateType, LinkType},
+};
 use cosmian_pkcs11_module::traits::{Certificate, PublicKey};
 use x509_cert::{
     der::{Decode, Encode},
@@ -14,6 +17,9 @@ pub struct Pkcs11Certificate {
     pub remote_id: String,
     /// The certificate
     pub certificate: X509Certificate,
+    /// The private key ID
+    /// This is the CKA_ID of the private key associated with the certificate
+    pub private_key_id: String,
 }
 
 impl TryFrom<KmsObject> for Pkcs11Certificate {
@@ -32,7 +38,17 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
                             "Invalid X509 Certificate DER bytes: {e:?}"
                         ))
                     })?,
-                    remote_id: kms_object.remote_id,
+                    remote_id: kms_object.remote_id.clone(),
+                    private_key_id: kms_object
+                        .attributes
+                        .get_link(LinkType::PrivateKeyLink)
+                        .ok_or_else(|| {
+                            Pkcs11Error::ServerError(format!(
+                                "No private key link found for certificate: {:?}",
+                                kms_object.remote_id
+                            ))
+                        })?
+                        .to_string(),
                 }),
                 _ => Err(Pkcs11Error::ServerError(format!(
                     "Invalid Certificate Type: {certificate_type:?}"
@@ -75,5 +91,9 @@ impl Certificate for Pkcs11Certificate {
     fn subject(&self) -> cosmian_pkcs11_module::MResult<Vec<u8>> {
         Encode::to_der(&self.certificate.tbs_certificate.subject)
             .map_err(|e| Pkcs11Error::from(e).into())
+    }
+
+    fn private_key_id(&self) -> String {
+        self.private_key_id.clone()
     }
 }

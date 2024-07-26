@@ -95,7 +95,7 @@ impl Backend for CkmsBackend {
     fn find_private_key(&self, query: SearchOptions) -> MResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = match query {
-            SearchOptions::Id(id) => id,
+            SearchOptions::Id(cka_id) => cka_id,
             _ => {
                 return Err(MError::Backend(Box::new(pkcs11_error!(
                     "find_private_key: find must be made using an ID"

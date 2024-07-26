@@ -19,7 +19,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{self, atomic::Ordering, Arc, Weak},
+    sync::{self, atomic::Ordering, Arc},
 };
 
 use log::trace;
@@ -30,9 +30,12 @@ use pkcs11_sys::{
 use tracing::{debug, error};
 
 use crate::{
-    core::{attribute::Attributes, object::Object},
+    core::{
+        attribute::Attributes,
+        object::{Object, ObjectType},
+    },
+    objects_store::OBJECTS_STORE,
     traits::{backend, EncryptionAlgorithm, SearchOptions},
-    FIND_CONTEXT,
 };
 use crate::{
     // object_store::ObjectStore,
@@ -50,39 +53,6 @@ static NEXT_SESSION_HANDLE: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::n
 type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
 
 static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
-
-#[derive(Default)]
-pub struct FindContext {
-    /// The PKCS#11 objects manipulated by this context; the key is the remote id.
-    pub objects: HashMap<String, (Arc<Object>, CK_OBJECT_HANDLE)>,
-    pub ids: HashMap<CK_OBJECT_HANDLE, Weak<Object>>,
-}
-
-impl FindContext {
-    /// Insert the object and add it to the unread
-    pub fn insert(&mut self, object: Arc<Object>) -> MResult<CK_OBJECT_HANDLE> {
-        let handle = self.ids.len() as CK_OBJECT_HANDLE;
-        self.ids.insert(handle, Arc::downgrade(&object));
-        let id = object.remote_id();
-        trace!("object ID: {id}");
-        self.objects.insert(id, (object, handle));
-        trace!("inserted object with handle: {}", handle);
-        Ok(handle)
-    }
-
-    pub fn get_using_handle(&self, handle: CK_OBJECT_HANDLE) -> Option<Arc<Object>> {
-        self.ids.get(&handle).and_then(|weak| weak.upgrade())
-    }
-
-    pub fn get_using_id(&self, id: &str) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
-        self.objects.get(id).cloned()
-    }
-
-    /// The number of objects in the find context
-    pub fn len(&self) -> usize {
-        self.objects.len()
-    }
-}
 
 #[derive(Debug)]
 pub struct SignContext {
@@ -104,21 +74,25 @@ pub struct DecryptContext {
 #[derive(Default)]
 pub struct Session {
     flags: CK_FLAGS,
-    /// The indexes that have not yet been read by C_FindObjects
-    pub unread_indexes: Vec<CK_OBJECT_HANDLE>,
+    /// The objects found by C_FindObjectsInit
+    /// and that have not yet been read by C_FindObjects
+    pub find_objects_ctx: Vec<CK_OBJECT_HANDLE>,
     pub sign_ctx: Option<SignContext>,
     pub decrypt_ctx: Option<DecryptContext>,
 }
 
 impl Session {
-    pub fn insert_in_find_context(&mut self, object: Arc<Object>) -> MResult<CK_OBJECT_HANDLE> {
-        let mut find_ctx = FIND_CONTEXT.write().map_err(|e| {
-            error!("insert_in_find_context: failed to lock find context: {e}");
+    pub fn update_find_objects_context(
+        &mut self,
+        object: Arc<Object>,
+    ) -> MResult<CK_OBJECT_HANDLE> {
+        let mut objects_store = OBJECTS_STORE.write().map_err(|e| {
+            error!("insert_in_find_context: failed to lock objects store: {e}");
             MError::ArgumentsBad
         })?;
-        let handle = find_ctx.insert(object)?;
+        let handle = objects_store.upsert(object)?;
         trace!("inserted object with id");
-        self.unread_indexes.push(handle);
+        self.find_objects_ctx.push(handle);
         Ok(handle)
     }
 
@@ -139,14 +113,16 @@ impl Session {
         // let initial_size = find_ctx.len();
         match search_options {
             SearchOptions::All => {
-                self.clear_find_unread();
+                self.clear_find_objects_ctx();
                 match search_class {
                     pkcs11_sys::CKO_CERTIFICATE => {
                         template.ensure_X509_or_none()?;
                         let res = backend()
                             .find_all_certificates()?
                             .into_iter()
-                            .map(|c| self.insert_in_find_context(Arc::new(Object::Certificate(c))))
+                            .map(|c| {
+                                self.update_find_objects_context(Arc::new(Object::Certificate(c)))
+                            })
                             .collect::<MResult<Vec<_>>>()?;
                         debug!(
                             "load_find_context: added {} certificates with handles: {:?}",
@@ -158,7 +134,9 @@ impl Session {
                         let res = backend()
                             .find_all_public_keys()?
                             .into_iter()
-                            .map(|c| self.insert_in_find_context(Arc::new(Object::PublicKey(c))))
+                            .map(|c| {
+                                self.update_find_objects_context(Arc::new(Object::PublicKey(c)))
+                            })
                             .collect::<MResult<Vec<_>>>()?;
                         debug!(
                             "load_find_context: added {} public keys with handles: {:?}",
@@ -170,7 +148,9 @@ impl Session {
                         let res = backend()
                             .find_all_private_keys()?
                             .into_iter()
-                            .map(|c| self.insert_in_find_context(Arc::new(Object::PrivateKey(c))))
+                            .map(|c| {
+                                self.update_find_objects_context(Arc::new(Object::PrivateKey(c)))
+                            })
                             .collect::<MResult<Vec<_>>>()?;
                         debug!(
                             "load_find_context: added {} private keys with handles: {:?}",
@@ -182,7 +162,9 @@ impl Session {
                         let res = backend()
                             .find_all_data_objects()?
                             .into_iter()
-                            .map(|c| self.insert_in_find_context(Arc::new(Object::DataObject(c))))
+                            .map(|c| {
+                                self.update_find_objects_context(Arc::new(Object::DataObject(c)))
+                            })
                             .collect::<MResult<Vec<_>>>()?;
                         debug!(
                             "load_find_context: added {} data objects with handles: {:?}",
@@ -193,36 +175,71 @@ impl Session {
                     o => return Err(MError::Todo(format!("Object not supported: {o}"))),
                 }
             }
-            SearchOptions::Id(remote_id) => {
-                let find_ctx = FIND_CONTEXT.read().map_err(|e| {
-                    error!("load_find_context: failed to lock find context: {e}");
-                    MError::ArgumentsBad
-                })?;
-                let (object, handle) = find_ctx
-                    .get_using_id(&remote_id)
-                    .ok_or_else(|| MError::ArgumentsBad)?;
-                debug!(
-                    "load_find_context: search by id: {} -> handle: {} -> object: {}:{}",
-                    remote_id,
-                    handle,
-                    object.name(),
-                    object.remote_id()
-                );
-                self.clear_find_unread();
-                self.add_to_find_unread(handle);
-            }
+            SearchOptions::Id(cka_id) => match search_class {
+                pkcs11_sys::CKO_CERTIFICATE => {
+                    // Find certificates which have this CKA_ID as private key ID
+                    let find_ctx = OBJECTS_STORE.read().map_err(|e| {
+                        error!("load_find_context: failed to lock find context: {e}");
+                        MError::ArgumentsBad
+                    })?;
+                    let certificates = find_ctx.get_using_type(ObjectType::Certificate);
+                    for (object, handle) in certificates {
+                        match &*object {
+                            Object::Certificate(c) => {
+                                if c.private_key_id() == cka_id {
+                                    debug!(
+                                        "load_find_context: search by id: {} -> handle: {} -> \
+                                         certificate: {}:{}",
+                                        cka_id,
+                                        handle,
+                                        object.name(),
+                                        object.remote_id()
+                                    );
+                                    self.clear_find_objects_ctx();
+                                    self.add_to_find_objects_ctx(handle);
+                                }
+                            }
+                            //TODO may be we should treat Public Keys the same as Certificates
+                            o => {
+                                return Err(MError::Todo(format!(
+                                    "This should not happen, returning: {:?}",
+                                    o.object_type()
+                                )))
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    let find_ctx = OBJECTS_STORE.read().map_err(|e| {
+                        error!("load_find_context: failed to lock find context: {e}");
+                        MError::ArgumentsBad
+                    })?;
+                    let (object, handle) = find_ctx
+                        .get_using_id(&cka_id)
+                        .ok_or_else(|| MError::ArgumentsBad)?;
+                    debug!(
+                        "load_find_context: search by id: {} -> handle: {} -> object: {}:{}",
+                        cka_id,
+                        handle,
+                        object.name(),
+                        object.remote_id()
+                    );
+                    self.clear_find_objects_ctx();
+                    self.add_to_find_objects_ctx(handle);
+                }
+            },
         }
         Ok(())
     }
 
     /// Clear the unread index
-    fn clear_find_unread(&mut self) {
-        self.unread_indexes.clear();
+    fn clear_find_objects_ctx(&mut self) {
+        self.find_objects_ctx.clear();
     }
 
     /// Add to the unread index
-    fn add_to_find_unread(&mut self, handle: CK_OBJECT_HANDLE) {
-        self.unread_indexes.push(handle);
+    fn add_to_find_objects_ctx(&mut self, handle: CK_OBJECT_HANDLE) {
+        self.find_objects_ctx.push(handle);
     }
 
     /// Sign the provided data, or stored payload if data is not provided.

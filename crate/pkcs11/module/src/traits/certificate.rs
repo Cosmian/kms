@@ -17,6 +17,10 @@ pub trait Certificate: Send + Sync + std::fmt::Debug {
     fn issuer(&self) -> MResult<Vec<u8>>;
     fn serial_number(&self) -> MResult<Vec<u8>>;
     fn subject(&self) -> MResult<Vec<u8>>;
+
+    /// This returns the private key ID associated with the certificate
+    /// which the CKA_ID
+    fn private_key_id(&self) -> String;
 }
 
 impl PartialEq for dyn Certificate {
