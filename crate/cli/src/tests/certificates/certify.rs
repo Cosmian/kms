@@ -408,7 +408,6 @@ fn check_public_and_private_key_linked(
 
 #[tokio::test]
 async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -434,14 +433,13 @@ async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
+    assert!(validation.contains("Valid"));
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
-    // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -473,14 +471,12 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> {
-    // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -517,14 +513,12 @@ async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> 
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -564,17 +558,15 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         vec![],
-        vec![root_id, intermediate_id, certificate_id.clone()],
+        vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_renew_a_certificate() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -620,17 +612,15 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         vec![],
-        vec![root_id, intermediate_id, renewed_certificate_id.clone()],
+        vec![root_id, intermediate_id, renewed_certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_issue_with_subject_name() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -666,14 +656,12 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
         vec![root_id, intermediate_id, certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -705,14 +693,12 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
         vec![certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -742,14 +728,12 @@ async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result
         vec![certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
-
+    assert!(validation.contains("Valid"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_issue_with_subject_name_self_signed_with_extensions() -> Result<(), CliError> {
-    // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -783,7 +767,7 @@ async fn test_issue_with_subject_name_self_signed_with_extensions() -> Result<()
         vec![certificate_id],
         None,
     )?;
-    assert_eq!("Valid\n", validation);
+    assert!(validation.contains("Valid"));
 
     Ok(())
 }

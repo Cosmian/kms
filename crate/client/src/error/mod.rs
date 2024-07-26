@@ -71,7 +71,7 @@ impl From<InvalidHeaderValue> for ClientError {
 
 impl From<reqwest::Error> for ClientError {
     fn from(e: reqwest::Error) -> Self {
-        Self::Default(e.to_string())
+        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 

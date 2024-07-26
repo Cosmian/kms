@@ -269,7 +269,6 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
 }
 
 async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // create a temp dir

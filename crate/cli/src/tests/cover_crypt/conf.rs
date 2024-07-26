@@ -12,7 +12,6 @@ use crate::{
 
 #[tokio::test]
 pub async fn test_bad_conf() -> Result<(), CliError> {
-    cosmian_logger::log_utils::log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_client_conf);

@@ -72,20 +72,22 @@ fi
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json
 
+# export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
 # shellcheck disable=SC2086
-# cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 # Uncomment this code to run tests indefinitely
-counter=1
-while true; do
-  # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
-  # shellcheck disable=SC2086
-  cargo test -j 1 --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
-  counter=$((counter + 1))
-  echo "Round: $counter"
-  # reset
-  sleep 3
-done
+# counter=1
+# while true; do
+#   find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
+#   # export RUST_LOG="hyper=trace,reqwest=trace,cosmian_kms_cli=debug,cosmian_kms_server=debug,cosmian_kmip=error"
+#   # shellcheck disable=SC2086
+#   cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+#   counter=$((counter + 1))
+#   reset
+#   echo "counter: $counter"
+#   sleep 3
+# done
 
 rm -rf target/"$TARGET"/debian
 rm -rf target/"$TARGET"/generate-rpm
