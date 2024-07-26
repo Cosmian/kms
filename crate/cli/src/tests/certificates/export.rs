@@ -288,6 +288,7 @@ pub(crate) fn export_certificate(
             CertificateExportFormat::JsonTtlv => "json-ttlv",
             CertificateExportFormat::Pem => "pem",
             CertificateExportFormat::Pkcs12 => "pkcs12",
+            CertificateExportFormat::Pkcs7 => "pkcs7",
         };
         args.push(arg_value.to_owned());
     }
