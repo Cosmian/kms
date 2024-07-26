@@ -17,9 +17,11 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use http::{HeaderMap, HeaderValue, StatusCode};
 use log::trace;
-use reqwest::{Client, ClientBuilder, Identity, Response};
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client, ClientBuilder, Identity, Response, StatusCode,
+};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::Serialize;
 use tracing::{debug, error, warn};
@@ -507,7 +509,7 @@ impl KmsClient {
                 .tcp_keepalive(Duration::from_secs(45)) // default: ?
                 .http2_keep_alive_while_idle(false)
                 .pool_max_idle_per_host(0) // default: max usize value
-                .default_headers(headers.clone())
+                .default_headers(headers)
                 .build()?,
             server_url,
         })

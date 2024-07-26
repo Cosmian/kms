@@ -65,7 +65,9 @@ pub(crate) async fn retrieve_token(
 ) -> Result<String, GoogleApiError> {
     let jwt = create_jwt(service_account, user_email)?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::ClientBuilder::new()
+        .pool_max_idle_per_host(0)
+        .build()?;
 
     let response: GoogleAuthResponse = client
         .post(&service_account.token_uri)

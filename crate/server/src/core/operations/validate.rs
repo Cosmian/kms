@@ -9,7 +9,6 @@ use cosmian_kmip::{
     KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use http::{HeaderMap, HeaderValue};
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
@@ -18,6 +17,7 @@ use openssl::{
         X509Crl, X509StoreContext, X509,
     },
 };
+use reqwest::header::{HeaderMap, HeaderValue};
 use tracing::{debug, error, trace, warn};
 
 use crate::{

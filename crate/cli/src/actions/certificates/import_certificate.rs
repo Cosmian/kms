@@ -238,7 +238,11 @@ impl ImportCertificateAction {
                 )
             }
             CertificateInputFormat::CCADB => {
-                let ccadb_bytes = reqwest::get(MOZILLA_CCADB)
+                let ccadb_bytes = reqwest::ClientBuilder::new()
+                    .pool_max_idle_per_host(0)
+                    .build()?
+                    .get(MOZILLA_CCADB)
+                    .send()
                     .await
                     .map_err(|e| {
                         CliError::ItemNotFound(format!(

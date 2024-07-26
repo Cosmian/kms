@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use reqwest::{Client, Response};
+use reqwest::{Client, ClientBuilder, Response};
 use serde::Deserialize;
 
 use super::{service_account::ServiceAccount, token::retrieve_token, GoogleApiError};
@@ -35,7 +35,7 @@ impl GmailClientBuilder {
         let token = retrieve_token(&self.service_account, &self.user_id).await?;
 
         Ok(GmailClient {
-            client: Client::new(),
+            client: ClientBuilder::new().pool_max_idle_per_host(0).build()?,
             token,
             base_url: [
                 "https://gmail.googleapis.com/gmail/v1/users/".to_string(),
