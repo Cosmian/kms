@@ -2,7 +2,7 @@
 //required to detect generic type in Serializer
 #![feature(min_specialization)]
 
-pub use config::{ClientConf, KMS_CLI_CONF_ENV};
+pub use config::{ClientConf, GmailApiConf, KMS_CLI_CONF_ENV};
 pub use cosmian_kmip::{self, kmip, pad_be_bytes};
 pub use encodings::{der_to_pem, objects_from_pem};
 pub use error::ClientError;

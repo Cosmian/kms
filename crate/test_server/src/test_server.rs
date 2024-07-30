@@ -1,4 +1,5 @@
 use std::{
+    env,
     path::PathBuf,
     sync::mpsc,
     thread::{self, JoinHandle},
@@ -10,7 +11,7 @@ use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
     client_bail, client_error,
     cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
-    write_json_object_to_file, ClientConf, ClientError, KmsClient,
+    write_json_object_to_file, ClientConf, ClientError, GmailApiConf, KmsClient,
 };
 use cosmian_kms_server::{
     config::{
@@ -289,8 +290,11 @@ fn generate_owner_conf(
     // Create a conf
     let owner_client_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
-    // Generate a CLI Conf.
-    // We will update it later by appending the database secret
+    let gmail_api_conf: Option<GmailApiConf> = match std::env::var("TEST_GMAIL_API_CONF") {
+        Ok(config) => Some(serde_json::from_str(&config).unwrap()),
+        _ => None,
+    };
+
     let owner_client_conf = ClientConf {
         kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
             format!("https://0.0.0.0:{}", server_params.port)
@@ -319,6 +323,8 @@ fn generate_owner_conf(
         } else {
             None
         },
+        gmail_api_conf,
+
         // We use the private key since the private key is the public key with additional information.
         ..ClientConf::default()
     };
