@@ -672,8 +672,7 @@ async fn post_process_pkcs7(
         .get_link(LinkType::PublicKeyLink)
         .ok_or_else(|| {
             KmsError::InvalidRequest("No Public Key found in the leaf certificate".to_string())
-        })
-        .unwrap();
+        })?;
     let public_key_owm = retrieve_object_for_operation(
         &public_key_id.to_string(),
         operation_type,

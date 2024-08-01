@@ -30,19 +30,19 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub(crate) struct CertifyOp {
-    issuer_certificate_key_id: Option<String>,
-    issuer_private_key_id: Option<String>,
-    csr_file: Option<String>,
-    public_key_id_to_certify: Option<String>,
-    certificate_id_to_re_certify: Option<String>,
-    generate_keypair: bool,
-    subject_name: Option<String>,
-    algorithm: Option<Algorithm>,
-    certificate_id: Option<String>,
-    days: Option<u32>,
-    certificate_extensions: Option<PathBuf>,
-    tags: Option<Vec<String>>,
+pub struct CertifyOp {
+    pub(crate) issuer_certificate_key_id: Option<String>,
+    pub(crate) issuer_private_key_id: Option<String>,
+    pub(crate) csr_file: Option<String>,
+    pub(crate) public_key_id_to_certify: Option<String>,
+    pub(crate) certificate_id_to_re_certify: Option<String>,
+    pub(crate) generate_keypair: bool,
+    pub(crate) subject_name: Option<String>,
+    pub(crate) algorithm: Option<Algorithm>,
+    pub(crate) certificate_id: Option<String>,
+    pub(crate) days: Option<u32>,
+    pub(crate) certificate_extensions: Option<PathBuf>,
+    pub(crate) tags: Option<Vec<String>>,
 }
 
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<String> {
@@ -113,7 +113,9 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
     ))
 }
 
-fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
+pub(crate) fn import_root_and_intermediate(
+    ctx: &TestsContext,
+) -> CliResult<(String, String, String)> {
     // import Root CA
     let root_ca_id = import_certificate(
         &ctx.owner_client_conf_path,
