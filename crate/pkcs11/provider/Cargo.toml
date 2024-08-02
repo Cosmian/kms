@@ -33,4 +33,5 @@ zeroize = { workspace = true }
 tracing-journald = "0.3.0"
 
 [dev-dependencies]
+cosmian_logger = { path = "../../logger" }
 kms_test_server = { path = "../../test_server" }

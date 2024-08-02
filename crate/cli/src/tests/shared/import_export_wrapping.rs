@@ -112,6 +112,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
+    cosmian_logger::log_utils::log_init(Some("debug"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

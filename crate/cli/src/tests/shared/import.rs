@@ -142,6 +142,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
+    cosmian_logger::log_utils::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test

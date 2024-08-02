@@ -31,6 +31,7 @@ use crate::{
 
 lazy_static::lazy_static! {
     static ref CRL_CACHE_MAP: std::sync::RwLock<HashMap<String, Vec<u8>>> = std::sync::RwLock::new(HashMap::new());
+    static ref CLIENT_CACHE: std::sync::RwLock<reqwest::Client> = std::sync::RwLock::new(reqwest::ClientBuilder::new().pool_max_idle_per_host(0).build().unwrap());
 }
 
 /// This operation requests the server to validate a certificate chain and return
@@ -341,6 +342,10 @@ async fn get_crl_bytes(
 ) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
+    let client = CLIENT_CACHE
+        .read()
+        .expect("a read mutex on the client cache failed");
+
     let mut result = HashMap::new();
 
     for uri in uri_list {
@@ -367,7 +372,7 @@ async fn get_crl_bytes(
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
-                let response = reqwest::Client::new().get(&url).send().await?;
+                let response = client.get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
