@@ -46,7 +46,7 @@ async fn clear_all(mgr: &mut ConnectionManager) -> KResult<()> {
 }
 
 pub(crate) async fn test_objects_db() -> KResult<()> {
-    //log_init("test_objects_db=info");
+    cosmian_logger::log_utils::log_init(Some("test_objects_db=info"));
     trace!("test_objects_db");
 
     let mut rng = CsRng::from_entropy();

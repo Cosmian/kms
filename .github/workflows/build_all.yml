@@ -45,27 +45,22 @@ jobs:
           - distribution: ubuntu-20.04
             archive-name: ubuntu_20_04
             target: x86_64-unknown-linux-gnu
-            skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
           - distribution: ubuntu-22.04
             archive-name: ubuntu_22_04
             target: x86_64-unknown-linux-gnu
-            skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
           - distribution: ubuntu-24.04
             archive-name: ubuntu_24_04
             target: x86_64-unknown-linux-gnu
-            skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
           - distribution: macos-12
             archive-name: macos_intel
             target: x86_64-apple-darwin
-            skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip certify --skip test_validate  # certificate validation give too many errors related to reqwest/hyper
 
           - distribution: macos-14
             archive-name: macos_arm
             target: aarch64-apple-darwin
-            skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip certify --skip test_validate
     name: ${{ matrix.distribution }}
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
@@ -75,7 +70,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: ${{ matrix.skip_services_tests }}
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
   windows-2022:
     uses: ./.github/workflows/build_windows.yml
