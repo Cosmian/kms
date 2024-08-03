@@ -43,8 +43,6 @@ pub(crate) struct CertifyOp {
     days: Option<u32>,
     certificate_extensions: Option<PathBuf>,
     tags: Option<Vec<String>>,
-    authority_key_identifier: Option<String>,
-    subject_key_identifier: Option<String>,
 }
 
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
@@ -100,14 +98,6 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<Stri
             args.push("--tag".to_owned());
             args.push((*tag).to_string());
         }
-    }
-    if let Some(aki) = certify_op.authority_key_identifier {
-        args.push("--authority_key_identifier".to_owned());
-        args.push(aki);
-    }
-    if let Some(ski) = certify_op.subject_key_identifier {
-        args.push("--subject_key_identifier".to_owned());
-        args.push(ski);
     }
     cmd.arg("certificates").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -181,7 +171,6 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String, S
 fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attributes, Vec<u8>) {
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
-    // let tmp_path = PathBuf::from(".");
     // export the certificate
     let exported_cert_file = tmp_path.join("new_cert.pem");
     debug!("exporting certificate: new_cert: {:?}", exported_cert_file);
