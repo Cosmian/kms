@@ -505,7 +505,7 @@ impl KmsClient {
         Ok(Self {
             client: builder
                 .default_headers(headers)
-                .pool_max_idle_per_host(0)
+                .pool_max_idle_per_host(2)
                 .build()?,
             server_url,
         })
