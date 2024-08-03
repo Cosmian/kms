@@ -30,8 +30,7 @@ use crate::{
 };
 
 lazy_static::lazy_static! {
-    static ref CRL_CACHE_MAP: std::sync::RwLock<HashMap<String, Vec<u8>>> = std::sync::RwLock::new(HashMap::new());
-    static ref CLIENT_CACHE: std::sync::RwLock<reqwest::Client> = std::sync::RwLock::new(reqwest::ClientBuilder::new().pool_max_idle_per_host(0).build().expect("failed building reqwest client"));
+    static ref CRL_CACHE_MAP: tokio::sync::RwLock<HashMap<String, Vec<u8>>> = tokio::sync::RwLock::new(HashMap::new());
 }
 
 /// This operation requests the server to validate a certificate chain and return
@@ -337,11 +336,14 @@ enum UriType {
 }
 
 #[allow(clippy::await_holding_lock)]
-async fn get_crl_bytes(
-    uri_list: Vec<String>,
-    crls: &mut HashMap<String, Vec<u8>>,
-) -> KResult<HashMap<String, Vec<u8>>> {
+async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
+
+    let client = reqwest::ClientBuilder::new()
+        .pool_max_idle_per_host(0)
+        .build()?;
+
+    let mut crls = CRL_CACHE_MAP.write().await;
 
     let mut result = HashMap::new();
 
@@ -369,9 +371,6 @@ async fn get_crl_bytes(
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
-                let client = CLIENT_CACHE
-                    .read()
-                    .expect("Failed to get read lock on client cache");
                 let response = client.get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
@@ -426,10 +425,6 @@ async fn get_crl_bytes(
 
 #[allow(clippy::await_holding_lock)]
 async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
-    let mut crls = CRL_CACHE_MAP
-        .write()
-        .expect("Failed to get write lock on CRL cache");
-
     let mut parent_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
@@ -470,7 +465,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                 }
             }
 
-            parent_crls = get_crl_bytes(uri_list, &mut crls).await?;
+            parent_crls = get_crl_bytes(uri_list).await?;
 
             for (crl_path, crl_value) in &parent_crls {
                 debug!(
