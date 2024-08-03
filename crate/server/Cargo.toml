@@ -62,7 +62,6 @@ cosmian_kms_client = { path = "../client" }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
-http = { workspace = true }
 lazy_static = "1.5"
 num-bigint-dig = { workspace = true, features = [
     "std",
@@ -105,8 +104,6 @@ sqlx = { version = "0.8.0", default-features = false, features = [
 ] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
-# this version of tokio should be the same as the one used in actix-web
-# run `cargo tree -i tokio` to check
 tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }

@@ -4,12 +4,12 @@ use actix_http::Request;
 use actix_web::{
     body::MessageBody,
     dev::{Service, ServiceResponse},
+    http::StatusCode,
     test::{self, call_service, read_body},
     web::{self, Data},
     App,
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
-use http::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
