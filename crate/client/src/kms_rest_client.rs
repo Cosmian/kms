@@ -503,7 +503,10 @@ impl KmsClient {
 
         // Build the client
         Ok(Self {
-            client: builder.default_headers(headers).build()?,
+            client: builder
+                .default_headers(headers)
+                .pool_max_idle_per_host(0)
+                .build()?,
             server_url,
         })
     }
