@@ -4,7 +4,6 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
-use http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 pub(crate) mod result;
@@ -60,12 +59,6 @@ pub enum ClientError {
 impl From<TtlvError> for ClientError {
     fn from(e: TtlvError) -> Self {
         Self::TtlvError(e.to_string())
-    }
-}
-
-impl From<InvalidHeaderValue> for ClientError {
-    fn from(e: InvalidHeaderValue) -> Self {
-        Self::Default(e.to_string())
     }
 }
 
