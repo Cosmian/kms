@@ -343,10 +343,6 @@ async fn get_crl_bytes(
 ) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
-    let client = CLIENT_CACHE
-        .read()
-        .expect("Failed to get read lock on client cache");
-
     let mut result = HashMap::new();
 
     for uri in uri_list {
@@ -373,6 +369,9 @@ async fn get_crl_bytes(
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
+                let client = CLIENT_CACHE
+                    .read()
+                    .expect("Failed to get read lock on client cache");
                 let response = client.get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
@@ -470,7 +469,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                     }
                 }
             }
-            // uri_list
+
             parent_crls = get_crl_bytes(uri_list, &mut crls).await?;
 
             for (crl_path, crl_value) in &parent_crls {

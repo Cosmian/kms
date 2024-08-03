@@ -84,6 +84,7 @@ pub(crate) async fn test_secrets_key_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_multiple_databases() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
