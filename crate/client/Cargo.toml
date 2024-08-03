@@ -24,7 +24,7 @@ der = "0.7.9"
 http = { workspace = true }
 log = "0.4"
 pem = "3.0.4"
-reqwest = { version = "0.12", features = [
+reqwest = { workspace = true, features = [
   "json",
   "native-tls",
 ] }
