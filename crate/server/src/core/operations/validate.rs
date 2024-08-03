@@ -31,7 +31,7 @@ use crate::{
 
 lazy_static::lazy_static! {
     static ref CRL_CACHE_MAP: std::sync::RwLock<HashMap<String, Vec<u8>>> = std::sync::RwLock::new(HashMap::new());
-    static ref CLIENT_CACHE: std::sync::RwLock<reqwest::Client> = std::sync::RwLock::new(reqwest::Client::new());
+    static ref CLIENT_CACHE: std::sync::RwLock<reqwest::Client> = std::sync::RwLock::new(reqwest::ClientBuilder::new().pool_max_idle_per_host(0).build().expect("failed building reqwest client"));
 }
 
 /// This operation requests the server to validate a certificate chain and return
