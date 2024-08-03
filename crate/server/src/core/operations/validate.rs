@@ -30,8 +30,8 @@ use crate::{
 };
 
 lazy_static::lazy_static! {
-    static ref CRL_CACHE_MAP: std::sync::RwLock<HashMap<String, Vec<u8>>> = std::sync::RwLock::new(HashMap::new());
-    static ref CLIENT_CACHE: std::sync::RwLock<reqwest::Client> = std::sync::RwLock::new(reqwest::ClientBuilder::new().pool_max_idle_per_host(0).build().unwrap());
+    static ref CRL_CACHE_MAP: tokio::sync::RwLock<HashMap<String, Vec<u8>>> = tokio::sync::RwLock::new(HashMap::new());
+    static ref CLIENT_CACHE: tokio::sync::RwLock<reqwest::Client> = tokio::sync::RwLock::new(reqwest::Client::new());
 }
 
 /// This operation requests the server to validate a certificate chain and return
@@ -342,9 +342,7 @@ async fn get_crl_bytes(
 ) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
-    let client = CLIENT_CACHE
-        .read()
-        .expect("a read mutex on the client cache failed");
+    let client = CLIENT_CACHE.read().await;
 
     let mut result = HashMap::new();
 
@@ -373,6 +371,7 @@ async fn get_crl_bytes(
                     continue;
                 }
                 let response = client.get(&url).send().await?;
+                // let response = reqwest::Client::new().get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
@@ -424,14 +423,8 @@ async fn get_crl_bytes(
     Ok(result)
 }
 
-// TODO(ecse): I cannot get rid of the clippy warning:
-// ```help: consider using an async-aware `Mutex` type or ensuring the `MutexGuard` is dropped before calling await```
-// I tried to use `tokio::sync::Mutex` (and indeed it is a async-aware `Mutex` but we loose the lock on the HashMap)
-#[allow(clippy::await_holding_lock)]
 async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
-    let mut crls = CRL_CACHE_MAP
-        .write()
-        .expect("a read mutex on the CRL cache failed");
+    let mut crls = CRL_CACHE_MAP.write().await;
 
     let mut parent_crls: HashMap<String, Vec<u8>> = HashMap::new();
 

@@ -505,7 +505,7 @@ impl KmsClient {
         Ok(Self {
             client: builder
                 .default_headers(headers)
-                .pool_max_idle_per_host(0) // magic number to minimize reuse dead connection from hyper pool.
+                .pool_max_idle_per_host(50) // magic number to minimize reuse dead connection from hyper pool.
                 .build()?,
             server_url,
         })
