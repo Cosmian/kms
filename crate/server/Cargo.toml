@@ -89,7 +89,8 @@ redis = { version = "0.23", features = [
 # implementations depending on the operating system. On linux, it will
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
-reqwest = { version = "0.12", features = [
+reqwest = { workspace = true, features = [
+    "blocking",
     "json",
     "native-tls",
 ] }

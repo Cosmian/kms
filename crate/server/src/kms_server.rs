@@ -118,9 +118,8 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let p12 = match &server_params.http_params {
-        config::HttpParams::Https(p12) => p12,
-        _ => kms_bail!("http/s: a PKCS#12 file must be provided"),
+    let config::HttpParams::Https(p12) = &server_params.http_params else {
+        kms_bail!("http/s: a PKCS#12 file must be provided")
     };
 
     // Create and configure an SSL acceptor with the certificate and key
