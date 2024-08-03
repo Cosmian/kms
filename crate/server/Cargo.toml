@@ -96,9 +96,7 @@ reqwest = { workspace = true, features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# sqlx 0.7.4 brings this bug "pool timed out while waiting for an open connection: https://github.com/launchbadge/sqlx/discussions/3232#discussioncomment-9608045
-# TODO: upgrade sqlx to 0.8.0
-sqlx = { version = "0.7.3", default-features = false, features = [
+sqlx = { version = "0.8.0", default-features = false, features = [
     "json",
     "runtime-tokio-native-tls",
     "mysql",
