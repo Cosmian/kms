@@ -465,7 +465,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_without_extensions() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -507,7 +507,7 @@ async fn certify_a_public_key_test_without_extensions() -> Result<(), CliError> 
 }
 
 #[tokio::test]
-async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -555,7 +555,7 @@ async fn certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_renew_a_certificate() -> Result<(), CliError> {
+async fn test_certify_renew_a_certificate() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -609,7 +609,7 @@ async fn test_renew_a_certificate() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_issue_with_subject_name() -> Result<(), CliError> {
+async fn test_certify_issue_with_subject_name() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -650,7 +650,7 @@ async fn test_issue_with_subject_name() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_self_signed() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -687,7 +687,8 @@ async fn certify_a_public_key_test_self_signed() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result<(), CliError> {
+async fn test_certify_issue_with_subject_name_self_signed_without_extensions()
+-> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -722,7 +723,8 @@ async fn test_issue_with_subject_name_self_signed_without_extensions() -> Result
 }
 
 #[tokio::test]
-async fn test_issue_with_subject_name_self_signed_with_extensions() -> Result<(), CliError> {
+async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> Result<(), CliError>
+{
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

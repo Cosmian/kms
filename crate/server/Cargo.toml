@@ -89,9 +89,9 @@ redis = { version = "0.23", features = [
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
 reqwest = { workspace = true, features = [
-    "blocking",
+    "default",
     "json",
-    "native-tls",
+    "rustls-tls",
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -335,13 +335,8 @@ enum UriType {
     Path(String),
 }
 
-#[allow(clippy::await_holding_lock)]
 async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
-
-    let client = reqwest::ClientBuilder::new()
-        .pool_max_idle_per_host(0)
-        .build()?;
 
     let mut crls = CRL_CACHE_MAP.write().await;
 
@@ -371,7 +366,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
-                let response = client.get(&url).send().await?;
+                let response = reqwest::Client::new().get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
@@ -385,7 +380,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                                      URL: {url}. Error: {e:?} "
                                 ))
                             })?;
-
+                    debug!("reading full bytes of CRL: url: {url}");
                     crls.insert(url.clone(), crl_bytes.clone());
                     result.insert(url, crl_bytes);
                     break;
@@ -423,7 +418,6 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
     Ok(result)
 }
 
-#[allow(clippy::await_holding_lock)]
 async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
     let mut parent_crls: HashMap<String, Vec<u8>> = HashMap::new();
 

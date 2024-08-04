@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
+    time::Duration,
 };
 
 use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
@@ -505,6 +506,10 @@ impl KmsClient {
         Ok(Self {
             client: builder
                 .default_headers(headers)
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(10))
+                .tcp_keepalive(Duration::from_secs(5))
+                .pool_idle_timeout(Duration::from_secs(5))
                 .pool_max_idle_per_host(2)
                 .build()?,
             server_url,

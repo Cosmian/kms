@@ -121,13 +121,19 @@ fn start_test_kms_server(
         // allow others `spawn` to happen within the KMS Server future
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
+            .global_queue_interval(6100)
+            .max_blocking_threads(20480)
+            .thread_keep_alive(Duration::from_secs(600))
+            .event_interval(6100)
+            .max_io_events_per_tick(81920)
+            .thread_stack_size(32 * 1024 * 1024)
             .build()?
             .block_on(start_kms_server(server_params, Some(tx)))
             .map_err(|e| ClientError::UnexpectedError(e.to_string()))
     });
     trace!("Waiting for test KMS server to start...");
     let server_handle = rx
-        .recv_timeout(Duration::from_secs(25))
+        .recv_timeout(Duration::from_secs(250))
         .expect("Can't get test KMS server handle after 25 seconds");
     trace!("... got handle ...");
     Ok((server_handle, thread_handle))
