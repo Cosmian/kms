@@ -24,6 +24,7 @@ der = "0.7.9"
 log = "0.4"
 pem = "3.0.4"
 reqwest = { workspace = true, features = [
+  "default",
   "json",
   "native-tls",
 ] }
