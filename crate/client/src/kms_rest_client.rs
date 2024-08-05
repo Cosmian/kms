@@ -510,7 +510,8 @@ impl KmsClient {
                 .timeout(Duration::from_secs(10))
                 .tcp_keepalive(Duration::from_secs(5))
                 .pool_idle_timeout(Duration::from_secs(5))
-                .pool_max_idle_per_host(2)
+                // .pool_max_idle_per_host(0)
+                .connection_verbose(true)
                 .build()?,
             server_url,
         })
