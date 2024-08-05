@@ -34,8 +34,10 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
+/// Start a test KMS server in a thread with the default options:
+/// JWT authentication and encrypted database, no TLS
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    ONCE.get_or_try_init(_start_default_test_kms_server)
+    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, true, true))
         .await
         .unwrap()
 }
@@ -55,12 +57,6 @@ impl TestsContext {
             .join()
             .map_err(|_e| client_error!("failed joining th stop thread"))?
     }
-}
-
-/// Start a test KMS server in a thread with the default options:
-/// JWT authentication and encrypted database, no TLS
-pub(crate) async fn _start_default_test_kms_server() -> Result<TestsContext, ClientError> {
-    start_test_server_with_options(9990, false, true, true).await
 }
 
 /// Start a KMS server in a thread with the given options
@@ -121,19 +117,13 @@ fn start_test_kms_server(
         // allow others `spawn` to happen within the KMS Server future
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            .global_queue_interval(6100)
-            .max_blocking_threads(20480)
-            .thread_keep_alive(Duration::from_secs(600))
-            .event_interval(6100)
-            .max_io_events_per_tick(81920)
-            .thread_stack_size(32 * 1024 * 1024)
             .build()?
-            .block_on(start_kms_server(server_params, Some(tx)))
+            .block_on(async { start_kms_server(server_params, Some(tx)).await })
             .map_err(|e| ClientError::UnexpectedError(e.to_string()))
     });
     trace!("Waiting for test KMS server to start...");
     let server_handle = rx
-        .recv_timeout(Duration::from_secs(250))
+        .recv_timeout(Duration::from_secs(25))
         .expect("Can't get test KMS server handle after 25 seconds");
     trace!("... got handle ...");
     Ok((server_handle, thread_handle))
@@ -332,6 +322,6 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
-    let context = _start_default_test_kms_server().await?;
+    let context = start_test_server_with_options(9990, false, true, true).await?;
     context.stop_server().await
 }

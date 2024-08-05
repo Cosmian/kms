@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, path,
+    time::Duration,
 };
 
 use cosmian_kmip::{
@@ -338,8 +339,6 @@ enum UriType {
 async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
-    let mut crls = CRL_CACHE_MAP.write().await;
-
     let mut result = HashMap::new();
 
     for uri in uri_list {
@@ -361,12 +360,25 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
         // Retrieving the object from its location
         match uri_type {
             Some(UriType::Url(url)) => {
+                let mut crls = CRL_CACHE_MAP.write().await;
                 if crls.contains_key(&url) {
                     debug!("CRL list already contains key: {url}");
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
-                let response = reqwest::Client::new().get(&url).send().await?;
+                let client = reqwest::ClientBuilder::new()
+                    .danger_accept_invalid_certs(true)
+                    .read_timeout(Duration::from_secs(10))
+                    .connect_timeout(Duration::from_secs(10))
+                    .timeout(Duration::from_secs(10))
+                    .tcp_keepalive(Duration::from_secs(5))
+                    .pool_idle_timeout(Duration::from_secs(5))
+                    // .pool_max_idle_per_host(0)
+                    .connection_verbose(true)
+                    .build()?;
+
+                let response = client.get(&url).send().await?;
+                // let response = reqwest::Client::new().get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
@@ -393,6 +405,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
             }
             Some(UriType::Path(path)) => {
                 // Get PEM file (path should be already canonic)
+                let mut crls = CRL_CACHE_MAP.write().await;
                 if crls.contains_key(&path) {
                     debug!("CRL list already contains key: {path}");
                     crls.get(&path).and_then(|v| result.insert(path, v.clone()));
