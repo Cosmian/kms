@@ -192,7 +192,7 @@ pub(crate) async fn validate_tokens(
         KmsError::Unauthorized("Authorization token should contain an email".to_string())
     })?;
     kms_ensure!(
-        authorization_email == authentication_email,
+        authorization_email.to_lowercase() == authentication_email.to_lowercase(),
         KmsError::Unauthorized(
             "Authentication and authorization emails in tokens do not match".to_string()
         )
