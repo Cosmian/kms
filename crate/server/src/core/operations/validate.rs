@@ -142,7 +142,32 @@ pub(crate) async fn validate_operation(
     })
 }
 
-/// Sort a X509 certificate list. Order of output chain will be ROOT/SUBCA/../LEAF
+fn get_certificate_identifiers(certificate: &X509) -> (&[u8], &[u8]) {
+    (
+        certificate
+            .subject_key_id()
+            .map(openssl::asn1::Asn1OctetStringRef::as_slice)
+            .unwrap_or_default(),
+        certificate
+            .authority_key_id()
+            .map(openssl::asn1::Asn1OctetStringRef::as_slice)
+            .unwrap_or_default(),
+    )
+}
+
+fn trace_certificate(debug_msg: &str, certificate: &X509) {
+    let (ski, aki) = get_certificate_identifiers(certificate);
+    trace!(
+        "{debug_msg}. Certificate: subject: {:?}, AKI: {:?}, SKI: {:?}",
+        certificate.subject_name(),
+        hex::encode(ski),
+        hex::encode(aki),
+    );
+}
+
+/// Sort a X509 certificate list. Order of output chain will be ROOT/SUBCA/../LEAF.
+/// Certificates are ordered by their Authority Key Identifier (AKI) and Subject Key Identifier (SKI).
+/// Only leaf certificates can omit AKI and SKI.
 ///
 /// # Arguments
 ///
@@ -162,32 +187,17 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     // Root has the same SKI and AKI
     // And only a leaf can omit AKI and SKI
     for (index, certificate) in certificates_copy.iter().enumerate() {
-        let ski = certificate
-            .subject_key_id()
-            .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-            .unwrap_or_default();
-        let aki = certificate
-            .authority_key_id()
-            .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-            .unwrap_or_default();
-        trace!(
-            "Finding root (or leaf): iterate on certificate: AKI: {}, SKI: {}",
-            hex::encode(aki),
-            hex::encode(ski)
-        );
+        let (ski, aki) = get_certificate_identifiers(certificate);
+        trace_certificate("Finding root (or leaf)", certificate);
 
         if ski == aki && !ski.is_empty() {
-            trace!(
-                "Root found: AKI: {}, SKI: {}",
-                hex::encode(aki),
-                hex::encode(ski)
-            );
+            trace_certificate("Root found", certificate);
             sorted_chains.insert(0, certificate.to_owned());
             indexes_to_remove.push(index);
         }
 
         if aki.is_empty() && ski.is_empty() {
-            trace!("Leaf found without AKI nor SKI",);
+            trace_certificate("No AKI nor SKI -> leaf found", certificate);
             sorted_chains.push(certificate.to_owned());
             indexes_to_remove.push(index);
         }
@@ -203,71 +213,46 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
         certificates_copy.remove(index);
     }
 
-    debug!(
+    trace!(
         "Root and possibly leaf removed from initial certificate list. Left: {}",
         certificates_copy.len()
     );
     // since certificates are not in the right order, we need to loop on the number of certificates - worst case
     for _ in 0..certificates.len() {
         if sorted_chains.len() == certificates.len() {
-            debug!("All certificates have been sorted");
+            trace!("All certificates have been sorted");
             break;
         }
         for certificate in &certificates_copy {
             if sorted_chains.len() == certificates.len() {
-                debug!("All certificates have been sorted");
+                trace!("All certificates have been sorted");
                 break;
             }
-            let ski_1 = certificate
-                .subject_key_id()
-                .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-                .unwrap_or_default();
-            let aki_1 = certificate
-                .authority_key_id()
-                .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-                .unwrap_or_default();
-            trace!(
-                "Trying to find the certificate position on the sorted list: {:?}, AKI: {}, SKI: \
-                 {}",
-                certificate.subject_name(),
-                hex::encode(aki_1),
-                hex::encode(ski_1),
+            let (ski, aki) = get_certificate_identifiers(certificate);
+            trace_certificate(
+                "Trying to find the certificate position on the sorted list",
+                certificate,
             );
 
             for (idx, sorted_certificate) in sorted_chains.clone().iter().enumerate() {
-                let ski_2 = sorted_certificate
-                    .subject_key_id()
-                    .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-                    .unwrap_or_default();
-                let aki_2 = sorted_certificate
-                    .authority_key_id()
-                    .map(openssl::asn1::Asn1OctetStringRef::as_slice)
-                    .unwrap_or_default();
-                trace!(
-                    "Iterate on SORTED certificate: {:?}: AKI: {}, SKI: {}",
-                    sorted_certificate.subject_name(),
-                    hex::encode(aki_2),
-                    hex::encode(ski_2)
-                );
+                let (ski_2, aki_2) = get_certificate_identifiers(sorted_certificate);
+                trace_certificate("Iterate on sorted certificates", sorted_certificate);
+
                 // Found a certificate child
-                if aki_1 == ski_2 && !aki_1.is_empty() && !sorted_chains.contains(certificate) {
-                    trace!(
-                        "Insert certificate at index: {}: AKI: {}, SKI: {}",
-                        idx + 1,
-                        hex::encode(aki_1),
-                        hex::encode(ski_1)
+                if aki == ski_2 && !aki.is_empty() && !sorted_chains.contains(certificate) {
+                    trace_certificate(
+                        &format!("Insert certificate at index: {}", idx + 1),
+                        certificate,
                     );
                     sorted_chains.insert(idx + 1, certificate.to_owned());
                     break;
                 }
 
                 // Found the authority of the certificate
-                if ski_1 == aki_2 && !ski_1.is_empty() && !sorted_chains.contains(certificate) {
-                    trace!(
-                        "Insert certificate at index: {}: AKI: {}, SKI: {}",
-                        idx,
-                        hex::encode(aki_1),
-                        hex::encode(ski_1)
+                if ski == aki_2 && !ski.is_empty() && !sorted_chains.contains(certificate) {
+                    trace_certificate(
+                        &format!("Insert certificate at index: {idx}"),
+                        certificate,
                     );
                     sorted_chains.insert(idx, certificate.to_owned());
                     break;
@@ -275,8 +260,8 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
                 warn!(
                     "Could not insert: certificate: AKI: {}, SKI: {}",
-                    hex::encode(aki_1),
-                    hex::encode(ski_1)
+                    hex::encode(aki),
+                    hex::encode(ski)
                 );
             }
         }
