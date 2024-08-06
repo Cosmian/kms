@@ -506,13 +506,7 @@ impl KmsClient {
         Ok(Self {
             client: builder
                 .default_headers(headers)
-                .read_timeout(Duration::from_secs(60))
-                .connect_timeout(Duration::from_secs(60))
-                .timeout(Duration::from_secs(60))
                 .tcp_keepalive(Duration::from_secs(60))
-                .pool_idle_timeout(Duration::from_secs(60))
-                .pool_max_idle_per_host(0)
-                .connection_verbose(true)
                 .build()?,
             server_url,
         })
