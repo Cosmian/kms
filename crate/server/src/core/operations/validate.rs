@@ -250,10 +250,7 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
                 // Found the authority of the certificate
                 if ski == aki_2 && !ski.is_empty() && !sorted_chains.contains(certificate) {
-                    trace_certificate(
-                        &format!("Insert certificate at index: {idx}"),
-                        certificate,
-                    );
+                    trace_certificate(&format!("Insert certificate at index: {idx}"), certificate);
                     sorted_chains.insert(idx, certificate.to_owned());
                     break;
                 }
