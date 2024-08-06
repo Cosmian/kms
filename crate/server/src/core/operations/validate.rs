@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, path,
-    time::Duration,
 };
 
 use cosmian_kmip::{
@@ -21,7 +20,6 @@ use openssl::{
         X509Crl, X509StoreContext, X509,
     },
 };
-use reqwest::header::{HeaderMap, HeaderValue};
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -37,16 +35,42 @@ lazy_static::lazy_static! {
 
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity.
+///
 /// Only a single certificate chain SHALL be included in each request.
 /// The request MAY contain a list of certificate objects, and/or a list of
 /// Unique Identifiers that identify Managed Certificate objects.
+///
 /// Together, the two lists compose a certificate chain to be validated.
+///
 /// The request MAY also contain a date for which all certificates in the
 /// certificate chain are REQUIRED to be valid.
+///
 /// The method or policy by which validation is conducted is a decision of the
 /// server and is outside of the scope of this protocol. Likewise, the order in
 /// which the supplied certificate chain is validated and the specification of
 /// trust anchors used to terminate validation are also controlled by the server.
+///
+/// # Arguments
+///
+/// * `kms` - A reference to the KMS (Key Management Service) instance.
+/// * `request` - The `Validate` request containing the unique identifier and/or certificates to be validated.
+/// * `user` - A string slice representing the user requesting the validation.
+/// * `params` - An optional reference to additional database parameters.
+///
+/// # Returns
+///
+/// A `KResult` containing a `ValidateResponse` which indicates the validity of the certificates.
+///
+/// # Errors
+///
+/// This function will return a `KmsError` if:
+/// - The number of certificates found in the database does not match the number of certificates in the request.
+/// - There is an error converting the certificates from bytes to X509 format.
+/// - There is an error sorting the certificates.
+/// - There is an error verifying the chain signature.
+/// - There is an error validating the chain date.
+/// - There is an error verifying the CRLs (Certificate Revocation Lists).
+/// ```
 pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
@@ -75,7 +99,6 @@ pub(crate) async fn validate_operation(
         (Some(mut unique_identifiers), Some(certificates)) => {
             let set: HashSet<_> = unique_identifiers.drain(..).collect(); // dedup
             unique_identifiers.extend(set.into_iter());
-
             Ok((
                 [
                     certificates.clone(),
@@ -102,7 +125,8 @@ pub(crate) async fn validate_operation(
         .map(|cert| X509::from_der(cert.as_slice()))
         .collect::<Result<Vec<X509>, _>>()?;
 
-    // Sort the certificates in the chain according the issuing order
+    // Sort the chain in right order: ROOT/SUBCA/../LEAF.
+    // Sorting the chain greatly simplify the flow in the signature and revocation verification
     let sorted_certificates = if certificates.len() > 1 {
         index_certificates(&certificates)?
     } else {
@@ -113,13 +137,12 @@ pub(crate) async fn validate_operation(
     validate_chain_date(&certificates, request.validity_time)?;
     verify_crls(sorted_certificates).await?;
 
-    debug!("Exiting in success");
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,
     })
 }
 
-/// Sort a X509 certificate list. Format of output chain will be ROOT/SUBCA/../LEAF
+/// Sort a X509 certificate list. Order of output chain will be ROOT/SUBCA/../LEAF
 ///
 /// # Arguments
 ///
@@ -269,6 +292,29 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     Ok(sorted_chains)
 }
 
+/// Verifies the signature of a chain of X509 certificates.
+///
+/// # Arguments
+///
+/// * `certificates` - A slice of X509 certificates representing the certificate chain.
+///
+/// # Returns
+///
+/// * `KResult<ValidityIndicator>` - Returns `Ok(ValidityIndicator::Valid)` if the certificate chain is valid,
+///   otherwise returns an error of type `KmsError::Certificate`.
+///
+/// # Errors
+///
+/// This function will return an error in the following cases:
+///
+/// * If the certificate chain is empty.
+/// * If there is an issue creating the X509 store builder.
+/// * If there is an issue adding certificates to the store.
+/// * If there is an issue building the store.
+/// * If there is an issue creating the store context for verification.
+/// * If the verification of the certificate chain fails.
+/// * If the verification of individual certificates in the chain fails.
+/// ```
 fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     if certificates.is_empty() {
         return Err(KmsError::Certificate(
@@ -305,7 +351,6 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
         openssl::x509::X509StoreContextRef::verify_cert,
     )?;
 
-    debug!("Result of the function verify_cert: {result:?}");
     if !result {
         return Err(KmsError::Certificate(
             "Result of the function verify_cert: {result:?}".to_string(),
@@ -337,6 +382,28 @@ enum UriType {
     Path(String),
 }
 
+/// Retrieves Certificate Revocation List (CRL) bytes from a list of URIs.
+///
+/// This function takes a list of URIs, which can be either URLs or file paths, and retrieves the
+/// corresponding CRL bytes. The retrieved CRLs are cached to avoid redundant network or file system
+/// access. If a CRL is already cached, it is directly retrieved from the cache.
+///
+/// # Arguments
+///
+/// * `uri_list` - A vector of strings representing the URIs from which to retrieve the CRLs.
+///
+/// # Returns
+///
+/// A `KResult` containing a `HashMap` where the keys are the URIs and the values are the corresponding
+/// CRL bytes. If an error occurs during the retrieval process, a `KmsError::Certificate` is returned.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - The provided URI is invalid.
+/// - There is an error in retrieving the CRL from a URL.
+/// - There is an error in reading the CRL from a file path.
+/// ```
 async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
@@ -367,22 +434,8 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
-                let mut headers = HeaderMap::new();
-                headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
-                let client = reqwest::ClientBuilder::new()
-                    .default_headers(headers)
-                    .read_timeout(Duration::from_secs(60))
-                    .connect_timeout(Duration::from_secs(60))
-                    .timeout(Duration::from_secs(60))
-                    .tcp_keepalive(Duration::from_secs(60))
-                    .pool_idle_timeout(Duration::from_secs(60))
-                    .pool_max_idle_per_host(0)
-                    .connection_verbose(true)
-                    .build()?;
-
-                let response = client.get(&url).send().await?;
-                // let response = reqwest::Client::new().get(&url).send().await?;
+                let response = reqwest::Client::new().get(&url).send().await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
@@ -435,8 +488,31 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
     Ok(result)
 }
 
+/// Verifies the Certificate Revocation Lists (CRLs) for a given list of certificates.
+///
+/// This function iterates over the provided certificates and performs the following checks:
+/// 1. For each certificate, if it is not the first one, it checks if the certificate is present in the parent CRLs.
+/// 2. If the certificate has CRL distribution points, it fetches the CRLs from the specified URIs and verifies them.
+///
+/// # Arguments
+///
+/// * `certificates` - A vector of `X509` certificates to be verified.
+///
+/// # Returns
+///
+/// * `KResult<ValidityIndicator>` - Returns `ValidityIndicator::Valid` if all certificates are valid,
+///   otherwise returns an error indicating the reason for invalidity.
+///
+/// # Errors
+///
+/// This function will return an error in the following cases:
+/// * If a certificate is found to be revoked or removed from the CRL.
+/// * If there is an issue deserializing a CRL.
+/// * If the CRL signature is invalid.
+/// * If there is an issue fetching the CRL bytes from the URIs.
+/// ```
 async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
-    let mut parent_crls: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
         debug!(
@@ -444,9 +520,11 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
             certificate.subject_name()
         );
 
-        // Test if certificate is in parent CRL
+        //
+        // Test if certificate is in parent CRLs
+        //
         if idx > 0 {
-            for (crl_path, crl_value) in &parent_crls {
+            for (crl_path, crl_value) in &current_crls {
                 let crl = X509Crl::from_pem(crl_value.as_slice())?;
                 trace!("CRL deserialized OK: {crl_path}");
                 let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
@@ -460,7 +538,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
         }
         if let Some(crl_dp) = certificate.crl_distribution_points() {
             let crl_size = crl_dp.len();
-            let mut uri_list = Vec::<String>::new();
+            let mut uri_list = Vec::with_capacity(crl_size);
             for i in 0..crl_size {
                 let crl_uri = crl_dp
                     .get(i)
@@ -471,19 +549,17 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                 if let Some(crl_uri) = crl_uri {
                     if !uri_list.contains(&crl_uri.to_string()) {
                         uri_list.push(crl_uri.to_string());
-                        debug!("Found CRL URI: {crl_uri}");
+                        trace!("Found CRL URI: {crl_uri}");
                     }
                 }
             }
 
-            parent_crls = get_crl_bytes(uri_list).await?;
+            current_crls = get_crl_bytes(uri_list).await?;
 
-            for (crl_path, crl_value) in &parent_crls {
-                debug!(
-                    "Iterating on CRL list: {crl_path}, CRL value Length: {}",
-                    crl_value.len()
-                );
-
+            //
+            // Test if certificate is in current CRLs
+            //
+            for (crl_path, crl_value) in &current_crls {
                 // Verifying that the CRL is properly signed by its issuer
                 let crl = X509Crl::from_pem(crl_value.as_slice())?;
                 trace!("CRL deserialized OK: {crl_path}");
@@ -521,16 +597,15 @@ async fn certificates_by_uid(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<Vec<u8>>> {
     debug!("certificates_by_uid: entering: {unique_identifiers:?}");
-    let res = futures::future::join_all(unique_identifiers.iter().map(|unique_identifier| async {
+    let mut results = Vec::new();
+    for unique_identifier in unique_identifiers {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::Certificate("as_str returned None in certificates_by_uid".to_string())
         })?;
-        certificate_by_uid(unique_identifier, kms, user, params).await
-    }))
-    .await;
-
-    // checking if there are any errors
-    res.into_iter().collect()
+        let result = certificate_by_uid(unique_identifier, kms, user, params).await?;
+        results.push(result);
+    }
+    Ok(results)
 }
 
 // Fetches a certificate. If it fails, returns the according error
