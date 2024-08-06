@@ -33,11 +33,19 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// Otherwise we get: "Address already in use (os error 98)"
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// Start a test KMS server in a thread with the default options:
-/// JWT authentication and encrypted database, no TLS
+/// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, true, true))
+    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, false, false))
+        .await
+        .unwrap()
+}
+/// TLS + certificate authentication
+pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    ONCE_SERVER_WITH_AUTH
+        .get_or_try_init(|| start_test_server_with_options(9991, false, true, true))
         .await
         .unwrap()
 }
@@ -118,7 +126,7 @@ fn start_test_kms_server(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?
-            .block_on(async { start_kms_server(server_params, Some(tx)).await })
+            .block_on(start_kms_server(server_params, Some(tx)))
             .map_err(|e| ClientError::UnexpectedError(e.to_string()))
     });
     trace!("Waiting for test KMS server to start...");

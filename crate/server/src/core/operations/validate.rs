@@ -21,6 +21,7 @@ use openssl::{
         X509Crl, X509StoreContext, X509,
     },
 };
+use reqwest::header::{HeaderMap, HeaderValue};
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -366,14 +367,17 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     crls.get(&url).and_then(|v| result.insert(url, v.clone()));
                     continue;
                 }
+                let mut headers = HeaderMap::new();
+                headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+
                 let client = reqwest::ClientBuilder::new()
-                    .danger_accept_invalid_certs(true)
-                    .read_timeout(Duration::from_secs(10))
-                    .connect_timeout(Duration::from_secs(10))
-                    .timeout(Duration::from_secs(10))
-                    .tcp_keepalive(Duration::from_secs(5))
-                    .pool_idle_timeout(Duration::from_secs(5))
-                    // .pool_max_idle_per_host(0)
+                    .default_headers(headers)
+                    .read_timeout(Duration::from_secs(60))
+                    .connect_timeout(Duration::from_secs(60))
+                    .timeout(Duration::from_secs(60))
+                    .tcp_keepalive(Duration::from_secs(60))
+                    .pool_idle_timeout(Duration::from_secs(60))
+                    .pool_max_idle_per_host(0)
                     .connection_verbose(true)
                     .build()?;
 
