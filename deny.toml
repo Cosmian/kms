@@ -42,7 +42,7 @@ targets = [
 # If true, metadata will be collected with `--all-features`. Note that this can't
 # be toggled off if true, if you want to conditionally enable `--all-features` it
 # is recommended to pass `--all-features` on the cmd line instead
-all-features = false
+all-features = true
 # If true, metadata will be collected with `--no-default-features`. The same
 # caveat with `all-features` applies
 no-default-features = false
@@ -70,13 +70,6 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    { id = "RUSTSEC-2020-0071", reason = "crate time in 2 versions (one not upgradable)..." },
-    { id = "RUSTSEC-2023-0006", reason = "openssl-src" },
-    { id = "RUSTSEC-2023-0007", reason = "openssl-src" },
-    { id = "RUSTSEC-2023-0009", reason = "openssl-src" },
-    { id = "RUSTSEC-2023-0010", reason = "openssl-src" },
-    { id = "RUSTSEC-2023-0018", reason = "openssl-src" },
-    { id = "RUSTSEC-2023-0034", reason = "openssl-src" },
     { id = "RUSTSEC-2023-0071", reason = "rsa" },
     { id = "RUSTSEC-2023-0079", reason = "pqc-kyber" },
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
