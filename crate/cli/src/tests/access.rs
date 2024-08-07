@@ -122,6 +122,7 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError
 
 #[tokio::test]
 pub(crate) async fn test_ownership_and_grant() -> Result<(), CliError> {
+    std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
