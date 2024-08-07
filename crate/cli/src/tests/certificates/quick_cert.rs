@@ -119,6 +119,10 @@ pub(crate) fn export(
             args.push("--format");
             args.push("ttlv");
         }
+        CertificateExportFormat::Pkcs7 => {
+            args.push("--format");
+            args.push("pkcs7");
+        }
     };
     if let Some(wki) = &wrap_key_id {
         args.push("--wrap-key-id");

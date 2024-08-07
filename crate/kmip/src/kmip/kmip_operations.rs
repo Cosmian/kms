@@ -1362,3 +1362,8 @@ pub struct ValidateResponse {
     /// invalid, or unknown.
     pub validity_indicator: ValidityIndicator,
 }
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StatusResponse {
+    pub kacls_url: String,
+}

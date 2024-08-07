@@ -4,8 +4,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, LinkType,
-            StateEnumeration, UniqueIdentifier,
+            CertificateType, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -15,6 +15,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
+    pkcs7::Pkcs7,
     pkey::{Id, PKey, Private, Public},
     stack::Stack,
     x509::X509,
@@ -158,7 +159,12 @@ pub(crate) async fn export_get(
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
-                if *key_format_type != KeyFormatType::X509 {
+                if *key_format_type == KeyFormatType::PKCS7 {
+                    owm = post_process_pkcs7(kms, operation_type, user, params, owm).await?;
+                }
+                if *key_format_type != KeyFormatType::X509
+                    && *key_format_type != KeyFormatType::PKCS7
+                {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
                         key_format_type
@@ -652,4 +658,83 @@ async fn post_process_pkcs12_for_private_key(
         },
     };
     Ok(())
+}
+
+async fn post_process_pkcs7(
+    kms: &KMS,
+    operation_type: ObjectOperationType,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+    owm: ObjectWithMetadata,
+) -> Result<ObjectWithMetadata, KmsError> {
+    // convert the cert to openssl
+    let certificate = kmip_certificate_to_openssl(&owm.object)
+        .context("export: unable to parse the certificate to openssl")?;
+
+    let mut cert_owm = owm.clone();
+
+    let leaf_cert = certificate.clone();
+    let public_key_id = cert_owm
+        .attributes
+        .get_link(LinkType::PublicKeyLink)
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("No Public Key found in the leaf certificate".to_string())
+        })?;
+    let public_key_owm = retrieve_object_for_operation(
+        &public_key_id.to_string(),
+        operation_type,
+        kms,
+        user,
+        params,
+    )
+    .await?;
+    let private_key_id = public_key_owm.attributes.get_link(LinkType::PrivateKeyLink);
+    if let Some(private_key_id) = private_key_id {
+        let private_key_owm = retrieve_object_for_operation(
+            &private_key_id.to_string(),
+            operation_type,
+            kms,
+            user,
+            params,
+        )
+        .await?;
+        let pkey = kmip_private_key_to_openssl(&private_key_owm.object)
+            .context("export: unable to parse the private key to openssl")?;
+
+        // Create the PKCS7 structure
+        let mut chain: Stack<X509> = Stack::new()?;
+
+        // Retrieve the certificate chain
+        while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
+            // Retrieve the parent certificate
+            cert_owm = retrieve_object_for_operation(
+                &parent_id.to_string(),
+                operation_type,
+                kms,
+                user,
+                params,
+            )
+            .await?;
+            let certificate = kmip_certificate_to_openssl(&cert_owm.object)
+                .context("export: unable to parse the certificate to openssl")?;
+            chain.push(certificate)?;
+        }
+
+        // Build PKCS7
+        let pkcs7 = Pkcs7::sign(
+            &leaf_cert,
+            &pkey,
+            &chain,
+            &[],
+            openssl::pkcs7::Pkcs7Flags::empty(),
+        )?;
+
+        // Modify initial owm
+        cert_owm.object = Object::Certificate {
+            certificate_type: CertificateType::PKCS7,
+            certificate_value: pkcs7.to_der()?,
+        };
+    }
+
+    Ok(cert_owm)
 }

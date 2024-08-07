@@ -120,7 +120,7 @@ async fn main_() -> Result<(), CliError> {
                 CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
-                CliCommands::Google(action) => action.process(&conf_path).await?,
+                CliCommands::Google(action) => action.process(&conf_path, &kms_rest_client).await?,
                 _ => {
                     tracing::error!("unexpected command");
                 }
