@@ -43,7 +43,7 @@ der = { version = "0.7", features = ["pem"] }
 jwt-simple = { version = "0.12", default-features = false, features = [
   "pure-rust",
 ] }
-oauth2 = "4.4"
+oauth2 = { version = "4.4", features = ["reqwest"] }
 pem = "3.0"
 reqwest = { workspace = true }
 serde = { workspace = true }
