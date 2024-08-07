@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::start_default_test_kms_server;
+use kms_test_server::start_default_test_kms_server_with_cert_auth;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
@@ -49,7 +49,7 @@ pub(crate) fn locate(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg("locate").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -68,8 +68,9 @@ pub(crate) fn locate(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
+    std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
     // init the test server
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -214,7 +215,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub(crate) async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -302,7 +303,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 #[tokio::test]
 pub(crate) async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new key
     let key_id =
@@ -371,7 +372,7 @@ pub(crate) async fn test_locate_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_grant() -> Result<(), CliError> {
     // init the test server
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

@@ -134,7 +134,7 @@ where
                 match common_name {
                     Ok(common_name) => {
                         // Log that the peer certificate is valid.
-                        trace!("Ssl access granted to {} !", common_name);
+                        trace!("Ssl access granted to {}!", common_name);
 
                         // Add the common name to the request context.
                         req.extensions_mut().insert(PeerCommonName { common_name });

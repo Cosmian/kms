@@ -26,7 +26,7 @@ use crate::{
 pub(crate) async fn tx_and_list<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -113,7 +113,7 @@ pub(crate) async fn tx_and_list<DB: Database>(
 pub(crate) async fn atomic<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -234,7 +234,7 @@ pub(crate) async fn atomic<DB: Database>(
 pub(crate) async fn upsert<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -326,7 +326,7 @@ pub(crate) async fn upsert<DB: Database>(
 pub(crate) async fn crud<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 

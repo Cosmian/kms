@@ -13,12 +13,14 @@ use actix_web::{
 use clap::Parser;
 use cosmian_kms_client::ClientConf;
 use oauth2::{
-    basic::BasicClient, http, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenUrl,
-};
-use reqwest::{
-    header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE},
-    StatusCode,
+    basic::BasicClient,
+    http::{
+        self,
+        header::{ACCEPT, CONTENT_TYPE},
+        HeaderMap, HeaderValue, StatusCode,
+    },
+    AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, Scope, TokenUrl,
 };
 use serde::Deserialize;
 use url::Url;

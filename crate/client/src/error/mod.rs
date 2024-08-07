@@ -4,7 +4,6 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
-use http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 pub(crate) mod result;
@@ -63,14 +62,14 @@ impl From<TtlvError> for ClientError {
     }
 }
 
-impl From<InvalidHeaderValue> for ClientError {
-    fn from(e: InvalidHeaderValue) -> Self {
-        Self::Default(e.to_string())
+impl From<reqwest::Error> for ClientError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 
-impl From<reqwest::Error> for ClientError {
-    fn from(e: reqwest::Error) -> Self {
+impl From<reqwest::header::InvalidHeaderValue> for ClientError {
+    fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }

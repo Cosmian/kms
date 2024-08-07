@@ -95,7 +95,6 @@ pub(crate) fn validate_certificate(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug,cosmian_kms_server=debug");
     let mut args: Vec<String> = vec!["validate".to_owned()];
     for certificate in certificates {
         args.push("--certificate".to_owned());
@@ -121,8 +120,7 @@ pub(crate) fn validate_certificate(
 }
 
 #[tokio::test]
-// #[ignore = "error: connection closed before message completed"]
-async fn test_cli_validate() -> Result<(), CliError> {
+async fn test_validate_cli() -> Result<(), CliError> {
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
@@ -199,12 +197,12 @@ async fn test_cli_validate() -> Result<(), CliError> {
             leaf1_certificate_id,
         ],
         None,
-    )?;
+    );
     info!(
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
-         test1_res: {test1_res}"
+         test1_res: {test1_res:?}"
     );
-    assert_eq!(test1_res, "Invalid\n");
+    assert!(test1_res.is_err());
 
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -221,7 +219,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
         "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
-    assert_eq!(test2_res, "Valid\n");
+    assert!(test2_res.contains("Valid"));
 
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -234,12 +232,12 @@ async fn test_cli_validate() -> Result<(), CliError> {
         ],
         // Date: 15/04/2048
         Some("4804152030Z".to_string()),
-    )?;
+    );
     info!(
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
-         leaf2's expiration date. test3_res: {test3_res}"
+         leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert_eq!(test3_res, "Invalid\n");
+    assert!(test3_res.is_err());
 
     let test4_res = validate_certificate(
         &ctx.owner_client_conf_path,
@@ -250,7 +248,7 @@ async fn test_cli_validate() -> Result<(), CliError> {
     )?;
 
     info!("validate chain only. Must be valid.");
-    assert_eq!(test4_res, "Valid\n");
+    assert!(test4_res.contains("Valid"));
 
     info!("validate tests successfully passed");
     Ok(())

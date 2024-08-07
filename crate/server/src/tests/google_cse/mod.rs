@@ -84,7 +84,7 @@ fn import_google_cse_symmetric_key() -> Import {
 
 #[test]
 fn test_ossl_sign_verify() -> KResult<()> {
-    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+    cosmian_logger::log_utils::log_init(Some("debug,cosmian_kms_server=trace"));
 
     //-------------------------------------------------------------------------
     // Signature
@@ -136,7 +136,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
-    cosmian_logger::log_utils::log_init("debug,cosmian_kms_server=trace");
+    cosmian_logger::log_utils::log_init(Some("debug,cosmian_kms_server=trace"));
 
     let jwt = generate_google_jwt().await;
 
@@ -211,7 +211,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    cosmian_logger::log_utils::log_init("info,cosmian_kms_server=trace");
+    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
 
     let jwt = generate_google_jwt().await;
 

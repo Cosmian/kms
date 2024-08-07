@@ -33,9 +33,19 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// Otherwise we get: "Address already in use (os error 98)"
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    ONCE.get_or_try_init(_start_default_test_kms_server)
+    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, false, false))
+        .await
+        .unwrap()
+}
+/// TLS + certificate authentication
+pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    ONCE_SERVER_WITH_AUTH
+        .get_or_try_init(|| start_test_server_with_options(9991, false, true, true))
         .await
         .unwrap()
 }
@@ -57,12 +67,6 @@ impl TestsContext {
     }
 }
 
-/// Start a test KMS server in a thread with the default options:
-/// JWT authentication and encrypted database, no TLS
-pub(crate) async fn _start_default_test_kms_server() -> Result<TestsContext, ClientError> {
-    start_test_server_with_options(9990, false, true, true).await
-}
-
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
     port: u16,
@@ -70,6 +74,7 @@ pub async fn start_test_server_with_options(
     use_https: bool,
     use_client_cert: bool,
 ) -> Result<TestsContext, ClientError> {
+    cosmian_logger::log_utils::log_init(None);
     let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)?;
 
     // Create a (object owner) conf
@@ -325,6 +330,6 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
-    let context = _start_default_test_kms_server().await?;
+    let context = start_test_server_with_options(9990, false, true, true).await?;
     context.stop_server().await
 }

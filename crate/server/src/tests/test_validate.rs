@@ -12,7 +12,8 @@ use crate::{
 };
 
 #[tokio::test]
-pub(crate) async fn test() -> Result<(), KmsError> {
+pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
+    cosmian_logger::log_utils::log_init(None);
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
@@ -53,8 +54,8 @@ pub(crate) async fn test() -> Result<(), KmsError> {
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    let res = kms.validate(request, owner, None).await;
+    assert!(res.is_err());
     debug!("OK: Validate root/intermediate/leaf1 certificates - invalid (revoked)");
     let request = Validate {
         certificate: Some(
@@ -84,23 +85,23 @@ pub(crate) async fn test() -> Result<(), KmsError> {
         validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_string()), // this is supposed to work but it does not.
         Some("4804152030Z".to_string())
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid); // Test designed to be invalid
+    let res = kms.validate(request, owner, None).await;
+    assert!(res.is_err());
     debug!("OK: Validate root/intermediate/leaf2 certificates - invalid");
     let request = Validate {
         certificate: Some([leaf2_cert.clone(), root_cert.clone()].to_vec()),
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    assert!(kms.validate(request, owner, None).await.is_err());
     debug!("OK: Validate root/leaf2 certificates - missing intermediate");
 
     Result::Ok(())
 }
 
 #[tokio::test]
-pub(crate) async fn test_kms() -> Result<(), KmsError> {
+pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
+    cosmian_logger::log_utils::log_init(None);
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
@@ -202,8 +203,8 @@ pub(crate) async fn test_kms() -> Result<(), KmsError> {
         ),
         validity_time: None,
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    let res = kms.validate(request, owner, None).await;
+    assert!(res.is_err());
     debug!("OK: Validate root/intermediate/leaf1 certificates - invalid (revoked)");
 
     // Root and intermediate valid certificates. Leaf valid. Test returns valid.
@@ -240,8 +241,8 @@ pub(crate) async fn test_kms() -> Result<(), KmsError> {
         validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_string()), // this is supposed to work but it does not.
         Some("4804152030Z".to_string())
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid); // Test designed to be invalid
+    let res = kms.validate(request, owner, None).await;
+    assert!(res.is_err());
     debug!(
         "OK: Validate root/intermediate/leaf2 certificates - invalid (won't be valid in the \
          future)"
@@ -253,8 +254,8 @@ pub(crate) async fn test_kms() -> Result<(), KmsError> {
         unique_identifier: Some([res_root.unique_identifier.clone()].to_vec()),
         validity_time: None,
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    assert!(kms.validate(request, owner, None).await.is_err());
+
     debug!("OK: Validate root/leaf2 certificates - invalid (missing intermediate)");
     // Root certificate not provided. Intermediate and leaf are valid certificates. Return is Invalid.
     let request = Validate {
@@ -262,8 +263,7 @@ pub(crate) async fn test_kms() -> Result<(), KmsError> {
         unique_identifier: Some([res_intermediate.unique_identifier.clone()].to_vec()),
         validity_time: None,
     };
-    let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Invalid);
+    assert!(kms.validate(request, owner, None).await.is_err());
     debug!("OK: Validate root/leaf2 certificates - invalid (missing root)");
 
     Result::Ok(())

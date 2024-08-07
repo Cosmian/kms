@@ -22,7 +22,7 @@ pub(crate) fn create_rsa_4096_bits_key_pair(
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["keys", "create"];
     // add tags
     for tag in tags {
@@ -52,8 +52,6 @@ pub(crate) fn create_rsa_4096_bits_key_pair(
 
 #[tokio::test]
 pub(crate) async fn test_rsa_create_key_pair() -> Result<(), CliError> {
-    // log_init("trace");
-
     // from specs
     let ctx = start_default_test_kms_server().await;
     create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag1", "tag2"])?;

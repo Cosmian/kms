@@ -144,10 +144,9 @@ impl From<std::string::FromUtf8Error> for CliError {
     }
 }
 
-#[cfg(test)]
 impl From<reqwest::Error> for CliError {
     fn from(e: reqwest::Error) -> Self {
-        Self::Default(e.to_string())
+        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 

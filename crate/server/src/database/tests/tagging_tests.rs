@@ -27,7 +27,7 @@ pub(crate) async fn tags<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
     verify_attributes: bool,
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
     let mut rng = CsRng::from_entropy();

@@ -27,7 +27,7 @@ use crate::{
 pub(crate) async fn json_access<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    // log_init("debug");
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
