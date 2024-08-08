@@ -144,14 +144,12 @@ pub struct GoogleCseConfig {
     pub kacls_url: String,
 }
 
-/// Validate the authentication and the authorization tokens and return the calling user
+/// Validate the authentication token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-pub(crate) async fn validate_tokens(
+pub(crate) async fn validate_cse_authentication_token(
     authentication_token: &str,
-    authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
-    application: &str,
-    roles: Option<&[&str]>,
+    check_email: bool,
 ) -> KResult<String> {
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
@@ -160,7 +158,6 @@ pub(crate) async fn validate_tokens(
         )
     })?;
 
-    // validate authentication token
     let mut decoded_token = None;
     for idp_config in cse_config.authentication.iter() {
         if let Ok(token) = idp_config.decode_authentication_token(authentication_token) {
@@ -175,7 +172,51 @@ pub(crate) async fn validate_tokens(
         )
     })?;
 
-    tracing::trace!("authentication token: {authentication_token:?}");
+    if let Some(kacls_url) = authentication_token.kacls_url {
+        kms_ensure!(
+            kacls_url == cse_config.kacls_url,
+            KmsError::Unauthorized(format!(
+                "KACLS Urls should match: expected: {}, got: {} ",
+                cse_config.kacls_url, kacls_url
+            ))
+        );
+    }
+
+    // When the authentication token contains the optional google_email claim, it must be compared against the email claim in the authorization token using a case-insensitive approach. Don't use the email claim within the authentication token for this comparison.
+    // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
+    let authentication_email = if check_email {
+        authentication_token
+            .google_email
+            .or(authentication_token.email)
+            .ok_or_else(|| {
+                KmsError::Unauthorized(
+                    "Authentication token should contain a google_email or an email".to_string(),
+                )
+            })?
+    } else {
+        // For `privileged_unwrap` endpoint, google_email or email claim is not required in authentication token
+        "privileged_user".to_string()
+    };
+
+    tracing::trace!("authentication token validated for {authentication_email}");
+
+    Ok(authentication_email)
+}
+
+/// Validate the authorization token and return the calling user
+/// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+pub(crate) async fn validate_cse_authorization_token(
+    authorization_token: &str,
+    cse_config: &Option<GoogleCseConfig>,
+    application: &str,
+    roles: Option<&[&str]>,
+) -> KResult<UserClaim> {
+    let cse_config = cse_config.as_ref().ok_or_else(|| {
+        KmsError::ServerError(
+            "JWT authentication and authorization configurations for Google CSE are not set"
+                .to_owned(),
+        )
+    })?;
 
     let jwt_config = cse_config.authorization.get(application).ok_or_else(|| {
         KmsError::NotSupported(format!(
@@ -187,33 +228,26 @@ pub(crate) async fn validate_tokens(
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
-    // The emails should match (case insensitive)
-    let authentication_email = authentication_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authentication token should contain an email".to_owned())
-    })?;
-    let authorization_email = authorization_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
-    })?;
-    kms_ensure!(
-        authorization_email == authentication_email,
-        KmsError::Unauthorized(
-            "Authentication and authorization emails in tokens do not match".to_owned()
-        )
-    );
-
     if let Some(roles) = roles {
-        let role = authorization_token.role.ok_or_else(|| {
+        let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
         kms_ensure!(
             roles.contains(&role.as_str()),
-            KmsError::Unauthorized(
-                "Authorization token should contain a role of writer or owner".to_owned()
-            )
+            KmsError::Unauthorized(format!(
+                "Authorization token should contain a role of {}",
+                roles.concat()
+            ))
         );
     }
 
-    if let Some(kacls_url) = authorization_token.kacls_url {
+    if authorization_token.resource_name.is_none() {
+        return Err(KmsError::Unauthorized(
+            "Authorization token should contain an resource_name".to_owned(),
+        ))
+    }
+
+    if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
             kacls_url == cse_config.kacls_url,
             KmsError::Unauthorized(format!(
@@ -223,9 +257,55 @@ pub(crate) async fn validate_tokens(
         );
     }
 
+    if authorization_token.email.is_none() {
+        return Err(KmsError::Unauthorized(
+            "Authorization token should contain an email".to_string(),
+        ))
+    }
+
+    Ok(authorization_token)
+}
+
+pub struct TokenExtractedContent {
+    pub user: String,
+    pub resource_name: Option<Vec<u8>>,
+}
+
+/// Validate the authentication and the authorization tokens and return the calling user
+/// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+pub(crate) async fn validate_tokens(
+    authentication_token: &str,
+    authorization_token: &str,
+    cse_config: &Option<GoogleCseConfig>,
+    application: &str,
+    roles: Option<&[&str]>,
+) -> KResult<TokenExtractedContent> {
+    let authentication_email =
+        validate_cse_authentication_token(authentication_token, cse_config, true).await?;
+
+    let authorization_token =
+        validate_cse_authorization_token(authorization_token, cse_config, application, roles)
+            .await?;
+    let authorization_email = authorization_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
+    })?;
+
+    // The emails should match (case insensitive)
+    kms_ensure!(
+        authorization_email == authentication_email,
+        KmsError::Unauthorized(
+            "Authentication and authorization emails in tokens do not match".to_owned()
+        )
+    );
+
     tracing::debug!("Google CSE request authorized for user {authentication_email}");
 
-    Ok(authentication_email)
+    let resource_name = authorization_token.resource_name.unwrap_or(String::new());
+
+    Ok(TokenExtractedContent {
+        user: authentication_email,
+        resource_name: Some(resource_name.into_bytes()),
+    })
 }
 
 #[cfg(test)]
