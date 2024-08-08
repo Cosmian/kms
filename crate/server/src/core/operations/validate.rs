@@ -134,7 +134,7 @@ pub(crate) async fn validate_operation(
     };
 
     verify_chain_signature(&sorted_certificates)?;
-    validate_chain_date(&certificates, request.validity_time)?;
+    validate_chain_date(&certificates, &request.validity_time)?;
     verify_crls(sorted_certificates).await?;
 
     Ok(ValidateResponse {
@@ -435,12 +435,11 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     crls.insert(url.clone(), crl_bytes.clone());
                     result.insert(url, crl_bytes);
                     break;
-                } else {
-                    return Err(KmsError::Certificate(format!(
-                        "The CRL at the following URL {url} is not available. Status: {}",
-                        response.status()
-                    )));
                 }
+                return Err(KmsError::Certificate(format!(
+                    "The CRL at the following URL {url} is not available. Status: {}",
+                    response.status()
+                )));
             }
             Some(UriType::Path(path)) => {
                 // Get PEM file (path should be already canonic)
@@ -509,7 +508,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
             for (crl_path, crl_value) in &current_crls {
                 let crl = X509Crl::from_pem(crl_value.as_slice())?;
                 trace!("CRL deserialized OK: {crl_path}");
-                let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
+                let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
                     return Err(KmsError::Certificate(
@@ -556,7 +555,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                     )))
                 };
 
-                let res = crl_status_to_validity_indicator(crl.get_by_cert(certificate));
+                let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Revocation status: result: {res:?}");
                 if res == ValidityIndicator::Invalid {
                     return Err(KmsError::Certificate(
@@ -623,7 +622,7 @@ async fn certificate_by_uid(
     }
 }
 
-fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<ValidityIndicator> {
+fn validate_chain_date(certificates: &[X509], date: &Option<String>) -> KResult<ValidityIndicator> {
     let current_date = if let Some(date) = date.clone() {
         Asn1Time::from_str(date.as_str())
     } else {
@@ -632,7 +631,7 @@ fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<V
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {
-            let validation = validate_date(certificate, &current_date)?;
+            let validation = validate_date(certificate, &current_date);
             if validation == ValidityIndicator::Invalid {
                 Err(KmsError::Certificate(format!(
                     "According to this date ({date:?}), the following certificate will be invalid \
@@ -645,20 +644,19 @@ fn validate_chain_date(certificates: &[X509], date: Option<String>) -> KResult<V
         })
 }
 
-fn validate_date(certificate: &X509, date: &Asn1Time) -> KResult<ValidityIndicator> {
+fn validate_date(certificate: &X509, date: &Asn1Time) -> ValidityIndicator {
     let now = date.as_ref();
     let (start, stop) = (certificate.not_before(), certificate.not_after());
     if start <= now && now <= stop {
-        Ok(ValidityIndicator::Valid)
+        ValidityIndicator::Valid
     } else {
-        Ok(ValidityIndicator::Invalid)
+        ValidityIndicator::Invalid
     }
 }
 
-const fn crl_status_to_validity_indicator(status: CrlStatus) -> ValidityIndicator {
+const fn crl_status_to_validity_indicator(status: &CrlStatus) -> ValidityIndicator {
     match status {
         CrlStatus::NotRevoked => ValidityIndicator::Valid,
-        CrlStatus::RemoveFromCrl(_) => ValidityIndicator::Invalid,
-        CrlStatus::Revoked(_) => ValidityIndicator::Invalid,
+        CrlStatus::RemoveFromCrl(_) | CrlStatus::Revoked(_) => ValidityIndicator::Invalid,
     }
 }

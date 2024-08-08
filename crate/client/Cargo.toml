@@ -19,15 +19,11 @@ openssl = ["cosmian_kmip/openssl"]
 [dependencies]
 base64 = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip", default-features = true } # use the non-openssl version
+cosmian_kmip = { path = "../kmip", default-features = true }
 der = "0.7.9"
 log = "0.4"
 pem = "3.0.4"
-reqwest = { workspace = true, features = [
-  "default",
-  "json",
-  "native-tls",
-] }
+reqwest = { workspace = true, features = ["default", "json", "native-tls"] }
 rustls = { workspace = true, features = ["dangerous_configuration"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
