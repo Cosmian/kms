@@ -93,15 +93,15 @@ impl From<KmipError> for ClientError {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
             KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(s) => Self::NotSupported(s),
-            KmipError::OpenSSL(s) => Self::NotSupported(s),
-            KmipError::InvalidSize(s) => Self::NotSupported(s),
-            KmipError::InvalidTag(s) => Self::NotSupported(s),
-            KmipError::Derivation(s) => Self::NotSupported(s),
-            KmipError::ConversionError(s) => Self::NotSupported(s),
-            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::NotSupported(s)
+            | KmipError::Default(s)
+            | KmipError::OpenSSL(s)
+            | KmipError::InvalidSize(s)
+            | KmipError::InvalidTag(s)
+            | KmipError::Derivation(s)
+            | KmipError::ConversionError(s)
+            | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

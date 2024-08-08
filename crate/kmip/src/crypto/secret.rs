@@ -56,7 +56,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     /// Creates a new secret and returns it.
     ///
     /// All bytes are initially set to 0.
-    #[inline(always)]
     #[must_use]
     pub fn new() -> Self {
         // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
@@ -81,7 +80,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     ///
     /// Once returned the secret bytes are *not* protected. It is the caller's
     /// responsibility to guarantee they are not leaked in the memory.
-    #[inline(always)]
     pub fn to_unprotected_bytes(&self, dest: &mut [u8; LENGTH]) {
         dest.copy_from_slice(self);
     }
@@ -115,21 +113,18 @@ impl<const LENGTH: usize> Deref for Secret<LENGTH> {
 }
 
 impl<const LENGTH: usize> DerefMut for Secret<LENGTH> {
-    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut *self.0
     }
 }
 
 impl<const LENGTH: usize> Zeroize for Secret<LENGTH> {
-    #[inline(always)]
     fn zeroize(&mut self) {
         self.0.deref_mut().zeroize();
     }
 }
 
 impl<const LENGTH: usize> Drop for Secret<LENGTH> {
-    #[inline(always)]
     fn drop(&mut self) {
         self.zeroize();
     }

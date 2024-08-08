@@ -29,7 +29,7 @@ impl ValidateCertificatesAction {
     pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         let request = build_validate_certificate_request(
             self.certificate.clone(),
-            self.unique_identifier.clone(),
+            &self.unique_identifier,
             self.validity_time.clone(),
         )?;
 
