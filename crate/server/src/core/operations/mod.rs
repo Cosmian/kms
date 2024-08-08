@@ -36,4 +36,4 @@ pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
 pub(crate) use revoke::{recursively_revoke_key, revoke_operation};
 pub(crate) use validate::validate_operation;
-pub(crate) use wrapping::{unwrap_key, wrap_key};
+pub(crate) use wrapping::unwrap_key;

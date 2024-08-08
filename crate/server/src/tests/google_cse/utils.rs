@@ -55,12 +55,12 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
 
 pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
     let mut uris = google_cse::list_jwks_uri();
+
     uris.push(JwtAuthConfig::uri(
         GOOGLE_JWT_ISSUER_URI,
         Some(GOOGLE_JWKS_URI),
     ));
     let jwks_manager = Arc::new(JwksManager::new(uris).await?);
-
     let jwt_config = JwtConfig {
         jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_owned(),
         jwks: jwks_manager.clone(),
