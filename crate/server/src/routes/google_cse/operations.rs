@@ -11,10 +11,13 @@ use cosmian_kmip::{
     },
 };
 use openssl::{
+    hash::MessageDigest,
     md::Md,
     pkey::{PKey, Private},
     pkey_ctx::PkeyCtx,
     rsa::{Padding, Rsa},
+    sha::Sha256,
+    sign::Signer,
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -26,9 +29,10 @@ use crate::{
         extra_database_params::ExtraDatabaseParams,
         operations::{unwrap_key, wrap_key},
     },
+    error::KmsError,
     kms_ensure,
     result::KResult,
-    routes::google_cse::jwt::validate_tokens,
+    routes::google_cse::jwt::{decode_jwt_authorization_token, validate_tokens},
     KMSServer,
 };
 
@@ -466,4 +470,118 @@ async fn cse_symmetric_unwrap(
     // re-extract the bytes from the key
     let dek = wrapped_dek.key_block()?.key_bytes()?;
     Ok(dek)
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DigestRequest {
+    pub authorization: String,
+    pub wrapped_key: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct DigestResponse {
+    pub resource_key_hash: String,
+}
+
+/// Digest
+/// Takes a Data Encryption Key (DEK) wrapped with the wrap API, and returns the base64 encoded resource key hash
+/// /// See [doc](https://developers.google.com/workspace/cse/reference/digest) and
+/// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+///
+pub async fn digest(
+    req_http: HttpRequest,
+    digest_request: DigestRequest,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMSServer>,
+) -> KResult<DigestResponse> {
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+
+    let cse_config = cse_config.as_ref().clone().ok_or_else(|| {
+        KmsError::ServerError(
+            "JWT authentication and authorization configurations for Google CSE are not set"
+                .to_string(),
+        )
+    })?;
+    let application = if digest_request.reason.contains("Meet") {
+        "meet"
+    } else {
+        "drive"
+    };
+    debug!("unwrap: validate_authorization_token");
+    let jwt_config = cse_config.authorization.get(application).ok_or_else(|| {
+        KmsError::NotSupported(format!(
+            "no JWT config available for application: {application} "
+        ))
+    })?;
+    let (authorization_token, jwt_headers) =
+        decode_jwt_authorization_token(jwt_config, &digest_request.authorization)?;
+    tracing::trace!("authorization token: {authorization_token:?}");
+    tracing::trace!("authorization token headers: {jwt_headers:?}");
+
+    let authorization_email = authorization_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain an email".to_string())
+    })?;
+
+    let _role = authorization_token.role.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain a role".to_string())
+    })?;
+
+    let perimeter_id = authorization_token.perimeter_id.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain a perimeter_id".to_string())
+    })?;
+
+    let resource_name = authorization_token.resource_name.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain a resource_name".to_string())
+    })?;
+
+    debug!("cse_digest: encode base64 wrapped_dek");
+    // Create the data string for HMAC
+    let data = format!("ResourceKeyDigest:{}:{}", resource_name, perimeter_id);
+
+    let mut wrapped_dek = create_symmetric_key_kmip_object(
+        &general_purpose::STANDARD.decode(&digest_request.wrapped_key)?,
+        CryptographicAlgorithm::AES,
+    );
+    // add key wrapping parameters to the wrapped key
+    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
+        wrapping_method: kmip_types::WrappingMethod::Encrypt,
+        encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
+            cryptographic_parameters: None,
+        }),
+        encoding_option: Some(EncodingOption::NoEncoding),
+        ..Default::default()
+    }));
+
+    debug!("unwrap: unwrap key");
+    unwrap_key(
+        wrapped_dek.key_block_mut()?,
+        kms,
+        &authorization_email,
+        database_params.as_ref(),
+    )
+    .await?;
+
+    // re-extract the bytes from the key
+    let dek = wrapped_dek.key_block()?.key_bytes()?;
+
+    // Create a PKey object from the unwrapped DEK
+    let key = PKey::hmac(&dek)?;
+
+    // Create a Signer object for HMAC-SHA256
+    let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
+
+    // Input the data into the signer
+    signer.update(data.as_bytes())?;
+
+    // Finalize the HMAC and retrieve the resulting bytes
+    let hmac_result = signer.sign_to_vec()?;
+
+    // Encode the result as a base64 string
+    let base64_result = general_purpose::STANDARD.encode(hmac_result);
+
+    Ok(DigestResponse {
+        resource_key_hash: base64_result,
+    })
 }

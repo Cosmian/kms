@@ -15,6 +15,8 @@ pub mod operations;
 
 pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
+use self::operations::DigestRequest;
+
 /// Error reply for Google CSE
 ///
 /// see: <https://developers.google.com/workspace/cse/reference/structured-errors?hl=en>
@@ -60,21 +62,26 @@ pub(crate) async fn get_status(
     Ok(Json(operations::get_status()))
 }
 
-#[derive(Deserialize, Debug)]
-pub struct DigestRequest {
-    pub authorization: String,
-    pub reason: String,
-    pub wrapped_key: String,
-}
 #[post("/digest")]
 pub(crate) async fn digest(
-    _req_http: HttpRequest,
-    _request: Json<DigestRequest>,
-    _cse_config: Data<Option<GoogleCseConfig>>,
-    _kms: Data<Arc<KMSServer>>,
+    req_http: HttpRequest,
+    digest_request: Json<DigestRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/digest: not implemented yet");
-    HttpResponse::Ok().finish()
+    info!("POST /google_cse/digest");
+
+    let digest_request = digest_request.into_inner();
+    trace!("digest_request: {:?}", digest_request);
+    let cse_config = cse_config.into_inner();
+
+    match operations::digest(req_http, digest_request, &cse_config, &kms)
+        .await
+        .map(Json)
+    {
+        Ok(digest_response) => HttpResponse::Ok().json(digest_response),
+        Err(e) => CseErrorReply::from(e).into(),
+    }
 }
 
 #[derive(Deserialize, Debug)]
