@@ -3,13 +3,10 @@ use std::{
     fs, path,
 };
 
-use cosmian_kmip::{
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{ErrorReason, Validate, ValidateResponse},
-        kmip_types::{UniqueIdentifier, ValidityIndicator},
-    },
-    KmipError,
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::{Validate, ValidateResponse},
+    kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
@@ -142,6 +139,20 @@ pub(crate) async fn validate_operation(
     })
 }
 
+/// Extracts the subject key identifier and authority key identifier from an X509 certificate.
+///
+/// # Arguments
+///
+/// * `certificate` - A reference to an `X509` certificate from which the identifiers will be extracted.
+///
+/// # Returns
+///
+/// A tuple containing two byte slices:
+///
+/// * The first element is the subject key identifier as a byte slice.
+/// * The second element is the authority key identifier as a byte slice.
+///
+/// If either identifier is not present in the certificate, an empty byte slice is returned for that identifier.
 fn get_certificate_identifiers(certificate: &X509) -> (&[u8], &[u8]) {
     (
         certificate
@@ -155,6 +166,24 @@ fn get_certificate_identifiers(certificate: &X509) -> (&[u8], &[u8]) {
     )
 }
 
+/// Debug the details of a given X.509 certificate along with a debug message.
+///
+/// This function retrieves the Subject Key Identifier (SKI) and Authority Key Identifier (AKI)
+/// from the provided certificate and logs them along with the certificate's subject name and
+/// a custom debug message.
+///
+/// # Arguments
+///
+/// * `debug_msg` - A string slice that holds the debug message to be logged.
+/// * `certificate` - A reference to an `X509` certificate whose details are to be traced.
+///
+/// # Panics
+///
+/// This function does not panic.
+///
+/// # Errors
+///
+/// This function does not return errors.
 fn trace_certificate(debug_msg: &str, certificate: &X509) {
     let (ski, aki) = get_certificate_identifiers(certificate);
     trace!(
@@ -165,8 +194,23 @@ fn trace_certificate(debug_msg: &str, certificate: &X509) {
     );
 }
 
-/// Sort a X509 certificate list. Order of output chain will be ROOT/SUBCA/../LEAF.
-/// Certificates are ordered by their Authority Key Identifier (AKI) and Subject Key Identifier (SKI).
+/// Sort a X509 certificate list according to their Authority Key Identifier (AKI) and Subject Key Identifier (SKI).
+/// AKI and SKI MUST appear as CA certificate X509 extensions.
+///
+/// Order of output chain will be ROOT/SUBCA/../LEAF.
+///
+/// As a reminder: <https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2>:
+///
+/// To facilitate certification path construction, this extension MUST
+/// appear in all conforming CA certificates, that is, all certificates
+/// including the basic constraints extension (Section 4.2.1.9) where the
+/// value of cA is TRUE.  In conforming CA certificates, the value of the
+/// subject key identifier MUST be the value placed in the key identifier
+/// field of the authority key identifier extension (Section 4.2.1.1) of
+/// certificates issued by the subject of this certificate.  Applications
+/// are not required to verify that key identifiers match when performing
+/// certification path validation.
+///
 /// Only leaf certificates can omit AKI and SKI.
 ///
 /// # Arguments
@@ -265,10 +309,9 @@ fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     }
 
     if sorted_chains.len() != certificates.len() {
-        return Err(KmsError::from(KmipError::InvalidKmipObject(
-            ErrorReason::Internal_Server_Error,
+        return Err(KmsError::Certificate(
             "Failed to sort the certificates".to_string(),
-        )));
+        ));
     }
 
     Ok(sorted_chains)
@@ -612,12 +655,9 @@ async fn certificate_by_uid(
     {
         Ok(certificate_value)
     } else {
-        Err(KmsError::from(KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Object_Type,
-            format!(
-                "Requested a Certificate Object, got a {}",
-                uid_owm.object.object_type()
-            ),
+        Err(KmsError::Certificate(format!(
+            "Requested a Certificate Object, got a {}",
+            uid_owm.object.object_type()
         )))
     }
 }

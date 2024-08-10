@@ -162,7 +162,7 @@ impl From<std::io::Error> for KmsError {
 
 impl From<openssl::error::ErrorStack> for KmsError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::ServerError(e.to_string())
+        Self::ServerError(format!("{e}. Details: {e:?}"))
     }
 }
 

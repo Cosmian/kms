@@ -177,13 +177,10 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     // Root and intermediate valid certificates. Good structure.
     let request = Validate {
         certificate: None,
-        unique_identifier: Some(
-            [
-                res_intermediate.unique_identifier.clone(),
-                res_root.unique_identifier.clone(),
-            ]
-            .to_vec(),
-        ),
+        unique_identifier: Some(vec![
+            res_intermediate.unique_identifier.clone(),
+            res_root.unique_identifier.clone(),
+        ]),
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
@@ -193,14 +190,11 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     // Root and intermediate valid certificates. Leaf revoked. Test returns invalid.
     let request = Validate {
         certificate: None,
-        unique_identifier: Some(
-            [
-                res_intermediate.unique_identifier.clone(),
-                res_leaf1.unique_identifier.clone(),
-                res_root.unique_identifier.clone(),
-            ]
-            .to_vec(),
-        ),
+        unique_identifier: Some(vec![
+            res_intermediate.unique_identifier.clone(),
+            res_leaf1.unique_identifier.clone(),
+            res_root.unique_identifier.clone(),
+        ]),
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await;
@@ -209,14 +203,26 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
 
     // Root and intermediate valid certificates. Leaf valid. Test returns valid.
     let request = Validate {
-        certificate: Some([leaf2_cert.clone()].to_vec()),
-        unique_identifier: Some(
-            [
-                res_intermediate.unique_identifier.clone(),
-                res_root.unique_identifier.clone(),
-            ]
-            .to_vec(),
-        ),
+        certificate: Some(vec![leaf2_cert.clone()]),
+        unique_identifier: Some(vec![
+            res_intermediate.unique_identifier.clone(),
+            res_root.unique_identifier.clone(),
+        ]),
+        validity_time: None,
+    };
+    let res = kms.validate(request, owner, None).await?;
+    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    debug!("OK: Validate root/intermediate/leaf2 certificates - valid");
+
+    // Root and intermediate valid certificates. Leaf valid. Test returns valid. Testing deduplicating unique identifiers.
+    let request = Validate {
+        certificate: Some(vec![leaf2_cert.clone()]),
+        unique_identifier: Some(vec![
+            res_root.unique_identifier.clone(),
+            res_root.unique_identifier.clone(),
+            res_intermediate.unique_identifier.clone(),
+            res_intermediate.unique_identifier.clone(),
+        ]),
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
@@ -225,18 +231,12 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
 
     // Root and intermediate valid certificates. Leaf valid. Date provided is future to the expiration of the certificates. Test returns invalid.
     let request = Validate {
-        certificate: Some(
-            [
-                leaf2_cert.clone(),
-            ]
-            .to_vec(),
-        ),
+        certificate: Some(vec![leaf2_cert.clone()]),
         unique_identifier: Some(
-            [
+            vec![
                 res_intermediate.unique_identifier.clone(),
                 res_root.unique_identifier.clone(),
-            ]
-            .to_vec(),
+            ],
         ),
         validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_string()), // this is supposed to work but it does not.
         Some("4804152030Z".to_string())
@@ -250,8 +250,8 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
 
     // Root is a valid certificates. Leaf too. Missing intermediate certificate. Result Invalid.
     let request = Validate {
-        certificate: Some([leaf2_cert.clone()].to_vec()),
-        unique_identifier: Some([res_root.unique_identifier.clone()].to_vec()),
+        certificate: Some(vec![leaf2_cert.clone()]),
+        unique_identifier: Some(vec![res_root.unique_identifier.clone()]),
         validity_time: None,
     };
     assert!(kms.validate(request, owner, None).await.is_err());
