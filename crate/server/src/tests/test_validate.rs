@@ -201,6 +201,15 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     assert!(res.is_err());
     debug!("OK: Validate root/intermediate/leaf1 certificates - invalid (revoked)");
 
+    // No certificate in chain
+    let request = Validate {
+        certificate: None,
+        unique_identifier: None,
+        validity_time: None,
+    };
+    let res = kms.validate(request, owner, None).await;
+    assert!(res.is_err());
+
     // Root and intermediate valid certificates. Leaf valid. Test returns valid.
     let request = Validate {
         certificate: Some(vec![leaf2_cert.clone()]),

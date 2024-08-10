@@ -80,9 +80,9 @@ pub(crate) async fn validate_operation(
     let (certificates, certificates_number) = match (request.unique_identifier, request.certificate)
     {
         (None, None) => {
-            return Ok(ValidateResponse {
-                validity_indicator: ValidityIndicator::Unknown,
-            })
+            return Err(KmsError::Certificate(
+                "Empty chain cannot be validated".to_string(),
+            ));
         }
         (None, Some(certificates)) => Ok::<_, KmsError>((certificates.clone(), certificates.len())),
         (Some(mut unique_identifiers), None) => {
@@ -124,15 +124,15 @@ pub(crate) async fn validate_operation(
 
     // Sort the chain in right order: ROOT/SUBCA/../LEAF.
     // Sorting the chain greatly simplify the flow in the signature and revocation verification
-    let sorted_certificates = if certificates.len() > 1 {
+    let certificates = if certificates.len() > 1 {
         index_certificates(&certificates)?
     } else {
-        certificates.clone()
+        certificates
     };
 
-    verify_chain_signature(&sorted_certificates)?;
+    verify_chain_signature(&certificates)?;
     validate_chain_date(&certificates, &request.validity_time)?;
-    verify_crls(sorted_certificates).await?;
+    verify_crls(certificates).await?;
 
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,

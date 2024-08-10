@@ -97,7 +97,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
 }
 
 impl<const LENGTH: usize> Default for Secret<LENGTH> {
-    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
@@ -106,7 +105,6 @@ impl<const LENGTH: usize> Default for Secret<LENGTH> {
 impl<const LENGTH: usize> Deref for Secret<LENGTH> {
     type Target = [u8];
 
-    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &*self.0
     }
