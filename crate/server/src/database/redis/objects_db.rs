@@ -105,15 +105,12 @@ pub(crate) struct ObjectsDB {
 }
 
 impl ObjectsDB {
-    pub(crate) fn new(
-        mgr: ConnectionManager,
-        db_key: SymmetricKey<DB_KEY_LENGTH>,
-    ) -> KResult<Self> {
-        Ok(Self {
+    pub(crate) fn new(mgr: ConnectionManager, db_key: SymmetricKey<DB_KEY_LENGTH>) -> Self {
+        Self {
             mgr,
             dem: Aes256Gcm::new(&db_key),
             rng: Mutex::new(CsRng::from_entropy()),
-        })
+        }
     }
 
     fn object_key(uid: &str) -> String {

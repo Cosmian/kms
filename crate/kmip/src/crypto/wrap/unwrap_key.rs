@@ -180,9 +180,7 @@ fn unwrap_with_rsa(
         )
     }
     match algorithm {
-        CryptographicAlgorithm::AES => {
-            ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key)
-        }
+        CryptographicAlgorithm::AES => ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key),
         CryptographicAlgorithm::RSA => {
             ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
         }

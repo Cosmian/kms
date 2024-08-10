@@ -28,15 +28,15 @@ pub(crate) enum Issuer<'a> {
 impl<'a> Issuer<'a> {
     pub(crate) const fn unique_identifier(&self) -> &UniqueIdentifier {
         match self {
-            Issuer::PrivateKeyAndCertificate(unique_identifier, _, _) => unique_identifier,
-            Issuer::PrivateKeyAndSubjectName(unique_identifier, _, _) => unique_identifier,
+            Issuer::PrivateKeyAndCertificate(unique_identifier, _, _)
+            | Issuer::PrivateKeyAndSubjectName(unique_identifier, _, _) => unique_identifier,
         }
     }
 
     pub(crate) fn private_key(&self) -> &PKeyRef<Private> {
         match self {
-            Issuer::PrivateKeyAndCertificate(_, private_key, _) => private_key.as_ref(),
-            Issuer::PrivateKeyAndSubjectName(_, private_key, _) => private_key.as_ref(),
+            Issuer::PrivateKeyAndCertificate(_, private_key, _)
+            | Issuer::PrivateKeyAndSubjectName(_, private_key, _) => private_key.as_ref(),
         }
     }
 

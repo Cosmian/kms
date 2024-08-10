@@ -152,7 +152,7 @@ impl LocateObjectsAction {
                 console::Stdout::new("No object found.").write()?;
             } else {
                 let mut stdout = console::Stdout::new("List of unique identifiers:");
-                stdout.set_unique_identifiers(ids);
+                stdout.set_unique_identifiers(&ids);
                 stdout.write()?;
             }
         } else {

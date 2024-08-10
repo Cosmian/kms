@@ -56,8 +56,7 @@ pub(crate) async fn unwrap_key(
         ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
         ObjectType::PublicKey | ObjectType::Certificate => {
             let attributes = match object_type {
-                ObjectType::PublicKey => unwrapping_key.attributes,
-                ObjectType::Certificate => unwrapping_key.attributes,
+                ObjectType::PublicKey | ObjectType::Certificate => unwrapping_key.attributes,
                 _ => unreachable!("unwrap_key: unsupported object type: {object_type}"),
             };
             let private_key_uid =

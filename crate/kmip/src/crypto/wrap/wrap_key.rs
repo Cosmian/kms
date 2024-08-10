@@ -215,9 +215,7 @@ fn wrap_with_rsa(
     }
     match algorithm {
         CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(pub_key, hashing_fn, key_to_wrap),
-        CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_wrap(pub_key, hashing_fn, key_to_wrap)
-        }
+        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_wrap(pub_key, hashing_fn, key_to_wrap),
         x => Err(kmip_error!(
             "Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}"
         )),

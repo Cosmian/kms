@@ -54,7 +54,7 @@ pub(crate) async fn test_objects_db() -> KResult<()> {
     let mgr = ConnectionManager::new(client).await?;
 
     let db_key = SymmetricKey::new(&mut rng);
-    let o_db = ObjectsDB::new(mgr.clone(), db_key)?;
+    let o_db = ObjectsDB::new(mgr.clone(), db_key);
 
     // single upsert - get - delete
     let uid = "test_objects_db";
@@ -108,7 +108,7 @@ pub(crate) async fn test_permissions_db() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label)?;
+    let permissions_db = PermissionsDB::new(findex, label);
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db
@@ -363,7 +363,7 @@ pub(crate) async fn test_corner_case() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label)?;
+    let permissions_db = PermissionsDB::new(findex, label);
 
     // remove a permission that does not exist
     permissions_db

@@ -86,8 +86,7 @@ pub async fn start_test_server_with_options(
         owner_client_conf.kms_server_url, &server_params
     );
 
-    let (server_handle, thread_handle) =
-        start_test_kms_server(server_params).expect("Can't start KMS server");
+    let (server_handle, thread_handle) = start_test_kms_server(server_params);
 
     // wait for the server to be up
     wait_for_server_to_start(&kms_client)
@@ -118,7 +117,7 @@ pub async fn start_test_server_with_options(
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
     server_params: ServerParams,
-) -> Result<(ServerHandle, JoinHandle<Result<(), ClientError>>), ClientError> {
+) -> (ServerHandle, JoinHandle<Result<(), ClientError>>) {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
     let thread_handle = thread::spawn(move || {
@@ -134,7 +133,7 @@ fn start_test_kms_server(
         .recv_timeout(Duration::from_secs(25))
         .expect("Can't get test KMS server handle after 25 seconds");
     trace!("... got handle ...");
-    Ok((server_handle, thread_handle))
+    (server_handle, thread_handle)
 }
 
 /// Wait for the server to start by reading the version
