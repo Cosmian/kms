@@ -118,10 +118,7 @@ impl GetAttributesAction {
                 AttributeTag::LinkedPublicKeyId => {
                     references.push(AttributeReference::Standard(Tag::PublicKey));
                 }
-                AttributeTag::LinkedIssuerCertificateId => {
-                    references.push(AttributeReference::Standard(Tag::Certificate));
-                }
-                AttributeTag::LinkedCertificateId => {
+                AttributeTag::LinkedIssuerCertificateId | AttributeTag::LinkedCertificateId => {
                     references.push(AttributeReference::Standard(Tag::Certificate));
                 }
                 AttributeTag::Tags => {

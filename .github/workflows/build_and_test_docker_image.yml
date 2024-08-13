@@ -4,9 +4,6 @@ name: Docker main workflow
 on:
   workflow_call:
 
-env:
-  REGISTRY: ghcr.io
-
 jobs:
   pyo3:
     uses: ./.github/workflows/maturin.yml

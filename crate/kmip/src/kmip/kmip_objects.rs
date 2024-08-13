@@ -223,7 +223,6 @@ impl Object {
                 }
                 _ => object,
             },
-            ObjectType::Certificate => object,
             _ => object,
         }
     }

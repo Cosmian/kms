@@ -28,7 +28,7 @@ pub fn build_revoke_key_request(
 /// Build a `Validate` request to validate a certificate chain.
 pub fn build_validate_certificate_request(
     certificates: Vec<String>,
-    unique_identifiers: Vec<String>,
+    unique_identifiers: &[String],
     date: Option<String>,
 ) -> Result<Validate, KmipError> {
     let certificates = {

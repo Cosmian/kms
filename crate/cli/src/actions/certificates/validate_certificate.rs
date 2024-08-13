@@ -29,10 +29,9 @@ impl ValidateCertificatesAction {
     pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         let request = build_validate_certificate_request(
             self.certificate.clone(),
-            self.unique_identifier.clone(),
+            &self.unique_identifier,
             self.validity_time.clone(),
         )?;
-
         let validity_indicator = client_connector.validate(request).await?.validity_indicator;
         console::Stdout::new(match validity_indicator {
             ValidityIndicator::Valid => "Valid",

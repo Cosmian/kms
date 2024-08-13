@@ -157,7 +157,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
                 }
-                other => ec_private_key_from_scalar(d, other)?,
+                other => ec_private_key_from_scalar(d, *other)?,
             },
             x => kmip_bail!(
                 "KMIP key to openssl: invalid Transparent EC private key material: {:?}: \
@@ -176,7 +176,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
 //
 fn ec_private_key_from_scalar(
     scalar: &BigUint,
-    curve: &RecommendedCurve,
+    curve: RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
     let (nid, privkey_size) = match curve {
         // P-CURVES
@@ -365,10 +365,8 @@ pub fn openssl_private_key_to_kmip(
         KeyFormatType::PKCS8 | KeyFormatType::PKCS12 => {
             let cryptographic_algorithm = match private_key.id() {
                 Id::RSA => Some(CryptographicAlgorithm::RSA),
-                Id::EC => Some(CryptographicAlgorithm::ECDH),
-                Id::X25519 => Some(CryptographicAlgorithm::ECDH),
+                Id::EC | Id::X25519 | Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED25519 => Some(CryptographicAlgorithm::Ed25519),
-                Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED448 => Some(CryptographicAlgorithm::Ed448),
                 _ => None,
             };

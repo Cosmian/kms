@@ -36,7 +36,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    cosmian_logger::log_utils::log_init("fatal,cosmian_kms_client=debug");
+    cosmian_logger::log_utils::log_init(Some("fatal,cosmian_kms_client=debug"));
     let rt = tokio::runtime::Runtime::new().unwrap();
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;

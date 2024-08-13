@@ -120,11 +120,11 @@ pub(crate) struct PermissionsDB {
 }
 
 impl PermissionsDB {
-    pub(crate) fn new(findex: Arc<FindexRedis>, label: &[u8]) -> KResult<Self> {
-        Ok(Self {
+    pub(crate) fn new(findex: Arc<FindexRedis>, label: &[u8]) -> Self {
+        Self {
             findex,
             label: label.to_vec(),
-        })
+        }
     }
 
     /// Search for a keyword

@@ -23,7 +23,7 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> KResult<()> {
     // First operation to do is to load FIPS module if necessary.
     #[cfg(feature = "fips")]
@@ -32,7 +32,7 @@ async fn main() -> KResult<()> {
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
         unsafe {
-            std::env::set_var("RUST_BACKTRACE", "1");
+            std::env::set_var("RUST_BACKTRACE", "full");
         }
     }
     if std::env::var("RUST_LOG").is_err() {

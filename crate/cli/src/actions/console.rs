@@ -53,7 +53,7 @@ impl Stdout {
         self.unique_identifier = Some(unique_identifier.into());
     }
 
-    pub fn set_unique_identifiers(&mut self, unique_identifiers: Vec<UniqueIdentifier>) {
+    pub fn set_unique_identifiers(&mut self, unique_identifiers: &[UniqueIdentifier]) {
         self.unique_identifiers = Some(
             unique_identifiers
                 .iter()

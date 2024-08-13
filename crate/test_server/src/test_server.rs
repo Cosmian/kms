@@ -22,20 +22,25 @@ use tracing::trace;
 
 use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 
-// use super::extract_uids::extract_database_secret;
-// use crate::{
-//     actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
-// };
-
 /// In order to run most tests in parallel,
 /// we use that to avoid to try to start N KMS servers (one per test)
 /// with a default configuration.
 /// Otherwise we get: "Address already in use (os error 98)"
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    ONCE.get_or_try_init(_start_default_test_kms_server)
+    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, false, false))
+        .await
+        .unwrap()
+}
+/// TLS + certificate authentication
+pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    ONCE_SERVER_WITH_AUTH
+        .get_or_try_init(|| start_test_server_with_options(9991, false, true, true))
         .await
         .unwrap()
 }
@@ -57,12 +62,6 @@ impl TestsContext {
     }
 }
 
-/// Start a test KMS server in a thread with the default options:
-/// JWT authentication and encrypted database, no TLS
-pub(crate) async fn _start_default_test_kms_server() -> Result<TestsContext, ClientError> {
-    start_test_server_with_options(9990, false, true, true).await
-}
-
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
     port: u16,
@@ -70,6 +69,7 @@ pub async fn start_test_server_with_options(
     use_https: bool,
     use_client_cert: bool,
 ) -> Result<TestsContext, ClientError> {
+    cosmian_logger::log_utils::log_init(None);
     let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)?;
 
     // Create a (object owner) conf
@@ -81,8 +81,7 @@ pub async fn start_test_server_with_options(
         owner_client_conf.kms_server_url, &server_params
     );
 
-    let (server_handle, thread_handle) =
-        start_test_kms_server(server_params).expect("Can't start KMS server");
+    let (server_handle, thread_handle) = start_test_kms_server(server_params);
 
     // wait for the server to be up
     wait_for_server_to_start(&kms_client)
@@ -113,7 +112,7 @@ pub async fn start_test_server_with_options(
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
     server_params: ServerParams,
-) -> Result<(ServerHandle, JoinHandle<Result<(), ClientError>>), ClientError> {
+) -> (ServerHandle, JoinHandle<Result<(), ClientError>>) {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
     let thread_handle = thread::spawn(move || {
@@ -129,7 +128,7 @@ fn start_test_kms_server(
         .recv_timeout(Duration::from_secs(25))
         .expect("Can't get test KMS server handle after 25 seconds");
     trace!("... got handle ...");
-    Ok((server_handle, thread_handle))
+    (server_handle, thread_handle)
 }
 
 /// Wait for the server to start by reading the version
@@ -325,6 +324,6 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
-    let context = _start_default_test_kms_server().await?;
+    let context = start_test_server_with_options(9990, false, true, true).await?;
     context.stop_server().await
 }

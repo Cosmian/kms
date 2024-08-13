@@ -80,23 +80,12 @@ fn build_mask_from_curve(
 /// - NIST.FIPS.186-5
 ///
 /// TODO - Discriminate between EC, ECDH and ECDSA.
-const fn build_algorithm_from_curve(
-    curve: RecommendedCurve,
-) -> Result<CryptographicAlgorithm, KmipError> {
-    let algorithm = match curve {
-        RecommendedCurve::P192
-        | RecommendedCurve::P224
-        | RecommendedCurve::P256
-        | RecommendedCurve::P384
-        | RecommendedCurve::P521
-        | RecommendedCurve::CURVE25519
-        | RecommendedCurve::CURVE448 => CryptographicAlgorithm::EC,
+const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlgorithm {
+    match curve {
         RecommendedCurve::CURVEED25519 => CryptographicAlgorithm::Ed25519,
         RecommendedCurve::CURVEED448 => CryptographicAlgorithm::Ed448,
         _ => CryptographicAlgorithm::EC,
-    };
-
-    Ok(algorithm)
+    }
 }
 
 /// Build a `CreateKeyPairRequest` for an  elliptic curve
@@ -106,7 +95,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 ) -> Result<CreateKeyPair, KmipError> {
     let private_key_mask = build_mask_from_curve(recommended_curve, true)?;
     let public_key_mask = build_mask_from_curve(recommended_curve, false)?;
-    let algorithm = build_algorithm_from_curve(recommended_curve)?;
+    let algorithm = build_algorithm_from_curve(recommended_curve);
 
     let mut common_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),

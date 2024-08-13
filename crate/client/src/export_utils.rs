@@ -200,8 +200,7 @@ async fn batch_get(
                 let object = Object::post_fix(get.object_type, get.object.clone());
                 results.push(Ok((object, atts.attributes.clone())));
             }
-            [Err(e), _] => results.push(Err(e.to_string())),
-            [_, Err(e)] => results.push(Err(e.to_string())),
+            [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
             e => client_bail!(
                 "Unexpected response from KMS, returning a sequence of non matching operations: \
                  {e:?}"
@@ -251,8 +250,7 @@ async fn batch_export(
                 let _ = attributes.set_tags(atts.attributes.get_tags());
                 results.push(Ok((object, atts.attributes.clone())));
             }
-            [Err(e), _] => results.push(Err(e.to_string())),
-            [_, Err(e)] => results.push(Err(e.to_string())),
+            [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
             e => client_bail!(
                 "Unexpected response from KMS, returning a sequence of non matching operations: \
                  {e:?}"

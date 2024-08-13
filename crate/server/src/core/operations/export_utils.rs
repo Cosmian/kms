@@ -204,11 +204,10 @@ async fn process_private_key(
                 "export: unable to export a wrapped key with a requested Key Format Type. It must \
                  be the default"
             )
-        } else {
-            // The key is wrapped and the Key Format Type is the default (none)
-            // The key is exported as such
-            return Ok(())
         }
+        // The key is wrapped and the Key Format Type is the default (none)
+        // The key is exported as such
+        return Ok(())
     }
 
     // Covercrypt keys cannot be post-processed, process them here
@@ -242,21 +241,20 @@ async fn process_private_key(
                 "export: unable to wrap a key with a specified Key Format Type. It must be the \
                  default"
             )
-        } else {
-            // generate a KMIP PrivateKey in the default format
-            let mut object = openssl_private_key_to_kmip_default_format(
-                &openssl_key,
-                attributes.cryptographic_usage_mask,
-            )?;
-            // add the attributes back
-            let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = Some(Box::new(attributes));
-            // wrap the key
-            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
-            // reassign the wrapped key
-            object_with_metadata.object = object;
-            return Ok(())
         }
+        // generate a KMIP PrivateKey in the default format
+        let mut object = openssl_private_key_to_kmip_default_format(
+            &openssl_key,
+            attributes.cryptographic_usage_mask,
+        )?;
+        // add the attributes back
+        let key_block = object.key_block_mut()?;
+        key_block.key_value.attributes = Some(Box::new(attributes));
+        // wrap the key
+        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+        // reassign the wrapped key
+        object_with_metadata.object = object;
+        return Ok(())
     }
 
     //No wrapping requested: export the private key to the requested format
@@ -314,11 +312,10 @@ async fn process_public_key(
                 "export: unable to export a wrapped key with a requested Key Format Type. It must \
                  be the default"
             )
-        } else {
-            // The key is wrapped and the Key Format Type is the default (none)
-            // The key is exported as such
-            return Ok(())
         }
+        // The key is wrapped and the Key Format Type is the default (none)
+        // The key is exported as such
+        return Ok(())
     }
 
     // process Covercrypt keys
@@ -352,29 +349,28 @@ async fn process_public_key(
                 "export: unable to wrap a key with a specified Key Format Type. It must be the \
                  default"
             )
-        } else {
-            // generate a KMIP PrivateKey in the default format
-            let mut object = openssl_public_key_to_kmip_default_format(
-                &openssl_key,
-                attributes.cryptographic_usage_mask,
-            )?;
-            // add the attributes back
-            let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = Some(Box::new(attributes));
-
-            // wrap the key
-            wrap_key(
-                object.key_block_mut()?,
-                key_wrapping_specification,
-                kms,
-                user,
-                params,
-            )
-            .await?;
-            // reassign the wrapped key
-            object_with_metadata.object = object;
-            return Ok(())
         }
+        // generate a KMIP PrivateKey in the default format
+        let mut object = openssl_public_key_to_kmip_default_format(
+            &openssl_key,
+            attributes.cryptographic_usage_mask,
+        )?;
+        // add the attributes back
+        let key_block = object.key_block_mut()?;
+        key_block.key_value.attributes = Some(Box::new(attributes));
+
+        // wrap the key
+        wrap_key(
+            object.key_block_mut()?,
+            key_wrapping_specification,
+            kms,
+            user,
+            params,
+        )
+        .await?;
+        // reassign the wrapped key
+        object_with_metadata.object = object;
+        return Ok(())
     }
 
     //No wrapping requested: export the private key to the requested format
@@ -448,10 +444,9 @@ async fn process_covercrypt_key(
                 "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
                  must be the default"
             )
-        } else {
-            // wrap the key
-            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
         }
+        // wrap the key
+        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
     }
     Ok(())
 }
@@ -528,11 +523,10 @@ async fn process_symmetric_key(
                 "export: unable to export a wrapped symmetric key with a requested Key Format \
                  Type. It must be the default"
             )
-        } else {
-            // The key is wrapped and as expected the requested  Key Format Type is the default (none)
-            // => The key is exported as such
-            return Ok(())
         }
+        // The key is wrapped and as expected the requested  Key Format Type is the default (none)
+        // => The key is exported as such
+        return Ok(())
     }
 
     // we have an unwrapped key, convert it to the pivotal format first,
@@ -550,18 +544,17 @@ async fn process_symmetric_key(
                 "export: unable to wrap a symmetric key with a specified Key Format Type. It must \
                  be the default"
             )
-        } else {
-            // generate a key block in the default format, which is Raw
-            key_block.key_value = KeyValue {
-                key_material: KeyMaterial::ByteString(key_bytes),
-                attributes: key_block.key_value.attributes.clone(),
-            };
-            key_block.key_format_type = KeyFormatType::Raw;
-            key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
-            // wrap the key
-            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
-            return Ok(())
         }
+        // generate a key block in the default format, which is Raw
+        key_block.key_value = KeyValue {
+            key_material: KeyMaterial::ByteString(key_bytes),
+            attributes: key_block.key_value.attributes.clone(),
+        };
+        key_block.key_format_type = KeyFormatType::Raw;
+        key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
+        // wrap the key
+        wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+        return Ok(())
     }
 
     // The key  is not wrapped => export to desired format

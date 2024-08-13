@@ -246,7 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wrap_auth() {
-        // log_init("cosmian_kms_server=info");
+        cosmian_logger::log_utils::log_init(None);
 
         let jwt = generate_google_jwt().await;
 

@@ -2,8 +2,6 @@ use cosmian_kmip::kmip::kmip_types::{
     Attributes, LinkedObjectIdentifier::TextString, StateEnumeration,
 };
 
-use crate::result::KResult;
-
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
 /// This trait contains default naming which are overridden
@@ -137,7 +135,7 @@ pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     state: Option<StateEnumeration>,
     user: &str,
     user_must_be_owner: bool,
-) -> KResult<String> {
+) -> String {
     let mut query = format!(
         "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
          {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
@@ -247,5 +245,5 @@ ON objects.id = matched_tags.id"
             }
         }
     }
-    Ok(query)
+    query
 }

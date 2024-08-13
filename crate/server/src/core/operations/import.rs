@@ -343,7 +343,7 @@ async fn process_private_key(
             request.unique_identifier.as_str().unwrap_or_default(),
             object,
             attributes,
-            tags,
+            &tags,
             replace_existing,
         )
     }
@@ -351,7 +351,7 @@ async fn process_private_key(
     // Process a "standard" private key
     // Check if the private key can be parsed as an openssl object.
     let (sk_uid, sk, sk_tags) = private_key_from_openssl(
-        kmip_private_key_to_openssl(&object)?,
+        &kmip_private_key_to_openssl(&object)?,
         tags,
         &mut attributes,
         request.unique_identifier.as_str().unwrap_or_default(),
@@ -369,14 +369,14 @@ async fn process_private_key(
 }
 
 fn private_key_from_openssl(
-    sk: PKey<Private>,
+    sk: &PKey<Private>,
     user_tags: Option<HashSet<String>>,
     request_attributes: &mut Attributes,
     request_uid: &str,
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
     // convert the private key to PKCS#8
     let mut sk = openssl_private_key_to_kmip(
-        &sk,
+        sk,
         KeyFormatType::PKCS8,
         request_attributes.cryptographic_usage_mask,
     )?;
@@ -428,7 +428,7 @@ fn process_pkcs12(
     private_key_id: &str,
     object: Object,
     request_attributes: Attributes,
-    user_tags: Option<HashSet<String>>,
+    user_tags: &Option<HashSet<String>>,
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover the PKCS#12 bytes from the object
@@ -463,7 +463,7 @@ fn process_pkcs12(
             KmsError::InvalidRequest("Private key not found in PKCS12".to_string())
         })?;
         private_key_from_openssl(
-            openssl_sk,
+            &openssl_sk,
             user_tags.clone(),
             &mut request_attributes,
             private_key_id,

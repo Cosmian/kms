@@ -206,10 +206,8 @@ pub fn openssl_public_key_to_kmip(
             let spki_der = Zeroizing::from(public_key.public_key_to_der()?);
             let cryptographic_algorithm = match public_key.id() {
                 Id::RSA => Some(CryptographicAlgorithm::RSA),
-                Id::EC => Some(CryptographicAlgorithm::ECDH),
-                Id::X25519 => Some(CryptographicAlgorithm::ECDH),
+                Id::EC | Id::X25519 | Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED25519 => Some(CryptographicAlgorithm::Ed25519),
-                Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED448 => Some(CryptographicAlgorithm::Ed448),
                 _ => None,
             };

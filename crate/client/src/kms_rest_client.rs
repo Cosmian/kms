@@ -17,9 +17,11 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use http::{HeaderMap, HeaderValue, StatusCode};
 use log::trace;
-use reqwest::{Client, ClientBuilder, Identity, Response};
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client, ClientBuilder, Identity, Response, StatusCode,
+};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::Serialize;
 
@@ -480,7 +482,7 @@ impl KmsClient {
         //             Only the verified certificate is used here
         //    c) signed in a non-tee context: we want classic TLS verification based on the root ca
         let builder = if let Some(certificate) = allowed_tee_tls_cert {
-            build_tls_client_tee(certificate, accept_invalid_certs)?
+            build_tls_client_tee(certificate, accept_invalid_certs)
         } else {
             ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs)
         };
@@ -503,12 +505,8 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(10))
-                .tcp_keepalive(Duration::from_secs(5))
-                .pool_idle_timeout(Duration::from_secs(5))
-                .pool_max_idle_per_host(2)
                 .default_headers(headers)
+                .tcp_keepalive(Duration::from_secs(60))
                 .build()?,
             server_url,
         })
@@ -610,7 +608,6 @@ impl KmsClient {
         request = request.json(&ttlv);
 
         let response = request.send().await?;
-
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
@@ -654,7 +651,7 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
 pub(crate) fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,
-) -> Result<ClientBuilder, ClientError> {
+) -> ClientBuilder {
     let mut root_cert_store = rustls::RootCertStore::empty();
 
     let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
@@ -681,5 +678,5 @@ pub(crate) fn build_tls_client_tee(
         .with_no_client_auth();
 
     // Create a client builder
-    Ok(Client::builder().use_preconfigured_tls(config))
+    Client::builder().use_preconfigured_tls(config)
 }

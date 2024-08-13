@@ -73,10 +73,11 @@ impl KeyBlock {
                 let privkey_size = match recommended_curve {
                     RecommendedCurve::P192 => 24,
                     RecommendedCurve::P224 => 28,
-                    RecommendedCurve::P256 => 32,
+                    RecommendedCurve::P256
+                    | RecommendedCurve::CURVE25519
+                    | RecommendedCurve::CURVEED25519 => 32,
                     RecommendedCurve::P384 => 48,
                     RecommendedCurve::P521 => 66,
-                    RecommendedCurve::CURVE25519 | RecommendedCurve::CURVEED25519 => 32,
                     RecommendedCurve::CURVE448 => 56,
                     RecommendedCurve::CURVEED448 => 57,
                     _ => d_vec.len(),

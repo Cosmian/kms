@@ -848,7 +848,7 @@ where
         state,
         user,
         user_must_be_owner,
-    )?;
+    );
     trace!("find_: {query:?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;

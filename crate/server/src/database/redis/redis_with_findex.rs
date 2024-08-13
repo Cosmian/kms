@@ -80,10 +80,10 @@ impl RedisWithFindex {
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key)?);
+        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key));
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
-        let permissions_db = PermissionsDB::new(findex.clone(), label)?;
+        let permissions_db = PermissionsDB::new(findex.clone(), label);
         Ok(Self {
             objects_db,
             permissions_db,

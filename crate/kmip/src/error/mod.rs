@@ -106,7 +106,7 @@ impl From<KmipError> for pyo3::PyErr {
 #[cfg(feature = "openssl")]
 impl From<openssl::error::ErrorStack> for KmipError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::OpenSSL(e.to_string())
+        Self::OpenSSL(format!("Error: {e}. Details: {e:?}"))
     }
 }
 
