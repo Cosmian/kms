@@ -343,7 +343,7 @@ async fn process_private_key(
             request.unique_identifier.as_str().unwrap_or_default(),
             object,
             attributes,
-            tags,
+            &tags,
             replace_existing,
         )
     }
@@ -428,7 +428,7 @@ fn process_pkcs12(
     private_key_id: &str,
     object: Object,
     request_attributes: Attributes,
-    user_tags: Option<HashSet<String>>,
+    user_tags: &Option<HashSet<String>>,
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover the PKCS#12 bytes from the object

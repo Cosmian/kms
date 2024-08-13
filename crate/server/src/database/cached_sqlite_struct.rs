@@ -290,7 +290,7 @@ impl KMSSqliteCache {
             info!("CachedSQLCipher: new group_id={id}");
 
             // Book a slot for it
-            let freeable_cache_id = freeable_sqlites.push(id)?;
+            let freeable_cache_id = freeable_sqlites.push(id);
 
             // Add it to the SqliteCache
             // compute the mac
@@ -380,7 +380,7 @@ impl FreeableSqliteCache {
     }
 
     // Add an element at the end of the cache
-    pub(crate) fn push(&mut self, value: u128) -> KResult<usize> {
+    pub(crate) fn push(&mut self, value: u128) -> usize {
         if self.length == 0 {
             self.head = self.size;
             self.entries.push(FSCEntry::singleton(value));
@@ -392,7 +392,7 @@ impl FreeableSqliteCache {
         self.size += 1;
         self.length += 1;
 
-        Ok(self.tail)
+        self.tail
     }
 
     // Remove the first element from the cache and return its value
@@ -506,9 +506,9 @@ mod tests {
     #[test]
     pub(crate) fn test_fsc_push() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 2);
@@ -531,9 +531,9 @@ mod tests {
     #[test]
     pub(crate) fn test_fsc_pop() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
 
         assert_eq!(fsc.pop().unwrap(), 1);
 
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(4), 3);
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -568,7 +568,7 @@ mod tests {
 
         assert!(fsc.pop().is_err());
 
-        assert_eq!(fsc.push(5).unwrap(), 4);
+        assert_eq!(fsc.push(5), 4);
 
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
@@ -584,10 +584,10 @@ mod tests {
     #[test]
     pub(crate) fn test_fsc_uncache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
 
         assert!(fsc.uncache(4).is_err());
 
@@ -636,7 +636,7 @@ mod tests {
         assert!(fsc.uncache(1).is_err());
         assert!(fsc.pop().is_err());
 
-        assert_eq!(fsc.push(5).unwrap(), 4);
+        assert_eq!(fsc.push(5), 4);
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
         assert_eq!(fsc.length, 1);
@@ -650,10 +650,10 @@ mod tests {
     #[test]
     pub(crate) fn test_fsc_recache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
 
         assert!(fsc.recache(4).is_err());
         assert!(fsc.recache(3).is_err());

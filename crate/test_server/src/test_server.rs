@@ -22,11 +22,6 @@ use tracing::trace;
 
 use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 
-// use super::extract_uids::extract_database_secret;
-// use crate::{
-//     actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
-// };
-
 /// In order to run most tests in parallel,
 /// we use that to avoid to try to start N KMS servers (one per test)
 /// with a default configuration.
