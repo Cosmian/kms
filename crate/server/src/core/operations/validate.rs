@@ -125,7 +125,7 @@ pub(crate) async fn validate_operation(
     // Sort the chain in right order: ROOT/SUBCA/../LEAF.
     // Sorting the chain greatly simplify the flow in the signature and revocation verification
     let certificates = if certificates.len() > 1 {
-        index_certificates(&certificates)?
+        sort_certificates(&certificates)?
     } else {
         certificates
     };
@@ -215,13 +215,13 @@ fn trace_certificate(debug_msg: &str, certificate: &X509) {
 ///
 /// # Arguments
 ///
-/// * `certificates` - The list of X509 certificates to be indexed.
+/// * `certificates` - The list of X509 certificates to sort.
 ///
 /// # Returns
 ///
 /// Returns a `Result` containing the sorted list of X509 certificates if successful,
-/// or a `KmsError` if an error occurs during the indexing process.
-fn index_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
+/// or a `KmsError` if an error occurs during the sorting process.
+fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     let mut sorted_chains = Vec::<X509>::with_capacity(certificates.len());
     let mut certificates_copy: Vec<X509> = certificates.to_vec();
     let mut indexes_to_remove = vec![];
