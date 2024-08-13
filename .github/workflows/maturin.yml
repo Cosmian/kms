@@ -1,5 +1,5 @@
 ---
-name: KMS Python
+name: KMS Python build
 
 on:
   workflow_call:

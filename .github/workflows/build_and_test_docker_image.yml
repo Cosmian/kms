@@ -1,5 +1,5 @@
 ---
-name: Docker
+name: Docker main workflow
 
 on:
   workflow_call:
