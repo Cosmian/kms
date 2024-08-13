@@ -52,7 +52,6 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -77,7 +76,6 @@ fn get_keypairs(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -98,7 +96,6 @@ fn disable_keypairs(cli_conf_path: &str, user_id: &str, key_pair_id: &str) -> Re
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -117,7 +114,6 @@ fn enable_keypairs(cli_conf_path: &str, user_id: &str, key_pair_id: &str) -> Res
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {

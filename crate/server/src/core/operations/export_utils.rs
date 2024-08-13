@@ -12,6 +12,7 @@ use cosmian_kmip::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
+    KmipError,
 };
 use cosmian_kms_client::access::ObjectOperationType;
 #[cfg(not(feature = "fips"))]
@@ -767,7 +768,7 @@ async fn post_process_pkcs7(
         .attributes
         .get_link(LinkType::PublicKeyLink)
         .ok_or_else(|| {
-            KmsError::InvalidRequest("No Public Key found in the leaf certificate".to_string())
+            KmipError::Default("No Public Key found in the leaf certificate".to_string())
         })?;
     let public_key_owm = retrieve_object_for_operation(
         &public_key_id.to_string(),

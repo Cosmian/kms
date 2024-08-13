@@ -31,7 +31,6 @@ fn list_identities(cli_conf_path: &str, user_id: &str) -> Result<ListIdentitiesR
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -52,7 +51,6 @@ fn get_identities(cli_conf_path: &str, user_id: &str) -> Result<Identity, CliErr
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -73,7 +71,6 @@ fn delete_identities(cli_conf_path: &str, user_id: &str) -> Result<(), CliError>
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -96,7 +93,6 @@ fn insert_identities(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("google").arg("identities").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {

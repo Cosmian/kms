@@ -10,7 +10,6 @@ use cosmian_kms_client::{
         kmip_operations::Certify,
         kmip_types::{
             Attributes, CertificateAttributes, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
         },
     },
     KmsClient,
@@ -20,13 +19,12 @@ use serde::{Deserialize, Serialize};
 use super::KEYPAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
-const RSA4096: usize = 4096;
+const RSA_4096: usize = 4096;
 
 /// Extension configuration
 const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
     keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
     extendedKeyUsage=emailProtection
-    crlDistributionPoints=URI:http://cse.cosmian.com/crl.pem\
 ";
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
@@ -86,25 +84,16 @@ struct KaclsKeyMetadata {
 }
 
 impl CreateKeypairsAction {
-    async fn wrap_key(
-        key_id: &str,
-        csekey_id: &str,
-        kms_rest_client: &KmsClient,
-    ) -> Result<String, CliError> {
-        let (wrapped_private_key_object, _) =
-            export_object(kms_rest_client, key_id, false, Some(csekey_id), false, None).await?;
-
-        Ok(general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?))
-    }
-
     async fn post_keypair(
         gmail_client: &GmailClient,
-        cert_file: String,
+        certificate_value: Vec<u8>,
         wrapped_private_key: String,
         kacls_url: String,
     ) -> Result<(), CliError> {
+        let pem = pem::Pem::new(String::from("PKCS7"), certificate_value);
+        let pem_string = pem::encode(&pem);
         let key_pair_info = KeyPairInfo {
-            pkcs7: cert_file,
+            pkcs7: pem_string,
             privateKeyMetadata: vec![PrivateKeyMetadata {
                 kaclsKeyMetadata: KaclsKeyMetadata {
                     kaclsUri: kacls_url,
@@ -128,34 +117,30 @@ impl CreateKeypairsAction {
 
         let kacls_url = kms_rest_client.google_cse_status();
 
-        // Create a RSA 4096 keypair for the user
-        let create_key_pair_request = create_rsa_key_pair_request(Vec::<String>::new(), RSA4096)?;
-
         // Query the KMS to create RSA KEYPAIRS_ENDPOINT and get the key pair ids
-        let create_key_pair_response = kms_rest_client
-            .create_key_pair(create_key_pair_request)
+        let created_key_pair = kms_rest_client
+            .create_key_pair(create_rsa_key_pair_request(Vec::<String>::new(), RSA_4096)?)
             .await?;
 
-        let private_key_unique_identifier = create_key_pair_response
-            .private_key_unique_identifier
-            .to_string();
-        let public_key_unique_identifier = create_key_pair_response.public_key_unique_identifier;
-
         // Export wrapped private key with google CSE key
-        let wrapped_private_key = Self::wrap_key(
-            &private_key_unique_identifier,
-            &self.csekey_id,
+        let (wrapped_private_key_object, _) = export_object(
             kms_rest_client,
-        );
+            &created_key_pair.private_key_unique_identifier.to_string(),
+            false,
+            Some(&self.csekey_id),
+            false,
+            None,
+        )
+        .await?;
+        let wrapped_private_key =
+            general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?);
 
         // Sign created public key with issuer private key
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         };
-        let unique_identifier = Some(UniqueIdentifier::TextString(
-            public_key_unique_identifier.to_string(),
-        ));
+        let unique_identifier = created_key_pair.public_key_unique_identifier;
         attributes.certificate_attributes = Some(Box::new(
             CertificateAttributes::parse_subject_line(&self.subject_name)?,
         ));
@@ -167,10 +152,8 @@ impl CreateKeypairsAction {
         attributes.set_x509_extension_file(EXTENSION_CONFIG.to_vec());
 
         let certify_request = Certify {
-            unique_identifier,
+            unique_identifier: Some(unique_identifier),
             attributes: Some(attributes),
-            certificate_request_value: None,
-            certificate_request_type: None,
             ..Certify::default()
         };
 
@@ -196,23 +179,23 @@ impl CreateKeypairsAction {
             Object::Certificate {
                 certificate_value, ..
             } => {
-                let pem = pem::Pem::new(String::from("PKCS7"), certificate_value);
-                let pem_string = pem::encode(&pem);
                 tracing::info!("Processing {email:?}.");
                 Self::post_keypair(
                     &gmail_client.await?,
-                    pem_string,
-                    wrapped_private_key.await?,
+                    certificate_value,
+                    wrapped_private_key,
                     kacls_url.await?.kacls_url,
                 )
                 .await?;
                 tracing::info!("Keypair inserted for {email:?}.");
             }
             _ => {
-                tracing::info!("Error inserting keypair for {email:?}");
-                Err(CliError::ServerError(
-                    "Error inserting keypair for {email:?}".to_string(),
-                ))?
+                tracing::info!(
+                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
+                );
+                Err(CliError::ServerError(format!(
+                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
+                )))?
             }
         };
         Ok(())
