@@ -69,7 +69,7 @@ async fn test_import_export_p12_25519() {
 
     let tmp_dir = TempDir::new().unwrap();
     let tmp_exported_sk = tmp_dir.path().join("exported_p12_sk.json");
-    let tmp_exported_cert: std::path::PathBuf = tmp_dir.path().join("exported_p12_cert.json");
+    let tmp_exported_cert = tmp_dir.path().join("exported_p12_cert.json");
     let tmp_exported_cert_attr = tmp_dir.path().join("exported_p12_cert.attributes.json");
     let tmp_exported_cert_p12 = tmp_dir.path().join("exported_p12_cert.p12");
 
