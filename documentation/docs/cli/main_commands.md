@@ -746,7 +746,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs7"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 

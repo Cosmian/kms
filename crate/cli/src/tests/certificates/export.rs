@@ -281,7 +281,7 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
-    let (root_ca_id, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
+    let (root_ca_id, _, issuer_private_key_id) = import_root_and_intermediate(ctx)?;
 
     // Certify the CSR with the intermediate CA
     let certificate_id = certify(
@@ -294,7 +294,7 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
             ),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
-            ..Default::default()
+            ..CertifyOp::default()
         },
     )?;
 
