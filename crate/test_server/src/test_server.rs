@@ -234,7 +234,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
         } else {
             None
         },
-        ssl_client_pkcs12_path: if server_params.client_cert.is_some() {
+        ssl_client_pkcs12_path: if server_params.authority_cert_file.is_some() {
             #[cfg(not(target_os = "macos"))]
             let p = root_dir.join("certificates/owner/owner.client.acme.com.p12");
             #[cfg(target_os = "macos")]
@@ -249,7 +249,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
         } else {
             None
         },
-        ssl_client_pkcs12_password: if server_params.client_cert.is_some() {
+        ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
             Some("password".to_string())
         } else {
             None

@@ -17,7 +17,7 @@ use futures::{
     Future,
 };
 use openssl::{nid::Nid, x509::X509};
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 use crate::{kms_bail, result::KResult};
 
@@ -28,16 +28,16 @@ use crate::{kms_bail, result::KResult};
 ///
 /// This struct is used to store the peer certificate in the request context.
 #[derive(Debug, Clone)]
-pub struct PeerCertificate {
+pub(crate) struct PeerCertificate {
     /// The peer certificate.
-    pub cert: X509,
+    pub(crate) cert: X509,
 }
 
 /// Extract the peer certificate from the TLS stream and pass it to middleware.
 ///
 /// This function extracts the peer certificate from the TLS stream and passes it to the middleware.
 /// The middleware can then use the peer certificate to authenticate the client.
-pub fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
+pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
     // Check if the connection is a TLS connection.
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
         // Get the peer certificate from the TLS connection.
@@ -52,16 +52,16 @@ pub fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
 ///
 /// This struct is used to store the peer common name in the request context.
 #[derive(Debug, Clone)]
-pub struct PeerCommonName {
+pub(crate) struct PeerCommonName {
     /// The peer common name.
-    pub common_name: String,
+    pub(crate) common_name: String,
 }
 
 /// The middleware that checks the peer certificate and extracts the common name.
 ///
 /// This middleware checks the peer certificate for a common name and extracts it.
 /// The common name is then added to the request context so that it can be used by other middleware or handlers.
-pub struct SslAuth;
+pub(crate) struct SslAuth;
 
 impl<S, B> Transform<S, ServiceRequest> for SslAuth
 where
@@ -76,12 +76,13 @@ where
 
     /// Create a new instance of the `SslAuth` middleware.
     fn new_transform(&self, service: S) -> Self::Future {
+        debug!("Ssl Authentication enabled");
         // Create a new instance of the `SslAuthMiddleware`.
         ok(SslAuthMiddleware { service })
     }
 }
 
-pub struct SslAuthMiddleware<S> {
+pub(crate) struct SslAuthMiddleware<S> {
     service: S,
 }
 
@@ -166,7 +167,7 @@ where
 }
 
 /// Extract the common name from the client certificate
-pub fn extract_common_name(cert: &X509) -> KResult<String> {
+pub(crate) fn extract_common_name(cert: &X509) -> KResult<String> {
     match cert.subject_name().entries_by_nid(Nid::COMMONNAME).next() {
         None => kms_bail!("Client certificate has no common name"),
         Some(cn) => match cn.data().as_utf8() {

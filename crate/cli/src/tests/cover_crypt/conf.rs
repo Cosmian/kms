@@ -6,7 +6,7 @@ use kms_test_server::{generate_invalid_conf, start_default_test_kms_server};
 use predicates::prelude::*;
 
 use crate::{
-    error::{result::CliResult, CliError},
+    error::result::CliResult,
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 

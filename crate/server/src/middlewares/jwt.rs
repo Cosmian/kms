@@ -28,15 +28,16 @@ pub struct UserClaim {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct JwtTokenHeaders {
-    pub typ: Option<String>,
-    pub cty: Option<String>,
-    pub alg: Option<String>,
-    pub kid: Option<String>,
-    pub x5t: Option<String>,
-    pub x5u: Option<String>,
-    pub x5c: Option<Vec<String>>,
-    pub crit: Option<String>,
+#[allow(dead_code)]
+pub(crate) struct JwtTokenHeaders {
+    typ: Option<String>,
+    cty: Option<String>,
+    alg: Option<String>,
+    kid: Option<String>,
+    x5t: Option<String>,
+    x5u: Option<String>,
+    x5c: Option<Vec<String>>,
+    crit: Option<String>,
 }
 
 #[derive(Debug)]

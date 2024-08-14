@@ -23,7 +23,7 @@ use tracing::debug;
 
 use crate::{
     actions::shared::utils::KeyUsage,
-    error::{result::CliResult, CliError},
+    error::result::CliResult,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,

@@ -1,10 +1,11 @@
 mod jwt_auth;
-pub use jwt_auth::{JwtAuth, JwtAuthClaim};
+pub(crate) use jwt_auth::{JwtAuth, JwtAuthClaim};
 
-pub mod ssl_auth;
+mod ssl_auth;
+pub(crate) use ssl_auth::{extract_peer_certificate, PeerCommonName, SslAuth};
 
 mod jwt;
-pub use jwt::{JwtConfig, JwtTokenHeaders, UserClaim};
+pub(crate) use jwt::{JwtConfig, JwtTokenHeaders, UserClaim};
 
 mod jwks;
-pub use jwks::JwksManager;
+pub(crate) use jwks::JwksManager;

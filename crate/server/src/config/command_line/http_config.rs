@@ -30,6 +30,9 @@ pub struct HttpConfig {
     /// The server must run in TLS mode for this to be used.
     #[clap(long, env = "KMS_AUTHORITY_CERT_FILE")]
     pub authority_cert_file: Option<PathBuf>,
+
+    #[clap(long, env = "KMS_AUTHENTICATION_TOKEN")]
+    pub authentication_token: Option<String>,
 }
 
 impl Display for HttpConfig {
@@ -65,6 +68,7 @@ impl Default for HttpConfig {
             https_p12_file: None,
             https_p12_password: None,
             authority_cert_file: None,
+            authentication_token: None,
         }
     }
 }

@@ -19,10 +19,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{
-        ssl_auth::{extract_peer_certificate, SslAuth},
-        JwksManager, JwtAuth, JwtConfig,
-    },
+    middlewares::{extract_peer_certificate, JwksManager, JwtAuth, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, add_new_database, get_version,
@@ -136,7 +133,7 @@ async fn start_https_kms_server(
         }
     }
 
-    if let Some(verify_cert) = &server_params.client_cert {
+    if let Some(verify_cert) = &server_params.authority_cert_file {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -215,8 +212,14 @@ pub async fn prepare_kms_server(
         (None, None)
     };
 
+    let authentication_token = kms_server
+        .params
+        .authentication_token
+        .as_ref()
+        .map(|token| Arc::new(token.clone()));
+
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.client_cert.is_some();
+    let use_cert_auth = kms_server.params.authority_cert_file.is_some();
 
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
@@ -293,7 +296,7 @@ pub async fn prepare_kms_server(
         let default_scope = web::scope("")
             .wrap(Condition::new(
                 use_jwt_auth,
-                JwtAuth::new(jwt_configurations.clone()),
+                JwtAuth::new(jwt_configurations.clone(), authentication_token.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
@@ -325,16 +328,16 @@ pub async fn prepare_kms_server(
     .client_request_timeout(std::time::Duration::from_secs(30)); // default: 5s
 
     Ok(match builder {
-        Some(b) => {
+        Some(cert_auth_builder) => {
             if use_cert_auth {
                 // Start an HTTPS server with PKCS#12 with client cert auth
                 server
                     .on_connect(extract_peer_certificate)
-                    .bind_openssl(address, b)?
+                    .bind_openssl(address, cert_auth_builder)?
                     .run()
             } else {
                 // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(address, b)?.run()
+                server.bind_openssl(address, cert_auth_builder)?.run()
             }
         }
         _ => server.bind(address)?.run(),
