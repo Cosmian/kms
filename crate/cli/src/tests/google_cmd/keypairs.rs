@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     error::CliError,
-    tests::{utils::recover_cmd_logs, PROG_NAME},
+    tests::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs, PROG_NAME},
 };
 
 #[derive(Deserialize)]
@@ -125,13 +125,17 @@ fn enable_keypairs(cli_conf_path: &str, user_id: &str, key_pair_id: &str) -> Res
 }
 
 #[tokio::test]
+#[ignore] // This test is ignored because it requires a Gmail test user (not blue nor red users)
 pub async fn test_google_keypairs() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     let user_id = "blue@cosmian.com".to_string();
 
+    // Override the owner client conf path
+    let owner_client_conf_path = create_gmail_api_conf(ctx)?;
+
     // Fetch and list keypairs and compare one of them
-    let listed_keypairs = list_keypairs(&ctx.owner_client_conf_path, &user_id)?;
+    let listed_keypairs = list_keypairs(&owner_client_conf_path, &user_id)?;
     assert!(
         listed_keypairs.cseKeyPairs[0]
             .subjectEmailAddresses
@@ -143,7 +147,7 @@ pub async fn test_google_keypairs() -> Result<(), CliError> {
         .find(|&item| item.enablementState == "enabled")
         .unwrap();
     let mut fetched_keypair = get_keypairs(
-        &ctx.owner_client_conf_path,
+        &owner_client_conf_path,
         &user_id,
         &enabled_key_pair.keyPairId,
     )?;
@@ -152,14 +156,14 @@ pub async fn test_google_keypairs() -> Result<(), CliError> {
     // Disable keypair
     assert!(
         disable_keypairs(
-            &ctx.owner_client_conf_path,
+            &owner_client_conf_path,
             &user_id,
             &enabled_key_pair.keyPairId
         )
         .is_ok()
     );
     fetched_keypair = get_keypairs(
-        &ctx.owner_client_conf_path,
+        &owner_client_conf_path,
         &user_id,
         &enabled_key_pair.keyPairId,
     )?;
@@ -168,14 +172,14 @@ pub async fn test_google_keypairs() -> Result<(), CliError> {
     // Enable keypair
     assert!(
         enable_keypairs(
-            &ctx.owner_client_conf_path,
+            &owner_client_conf_path,
             &user_id,
             &enabled_key_pair.keyPairId
         )
         .is_ok()
     );
     fetched_keypair = get_keypairs(
-        &ctx.owner_client_conf_path,
+        &owner_client_conf_path,
         &user_id,
         &enabled_key_pair.keyPairId,
     )?;
