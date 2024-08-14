@@ -54,7 +54,7 @@ pub(crate) async fn test_objects_db() -> KResult<()> {
     let mgr = ConnectionManager::new(client).await?;
 
     let db_key = SymmetricKey::new(&mut rng);
-    let o_db = ObjectsDB::new(mgr.clone(), db_key);
+    let o_db = ObjectsDB::new(mgr.clone(), &db_key);
 
     // single upsert - get - delete
     let uid = "test_objects_db";

@@ -19,7 +19,7 @@ use crate::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
         shared::ExportKeyFormat::JsonTtlv,
     },
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         certificates::import::import_certificate, shared::export_key, utils::recover_cmd_logs,
         PROG_NAME,
@@ -41,7 +41,7 @@ async fn test_import_export_p12_25519() {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/another_p12/server.p12",
-        CertificateInputFormat::Pkcs12,
+        &CertificateInputFormat::Pkcs12,
         Some("secret"),
         Some(Uuid::new_v4().to_string()),
         None,
@@ -221,7 +221,7 @@ async fn test_import_p12_rsa() {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
-        CertificateInputFormat::Pkcs12,
+        &CertificateInputFormat::Pkcs12,
         Some("secret"),
         None,
         None,
@@ -272,7 +272,7 @@ pub(crate) fn export_certificate(
     certificate_format: Option<CertificateExportFormat>,
     pkcs_12_password: Option<String>,
     allow_revoked: bool,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut args: Vec<String> = [
         "export",
         "--certificate-id",

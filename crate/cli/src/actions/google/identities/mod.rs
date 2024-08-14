@@ -7,7 +7,7 @@ use self::{
     insert_identities::InsertIdentitiesAction, list_identities::ListIdentitiesAction,
     patch_identities::PatchIdentitiesAction,
 };
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 mod delete_identities;
 mod get_identities;
@@ -28,7 +28,7 @@ pub enum IdentitiesCommands {
 }
 
 impl IdentitiesCommands {
-    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         match self {
             Self::Get(action) => action.run(conf_path).await,
             Self::List(action) => action.run(conf_path).await,

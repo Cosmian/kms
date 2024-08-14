@@ -11,7 +11,7 @@ use self::{
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
     revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
 };
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 mod certify;
 mod decrypt_certificate;
@@ -36,7 +36,7 @@ pub enum CertificatesCommands {
 }
 
 impl CertificatesCommands {
-    pub async fn process(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, client_connector: &KmsClient) -> CliResult<()> {
         match self {
             Self::Certify(action) => action.run(client_connector).await,
             Self::Decrypt(action) => action.run(client_connector).await,

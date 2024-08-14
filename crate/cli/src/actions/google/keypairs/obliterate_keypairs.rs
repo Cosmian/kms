@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use super::KEYPAIRS_ENDPOINT;
-use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
 
 /// Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 /// delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
@@ -23,7 +23,7 @@ pub struct ObliterateKeypairsAction {
 }
 
 impl ObliterateKeypairsAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
         let endpoint: String = [KEYPAIRS_ENDPOINT, &self.keypairs_id, ":obliterate"].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let response = gmail_client.await?.post(&endpoint, String::new()).await?;

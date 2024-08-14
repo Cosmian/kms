@@ -23,6 +23,9 @@ use crate::{
     result::KResult,
 };
 
+const USER_GET: &str = "user_get";
+const USER_DECRYPT: &str = "user_decrypt";
+
 pub(crate) async fn tags<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
     verify_attributes: bool,
@@ -183,7 +186,6 @@ pub(crate) async fn tags<DB: Database>(
     assert_eq!(res.len(), 0);
 
     // grant the Get access right to USER_GET
-    const USER_GET: &str = "user_get";
     db.grant_access(
         &uid,
         USER_GET,
@@ -193,7 +195,6 @@ pub(crate) async fn tags<DB: Database>(
     .await?;
 
     // grant the Decrypt access right to USER_DECRYPT
-    const USER_DECRYPT: &str = "user_decrypt";
     db.grant_access(
         &uid,
         USER_DECRYPT,

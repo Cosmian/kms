@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::console,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -76,7 +76,7 @@ pub struct CreateKeyPairAction {
 }
 
 impl CreateKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let create_key_pair_request = create_ec_key_pair_request(&self.tags, self.curve.into())?;
 
         // Query the KMS with your kmip data and get the key pair ids

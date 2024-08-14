@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Decrypt a file using the private key of a certificate.
@@ -41,7 +41,7 @@ pub struct DecryptCertificateAction {
 }
 
 impl DecryptCertificateAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         // Read the file to decrypt
         let ciphertext = read_bytes_from_file(&self.input_file)?;
 

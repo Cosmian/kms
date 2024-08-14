@@ -178,7 +178,7 @@ fn generate_server_params(
         db: DBConfig {
             database_type: Some("sqlite-enc".to_string()),
             clear_database: true,
-            ..Default::default()
+            ..DBConfig::default()
         },
         http: if use_https {
             if use_client_cert {
@@ -189,7 +189,7 @@ fn generate_server_params(
                     ),
                     https_p12_password: Some("password".to_string()),
                     authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
-                    ..Default::default()
+                    ..HttpConfig::default()
                 }
             } else {
                 HttpConfig {
@@ -198,16 +198,16 @@ fn generate_server_params(
                         root_dir.join("certificates/server/kmserver.acme.com.p12"),
                     ),
                     https_p12_password: Some("password".to_string()),
-                    ..Default::default()
+                    ..HttpConfig::default()
                 }
             }
         } else {
             HttpConfig {
                 port,
-                ..Default::default()
+                ..HttpConfig::default()
             }
         },
-        ..Default::default()
+        ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
         .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))

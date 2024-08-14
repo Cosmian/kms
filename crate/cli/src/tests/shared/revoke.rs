@@ -10,7 +10,7 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair, shared::export::export_key,
         symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
@@ -22,7 +22,7 @@ pub(crate) fn revoke(
     sub_command: &str,
     key_id: &str,
     revocation_reason: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let args: Vec<String> = ["keys", "revoke", "--key-id", key_id, revocation_reason]
         .iter()
         .map(std::string::ToString::to_string)
@@ -40,7 +40,7 @@ pub(crate) fn revoke(
     ))
 }
 
-fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
+fn assert_revoker(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -78,7 +78,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_revoke_symmetric_key() -> Result<(), CliError> {
+async fn test_revoke_symmetric_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -98,7 +98,7 @@ async fn test_revoke_symmetric_key() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_revoke_ec_key() -> Result<(), CliError> {
+async fn test_revoke_ec_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -145,7 +145,7 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-async fn test_revoke_cover_crypt() -> Result<(), CliError> {
+async fn test_revoke_cover_crypt() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 

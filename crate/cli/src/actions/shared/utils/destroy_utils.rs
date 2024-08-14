@@ -6,10 +6,10 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
-pub(crate) async fn destroy(kms_rest_client: &KmsClient, key_id: &str) -> Result<(), CliError> {
+pub(crate) async fn destroy(kms_rest_client: &KmsClient, key_id: &str) -> CliResult<()> {
     // Create the kmip query
     let destroy_query = Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_string())),

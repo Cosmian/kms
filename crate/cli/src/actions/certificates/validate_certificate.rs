@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     kmip::kmip_types::ValidityIndicator, KmsClient,
 };
 
-use crate::{actions::console, error::CliError};
+use crate::{actions::console, error::result::CliResult};
 
 /// Validate a certificate.
 ///
@@ -28,7 +28,7 @@ pub struct ValidateCertificatesAction {
 }
 
 impl ValidateCertificatesAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         let request = build_validate_certificate_request(
             &self.certificate,
             &self.unique_identifier,

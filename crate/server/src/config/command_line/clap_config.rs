@@ -91,6 +91,6 @@ impl fmt::Debug for ClapConfig {
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,
         );
-        x.finish()
+        x.finish_non_exhaustive()
     }
 }

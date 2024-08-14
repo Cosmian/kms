@@ -23,7 +23,7 @@ use tracing::debug;
 
 use crate::{
     actions::shared::utils::KeyUsage,
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
@@ -33,7 +33,7 @@ use crate::{
 };
 
 #[tokio::test]
-pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
+pub async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -111,7 +111,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
+pub async fn test_import_export_wrap_ecies() -> CliResult<()> {
     cosmian_logger::log_utils::log_init(Some("debug"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -210,7 +210,7 @@ fn test_import_export_wrap_private_key(
     private_key_id: &str,
     wrapping_key_uid: &str,
     unwrapping_key: &Object,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

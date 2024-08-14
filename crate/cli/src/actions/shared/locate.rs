@@ -16,7 +16,7 @@ use cosmian_kms_client::{
 };
 use strum::IntoEnumIterator;
 
-use crate::{actions::console, error::CliError};
+use crate::{actions::console, error::result::CliResult};
 
 /// Locate cryptographic objects inside the KMS
 ///
@@ -94,7 +94,7 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {

@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},
@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_view_policy() -> Result<(), CliError> {
+async fn test_view_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
@@ -60,7 +60,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_create_policy() -> Result<(), CliError> {
+async fn test_create_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
@@ -86,7 +86,7 @@ pub async fn rename(
     master_private_key_id: &str,
     attribute: &str,
     new_name: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -114,7 +114,7 @@ pub async fn add(
     cli_conf_path: &str,
     master_private_key_id: &str,
     new_attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -141,7 +141,7 @@ pub async fn disable(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -168,7 +168,7 @@ pub async fn remove(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -192,7 +192,7 @@ pub async fn remove(
 }
 
 #[tokio::test]
-async fn test_edit_policy() -> Result<(), CliError> {
+async fn test_edit_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

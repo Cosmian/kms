@@ -12,7 +12,7 @@ use crate::{
         rsa::{to_cryptographic_parameters, EncryptionAlgorithm, HashFn},
     },
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Encrypt a file with the given public key using either
@@ -75,7 +75,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file to encrypt
         let mut data = read_bytes_from_file(&self.input_file)
             .with_context(|| "Cannot read bytes from the file to encrypt")?;

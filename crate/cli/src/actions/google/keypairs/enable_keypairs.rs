@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use super::KEYPAIRS_ENDPOINT;
-use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
 
 /// Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 /// again for any associated client-side encryption identities.
@@ -20,7 +20,7 @@ pub struct EnableKeypairsAction {
 }
 
 impl EnableKeypairsAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
         let endpoint = [KEYPAIRS_ENDPOINT, &self.keypairs_id, ":enable"].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let response = gmail_client.await?.post(&endpoint, String::new()).await?;

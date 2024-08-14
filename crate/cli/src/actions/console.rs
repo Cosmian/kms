@@ -7,7 +7,7 @@ use cosmian_kms_client::{
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 pub const KMS_CLI_FORMAT: &str = "KMS_CLI_FORMAT";
 pub const CLI_DEFAULT_FORMAT: &str = "text";
@@ -90,7 +90,7 @@ impl Stdout {
         self.object_owned = Some(object_owned);
     }
 
-    pub fn write(&self) -> Result<(), CliError> {
+    pub fn write(&self) -> CliResult<()> {
         let json_format_from_env = std::env::var(KMS_CLI_FORMAT)
             .unwrap_or_else(|_| CLI_DEFAULT_FORMAT.to_string())
             .to_lowercase()

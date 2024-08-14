@@ -4,7 +4,7 @@ use reqwest::{Client, Response};
 use serde::Deserialize;
 
 use super::{service_account::ServiceAccount, token::retrieve_token, GoogleApiError};
-use crate::error::CliError;
+use crate::error::{result::CliResult, CliError};
 
 #[derive(Deserialize)]
 pub(crate) struct RequestError {
@@ -23,7 +23,7 @@ struct GmailClientBuilder {
 }
 
 impl GmailClientBuilder {
-    pub(crate) fn new(conf_path: &PathBuf, user_id: String) -> Result<Self, CliError> {
+    pub(crate) fn new(conf_path: &PathBuf, user_id: String) -> CliResult<Self> {
         let service_account = ServiceAccount::load_from_config(conf_path)?;
         Ok(Self {
             service_account,
@@ -54,13 +54,13 @@ pub(crate) struct GmailClient {
 }
 
 impl GmailClient {
-    pub(crate) async fn new(conf_path: &PathBuf, user_id: &str) -> Result<Self, CliError> {
+    pub(crate) async fn new(conf_path: &PathBuf, user_id: &str) -> CliResult<Self> {
         GmailClientBuilder::new(conf_path, user_id.to_string())?
             .build()
             .await
     }
 
-    pub(crate) async fn handle_response(response: Response) -> Result<(), CliError> {
+    pub(crate) async fn handle_response(response: Response) -> CliResult<()> {
         if response.status().is_success() {
             println!(
                 "{}",

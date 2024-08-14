@@ -15,7 +15,10 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
-use crate::{actions::console, error::CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResult, CliError},
+};
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub(crate) enum ImportKeyFormat {
@@ -108,7 +111,7 @@ pub struct ImportKeyAction {
 }
 
 impl ImportKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let cryptographic_usage_mask = self
             .key_usage
             .as_deref()
@@ -130,10 +133,10 @@ impl ImportKeyAction {
             ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
             ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
             ImportKeyFormat::Aes => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)
+                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)?
             }
             ImportKeyFormat::Chacha20 => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)
+                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
             }
         };
         // Assign CryptographicUsageMask from command line arguments.
@@ -276,9 +279,9 @@ fn build_public_key_from_der_bytes(
 fn build_symmetric_key_from_bytes(
     cryptographic_algorithm: CryptographicAlgorithm,
     bytes: Zeroizing<Vec<u8>>,
-) -> Object {
-    let len = bytes.len() as i32 * 8;
-    Object::SymmetricKey {
+) -> CliResult<Object> {
+    let len = i32::try_from(bytes.len())? * 8;
+    Ok(Object::SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
@@ -290,5 +293,5 @@ fn build_symmetric_key_from_bytes(
             cryptographic_length: Some(len),
             key_wrapping_data: None,
         },
-    }
+    })
 }

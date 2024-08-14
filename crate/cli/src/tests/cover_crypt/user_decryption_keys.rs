@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         utils::{extract_uids::extract_user_key, recover_cmd_logs},
@@ -19,7 +19,7 @@ pub fn create_user_decryption_key(
     master_private_key_id: &str,
     access_policy: &str,
     tags: &[&str],
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -50,7 +50,7 @@ pub fn create_user_decryption_key(
 }
 
 #[tokio::test]
-pub async fn test_user_decryption_key() -> Result<(), CliError> {
+pub async fn test_user_decryption_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
@@ -74,7 +74,7 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
+pub async fn test_user_decryption_key_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair

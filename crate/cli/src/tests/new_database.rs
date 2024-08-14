@@ -9,7 +9,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::result::CliResult,
     tests::{
         shared::export_key, symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs,
         PROG_NAME,
@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[tokio::test]
-pub(crate) async fn test_new_database() -> Result<(), CliError> {
+pub(crate) async fn test_new_database() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -33,7 +33,7 @@ pub(crate) async fn test_new_database() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_secrets_bad() -> Result<(), CliError> {
+pub(crate) async fn test_secrets_bad() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let bad_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
@@ -51,7 +51,7 @@ pub(crate) async fn test_secrets_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_conf_does_not_exist() -> Result<(), CliError> {
+pub(crate) async fn test_conf_does_not_exist() -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -64,7 +64,7 @@ pub(crate) async fn test_conf_does_not_exist() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_secrets_key_bad() -> Result<(), CliError> {
+pub(crate) async fn test_secrets_key_bad() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -84,7 +84,7 @@ pub(crate) async fn test_secrets_key_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_multiple_databases() -> Result<(), CliError> {
+async fn test_multiple_databases() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

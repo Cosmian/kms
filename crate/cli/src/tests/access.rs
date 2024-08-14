@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server_with_cert_auth;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         shared::{destroy, export_key, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
@@ -17,7 +17,7 @@ use crate::{
 pub(crate) const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
-fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
+fn gen_key(cli_conf_path: &str) -> CliResult<String> {
     create_symmetric_key(cli_conf_path, None, None, None, &[])
 }
 
@@ -27,7 +27,7 @@ pub(crate) fn grant_access(
     object_id: &str,
     user: &str,
     operations: &[&str],
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -51,7 +51,7 @@ pub(crate) fn revoke_access(
     object_id: &str,
     user: &str,
     operations: &[&str],
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -70,7 +70,7 @@ pub(crate) fn revoke_access(
 }
 
 /// List accesses granted on an object
-fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError> {
+fn list_access(cli_conf_path: &str, object_id: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -87,7 +87,7 @@ fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError>
 }
 
 /// List objects owned by the user
-fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_owned_objects(cli_conf_path: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -104,7 +104,7 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// List accesses granted
-fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_accesses_rights_obtained(cli_conf_path: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -121,8 +121,10 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError
 }
 
 #[tokio::test]
-pub(crate) async fn test_ownership_and_grant() -> Result<(), CliError> {
-    std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
+pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
+    unsafe {
+        std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
+    }
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -257,7 +259,7 @@ pub(crate) async fn test_ownership_and_grant() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_grant_error() -> Result<(), CliError> {
+pub(crate) async fn test_grant_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -298,7 +300,7 @@ pub(crate) async fn test_grant_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_revoke_access() -> Result<(), CliError> {
+pub(crate) async fn test_revoke_access() -> CliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -392,7 +394,7 @@ pub(crate) async fn test_revoke_access() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_list_access_rights() -> Result<(), CliError> {
+pub(crate) async fn test_list_access_rights() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -416,14 +418,14 @@ pub(crate) async fn test_list_access_rights() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_list_access_rights_error() -> Result<(), CliError> {
+pub(crate) async fn test_list_access_rights_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     assert!(list_access(&ctx.user_client_conf_path, "BAD KEY").is_err());
     Ok(())
 }
 
 #[tokio::test]
-pub(crate) async fn test_list_owned_objects() -> Result<(), CliError> {
+pub(crate) async fn test_list_owned_objects() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -460,7 +462,7 @@ pub(crate) async fn test_list_owned_objects() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_access_right_obtained() -> Result<(), CliError> {
+pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -493,7 +495,7 @@ pub(crate) async fn test_access_right_obtained() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
+pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
@@ -603,7 +605,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliEr
 }
 
 #[tokio::test]
-pub(crate) async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
+pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
@@ -641,7 +643,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> Result<(), Cl
 }
 
 #[tokio::test]
-pub(crate) async fn test_grant_multiple_operations() -> Result<(), CliError> {
+pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 

@@ -11,7 +11,7 @@ use cosmian_kms_client::{
 use serde_json::Value;
 use tracing::{debug, trace};
 
-use crate::{actions::console, cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeTag {
@@ -78,7 +78,7 @@ pub struct GetAttributesAction {
 }
 
 impl GetAttributesAction {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         trace!("GetAttributesAction: {:?}", self);
         let id = if let Some(key_id) = &self.id {
             key_id.clone()

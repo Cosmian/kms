@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use self::{identities::IdentitiesCommands, keypairs::KeypairsCommands};
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 mod gmail_client;
 mod identities;
@@ -20,7 +20,7 @@ pub enum GoogleCommands {
 }
 
 impl GoogleCommands {
-    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         match self {
             Self::Keypairs(command) => command.process(conf_path).await?,
             Self::Identities(command) => command.process(conf_path).await?,

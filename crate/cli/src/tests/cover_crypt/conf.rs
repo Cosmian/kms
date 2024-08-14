@@ -6,12 +6,12 @@ use kms_test_server::{generate_invalid_conf, start_default_test_kms_server};
 use predicates::prelude::*;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
 #[tokio::test]
-pub async fn test_bad_conf() -> Result<(), CliError> {
+pub async fn test_bad_conf() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
@@ -51,7 +51,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
+pub async fn test_secrets_group_id_bad() -> CliResult<()> {
     let _ctx = start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;

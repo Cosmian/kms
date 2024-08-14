@@ -5,7 +5,7 @@ use crate::{
     actions::cover_crypt::{
         decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands, policy::PolicyCommands,
     },
-    error::CliError,
+    error::result::CliResult,
 };
 
 pub(crate) mod decrypt;
@@ -25,7 +25,7 @@ pub enum CovercryptCommands {
 }
 
 impl CovercryptCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Policy(command) => command.process(kms_rest_client).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,

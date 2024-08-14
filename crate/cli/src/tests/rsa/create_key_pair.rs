@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
@@ -51,7 +51,7 @@ pub(crate) fn create_rsa_4096_bits_key_pair(
 }
 
 #[tokio::test]
-pub(crate) async fn test_rsa_create_key_pair() -> Result<(), CliError> {
+pub(crate) async fn test_rsa_create_key_pair() -> CliResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
     create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag1", "tag2"])?;

@@ -18,7 +18,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::{console, shared::SYMMETRIC_WRAPPING_KEY_SIZE},
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Locally wrap a key in KMIP JSON TTLV format.
@@ -62,7 +62,7 @@ pub struct WrapKeyAction {
 }
 
 impl WrapKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 

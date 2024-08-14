@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     write_kmip_object_to_file, ClientResultHelper, KmsClient,
 };
 
-use crate::{actions::console, cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
@@ -106,7 +106,7 @@ pub struct ExportKeyAction {
 
 impl ExportKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -116,17 +116,18 @@ impl ExportKeyAction {
         };
 
         let (key_format_type, encode_to_pem) = match self.key_format {
-            ExportKeyFormat::JsonTtlv => (None, false),
+            // For Raw: use the default format then do the local extraction of the bytes
+            ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw => (None, false),
             ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
             ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
             ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
             ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-            ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
-            ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
-            ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
-            ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
-            // For Raw: use the default format then do the local extraction of the bytes
-            ExportKeyFormat::Raw => (None, false),
+            ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => {
+                (Some(KeyFormatType::PKCS8), true)
+            }
+            ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => {
+                (Some(KeyFormatType::PKCS8), false)
+            }
         };
 
         // export the object

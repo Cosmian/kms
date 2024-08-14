@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Decrypts a file using AES GCM
@@ -47,7 +47,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file to decrypt
         let mut data = read_bytes_from_file(&self.input_file)
             .with_context(|| "Cannot read bytes from the file to decrypt")?;

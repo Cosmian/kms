@@ -5,12 +5,12 @@ use kms_test_server::{start_default_test_kms_server, TestsContext};
 
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
-    error::CliError,
+    error::result::CliResult,
     tests::shared::{export_key, import_key},
 };
 
 #[tokio::test]
-async fn test_import_export_encodings() -> Result<(), CliError> {
+async fn test_import_export_encodings() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -57,7 +57,7 @@ fn test_pems(
     ctx: &TestsContext,
     key_file_path: &str,
     export_format: ExportKeyFormat,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     // import the  key
     let key_uid = import_key(
         &ctx.owner_client_conf_path,

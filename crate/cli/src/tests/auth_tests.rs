@@ -6,7 +6,7 @@ use kms_test_server::start_test_server_with_options;
 
 use super::utils::recover_cmd_logs;
 use crate::{
-    error::CliError,
+    error::result::CliResult,
     tests::{access::SUB_COMMAND, PROG_NAME},
 };
 
@@ -20,7 +20,7 @@ fn run_cli_command(owner_client_conf_path: &str) {
 }
 
 #[tokio::test]
-pub(crate) async fn test_all_authentications() -> Result<(), CliError> {
+pub(crate) async fn test_all_authentications() -> CliResult<()> {
     // let us not make other test cases fail
     const PORT: u16 = 9999;
     // plaintext no auth
