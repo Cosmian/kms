@@ -94,7 +94,9 @@ impl TryFrom<&MySqlRow> for ObjectWithMetadata {
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let attributes = serde_json::from_str(&row.get::<String, _>(2))?;
+        let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
+            .context("failed deserializing the Attributes")
+            .reason(ErrorReason::Internal_Server_Error)?;
         let owner = row.get::<String, _>(3);
         let state = state_from_string(&row.get::<String, _>(4))?;
         let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(5) {
