@@ -171,22 +171,6 @@ async fn test_validate_cli() -> Result<(), CliError> {
     )?;
     info!("leaf1 cert imported: {leaf1_certificate_id}");
 
-    let leaf2_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/leaf2.cert.pem",
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(intermediate_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
-    info!("leaf2 cert imported: {leaf2_certificate_id}");
-
     let test1_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
@@ -207,11 +191,10 @@ async fn test_validate_cli() -> Result<(), CliError> {
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
+        vec!["test_data/certificates/chain/leaf2.cert.der".to_string()],
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
-            leaf2_certificate_id.clone(),
         ],
         None,
     )?;
@@ -224,12 +207,8 @@ async fn test_validate_cli() -> Result<(), CliError> {
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec![],
-        vec![
-            intermediate_certificate_id,
-            root_certificate_id.clone(),
-            leaf2_certificate_id,
-        ],
+        vec!["test_data/certificates/chain/leaf2.cert.der".to_string()],
+        vec![intermediate_certificate_id, root_certificate_id.clone()],
         // Date: 15/04/2048
         Some("4804152030Z".to_string()),
     );

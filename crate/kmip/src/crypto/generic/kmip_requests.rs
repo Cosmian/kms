@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use zeroize::Zeroizing;
 
 use super::data_to_encrypt::DataToEncrypt;
@@ -27,21 +29,22 @@ pub fn build_revoke_key_request(
 
 /// Build a `Validate` request to validate a certificate chain.
 pub fn build_validate_certificate_request(
-    certificates: Vec<String>,
+    certificates: &[PathBuf],
     unique_identifiers: &[String],
     date: Option<String>,
 ) -> Result<Validate, KmipError> {
-    let certificates = {
-        if certificates.is_empty() {
-            None
-        } else {
-            Some(
-                certificates
-                    .into_iter()
-                    .map(std::string::String::into_bytes)
-                    .collect(),
-            )
-        }
+    let certificates = if certificates.is_empty() {
+        None
+    } else {
+        Some(
+            certificates
+                .iter()
+                .map(std::fs::read)
+                .collect::<Result<Vec<Vec<u8>>, _>>()
+                .map_err(|e| {
+                    KmipError::ObjectNotFound(format!("Invalid certificate file path: {e:?}"))
+                })?,
+        )
     };
     let unique_identifiers = {
         if unique_identifiers.is_empty() {

@@ -310,7 +310,7 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
     if sorted_chains.len() != certificates.len() {
         return Err(KmsError::Certificate(
-            "Failed to sort the certificates".to_string(),
+            "Failed to sort the certificates. Certificate chain incomplete?".to_string(),
         ));
     }
 

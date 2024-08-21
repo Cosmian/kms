@@ -846,7 +846,7 @@ Validate a certificate
 ### Usage
 `ckms certificates validate [options]`
 ### Arguments
-`--certificate [-v] <CERTIFICATE>` One or more Certificates
+`--certificate [-v] <CERTIFICATE>` One or more Certificates filepath
 
 `--unique-identifier [-k] <UNIQUE_IDENTIFIER>` One or more Unique Identifiers of Certificate Objects
 
