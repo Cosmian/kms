@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::generic::kmip_requests::build_validate_certificate_request,
@@ -13,9 +15,9 @@ use crate::{actions::console, error::CliError};
 /// complete, and no components has been flagged as removed.
 #[derive(Parser, Debug)]
 pub struct ValidateCertificatesAction {
-    /// One or more Certificates.
+    /// One or more Certificates filepath.
     #[clap(long = "certificate", short = 'v')]
-    certificate: Vec<String>,
+    certificate: Vec<PathBuf>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[clap(long = "unique-identifier", short = 'k')]
     unique_identifier: Vec<String>,
@@ -28,7 +30,7 @@ pub struct ValidateCertificatesAction {
 impl ValidateCertificatesAction {
     pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         let request = build_validate_certificate_request(
-            self.certificate.clone(),
+            &self.certificate,
             &self.unique_identifier,
             self.validity_time.clone(),
         )?;
