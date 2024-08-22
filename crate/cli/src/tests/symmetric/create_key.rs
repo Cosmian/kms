@@ -11,7 +11,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
@@ -25,7 +25,7 @@ pub(crate) fn create_symmetric_key(
     wrap_key_b64: Option<&str>,
     algorithm: Option<&str>,
     tags: &[&str],
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -63,7 +63,7 @@ pub(crate) fn create_symmetric_key(
 }
 
 #[tokio::test]
-pub(crate) async fn test_create_symmetric_key() -> Result<(), CliError> {
+pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0u8; 32];

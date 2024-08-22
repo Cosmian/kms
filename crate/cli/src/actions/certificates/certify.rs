@@ -19,7 +19,10 @@ use cosmian_kms_client::{
     read_bytes_from_file, KmsClient,
 };
 
-use crate::{actions::console, error::CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResult, CliError},
+};
 
 /// The algorithm to use for the keypair generation
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -190,7 +193,7 @@ pub struct CertifyAction {
 }
 
 impl CertifyAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()

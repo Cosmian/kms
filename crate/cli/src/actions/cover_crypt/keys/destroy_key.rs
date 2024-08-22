@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::{actions::shared::utils::destroy, cli_bail, error::CliError};
+use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult};
 
 /// Destroy a Covercrypt master or user decryption key.
 ///
@@ -29,7 +29,7 @@ pub struct DestroyKeyAction {
 }
 
 impl DestroyKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

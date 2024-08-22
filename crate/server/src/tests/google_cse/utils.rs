@@ -64,7 +64,7 @@ pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
 
     Ok(GoogleCseConfig {
         authentication: vec![jwt_config].into(),
-        authorization: google_cse::jwt_authorization_config(jwks_manager),
+        authorization: google_cse::jwt_authorization_config(&jwks_manager),
         kacls_url: "http://0.0.0.0:9998/google_cse".to_string(),
     })
 }

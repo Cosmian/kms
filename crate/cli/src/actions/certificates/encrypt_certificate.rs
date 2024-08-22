@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Encrypt a file using the certificate public key.
@@ -43,7 +43,7 @@ pub struct EncryptCertificateAction {
 }
 
 impl EncryptCertificateAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         // Read the file to encrypt
         let data = Zeroizing::from(read_bytes_from_file(&self.input_file)?);
 

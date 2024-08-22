@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use cosmian_kms_client::ClientConf;
 use serde::{Deserialize, Serialize};
 
-use crate::error::CliError;
+use crate::error::{result::CliResult, CliError};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct ServiceAccount {
@@ -21,7 +21,7 @@ pub(crate) struct ServiceAccount {
 }
 
 impl ServiceAccount {
-    pub(crate) fn load_from_config(conf_path: &PathBuf) -> Result<Self, CliError> {
+    pub(crate) fn load_from_config(conf_path: &PathBuf) -> CliResult<Self> {
         let conf = ClientConf::load(conf_path)?;
         let gmail_api_conf = conf.gmail_api_conf.ok_or_else(|| {
             CliError::Default(format!("No gmail_api_conf object in {conf_path:?}"))

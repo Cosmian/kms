@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Rekey the master and user keys for a given access policy.
@@ -39,7 +39,7 @@ pub struct RekeyAction {
 }
 
 impl RekeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -106,7 +106,7 @@ pub struct PruneAction {
 }
 
 impl PruneAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

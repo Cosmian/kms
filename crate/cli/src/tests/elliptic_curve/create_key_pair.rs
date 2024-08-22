@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
@@ -20,7 +20,7 @@ pub(crate) fn create_ec_key_pair(
     cli_conf_path: &str,
     curve: &str,
     tags: &[&str],
-) -> Result<(String, String), CliError> {
+) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -54,7 +54,7 @@ pub(crate) fn create_ec_key_pair(
 }
 
 #[tokio::test]
-pub(crate) async fn test_create_key_pair() -> Result<(), CliError> {
+pub(crate) async fn test_create_key_pair() -> CliResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
     create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["tag1", "tag2"])?;

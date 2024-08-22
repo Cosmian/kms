@@ -13,7 +13,7 @@ use crate::tests::{
     },
 };
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
@@ -26,7 +26,7 @@ pub(crate) fn locate(
     algorithm: Option<&str>,
     cryptographic_length: Option<usize>,
     key_format_type: Option<&str>,
-) -> Result<Vec<String>, CliError> {
+) -> CliResult<Vec<String>> {
     let mut args: Vec<String> = vec![];
     if let Some(tags) = tags {
         for tag in tags {
@@ -67,8 +67,10 @@ pub(crate) fn locate(
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
-    std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
+pub async fn test_locate_cover_crypt() -> CliResult<()> {
+    unsafe {
+        std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
+    }
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -213,7 +215,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_locate_elliptic_curve() -> Result<(), CliError> {
+pub(crate) async fn test_locate_elliptic_curve() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -301,7 +303,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_locate_symmetric_key() -> Result<(), CliError> {
+pub(crate) async fn test_locate_symmetric_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
@@ -370,7 +372,7 @@ pub(crate) async fn test_locate_symmetric_key() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_locate_grant() -> Result<(), CliError> {
+pub async fn test_locate_grant() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 

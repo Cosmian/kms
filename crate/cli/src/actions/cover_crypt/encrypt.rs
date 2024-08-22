@@ -13,7 +13,7 @@ use cosmian_kms_client::{
 
 use crate::{
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Encrypt a file using Covercrypt
@@ -51,7 +51,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file(s) to encrypt
         let (cryptographic_algorithm, mut data) = if self.input_files.len() > 1 {
             (

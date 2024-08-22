@@ -16,7 +16,7 @@ use crate::tests::{
 };
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         shared::export::export_key,
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
@@ -35,7 +35,7 @@ pub(crate) fn import_key(
     key_usage_vec: Option<Vec<KeyUsage>>,
     unwrap: bool,
     replace_existing: bool,
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -90,7 +90,7 @@ pub(crate) fn import_key(
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_import_cover_crypt() -> Result<(), CliError> {
+pub async fn test_import_cover_crypt() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let uid: String = import_key(
@@ -141,7 +141,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_generate_export_import() -> Result<(), CliError> {
+pub async fn test_generate_export_import() -> CliResult<()> {
     cosmian_logger::log_utils::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
@@ -187,7 +187,7 @@ pub(crate) fn export_import_test(
     sub_command: &str,
     private_key_id: &str,
     algorithm: CryptographicAlgorithm,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     // Export
     export_key(
         cli_conf_path,

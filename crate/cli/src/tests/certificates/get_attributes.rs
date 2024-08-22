@@ -15,7 +15,7 @@ async fn test_get_attributes_p12() {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
-        CertificateInputFormat::Pkcs12,
+        &CertificateInputFormat::Pkcs12,
         Some("secret"),
         Some("get_attributes_test_p12_cert".to_string()),
         None,

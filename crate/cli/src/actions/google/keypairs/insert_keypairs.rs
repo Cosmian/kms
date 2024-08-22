@@ -9,7 +9,10 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::KEYPAIRS_ENDPOINT;
-use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+use crate::{
+    actions::google::gmail_client::GmailClient,
+    error::{result::CliResult, CliError},
+};
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 /// metadata for a user.
@@ -56,7 +59,7 @@ struct KaclsKeyMetadata {
 }
 
 impl InsertKeypairsAction {
-    fn get_input_files(indir: &PathBuf, ext: &str) -> Result<Vec<PathBuf>, CliError> {
+    fn get_input_files(indir: &PathBuf, ext: &str) -> CliResult<Vec<PathBuf>> {
         Ok(fs::read_dir(indir)?
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|f| f.is_file())
@@ -64,10 +67,7 @@ impl InsertKeypairsAction {
             .collect())
     }
 
-    fn get_email_to_file(
-        files: &[PathBuf],
-        ext: &str,
-    ) -> Result<HashMap<String, PathBuf>, CliError> {
+    fn get_email_to_file(files: &[PathBuf], ext: &str) -> CliResult<HashMap<String, PathBuf>> {
         let mut email_file_map = HashMap::new();
 
         for file in files {
@@ -97,10 +97,10 @@ impl InsertKeypairsAction {
         email_cert_file_map: &HashMap<String, PathBuf>,
         email: &str,
         key_file: &PathBuf,
-    ) -> Result<(), CliError> {
+    ) -> CliResult<()> {
         tracing::info!("Processing {email:?}.");
 
-        let read_to_string = |path: &PathBuf| -> Result<String, CliError> {
+        let read_to_string = |path: &PathBuf| -> CliResult<String> {
             let mut f = File::open(path)?;
             let mut s = String::new();
             f.read_to_string(&mut s)?;
@@ -130,7 +130,7 @@ impl InsertKeypairsAction {
         Ok(())
     }
 
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id).await?;
 
         let wrapped_key_files = Self::get_input_files(&self.inkeydir, "wrap")?;

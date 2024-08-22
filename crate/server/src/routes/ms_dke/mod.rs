@@ -89,7 +89,7 @@ pub(crate) async fn version(
     req_http: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    info!("GET /version {}", kms.get_user(req_http)?);
+    info!("GET /version {}", kms.get_user(&req_http)?);
     Ok(Json(crate_version!().to_string()))
 }
 
@@ -118,7 +118,7 @@ pub(crate) async fn get_key(
 
 async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
+    let user = kms.get_user(&req_http)?;
     let dke_service_url = kms
         .params
         .ms_dke_service_url
@@ -225,7 +225,7 @@ async fn _decrypt(
     kms: &Arc<KMSServer>,
 ) -> KResult<DecryptedData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
+    let user = kms.get_user(&req_http)?;
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             serde_json::to_string(&vec![key_tag, "_sk"]).map_err(|e| kms_error!(e))?,

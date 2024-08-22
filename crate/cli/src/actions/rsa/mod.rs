@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 mod decrypt;
 mod encrypt;
@@ -24,7 +24,7 @@ pub enum RsaCommands {
 }
 
 impl RsaCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,

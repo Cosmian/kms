@@ -26,7 +26,7 @@ struct CseErrorReply {
 }
 
 impl CseErrorReply {
-    fn from(e: KmsError) -> Self {
+    fn from(e: &KmsError) -> Self {
         Self {
             code: e.status_code().as_u16(),
             message: "A CSE request to the Cosmian KMS failed".to_string(),
@@ -56,7 +56,7 @@ pub(crate) async fn get_status(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<operations::StatusResponse>> {
-    info!("GET /google_cse/status {}", kms.get_user(req)?);
+    info!("GET /google_cse/status {}", kms.get_user(&req)?);
     Ok(Json(operations::get_status()))
 }
 
@@ -194,7 +194,7 @@ pub(crate) async fn wrap(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -222,7 +222,7 @@ pub(crate) async fn unwrap(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -249,7 +249,7 @@ pub(crate) async fn private_key_sign(
         .map(Json)
     {
         Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -276,6 +276,6 @@ pub(crate) async fn private_key_decrypt(
         .map(Json)
     {
         Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }

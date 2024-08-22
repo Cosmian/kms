@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs, PROG_NAME,
     },
@@ -21,7 +21,7 @@ pub fn encrypt(
     public_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -53,7 +53,7 @@ pub fn decrypt(
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -77,7 +77,7 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -119,7 +119,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

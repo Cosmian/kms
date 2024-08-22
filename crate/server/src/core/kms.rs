@@ -663,7 +663,7 @@ impl KMS {
     /// The user is encoded in the JWT `Authorization` header
     /// If the header is not present, the user is extracted from the client certificate
     /// If the client certificate is not present, the user is extracted from the configuration file
-    pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
+    pub fn get_user(&self, req_http: &HttpRequest) -> KResult<String> {
         let default_username = self.params.default_username.clone();
 
         if self.params.force_default_username {

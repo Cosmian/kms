@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::error::result::{CliResult, CliResultHelper};
 
 /// Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 ///
@@ -19,7 +19,7 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct NewDatabaseAction;
 
 impl NewDatabaseAction {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Query the KMS to get a new database
         let token = kms_rest_client
             .new_database()

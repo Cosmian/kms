@@ -24,7 +24,7 @@ use crate::{
             utils::{build_usage_mask_from_key_usage, KeyUsage},
         },
     },
-    error::CliError,
+    error::{result::CliResult, CliError},
 };
 
 const MOZILLA_CCADB: &str =
@@ -118,7 +118,7 @@ pub struct ImportCertificateAction {
 }
 
 impl ImportCertificateAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         debug!("CLI: entering import certificate");
 
         //generate the leaf certificate attributes if links are specified
@@ -271,7 +271,7 @@ impl ImportCertificateAction {
     }
 
     /// Import the certificate, the chain and the associated private key
-    async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> Result<String, CliError> {
+    async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> CliResult<String> {
         let cryptographic_usage_mask = self
             .key_usage
             .as_deref()
@@ -304,7 +304,7 @@ impl ImportCertificateAction {
         Ok(private_key_id)
     }
 
-    fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
+    fn get_certificate_file(&self) -> CliResult<&PathBuf> {
         self.certificate_file.as_ref().ok_or_else(|| {
             CliError::InvalidRequest(format!(
                 "Certificate file parameter is MANDATORY for {:?} format",
@@ -321,7 +321,7 @@ impl ImportCertificateAction {
         mut objects: Vec<Object>,
         replace_existing: bool,
         leaf_certificate_attributes: Option<Attributes>,
-    ) -> Result<String, CliError> {
+    ) -> CliResult<String> {
         let mut previous_identifier: Option<String> = None;
         while let Some(object) = objects.pop() {
             let mut import_attributes = if objects.is_empty() {
@@ -359,7 +359,7 @@ impl ImportCertificateAction {
 }
 
 /// Build a chain of certificates from a PEM stack
-fn build_chain_from_stack(pem_chain: &[u8]) -> Result<Vec<Object>, CliError> {
+fn build_chain_from_stack(pem_chain: &[u8]) -> CliResult<Vec<Object>> {
     let pem_s = pem::parse_many(pem_chain)
         .map_err(|e| CliError::Conversion(format!("Cannot parse PEM content. Error: {e:?}")))?; // check the PEM is valid (no error
     let mut objects = vec![];

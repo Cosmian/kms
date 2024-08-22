@@ -25,7 +25,10 @@ use oauth2::{
 use serde::Deserialize;
 use url::Url;
 
-use crate::{cli_bail, error::CliError};
+use crate::{
+    cli_bail,
+    error::{result::CliResult, CliError},
+};
 
 /// Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 ///
@@ -45,7 +48,7 @@ use crate::{cli_bail, error::CliError};
 pub struct LoginAction;
 
 impl LoginAction {
-    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
         let oauth2_conf = conf
             .oauth2_conf
@@ -184,7 +187,7 @@ impl LoginState {
     /// This function should be called immediately after the user has been instructed to browse to the authorization URL.
     /// It starts a server on localhost:17899 and waits for the authorization code to be received
     /// from the browser window. Once the code is received, the server is closed and the code is returned.
-    pub async fn finalize(&self) -> Result<String, CliError> {
+    pub async fn finalize(&self) -> CliResult<String> {
         // recover the authorization code, state and other parameters from the redirect URL
         let auth_parameters = Self::receive_authorization_parameters()?;
 
@@ -234,7 +237,7 @@ impl LoginState {
 
     /// This function starts the server on `localhost:17899` and waits for the authorization code to be received
     /// from the browser window. Once the code is received, the server is closed and the authorization code is returned.
-    fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliError> {
+    fn receive_authorization_parameters() -> CliResult<HashMap<String, String>> {
         let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
         // Spawn the server into a runtime
         let tokio_handle = tokio::runtime::Handle::current();
@@ -294,7 +297,7 @@ pub async fn request_token(
     redirect_url: &Url,
     pkce_verifier: &PkceCodeVerifier,
     authorization_code: &str,
-) -> Result<OAuthResponse, CliError> {
+) -> CliResult<OAuthResponse> {
     let params = vec![
         ("grant_type", "authorization_code"),
         ("redirect_uri", redirect_url.as_str()),

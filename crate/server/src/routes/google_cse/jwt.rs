@@ -59,7 +59,9 @@ fn jwt_authorization_config_application(
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' and 'meet'
-pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<String, Arc<JwtConfig>> {
+pub fn jwt_authorization_config(
+    jwks_manager: &Arc<JwksManager>,
+) -> HashMap<String, Arc<JwtConfig>> {
     APPLICATIONS
         .iter()
         .map(|app| {
@@ -311,7 +313,7 @@ mod tests {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
         }
-        let jwt_authorization_config = jwt_authorization_config(jwks_manager);
+        let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(

@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use crate::{actions::console, cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
@@ -78,7 +78,7 @@ pub struct ExportCertificateAction {
 
 impl ExportCertificateAction {
     /// Export a certificate from the KMS
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         trace!("Export certificate: {:?}", self);
 
         let object_id: String = if let Some(object_id) = &self.unique_id {

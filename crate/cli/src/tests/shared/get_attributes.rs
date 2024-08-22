@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use crate::{
     actions::shared::AttributeTag,
-    error::{result::CliResultHelper, CliError},
+    error::{
+        result::{CliResult, CliResultHelper},
+        CliError,
+    },
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
@@ -14,7 +17,7 @@ pub(crate) fn get_attributes(
     cli_conf_path: &str,
     uid: &str,
     attribute_tags: &[AttributeTag],
-) -> Result<HashMap<AttributeTag, Value>, CliError> {
+) -> CliResult<HashMap<AttributeTag, Value>> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [
         "--id",

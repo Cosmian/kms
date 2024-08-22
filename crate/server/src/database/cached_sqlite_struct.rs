@@ -59,7 +59,7 @@ impl fmt::Debug for KMSSqliteCacheItem {
             .field("closed", &self.closed)
             .field("closed_at", &self.closed_at)
             .field("freeable_cache_index", &self.freeable_cache_index)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

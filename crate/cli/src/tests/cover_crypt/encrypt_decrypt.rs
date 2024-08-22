@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,
@@ -25,7 +25,7 @@ pub fn encrypt(
     access_policy: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -58,7 +58,7 @@ pub fn decrypt(
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -84,7 +84,7 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_object_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -157,7 +157,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_bulk_using_object_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -288,7 +288,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -391,7 +391,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_bulk_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

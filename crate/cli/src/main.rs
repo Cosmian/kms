@@ -18,7 +18,7 @@ use cosmian_kms_cli::{
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
-    error::CliError,
+    error::result::CliResult,
 };
 use cosmian_kms_client::ClientConf;
 
@@ -85,7 +85,7 @@ async fn main() {
     }
 }
 
-async fn main_() -> Result<(), CliError> {
+async fn main_() -> CliResult<()> {
     // Set up environment variables and logging options if RUST_LOG if defined
     // Ex: `export RUST_LOG="info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info"``
     cosmian_logger::log_utils::log_init(None);

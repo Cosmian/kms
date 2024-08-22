@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
 
@@ -18,7 +18,7 @@ pub(crate) fn encrypt(
     symmetric_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -48,7 +48,7 @@ pub(crate) fn decrypt(
     symmetric_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -72,13 +72,13 @@ pub(crate) fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_with_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_with_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)
 }
 
-pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
+pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -132,7 +132,7 @@ pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Res
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_with_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

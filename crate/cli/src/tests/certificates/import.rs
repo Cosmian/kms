@@ -5,7 +5,7 @@ use cosmian_kms_client::KMS_CLI_CONF_ENV;
 
 use crate::{
     actions::{certificates::CertificateInputFormat, shared::utils::KeyUsage},
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
@@ -17,7 +17,7 @@ pub(crate) fn import_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
-    format: CertificateInputFormat,
+    format: &CertificateInputFormat,
     pkcs12_password: Option<&str>,
     certificate_id: Option<String>,
     private_key_id: Option<String>,
@@ -26,7 +26,7 @@ pub(crate) fn import_certificate(
     key_usage_vec: Option<Vec<KeyUsage>>,
     unwrap: bool,
     replace_existing: bool,
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -89,7 +89,7 @@ pub(crate) fn import_certificate(
 }
 
 // #[tokio::test]
-// pub async fn test_certificate_import_different_format() -> Result<(), CliError> {
+// pub async fn test_certificate_import_different_format() -> CliResult<()> {
 //     // Create a test server
 //     let ctx = start_default_test_kms_server().await;
 //     // import as TTLV JSON

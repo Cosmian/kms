@@ -19,7 +19,7 @@ use x509_parser::{der_parser::oid, prelude::*};
 use super::validate;
 use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
@@ -45,7 +45,7 @@ pub(crate) struct CertifyOp {
     tags: Option<Vec<String>>,
 }
 
-pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<String, CliError> {
+pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -113,13 +113,13 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> Result<Stri
     ))
 }
 
-fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String, String), CliError> {
+fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
     // import Root CA
     let root_ca_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/ca.crt",
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         Some(Uuid::new_v4().to_string()),
         None,
@@ -134,7 +134,7 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String, S
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.crt",
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         Some(Uuid::new_v4().to_string()),
         None,
@@ -150,7 +150,7 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> Result<(String, String, S
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
-        CertificateInputFormat::Pkcs12,
+        &CertificateInputFormat::Pkcs12,
         Some("secret"),
         Some(Uuid::new_v4().to_string()),
         None,
@@ -396,7 +396,7 @@ fn check_public_and_private_key_linked(
 }
 
 #[tokio::test]
-async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
+async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -413,7 +413,7 @@ async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
         },
     )?;
 
-    let _ = check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
+    check_certificate_chain(ctx, &issuer_private_key_id, &certificate_id);
 
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
@@ -428,7 +428,7 @@ async fn test_certify_a_csr_without_extensions() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
+async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -465,7 +465,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_certify_a_public_key_test_without_extensions() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -507,7 +507,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> Result<(), CliEr
 }
 
 #[tokio::test]
-async fn test_certify_a_public_key_test_with_extensions() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -555,7 +555,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> Result<(), CliError
 }
 
 #[tokio::test]
-async fn test_certify_renew_a_certificate() -> Result<(), CliError> {
+async fn test_certify_renew_a_certificate() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -609,7 +609,7 @@ async fn test_certify_renew_a_certificate() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_certify_issue_with_subject_name() -> Result<(), CliError> {
+async fn test_certify_issue_with_subject_name() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -636,7 +636,7 @@ async fn test_certify_issue_with_subject_name() -> Result<(), CliError> {
     // check links to public key
     let (public_key_id, public_key_attributes) =
         check_certificate_and_public_key_linked(ctx, &certificate_id, &attributes);
-    let _ = check_public_and_private_key_linked(ctx, &public_key_id, &public_key_attributes);
+    check_public_and_private_key_linked(ctx, &public_key_id, &public_key_attributes);
 
     let validation = validate::validate_certificate(
         &ctx.owner_client_conf_path,
@@ -650,7 +650,7 @@ async fn test_certify_issue_with_subject_name() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_certify_a_public_key_test_self_signed() -> Result<(), CliError> {
+async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -687,8 +687,7 @@ async fn test_certify_a_public_key_test_self_signed() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_certify_issue_with_subject_name_self_signed_without_extensions()
--> Result<(), CliError> {
+async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -723,8 +722,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions()
 }
 
 #[tokio::test]
-async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> Result<(), CliError>
-{
+async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

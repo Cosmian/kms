@@ -12,7 +12,7 @@ use self::{
 use crate::actions::shared::{UnwrapKeyAction, WrapKeyAction};
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction},
-    error::CliError,
+    error::result::CliResult,
 };
 
 mod create_key_pair;
@@ -39,7 +39,7 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::CreateMasterKeyPair(action) => action.run(kms_rest_client).await?,
             Self::CreateUserKey(action) => action.run(kms_rest_client).await?,

@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use crate::{
     actions::shared::utils::KeyUsage,
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},
@@ -26,7 +26,7 @@ pub async fn rekey(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -53,7 +53,7 @@ pub async fn prune(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -77,7 +77,7 @@ pub async fn prune(
 }
 
 #[tokio::test]
-async fn test_rekey_error() -> Result<(), CliError> {
+async fn test_rekey_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
@@ -163,7 +163,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_rekey_prune() -> Result<(), CliError> {
+async fn test_rekey_prune() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

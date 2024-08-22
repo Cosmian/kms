@@ -8,7 +8,7 @@ use tracing::{debug, info};
 
 use crate::{
     actions::certificates::CertificateInputFormat,
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         certificates::{encrypt::encrypt, import::import_certificate},
         utils::recover_cmd_logs,
@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
+async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
@@ -38,7 +38,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         None,
         None,
@@ -54,7 +54,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         None,
         None,
@@ -82,7 +82,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
 
 #[tokio::test]
 #[ignore]
-async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
+async fn test_import_revoked_certificate_encrypt_prime256() -> CliResult<()> {
     import_revoked_certificate_encrypt("prime256v1").await
 }
 
@@ -92,7 +92,7 @@ pub(crate) fn validate_certificate(
     certificates: Vec<String>,
     uids: Vec<String>,
     date: Option<String>,
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec!["validate".to_owned()];
@@ -120,7 +120,7 @@ pub(crate) fn validate_certificate(
 }
 
 #[tokio::test]
-async fn test_validate_cli() -> Result<(), CliError> {
+async fn test_validate_cli() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
@@ -128,7 +128,7 @@ async fn test_validate_cli() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/chain/ca.cert.pem",
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         None,
         None,
@@ -144,7 +144,7 @@ async fn test_validate_cli() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/chain/intermediate.cert.pem",
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         None,
         None,
@@ -159,7 +159,7 @@ async fn test_validate_cli() -> Result<(), CliError> {
         &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/chain/leaf1.cert.pem",
-        CertificateInputFormat::Pem,
+        &CertificateInputFormat::Pem,
         None,
         None,
         None,
