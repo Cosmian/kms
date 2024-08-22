@@ -20,7 +20,7 @@ pub(crate) fn create_ec_key_pair(
     cli_conf_path: &str,
     curve: &str,
     tags: &[&str],
-) -> Result<(String, String), CliError> {
+) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 

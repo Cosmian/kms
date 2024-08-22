@@ -203,7 +203,7 @@ impl ImportKeyAction {
 }
 
 /// Read a key from a PEM file
-fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
+fn read_key_from_pem(bytes: &[u8]) -> CliResult<Object> {
     let mut objects = objects_from_pem(bytes)?;
     let object = objects
         .pop()

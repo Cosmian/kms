@@ -31,7 +31,7 @@ impl GmailClientBuilder {
         })
     }
 
-    pub(crate) async fn build(self) -> Result<GmailClient, CliError> {
+    pub(crate) async fn build(self) -> CliResult<GmailClient> {
         let token = retrieve_token(&self.service_account, &self.user_id).await?;
 
         Ok(GmailClient {

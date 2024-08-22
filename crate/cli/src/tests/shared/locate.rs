@@ -26,7 +26,7 @@ pub(crate) fn locate(
     algorithm: Option<&str>,
     cryptographic_length: Option<usize>,
     key_format_type: Option<&str>,
-) -> Result<Vec<String>, CliError> {
+) -> CliResult<Vec<String>> {
     let mut args: Vec<String> = vec![];
     if let Some(tags) = tags {
         for tag in tags {

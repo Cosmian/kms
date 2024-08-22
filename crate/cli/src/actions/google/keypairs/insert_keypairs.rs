@@ -59,7 +59,7 @@ struct KaclsKeyMetadata {
 }
 
 impl InsertKeypairsAction {
-    fn get_input_files(indir: &PathBuf, ext: &str) -> Result<Vec<PathBuf>, CliError> {
+    fn get_input_files(indir: &PathBuf, ext: &str) -> CliResult<Vec<PathBuf>> {
         Ok(fs::read_dir(indir)?
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|f| f.is_file())
@@ -67,10 +67,7 @@ impl InsertKeypairsAction {
             .collect())
     }
 
-    fn get_email_to_file(
-        files: &[PathBuf],
-        ext: &str,
-    ) -> Result<HashMap<String, PathBuf>, CliError> {
+    fn get_email_to_file(files: &[PathBuf], ext: &str) -> CliResult<HashMap<String, PathBuf>> {
         let mut email_file_map = HashMap::new();
 
         for file in files {

@@ -2,7 +2,7 @@ use std::{fmt::Write, fs::File, io::Write as io_Write, path::PathBuf};
 
 use clap::{builder::StyledStr, Command, Parser};
 
-use crate::error::{result::CliResult, CliError};
+use crate::error::result::CliResult;
 
 /// Generate the CLI documentation as markdown
 #[derive(Parser, Debug)]
@@ -125,7 +125,7 @@ fn write_subcommands<'a>(
     parent_index: &str,
     parent_command: &str,
     cmd: &'a Command,
-) -> Result<Vec<&'a Command>, CliError> {
+) -> CliResult<Vec<&'a Command>> {
     let mut sc = Vec::new();
     for (i, sub_command) in cmd.get_subcommands().enumerate() {
         if i == 0 {

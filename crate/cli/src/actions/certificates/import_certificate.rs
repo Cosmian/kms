@@ -304,7 +304,7 @@ impl ImportCertificateAction {
         Ok(private_key_id)
     }
 
-    fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
+    fn get_certificate_file(&self) -> CliResult<&PathBuf> {
         self.certificate_file.as_ref().ok_or_else(|| {
             CliError::InvalidRequest(format!(
                 "Certificate file parameter is MANDATORY for {:?} format",
@@ -359,7 +359,7 @@ impl ImportCertificateAction {
 }
 
 /// Build a chain of certificates from a PEM stack
-fn build_chain_from_stack(pem_chain: &[u8]) -> Result<Vec<Object>, CliError> {
+fn build_chain_from_stack(pem_chain: &[u8]) -> CliResult<Vec<Object>> {
     let pem_s = pem::parse_many(pem_chain)
         .map_err(|e| CliError::Conversion(format!("Cannot parse PEM content. Error: {e:?}")))?; // check the PEM is valid (no error
     let mut objects = vec![];
