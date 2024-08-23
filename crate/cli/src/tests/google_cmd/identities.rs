@@ -161,7 +161,7 @@ async fn test_google_identities() -> Result<(), CliError> {
     let owner_client_conf_path = create_gmail_api_conf(ctx)?;
     // Read the content of the owner client conf file
     let conf_content = std::fs::read_to_string(&owner_client_conf_path)?;
-    println!("{}", conf_content);
+    println!("{conf_content}");
 
     // Fetch and list identities and compare them
     let listed_identities = list_identities(&owner_client_conf_path, user_id)?;

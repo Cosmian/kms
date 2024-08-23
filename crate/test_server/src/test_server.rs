@@ -290,10 +290,9 @@ fn generate_owner_conf(
     // Create a conf
     let owner_client_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
-    let gmail_api_conf: Option<GmailApiConf> = match std::env::var("TEST_GMAIL_API_CONF") {
-        Ok(config) => Some(serde_json::from_str(&config).unwrap()),
-        _ => None,
-    };
+    let gmail_api_conf: Option<GmailApiConf> = std::env::var("TEST_GMAIL_API_CONF")
+        .ok()
+        .and_then(|config| serde_json::from_str(&config).ok());
 
     let owner_client_conf = ClientConf {
         kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
