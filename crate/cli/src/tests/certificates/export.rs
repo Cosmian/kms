@@ -387,6 +387,7 @@ pub(crate) fn export_certificate(
             CertificateExportFormat::Pem => "pem",
             CertificateExportFormat::Pkcs12 => "pkcs12",
             CertificateExportFormat::Pkcs12Legacy => "pkcs12-legacy",
+            CertificateExportFormat::Pkcs7 => "pkcs7",
         };
         #[cfg(feature = "fips")]
         let arg_value = match certificate_format {

@@ -6,10 +6,12 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
     export_object,
     kmip::{
+        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::Certify,
         kmip_types::{
-            Attributes, CertificateAttributes, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            Attributes, CertificateAttributes, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, VendorAttribute,
         },
     },
     KmsClient,
@@ -90,10 +92,8 @@ impl CreateKeypairsAction {
         wrapped_private_key: String,
         kacls_url: String,
     ) -> Result<(), CliError> {
-        let pem = pem::Pem::new(String::from("PKCS7"), certificate_value);
-        let pem_string = pem::encode(&pem);
         let key_pair_info = KeyPairInfo {
-            pkcs7: pem_string,
+            pkcs7: pem::encode(&pem::Pem::new(String::from("PKCS7"), certificate_value)),
             privateKeyMetadata: vec![PrivateKeyMetadata {
                 kaclsKeyMetadata: KaclsKeyMetadata {
                     kaclsUri: kacls_url,
@@ -136,20 +136,26 @@ impl CreateKeypairsAction {
             general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?);
 
         // Sign created public key with issuer private key
-        let mut attributes = Attributes {
+        let attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
+            certificate_attributes: Some(Box::new(CertificateAttributes::parse_subject_line(
+                &self.subject_name,
+            )?)),
+            link: Some(vec![Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    self.issuer_private_key_id.clone(),
+                ),
+            }]),
+            vendor_attributes: Some(vec![VendorAttribute {
+                vendor_identification: VENDOR_ID_COSMIAN.to_string(),
+                attribute_name: VENDOR_ATTR_X509_EXTENSION.to_string(),
+                attribute_value: EXTENSION_CONFIG.to_vec(),
+            }]),
             ..Attributes::default()
         };
-        let unique_identifier = created_key_pair.public_key_unique_identifier;
-        attributes.certificate_attributes = Some(Box::new(
-            CertificateAttributes::parse_subject_line(&self.subject_name)?,
-        ));
-        attributes.set_link(
-            LinkType::PrivateKeyLink,
-            LinkedObjectIdentifier::TextString(self.issuer_private_key_id.clone()),
-        );
 
-        attributes.set_x509_extension_file(EXTENSION_CONFIG.to_vec());
+        let unique_identifier = created_key_pair.public_key_unique_identifier;
 
         let certify_request = Certify {
             unique_identifier: Some(unique_identifier),
@@ -175,28 +181,26 @@ impl CreateKeypairsAction {
         .await?;
 
         let email = &self.user_id;
-        match pkcs7_object {
-            Object::Certificate {
-                certificate_value, ..
-            } => {
-                tracing::info!("Processing {email:?}.");
-                Self::post_keypair(
-                    &gmail_client.await?,
-                    certificate_value,
-                    wrapped_private_key,
-                    kacls_url.await?.kacls_url,
-                )
-                .await?;
-                tracing::info!("Keypair inserted for {email:?}.");
-            }
-            _ => {
-                tracing::info!(
-                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
-                );
-                Err(CliError::ServerError(format!(
-                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
-                )))?
-            }
+        if let Object::Certificate {
+            certificate_value, ..
+        } = pkcs7_object
+        {
+            tracing::info!("Processing {email:?}.");
+            Self::post_keypair(
+                &gmail_client.await?,
+                certificate_value,
+                wrapped_private_key,
+                kacls_url.await?.kacls_url,
+            )
+            .await?;
+            tracing::info!("Keypair inserted for {email:?}.");
+        } else {
+            tracing::info!(
+                "Error inserting keypair for {email:?} - exported object is not a Certificate"
+            );
+            Err(CliError::ServerError(format!(
+                "Error inserting keypair for {email:?} - exported object is not a Certificate"
+            )))?;
         };
         Ok(())
     }

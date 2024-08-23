@@ -126,7 +126,7 @@ fn enable_keypairs(cli_conf_path: &str, user_id: &str, key_pair_id: &str) -> Res
 
 #[tokio::test]
 #[ignore] // This test is ignored because it requires a Gmail test user (not blue nor red users)
-pub async fn test_google_keypairs() -> Result<(), CliError> {
+pub(crate) async fn test_google_keypairs() -> Result<(), CliError> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     let user_id = "blue@cosmian.com".to_string();

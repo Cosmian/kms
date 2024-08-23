@@ -153,10 +153,16 @@ pub(crate) async fn export_get(
                 } else if *key_format_type == KeyFormatType::PKCS7 {
                     owm = post_process_pkcs7(kms, operation_type, user, params, owm).await?;
                 }
-                if *key_format_type != KeyFormatType::X509
+                #[cfg(feature = "fips")]
+                let is_wrong_format = *key_format_type != KeyFormatType::X509
+                    && *key_format_type != KeyFormatType::PKCS7
+                    && *key_format_type != KeyFormatType::PKCS12;
+                #[cfg(not(feature = "fips"))]
+                let is_wrong_format = *key_format_type != KeyFormatType::X509
                     && *key_format_type != KeyFormatType::PKCS7
                     && *key_format_type != KeyFormatType::PKCS12
-                {
+                    && *key_format_type != KeyFormatType::Pkcs12Legacy;
+                if is_wrong_format {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
                         key_format_type
@@ -768,7 +774,7 @@ async fn post_process_pkcs7(
         .attributes
         .get_link(LinkType::PublicKeyLink)
         .ok_or_else(|| {
-            KmipError::Default("No Public Key found in the leaf certificate".to_string())
+            KmipError::Default("No Public Key found in the leaf certificate".to_owned())
         })?;
     let public_key_owm = retrieve_object_for_operation(
         &public_key_id.to_string(),
