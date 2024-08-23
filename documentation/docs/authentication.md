@@ -19,6 +19,7 @@ default to `admin` if not set.
 In authenticated mode, the server requires authentication for all requests. The authentication
 method can be either:
 
+- an API token passed in the `Authorization` header configured both at the client and server side
 - a TLS client certificate and the server extracts the username from the certificate's subject
   common name (CN)
 - or a JWT access token and the server extracts the username from the token's subject (sub) claim

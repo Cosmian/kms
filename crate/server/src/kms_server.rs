@@ -19,7 +19,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{extract_peer_certificate, JwksManager, JwtAuth, JwtConfig, SslAuth},
+    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, add_new_database, get_version,
@@ -212,14 +212,16 @@ pub async fn prepare_kms_server(
         (None, None)
     };
 
-    let authentication_token = kms_server
+    let api_token = kms_server
         .params
-        .authentication_token
+        .api_token
         .as_ref()
         .map(|token| Arc::new(token.clone()));
 
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.authority_cert_file.is_some();
+    // Determine if API Token Auth should be used for authentication.
+    let use_api_token_auth = kms_server.params.api_token.is_some();
 
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
@@ -295,8 +297,8 @@ pub async fn prepare_kms_server(
         // The default scope serves from the root / the KMIP, permissions and tee endpoints
         let default_scope = web::scope("")
             .wrap(Condition::new(
-                use_jwt_auth,
-                JwtAuth::new(jwt_configurations.clone(), authentication_token.clone()),
+                use_jwt_auth || use_api_token_auth,
+                AuthTransformer::new(jwt_configurations.clone(), api_token.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.

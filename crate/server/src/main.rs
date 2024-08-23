@@ -141,7 +141,7 @@ mod tests {
                 https_p12_file: Some(PathBuf::from("[https p12 file]")),
                 https_p12_password: Some("[https p12 password]".to_string()),
                 authority_cert_file: Some(PathBuf::from("[authority cert file]")),
-                authentication_token: None,
+                api_token: None,
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![
