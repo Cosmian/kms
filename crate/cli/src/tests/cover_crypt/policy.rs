@@ -81,7 +81,7 @@ async fn test_create_policy() -> CliResult<()> {
     Ok(())
 }
 
-pub async fn rename(
+pub(crate) async fn rename(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
@@ -110,7 +110,7 @@ pub async fn rename(
     ))
 }
 
-pub async fn add(
+pub(crate) async fn add(
     cli_conf_path: &str,
     master_private_key_id: &str,
     new_attribute: &str,
@@ -137,7 +137,7 @@ pub async fn add(
     ))
 }
 
-pub async fn disable(
+pub(crate) async fn disable(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
@@ -164,7 +164,7 @@ pub async fn disable(
     ))
 }
 
-pub async fn remove(
+pub(crate) async fn remove(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,

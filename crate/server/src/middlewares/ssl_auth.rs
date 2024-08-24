@@ -28,7 +28,7 @@ use crate::{kms_bail, result::KResult};
 ///
 /// This struct is used to store the peer certificate in the request context.
 #[derive(Debug, Clone)]
-pub struct PeerCertificate {
+pub(crate) struct PeerCertificate {
     /// The peer certificate.
     pub cert: X509,
 }
@@ -37,7 +37,7 @@ pub struct PeerCertificate {
 ///
 /// This function extracts the peer certificate from the TLS stream and passes it to the middleware.
 /// The middleware can then use the peer certificate to authenticate the client.
-pub fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
+pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
     // Check if the connection is a TLS connection.
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
         // Get the peer certificate from the TLS connection.
@@ -166,7 +166,7 @@ where
 }
 
 /// Extract the common name from the client certificate
-pub fn extract_common_name(cert: &X509) -> KResult<String> {
+pub(crate) fn extract_common_name(cert: &X509) -> KResult<String> {
     match cert.subject_name().entries_by_nid(Nid::COMMONNAME).next() {
         None => kms_bail!("Client certificate has no common name"),
         Some(cn) => match cn.data().as_utf8() {

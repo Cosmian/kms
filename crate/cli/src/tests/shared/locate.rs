@@ -67,7 +67,7 @@ pub(crate) fn locate(
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_locate_cover_crypt() -> CliResult<()> {
+pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
     unsafe {
         std::env::set_var("RUST_LOG", "cosmian_kms_cli=info");
     }
@@ -372,7 +372,7 @@ pub(crate) async fn test_locate_symmetric_key() -> CliResult<()> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_locate_grant() -> CliResult<()> {
+pub(crate) async fn test_locate_grant() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 

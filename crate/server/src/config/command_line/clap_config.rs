@@ -75,7 +75,7 @@ impl fmt::Debug for ClapConfig {
         let mut x = f.debug_struct("");
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
-            x.field("auth0", &self.auth)
+            x.field("auth", &self.auth)
         } else {
             x
         };
@@ -91,6 +91,7 @@ impl fmt::Debug for ClapConfig {
             "Microsoft Double Key Encryption URL",
             &self.ms_dke_service_url,
         );
-        x.finish_non_exhaustive()
+        let x = x.field("telemetry", &self.telemetry);
+        x.finish()
     }
 }

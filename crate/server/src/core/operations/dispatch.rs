@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes,
-        Import, Locate, Operation, ReKeyKeyPair, Revoke, Validate,
+        Import, Locate, Operation, ReKey, ReKeyKeyPair, Revoke, Validate,
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
@@ -75,6 +75,11 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<Locate>(ttlv)?;
             let resp = kms.locate(req, user, database_params).await?;
             Operation::LocateResponse(resp)
+        }
+        "ReKey" => {
+            let req = from_ttlv::<ReKey>(ttlv)?;
+            let resp = kms.rekey(req, user, database_params).await?;
+            Operation::ReKeyResponse(resp)
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;

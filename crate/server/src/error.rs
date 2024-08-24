@@ -86,7 +86,7 @@ pub enum KmsError {
 
 impl KmsError {
     #[must_use]
-    pub fn reason(&self, reason: ErrorReason) -> Self {
+    pub(crate) fn reason(&self, reason: ErrorReason) -> Self {
         match self {
             Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
             e => Self::KmipError(reason, e.to_string()),

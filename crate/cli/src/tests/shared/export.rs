@@ -176,7 +176,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_covercrypt() -> CliResult<()> {
+pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -262,7 +262,7 @@ pub async fn test_export_covercrypt() -> CliResult<()> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_error_cover_crypt() -> CliResult<()> {
+pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -310,7 +310,7 @@ pub async fn test_export_error_cover_crypt() -> CliResult<()> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_x25519() -> CliResult<()> {
+pub(crate) async fn test_export_x25519() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

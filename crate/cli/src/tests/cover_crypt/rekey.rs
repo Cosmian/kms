@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-pub async fn rekey(
+pub(crate) async fn rekey(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,
@@ -49,7 +49,7 @@ pub async fn rekey(
     ))
 }
 
-pub async fn prune(
+pub(crate) async fn prune(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,

@@ -14,7 +14,7 @@ use crate::{
 ///
 /// This function assumes that if the user can `Get` the object,
 /// then it can also do any other operation with it.
-pub async fn retrieve_object_for_operation(
+pub(crate) async fn retrieve_object_for_operation(
     uid_or_tags: &str,
     operation_type: ObjectOperationType,
     kms: &KMS,

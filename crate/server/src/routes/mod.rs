@@ -66,7 +66,7 @@ pub(crate) async fn add_new_database(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    info!("GET /new_database {}", kms.get_user(&req)?);
+    info!("GET /new_database {}", kms.get_user(&req));
     Ok(Json(kms.add_new_database().await?))
 }
 
@@ -76,6 +76,6 @@ pub(crate) async fn get_version(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    info!("GET /version {}", kms.get_user(&req)?);
+    info!("GET /version {}", kms.get_user(&req));
     Ok(Json(crate_version!().to_string()))
 }

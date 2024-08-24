@@ -77,7 +77,7 @@ pub(crate) async fn import(
     })
 }
 
-async fn process_symmetric_key(
+pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,

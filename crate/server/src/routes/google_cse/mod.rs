@@ -56,7 +56,7 @@ pub(crate) async fn get_status(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<operations::StatusResponse>> {
-    info!("GET /google_cse/status {}", kms.get_user(&req)?);
+    info!("GET /google_cse/status {}", kms.get_user(&req));
     Ok(Json(operations::get_status()))
 }
 
