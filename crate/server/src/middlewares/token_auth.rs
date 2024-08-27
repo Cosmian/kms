@@ -7,6 +7,7 @@ use actix_web::{
     http::header,
     Error, HttpResponse,
 };
+use base64::Engine;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
 };
@@ -68,7 +69,7 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
     let owm = owm_s.pop().ok_or_else(|| {
         KmsError::KmipError(
             ErrorReason::Item_Not_Found,
-            format!("The symmetric key of unique identifier  {api_token_id} could not be found"),
+            format!("The symmetric key of unique identifier {api_token_id} could not be found"),
         )
     })?;
 
@@ -78,12 +79,17 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
         )))
     }
 
-    // get the key bytes on hex format. hex is preferred here since exported a symmetric key format is hex.
-    Ok(hex::encode(owm.object.key_block()?.key_bytes()?).to_lowercase())
+    // Get the API token bytes in base64
+    Ok(base64::engine::general_purpose::STANDARD
+        .encode(owm.object.key_block()?.key_bytes()?)
+        .to_lowercase())
 }
 
 async fn manage_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
-    trace!("Token authentication...");
+    trace!(
+        "Token authentication using this API token ID: {:?}",
+        kms_server.params.api_token_id
+    );
 
     match &kms_server.params.api_token_id {
         Some(api_token_id) => {
@@ -111,6 +117,7 @@ async fn manage_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()>
                 )));
             }
             let client_token = client_token[1].trim_start().to_lowercase();
+
             trace!("API Token: {api_token}");
             trace!("Client API Token: {client_token}");
 

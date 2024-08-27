@@ -33,14 +33,18 @@ pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::cons
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    ONCE.get_or_try_init(|| start_test_server_with_options(9990, false, false, false))
-        .await
-        .unwrap()
+    ONCE.get_or_try_init(|| {
+        start_test_server_with_options("sqlite-enc", 9990, false, false, false, None, None)
+    })
+    .await
+    .unwrap()
 }
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     ONCE_SERVER_WITH_AUTH
-        .get_or_try_init(|| start_test_server_with_options(9991, false, true, true))
+        .get_or_try_init(|| {
+            start_test_server_with_options("sqlite-enc", 9991, false, true, true, None, None)
+        })
         .await
         .unwrap()
 }
@@ -64,16 +68,28 @@ impl TestsContext {
 
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
+    database_type: &str,
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
+    // use_api_token: bool,
+    api_token_id: Option<String>,
+    api_token: Option<String>,
 ) -> Result<TestsContext, ClientError> {
     cosmian_logger::log_utils::log_init(None);
-    let server_params = generate_server_params(port, use_jwt_token, use_https, use_client_cert)?;
+    let server_params = generate_server_params(
+        database_type,
+        port,
+        use_jwt_token,
+        use_https,
+        use_client_cert,
+        api_token_id,
+    )?;
 
     // Create a (object owner) conf
-    let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
+    let (owner_client_conf_path, mut owner_client_conf) =
+        generate_owner_conf(&server_params, api_token.clone())?;
     let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
 
     println!(
@@ -88,13 +104,15 @@ pub async fn start_test_server_with_options(
         .await
         .expect("server timeout");
 
-    // Configure a database and create the kms json file
-    let database_secret = kms_client.new_database().await?;
+    if database_type == "sqlite-enc" {
+        // Configure a database and create the kms json file
+        let database_secret = kms_client.new_database().await?;
 
-    // Rewrite the conf with the correct database secret
-    owner_client_conf.kms_database_secret = Some(database_secret);
-    write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
-        .expect("Can't write owner CLI conf path");
+        // Rewrite the conf with the correct database secret
+        owner_client_conf.kms_database_secret = Some(database_secret);
+        write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
+            .expect("Can't write owner CLI conf path");
+    }
 
     // generate a user conf
     let user_client_conf_path =
@@ -160,14 +178,51 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
     Ok(())
 }
 
+fn generate_http_config(
+    port: u16,
+    use_https: bool,
+    use_client_cert: bool,
+    api_token_id: Option<String>,
+) -> HttpConfig {
+    // This create root dir
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    if use_https {
+        if use_client_cert {
+            HttpConfig {
+                port,
+                https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
+                https_p12_password: Some("password".to_string()),
+                authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
+                api_token_id,
+                ..HttpConfig::default()
+            }
+        } else {
+            HttpConfig {
+                port,
+                https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
+                https_p12_password: Some("password".to_string()),
+                api_token_id,
+                ..HttpConfig::default()
+            }
+        }
+    } else {
+        HttpConfig {
+            port,
+            api_token_id,
+            ..HttpConfig::default()
+        }
+    }
+}
+
 fn generate_server_params(
+    database_type: &str,
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
+    api_token_id: Option<String>,
 ) -> Result<ServerParams, ClientError> {
-    // This create root dir
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     // Configure the server
     let clap_config = ClapConfig {
         auth: if use_jwt_token {
@@ -176,44 +231,33 @@ fn generate_server_params(
             JwtAuthConfig::default()
         },
         db: DBConfig {
-            database_type: Some("sqlite-enc".to_string()),
+            database_type: Some(database_type.to_string()),
             clear_database: true,
             ..DBConfig::default()
         },
-        http: if use_https {
-            if use_client_cert {
-                HttpConfig {
-                    port,
-                    https_p12_file: Some(
-                        root_dir.join("certificates/server/kmserver.acme.com.p12"),
-                    ),
-                    https_p12_password: Some("password".to_string()),
-                    authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
-                    ..HttpConfig::default()
-                }
-            } else {
-                HttpConfig {
-                    port,
-                    https_p12_file: Some(
-                        root_dir.join("certificates/server/kmserver.acme.com.p12"),
-                    ),
-                    https_p12_password: Some("password".to_string()),
-                    ..HttpConfig::default()
-                }
-            }
-        } else {
-            HttpConfig {
-                port,
-                ..HttpConfig::default()
-            }
-        },
+        http: generate_http_config(port, use_https, use_client_cert, api_token_id),
         ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
         .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))
 }
 
-fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientConf), ClientError> {
+fn set_access_token(server_params: &ServerParams, api_token: Option<String>) -> Option<String> {
+    if server_params.identity_provider_configurations.is_some() {
+        println!("Setting access token for JWT: {AUTH0_TOKEN:?}");
+        Some(AUTH0_TOKEN.to_string())
+    } else if api_token.is_some() {
+        println!("Setting access token for API: {api_token:?}");
+        api_token
+    } else {
+        None
+    }
+}
+
+fn generate_owner_conf(
+    server_params: &ServerParams,
+    api_token: Option<String>,
+) -> Result<(String, ClientConf), ClientError> {
     // This create root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -229,11 +273,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
             format!("http://0.0.0.0:{}", server_params.port)
         },
         accept_invalid_certs: true,
-        kms_access_token: if server_params.identity_provider_configurations.is_some() {
-            Some(AUTH0_TOKEN.to_string())
-        } else {
-            None
-        },
+        kms_access_token: set_access_token(server_params, api_token),
         ssl_client_pkcs12_path: if server_params.authority_cert_file.is_some() {
             #[cfg(not(target_os = "macos"))]
             let p = root_dir.join("certificates/owner/owner.client.acme.com.p12");
@@ -255,7 +295,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
             None
         },
         // We use the private key since the private key is the public key with additional information.
-        ..Default::default()
+        ..ClientConf::default()
     };
     // write the conf to a file
     write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
@@ -324,6 +364,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
-    let context = start_test_server_with_options(9990, false, true, true).await?;
+    let context =
+        start_test_server_with_options("sqlite-enc", 9990, false, true, true, None, None).await?;
     context.stop_server().await
 }

@@ -151,7 +151,8 @@ impl fmt::Debug for ServerParams {
             x
         };
         let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
-        x.finish_non_exhaustive()
+        let x = x.field("api_token_id", &self.api_token_id);
+        x.finish()
     }
 }
 

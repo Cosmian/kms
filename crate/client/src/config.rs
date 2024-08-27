@@ -157,6 +157,7 @@ impl Default for ClientConf {
 ///
 /// This function returns a KMS client configured according to the settings specified in the configuration file.
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
+#[cfg(target_os = "linux")]
 pub(crate) const KMS_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/kms.json";
 
 impl ClientConf {
