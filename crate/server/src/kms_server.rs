@@ -179,8 +179,7 @@ pub async fn prepare_kms_server(
     // Check if this auth server is enabled for Google Client-Side Encryption
     let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
 
-    // Determine if JWT Auth should be used for authentication.
-    let use_jwt_auth = kms_server.params.identity_provider_configurations.is_some();
+    // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
         &kms_server.params.identity_provider_configurations
     {
@@ -212,16 +211,8 @@ pub async fn prepare_kms_server(
         (None, None)
     };
 
-    let api_token = kms_server
-        .params
-        .api_token
-        .as_ref()
-        .map(|token| Arc::new(token.clone()));
-
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.authority_cert_file.is_some();
-    // Determine if API Token Auth should be used for authentication.
-    let use_api_token_auth = kms_server.params.api_token.is_some();
 
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
@@ -296,9 +287,9 @@ pub async fn prepare_kms_server(
 
         // The default scope serves from the root / the KMIP, permissions and tee endpoints
         let default_scope = web::scope("")
-            .wrap(Condition::new(
-                use_jwt_auth || use_api_token_auth,
-                AuthTransformer::new(jwt_configurations.clone(), api_token.clone()),
+            .wrap(AuthTransformer::new(
+                kms_server.clone(),
+                jwt_configurations.clone(),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.

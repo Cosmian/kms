@@ -18,7 +18,7 @@ pub(crate) async fn create(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<CreateResponse> {
-    trace!("[{owner}] Create: {}", serde_json::to_string(&request)?);
+    trace!("Create: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }

@@ -33,7 +33,7 @@ pub struct HttpConfig {
 
     /// The API token to use for authentication
     #[clap(long, env = "KMS_API_TOKEN")]
-    pub api_token: Option<String>,
+    pub api_token_id: Option<String>,
 }
 
 impl Display for HttpConfig {
@@ -69,7 +69,7 @@ impl Default for HttpConfig {
             https_p12_file: None,
             https_p12_password: None,
             authority_cert_file: None,
-            api_token: None,
+            api_token_id: None,
         }
     }
 }

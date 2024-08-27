@@ -2,7 +2,7 @@ mod main;
 pub(crate) use main::AuthTransformer;
 
 mod jwt_auth;
-pub(crate) use jwt_auth::{manage_jwt, manage_jwt_request, JwtAuthClaim};
+pub(crate) use jwt_auth::{manage_jwt_request, JwtAuthClaim};
 
 mod ssl_auth;
 pub(crate) use ssl_auth::{extract_peer_certificate, PeerCommonName, SslAuth};
@@ -14,4 +14,4 @@ mod jwks;
 pub(crate) use jwks::JwksManager;
 
 mod token_auth;
-pub(crate) use token_auth::{manage_token, manage_token_request};
+pub(crate) use token_auth::manage_token_request;

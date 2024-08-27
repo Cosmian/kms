@@ -40,7 +40,7 @@ pub struct ServerParams {
     pub authority_cert_file: Option<X509>,
 
     /// The API authentication token used both server and client side
-    pub api_token: Option<String>,
+    pub api_token_id: Option<String>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
@@ -89,7 +89,7 @@ impl ServerParams {
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             authority_cert_file,
-            api_token: conf.http.api_token,
+            api_token_id: conf.http.api_token_id,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
         })
@@ -170,7 +170,7 @@ impl Clone for ServerParams {
             port: self.port,
             http_params: HttpParams::Http,
             authority_cert_file: self.authority_cert_file.clone(),
-            api_token: self.api_token.clone(),
+            api_token_id: self.api_token_id.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
         }
