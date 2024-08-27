@@ -170,7 +170,7 @@ pub(crate) async fn validate_cse_authentication_token(
             "Fail to decode authentication token with the given config".to_owned(),
         )
     })?;
-
+    #[cfg(any(not(feature = "insecure"), not(test)))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
             kacls_url == cse_config.kacls_url,
@@ -235,7 +235,7 @@ pub(crate) async fn validate_cse_authorization_token(
             roles.contains(&role.as_str()),
             KmsError::Unauthorized(format!(
                 "Authorization token should contain a role of {}",
-                roles.concat()
+                roles.join(" ")
             ))
         );
     }
@@ -245,7 +245,7 @@ pub(crate) async fn validate_cse_authorization_token(
             "Authorization token should contain an resource_name".to_string(),
         ))
     }
-
+    #[cfg(any(not(feature = "insecure"), not(test)))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
             kacls_url == cse_config.kacls_url,
