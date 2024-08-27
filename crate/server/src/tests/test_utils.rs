@@ -84,7 +84,11 @@ pub(crate) async fn test_app(
         .service(routes::google_cse::wrap)
         .service(routes::google_cse::unwrap)
         .service(routes::google_cse::private_key_sign)
-        .service(routes::google_cse::private_key_decrypt);
+        .service(routes::google_cse::private_key_decrypt)
+        .service(routes::google_cse::privileged_wrap)
+        .service(routes::google_cse::privileged_unwrap)
+        .service(routes::google_cse::privileged_private_key_decrypt)
+        .service(routes::google_cse::digest);
     app = app.service(google_cse_scope);
 
     test::init_service(app).await
@@ -128,14 +132,30 @@ where
         .set_json(&operation)
         .to_request();
     let res = call_service(app, req).await;
-    println!("Res: {:?}", res.status());
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
             String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
-    println!("OK before bytes");
+    let body = read_body(res).await;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+pub(crate) async fn get_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
+where
+    R: DeserializeOwned,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get().uri(uri).to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
+        );
+    }
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
 }

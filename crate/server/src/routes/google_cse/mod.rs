@@ -94,7 +94,7 @@ pub(crate) async fn digest(
 }
 
 #[post("/privilegedprivatekeydecrypt")]
-pub(crate) async fn privilegedprivatekeydecrypt(
+pub(crate) async fn privileged_private_key_decrypt(
     req_http: HttpRequest,
     request: Json<PrivilegedPrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -118,7 +118,7 @@ pub(crate) async fn privilegedprivatekeydecrypt(
 }
 
 #[post("/privilegedunwrap")]
-pub(crate) async fn privilegedunwrap(
+pub(crate) async fn privileged_unwrap(
     req_http: HttpRequest,
     privileged_unwrap_request: Json<PrivilegedUnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -127,10 +127,10 @@ pub(crate) async fn privilegedunwrap(
     info!("POST /google_cse/privilegedunwrap");
 
     let privileged_unwrap_request = privileged_unwrap_request.into_inner();
-    trace!("privilegedunwrap_request: {:?}", privileged_unwrap_request);
+    trace!("privileged_unwrap_request: {:?}", privileged_unwrap_request);
     let cse_config = cse_config.into_inner();
 
-    match operations::privilegedunwrap(req_http, privileged_unwrap_request, &cse_config, &kms)
+    match operations::privileged_unwrap(req_http, privileged_unwrap_request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -140,7 +140,7 @@ pub(crate) async fn privilegedunwrap(
 }
 
 #[post("/privilegedwrap")]
-pub(crate) async fn privilegedwrap(
+pub(crate) async fn privileged_wrap(
     privileged_wrap_request: Json<PrivilegedWrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -148,10 +148,10 @@ pub(crate) async fn privilegedwrap(
     info!("POST /google_cse/privilegedwrap");
 
     let privileged_wrap_request = privileged_wrap_request.into_inner();
-    trace!("privilegedwrap_request: {:?}", privileged_wrap_request);
+    trace!("privileged_wrap_request: {:?}", privileged_wrap_request);
     let cse_config = cse_config.into_inner();
 
-    match operations::privilegedwrap(privileged_wrap_request, &cse_config, &kms)
+    match operations::privileged_wrap(privileged_wrap_request, &cse_config, &kms)
         .await
         .map(Json)
     {

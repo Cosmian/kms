@@ -41,7 +41,27 @@ use crate::{
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 
-#[derive(Serialize, Debug)]
+fn get_hash_algorithm(algorithm: &str) -> Result<MessageDigest, KmsError> {
+    match algorithm {
+        "sha-256" => Ok(MessageDigest::sha256()),
+        "md-5" => Ok(MessageDigest::md5()),
+        "sha-1" => Ok(MessageDigest::sha1()),
+        "sha-224" => Ok(MessageDigest::sha224()),
+        "sha-384" => Ok(MessageDigest::sha384()),
+        "sha-512" => Ok(MessageDigest::sha512()),
+        "sha3-224" => Ok(MessageDigest::sha3_224()),
+        "sha3-256" => Ok(MessageDigest::sha3_256()),
+        "sha3-384" => Ok(MessageDigest::sha3_384()),
+        "sha3-512" => Ok(MessageDigest::sha3_512()),
+        _ => Err(KmsError::InvalidRequest(
+            "Invalid spki hash algorithm - can handle : sha-256, md-5, sha-1, sha-224, sha-384, \
+             sha-512, sha3-224, sha3-256, sha3-384, sha3-512"
+                .to_string(),
+        )),
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
 pub struct StatusResponse {
     pub server_type: String,
     pub vendor_id: String,
@@ -80,7 +100,7 @@ pub fn get_status(kacls_url: &str) -> StatusResponse {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WrapRequest {
     pub authentication: String,
     pub authorization: String,
@@ -88,7 +108,7 @@ pub struct WrapRequest {
     pub reason: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Deserialize)]
 pub struct WrapResponse {
     pub wrapped_key: String,
 }
@@ -135,7 +155,7 @@ pub async fn wrap(
 
     debug!("wrap: wrap dek");
     let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("[\"google_cse\"]".to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&wrap_request.key)?.into()),
         iv_counter_nonce: None,
@@ -165,7 +185,7 @@ pub async fn wrap(
     })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UnwrapRequest {
     pub authentication: String,
     pub authorization: String,
@@ -173,7 +193,7 @@ pub struct UnwrapRequest {
     pub wrapped_key: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct UnwrapResponse {
     pub key: String,
 }
@@ -423,7 +443,7 @@ pub async fn private_key_decrypt(
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
-    let dek = cse_private_key_unwrap(
+    let private_key_der = cse_private_key_unwrap(
         request.wrapped_private_key,
         token_extracted_content.user,
         kms,
@@ -433,7 +453,7 @@ pub async fn private_key_decrypt(
 
     // Decrypt with the unwrapped RSA private key
     debug!("private_key_decrypt: from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&dek)?)?;
+    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
 
     // Perform RSA PKCS1 decryption.
     let mut ctx = PkeyCtx::new(&private_key)?;
@@ -445,12 +465,12 @@ pub async fn private_key_decrypt(
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("privatekeydecrypt: allocation_size: {allocation_size}");
-    let mut plaintext = vec![0_u8; allocation_size];
-    let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
+    let mut dek = vec![0_u8; allocation_size];
+    let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
     debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {
-        data_encryption_key: general_purpose::STANDARD.encode(&plaintext[0..decrypt_size]),
+        data_encryption_key: general_purpose::STANDARD.encode(&dek[0..decrypt_size]),
     };
     Ok(response)
 }
@@ -537,7 +557,7 @@ pub async fn digest(
     })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PrivilegedWrapRequest {
     pub authentication: String,
     pub key: String,
@@ -546,7 +566,7 @@ pub struct PrivilegedWrapRequest {
     pub reason: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PrivilegedWrapResponse {
     pub wrapped_key: String,
 }
@@ -555,7 +575,7 @@ pub struct PrivilegedWrapResponse {
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/privileged-wrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
-pub async fn privilegedwrap(
+pub async fn privileged_wrap(
     privileged_wrap_request: PrivilegedWrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
@@ -571,7 +591,7 @@ pub async fn privilegedwrap(
     debug!("privileged-wrap: wrap dek");
     let resource_name = privileged_wrap_request.resource_name.into_bytes();
     let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("[\"google_cse\"]".to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
         cryptographic_parameters: None,
         data: Some(
             general_purpose::STANDARD
@@ -605,7 +625,7 @@ pub async fn privilegedwrap(
     })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PrivilegedUnwrapRequest {
     pub authentication: String,
     pub reason: String,
@@ -613,7 +633,7 @@ pub struct PrivilegedUnwrapRequest {
     pub wrapped_key: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PrivilegedUnwrapResponse {
     pub key: String,
 }
@@ -622,7 +642,7 @@ pub struct PrivilegedUnwrapResponse {
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/privileged-unwrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
-pub async fn privilegedunwrap(
+pub async fn privileged_unwrap(
     req_http: HttpRequest,
     privileged_unwrap_request: PrivilegedUnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
@@ -709,12 +729,25 @@ pub async fn privileged_private_key_decrypt(
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
-    let dek =
+    let private_key_der =
         cse_private_key_unwrap(request.wrapped_private_key, user, kms, database_params).await?;
 
     // Decrypt with the unwrapped RSA private key
     debug!("privileged_private_key_decrypt: from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&dek)?)?;
+    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
+
+    // Get the associated public key to compare digest spki
+    let public_key_der = private_key.public_key_to_der()?;
+    // Compute the hash of the DER-encoded public key using SHA-256
+    let spki_algorithm = get_hash_algorithm(&request.spki_hash_algorithm.to_lowercase())?;
+    let digest = openssl::hash::hash(spki_algorithm, &public_key_der)?;
+    let spki_hash = general_purpose::STANDARD.encode(digest);
+    kms_ensure!(
+        spki_hash == request.spki_hash,
+        KmsError::CryptographicError(
+            "spki_hash does not match with the associated privated key.".to_string()
+        )
+    );
 
     // Perform RSA PKCS1 decryption.
     let mut ctx = PkeyCtx::new(&private_key)?;
@@ -726,12 +759,12 @@ pub async fn privileged_private_key_decrypt(
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("privileged_private_key_decrypt: allocation_size: {allocation_size}");
-    let mut plaintext = vec![0_u8; allocation_size];
-    let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *plaintext))?;
+    let mut dek = vec![0_u8; allocation_size];
+    let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
     debug!("privileged_private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivilegedPrivateKeyDecryptResponse {
-        data_encryption_key: general_purpose::STANDARD.encode(&plaintext[0..decrypt_size]),
+        data_encryption_key: general_purpose::STANDARD.encode(&dek[0..decrypt_size]),
     };
     Ok(response)
 }
@@ -836,7 +869,7 @@ async fn cse_symmetric_key_unwrap(
     let ciphertext = &wrapped_key_bytes[..len - (TAG_LENGTH + NONCE_LENGTH)];
 
     let decryption_request = Decrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("[\"google_cse\"]".to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
         cryptographic_parameters: None,
         data: Some(ciphertext.to_vec()),
         iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
@@ -862,7 +895,7 @@ async fn cse_symmetric_key_unwrap(
         wrapped_dek.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
+                unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
                 cryptographic_parameters: None,
             }),
             encoding_option: Some(EncodingOption::NoEncoding),
