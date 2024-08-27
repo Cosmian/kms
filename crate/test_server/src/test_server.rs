@@ -34,7 +34,7 @@ pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::cons
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     ONCE.get_or_try_init(|| {
-        start_test_server_with_options("sqlite-enc", 9990, false, false, false, None, None)
+        start_test_server_with_options("sqlite-enc", true, 9990, false, false, false, None, None)
     })
     .await
     .unwrap()
@@ -43,7 +43,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
-            start_test_server_with_options("sqlite-enc", 9991, false, true, true, None, None)
+            start_test_server_with_options("sqlite-enc", true, 9991, false, true, true, None, None)
         })
         .await
         .unwrap()
@@ -69,17 +69,18 @@ impl TestsContext {
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
     database_type: &str,
+    clear_database: bool,
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
-    // use_api_token: bool,
     api_token_id: Option<String>,
     api_token: Option<String>,
 ) -> Result<TestsContext, ClientError> {
     cosmian_logger::log_utils::log_init(None);
     let server_params = generate_server_params(
         database_type,
+        clear_database,
         port,
         use_jwt_token,
         use_https,
@@ -217,6 +218,7 @@ fn generate_http_config(
 
 fn generate_server_params(
     database_type: &str,
+    clear_database: bool,
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
@@ -232,7 +234,7 @@ fn generate_server_params(
         },
         db: DBConfig {
             database_type: Some(database_type.to_string()),
-            clear_database: true,
+            clear_database,
             ..DBConfig::default()
         },
         http: generate_http_config(port, use_https, use_client_cert, api_token_id),
@@ -365,6 +367,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
     let context =
-        start_test_server_with_options("sqlite-enc", 9990, false, true, true, None, None).await?;
+        start_test_server_with_options("sqlite-enc", true, 9990, false, true, true, None, None)
+            .await?;
     context.stop_server().await
 }

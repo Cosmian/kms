@@ -91,7 +91,8 @@ async fn test_multiple_databases() -> CliResult<()> {
     // init the test server
     // since we are going to rewrite the conf, use a different port
     let ctx =
-        start_test_server_with_options("sqlite-enc", 9997, true, false, false, None, None).await?;
+        start_test_server_with_options("sqlite-enc", true, 9997, true, false, false, None, None)
+            .await?;
 
     // create a symmetric key in the default encrypted database
     let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
