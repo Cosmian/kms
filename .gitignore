@@ -15,4 +15,4 @@ crate/cli/*.sqlite
 rustc-ice*.txt
 node_modules/
 # this directory may contain sqlite data when the KMS is launched locally
-**/cosmian-kms/sqlite-data
+**/cosmian-kms/sqlite-data*

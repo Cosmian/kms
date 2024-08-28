@@ -1,9 +1,10 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use base64::Engine;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
-use kms_test_server::{start_test_server_with_options, TestsContext};
+use cosmian_kms_server::config::DBConfig;
+use kms_test_server::{start_test_server_with_options, AuthenticationOptions, TestsContext};
 use tempfile::TempDir;
 use tracing::trace;
 
@@ -59,41 +60,94 @@ const PORT: u16 = 9999;
 #[tokio::test]
 pub(crate) async fn test_all_authentications() -> CliResult<()> {
     // plaintext no auth
-    let ctx = start_test_server_with_options("sqlite", true, PORT, false, false, false, None, None)
-        .await?;
+    let ctx = start_test_server_with_options(
+        DBConfig {
+            database_type: Some("sqlite".to_string()),
+            sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
+            clear_database: true,
+            ..DBConfig::default()
+        },
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: false,
+            use_client_cert: false,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
     run_cli_command(&ctx.owner_client_conf_path);
-    // Create an API auth token for later
+    // Create an API auth token with admin rights for later
     let (api_token_id, api_token) = create_api_token(&ctx)?;
     ctx.stop_server().await?;
 
+    let default_db_config = DBConfig {
+        database_type: Some("sqlite".to_string()),
+        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
+        clear_database: false,
+        ..DBConfig::default()
+    };
+
     // plaintext JWT token auth
-    let ctx = start_test_server_with_options("sqlite", false, PORT, true, false, false, None, None)
-        .await?;
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: true,
+            use_https: false,
+            use_client_cert: false,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
     run_cli_command(&ctx.owner_client_conf_path);
     ctx.stop_server().await?;
 
     // tls token auth
-    let ctx = start_test_server_with_options("sqlite", false, PORT, true, true, false, None, None)
-        .await?;
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: true,
+            use_https: true,
+            use_client_cert: false,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
     run_cli_command(&ctx.owner_client_conf_path);
     ctx.stop_server().await?;
 
     // tls client cert auth
-    let ctx = start_test_server_with_options("sqlite", false, PORT, false, true, true, None, None)
-        .await?;
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: true,
+            use_client_cert: true,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
     run_cli_command(&ctx.owner_client_conf_path);
     ctx.stop_server().await?;
 
     // API token auth
     let ctx = start_test_server_with_options(
-        "sqlite",
-        false,
+        default_db_config,
         PORT,
-        false,
-        false,
-        false,
-        Some(api_token_id),
-        Some(api_token),
+        AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: false,
+            use_client_cert: false,
+            api_token_id: Some(api_token_id),
+            api_token: Some(api_token),
+        },
     )
     .await?;
     run_cli_command(&ctx.owner_client_conf_path);

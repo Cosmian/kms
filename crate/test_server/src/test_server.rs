@@ -13,7 +13,10 @@ use cosmian_kms_client::{
     write_json_object_to_file, ClientConf, ClientError, KmsClient,
 };
 use cosmian_kms_server::{
-    config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
+    config::{
+        ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams,
+        DEFAULT_SQLITE_PATH,
+    },
     core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
@@ -30,11 +33,29 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
+fn generate_sqlite_db_config() -> DBConfig {
+    DBConfig {
+        database_type: Some("sqlite-enc".to_string()),
+        clear_database: true,
+        sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
+        ..DBConfig::default()
+    }
+}
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     ONCE.get_or_try_init(|| {
-        start_test_server_with_options("sqlite-enc", true, 9990, false, false, false, None, None)
+        start_test_server_with_options(
+            generate_sqlite_db_config(),
+            9990,
+            AuthenticationOptions {
+                use_jwt_token: false,
+                use_https: false,
+                use_client_cert: false,
+                api_token_id: None,
+                api_token: None,
+            },
+        )
     })
     .await
     .unwrap()
@@ -43,7 +64,17 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
-            start_test_server_with_options("sqlite-enc", true, 9991, false, true, true, None, None)
+            start_test_server_with_options(
+                generate_sqlite_db_config(),
+                9991,
+                AuthenticationOptions {
+                    use_jwt_token: false,
+                    use_https: true,
+                    use_client_cert: true,
+                    api_token_id: None,
+                    api_token: None,
+                },
+            )
         })
         .await
         .unwrap()
@@ -66,31 +97,26 @@ impl TestsContext {
     }
 }
 
+pub struct AuthenticationOptions {
+    pub use_jwt_token: bool,
+    pub use_https: bool,
+    pub use_client_cert: bool,
+    pub api_token_id: Option<String>,
+    pub api_token: Option<String>,
+}
+
 /// Start a KMS server in a thread with the given options
 pub async fn start_test_server_with_options(
-    database_type: &str,
-    clear_database: bool,
+    db_config: DBConfig,
     port: u16,
-    use_jwt_token: bool,
-    use_https: bool,
-    use_client_cert: bool,
-    api_token_id: Option<String>,
-    api_token: Option<String>,
+    authentication_options: AuthenticationOptions,
 ) -> Result<TestsContext, ClientError> {
     cosmian_logger::log_utils::log_init(None);
-    let server_params = generate_server_params(
-        database_type,
-        clear_database,
-        port,
-        use_jwt_token,
-        use_https,
-        use_client_cert,
-        api_token_id,
-    )?;
+    let server_params = generate_server_params(db_config.clone(), port, &authentication_options)?;
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) =
-        generate_owner_conf(&server_params, api_token.clone())?;
+        generate_owner_conf(&server_params, authentication_options.api_token.clone())?;
     let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
 
     println!(
@@ -105,7 +131,7 @@ pub async fn start_test_server_with_options(
         .await
         .expect("server timeout");
 
-    if database_type == "sqlite-enc" {
+    if db_config.database_type.clone().unwrap() == "sqlite-enc" {
         // Configure a database and create the kms json file
         let database_secret = kms_client.new_database().await?;
 
@@ -217,27 +243,24 @@ fn generate_http_config(
 }
 
 fn generate_server_params(
-    database_type: &str,
-    clear_database: bool,
+    db_config: DBConfig,
     port: u16,
-    use_jwt_token: bool,
-    use_https: bool,
-    use_client_cert: bool,
-    api_token_id: Option<String>,
+    authentication_options: &AuthenticationOptions,
 ) -> Result<ServerParams, ClientError> {
     // Configure the server
     let clap_config = ClapConfig {
-        auth: if use_jwt_token {
+        auth: if authentication_options.use_jwt_token {
             get_auth0_jwt_config()
         } else {
             JwtAuthConfig::default()
         },
-        db: DBConfig {
-            database_type: Some(database_type.to_string()),
-            clear_database,
-            ..DBConfig::default()
-        },
-        http: generate_http_config(port, use_https, use_client_cert, api_token_id),
+        db: db_config,
+        http: generate_http_config(
+            port,
+            authentication_options.use_https,
+            authentication_options.use_client_cert,
+            authentication_options.api_token_id.clone(),
+        ),
         ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
@@ -366,8 +389,17 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[cfg(test)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
-    let context =
-        start_test_server_with_options("sqlite-enc", true, 9990, false, true, true, None, None)
-            .await?;
+    let context = start_test_server_with_options(
+        generate_sqlite_db_config(),
+        9990,
+        AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: true,
+            use_client_cert: true,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
     context.stop_server().await
 }
