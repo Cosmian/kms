@@ -17,14 +17,19 @@ default to `admin` if not set.
 ## Authenticated mode
 
 In authenticated mode, the server requires authentication for all requests. The authentication
-method can be either:
+method can be either (one of them is enough):
 
 - a TLS client certificate and the server extracts the username from the certificate's subject
   common name (CN)
 - or a JWT access token and the server extracts the username from the token's subject (sub) claim
 - an API token passed in the `Authorization` header configured both at the client and server side (user being `default-username`)
 
-However, If the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment
+The server can be configured to use multiple authentication methods concurrently:
+
+- if server is started with TLS client certificate authentication, client MUST provide a valid certificate issued by the authority certificate provided by the server ;
+- if server only provides JWT and API token authentication, client MUST provide a valid JWT token or an API token in the `Authorization` header. Server will first try to authenticate using the JWT token, then the API token if JWT token is not provided.
+
+At the end, if the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment
 variable) is set, the server still performs the authentication but maps all requests to the default
 username.
 
