@@ -137,9 +137,25 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     run_cli_command(&ctx.owner_client_conf_path);
     ctx.stop_server().await?;
 
+    // Bad API token auth but JWT auth used at first
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: true,
+            use_https: true,
+            use_client_cert: false,
+            api_token_id: Some("my_bad_token_id".to_string()),
+            api_token: Some("my_bad_token".to_string()),
+        },
+    )
+    .await?;
+    run_cli_command(&ctx.owner_client_conf_path);
+    ctx.stop_server().await?;
+
     // API token auth
     let ctx = start_test_server_with_options(
-        default_db_config,
+        default_db_config.clone(),
         PORT,
         AuthenticationOptions {
             use_jwt_token: false,
@@ -147,6 +163,38 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             use_client_cert: false,
             api_token_id: Some(api_token_id),
             api_token: Some(api_token),
+        },
+    )
+    .await?;
+    run_cli_command(&ctx.owner_client_conf_path);
+    ctx.stop_server().await?;
+
+    // Bad API token auth but cert auth used at first
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: false,
+            use_https: true,
+            use_client_cert: true,
+            api_token_id: Some("my_bad_token_id".to_string()),
+            api_token: Some("my_bad_token".to_string()),
+        },
+    )
+    .await?;
+    run_cli_command(&ctx.owner_client_conf_path);
+    ctx.stop_server().await?;
+
+    // Bad API token and good JWT token auth but still cert auth used at first
+    let ctx = start_test_server_with_options(
+        default_db_config,
+        PORT,
+        AuthenticationOptions {
+            use_jwt_token: true,
+            use_https: true,
+            use_client_cert: true,
+            api_token_id: Some("my_bad_token_id".to_string()),
+            api_token: Some("my_bad_token".to_string()),
         },
     )
     .await?;

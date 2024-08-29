@@ -32,7 +32,7 @@ Possible values:  `"true", "false"`
 
 **`new-database`** [[7]](#7-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys.Encrypt and decrypt data using RSA keys
+**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 **`server-version`** [[9]](#9-ckms-server-version)  Print the version of the server
 
@@ -1139,7 +1139,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ## 8 ckms rsa
 
-Manage RSA keys.Encrypt and decrypt data using RSA keys
+Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Usage
 `ckms rsa <subcommand>`
