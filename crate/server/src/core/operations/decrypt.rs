@@ -48,7 +48,7 @@ pub(crate) async fn decrypt(
 
     let owm = get_key(kms, &request, user, params).await?;
 
-    trace!("Decrypt: [OK] Get object with metadata");
+    trace!("decrypt: [OK] Get object with metadata");
 
     // Make sure that the key used to decrypt can be used to decrypt.
     if !owm
@@ -62,14 +62,10 @@ pub(crate) async fn decrypt(
         ))
     }
 
-    trace!(
-        "get_decryption_system: matching on object: {:?}",
-        owm.object
-    );
+    trace!("decrypt: matching on object: {:?}", owm.object);
 
     match &owm.object {
-        Object::SymmetricKey { .. } => decrypt_with_aead(&request, &owm),
-        Object::PrivateKey { .. } => decrypt_with_private_key(&request, &owm),
+        Object::SymmetricKey { .. } | Object::PrivateKey { .. } => dispatch_decrypt(&request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(
             "decrypt: decryption with keys of type: {} is not supported",
             other.object_type()
@@ -89,8 +85,8 @@ async fn get_key(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
-        .context("Decrypt: unique_identifier must be a string")?;
-    trace!("decrypt: uid_or_tags: {uid_or_tags}");
+        .context("Get Key: unique_identifier must be a string")?;
+    trace!("get_key: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
@@ -119,14 +115,14 @@ async fn get_key(
             true
         })
         .collect::<Vec<ObjectWithMetadata>>();
-    trace!("decrypt: owm_s: {:?}", owm_s);
+    trace!("get_key: owm_s: {:?}", owm_s);
 
     // there can only be one key
     let mut owm = owm_s.pop().ok_or_else(|| {
         KmsError::KmipError(
             ErrorReason::Item_Not_Found,
             format!(
-                "Decrypt: no available key found (must be an active symmetric key or private key) \
+                "Get Key: no available key found (must be an active symmetric key or private key) \
                  for object identifier {uid_or_tags}"
             ),
         )
@@ -146,12 +142,32 @@ async fn get_key(
     Ok(owm)
 }
 
-fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<DecryptResponse> {
+fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<DecryptResponse> {
     let ciphertext = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        KmsError::InvalidRequest("Dispatch Decrypt: data to decrypt must be provided".to_owned())
     })?;
+
     let key_block = owm.object.key_block()?;
-    match key_block.key_format_type {
+    match &key_block.key_format_type {
+        KeyFormatType::CoverCryptSecretKey => {
+            CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
+                .decrypt(request)
+                .map_err(Into::into)
+        }
+
+        KeyFormatType::TransparentECPrivateKey
+        | KeyFormatType::TransparentRSAPrivateKey
+        | KeyFormatType::PKCS1
+        | KeyFormatType::PKCS8 => {
+            trace!(
+                "dispatch_decrypt: matching on key format type: {:?}",
+                key_block.key_format_type
+            );
+            let private_key = kmip_private_key_to_openssl(&owm.object)?;
+            trace!("dispatch_decrypt: OpenSSL Private Key instantiated before decryption");
+            decrypt_with_pkey(request, &owm.id, ciphertext, &private_key)
+        }
+
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
             let cryptographic_algorithm = request
@@ -192,41 +208,9 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
                 correlation_value: request.correlation_value.clone(),
             })
         }
-        other => Err(KmsError::NotSupported(format!(
-            "symmetric decryption with keys of format: {other}"
-        ))),
-    }
-}
 
-fn decrypt_with_private_key(
-    request: &Decrypt,
-    owm: &ObjectWithMetadata,
-) -> KResult<DecryptResponse> {
-    let key_block = owm.object.key_block()?;
-    match &key_block.key_format_type {
-        KeyFormatType::CoverCryptSecretKey => {
-            CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
-                .decrypt(request)
-                .map_err(Into::into)
-        }
-
-        KeyFormatType::TransparentECPrivateKey
-        | KeyFormatType::TransparentRSAPrivateKey
-        | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
-            let ciphertext = request.data.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-            })?;
-            trace!(
-                "get_decryption_system: matching on key format type: {:?}",
-                key_block.key_format_type
-            );
-            let private_key = kmip_private_key_to_openssl(&owm.object)?;
-            trace!("get_decryption_system: OpenSSL Private Key instantiated before decryption");
-            decrypt_with_pkey(request, &owm.id, ciphertext, &private_key)
-        }
         other => Err(KmsError::NotSupported(format!(
-            "decryption with private keys of format: {other}"
+            "decryption with keys of format: {other}"
         ))),
     }
 }
@@ -246,7 +230,7 @@ fn decrypt_with_pkey(
         #[cfg(not(feature = "fips"))]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?,
         other => {
-            kms_bail!("Decrypt: private key type not supported: {other:?}")
+            kms_bail!("Decrypt with PKey: private key type not supported: {other:?}")
         }
     };
     Ok(DecryptResponse {
@@ -259,12 +243,12 @@ fn decrypt_with_pkey(
 fn decrypt_with_rsa(
     private_key: &PKey<Private>,
     cryptographic_parameters: Option<&CryptographicParameters>,
-    ct: &[u8],
+    ciphertext: &[u8],
 ) -> KResult<Zeroizing<Vec<u8>>> {
     let (algorithm, padding, hashing_fn) =
         default_cryptographic_parameters(cryptographic_parameters);
     trace!(
-        "decrypt_with_rsa: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
+        "Decrypt with RSA: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
         algorithm,
         padding,
         hashing_fn
@@ -272,14 +256,14 @@ fn decrypt_with_rsa(
 
     Ok(match (algorithm, padding) {
         (CryptographicAlgorithm::AES, PaddingMethod::OAEP) => {
-            ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ct)?
+            ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ciphertext)?
         }
         (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {
-            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?
+            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ciphertext)?
         }
         #[cfg(not(feature = "fips"))]
         (CryptographicAlgorithm::RSA, PaddingMethod::PKCS1v15) => {
-            ckm_rsa_pkcs_decrypt(private_key, ct)?
+            ckm_rsa_pkcs_decrypt(private_key, ciphertext)?
         }
         _ => kms_bail!("Decrypt: algorithm or padding method not supported for RSA decryption"),
     })
