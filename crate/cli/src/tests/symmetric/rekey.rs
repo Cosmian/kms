@@ -42,6 +42,8 @@ pub(crate) fn rekey_symmetric_key(
     ))
 }
 
+const AES_KEY_SIZE: usize = 256;
+
 #[tokio::test]
 pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     // create a temp dir
@@ -51,7 +53,13 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // AES 256 bit key
-    let id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let id = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        Some(AES_KEY_SIZE),
+        None,
+        None,
+        &[],
+    )?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     export_key(
@@ -83,14 +91,19 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     )?;
 
     // Compare the symmetric key bytes
-    let old_key = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym"))?
-        .key_block()?
-        .key_bytes()?;
-    let new_key = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym_2"))?
-        .key_block()?
-        .key_bytes()?;
+    let old_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym"))?;
+    let new_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym_2"))?;
+    assert_ne!(
+        old_object.key_block()?.key_bytes()?,
+        new_object.key_block()?.key_bytes()?
+    );
 
-    assert_ne!(old_key, new_key);
+    // Compare the attributes
+    assert_eq!(old_object.attributes()?, new_object.attributes()?);
+    assert_eq!(
+        new_object.attributes()?.cryptographic_length.unwrap(),
+        i32::try_from(AES_KEY_SIZE).unwrap()
+    );
 
     Ok(())
 }

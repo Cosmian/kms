@@ -32,7 +32,7 @@ impl ReKeyAction {
             .unique_identifier
             .to_string();
 
-        let mut stdout = console::Stdout::new("The symmetric key was successfully generated.");
+        let mut stdout = console::Stdout::new("The symmetric key was successfully refreshed.");
         stdout.set_unique_identifier(unique_identifier);
         stdout.write()?;
 
