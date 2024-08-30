@@ -8,7 +8,7 @@ use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct UserClaim {
+pub(crate) struct UserClaim {
     pub email: Option<String>,
     pub iss: Option<String>,
     pub sub: Option<String>,
