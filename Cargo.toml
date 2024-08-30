@@ -52,7 +52,7 @@ opt-level = 0
 [workspace.dependencies]
 actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.5", default-features = false }
+actix-web = { version = "4.9.0", default-features = false }
 base64 = "0.21"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }

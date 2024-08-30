@@ -61,6 +61,7 @@ pub(crate) fn export_key(
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
             ExportKeyFormat::SpkiPem => "spki-pem",
             ExportKeyFormat::SpkiDer => "spki-der",
+            ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
         };
         args.push(arg_value.to_owned());

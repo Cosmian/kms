@@ -14,7 +14,7 @@ mod decrypt;
 mod encrypt;
 mod keys;
 
-/// Manage RSA keys.
+/// Manage RSA keys. Encrypt and decrypt data using RSA keys.
 #[derive(Parser)]
 pub enum RsaCommands {
     #[command(subcommand)]

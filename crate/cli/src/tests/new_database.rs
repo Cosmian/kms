@@ -1,9 +1,11 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_server::config::{DBConfig, DEFAULT_SQLITE_PATH};
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
+    AuthenticationOptions,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -90,7 +92,23 @@ async fn test_multiple_databases() -> CliResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     // since we are going to rewrite the conf, use a different port
-    let ctx = start_test_server_with_options(9997, true, false, false).await?;
+    let ctx = start_test_server_with_options(
+        DBConfig {
+            database_type: Some("sqlite-enc".to_string()),
+            sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
+            clear_database: true,
+            ..DBConfig::default()
+        },
+        9997,
+        AuthenticationOptions {
+            use_jwt_token: true,
+            use_https: false,
+            use_client_cert: false,
+            api_token_id: None,
+            api_token: None,
+        },
+    )
+    .await?;
 
     // create a symmetric key in the default encrypted database
     let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;

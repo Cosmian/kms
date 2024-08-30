@@ -103,6 +103,7 @@ async fn main_() -> CliResult<()> {
     match opts.command {
         CliCommands::Login(action) => action.process(&conf_path).await?,
         CliCommands::Logout(action) => action.process(&conf_path)?,
+
         command => {
             let conf = ClientConf::load(&conf_path)?;
             let kms_rest_client =

@@ -11,7 +11,7 @@ use crate::{
     result::KResult,
 };
 
-const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
+pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
 /// Configuration for the database
 #[derive(Args, Clone, Deserialize, Serialize)]
