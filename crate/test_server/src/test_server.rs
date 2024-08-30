@@ -21,7 +21,7 @@ use cosmian_kms_server::{
     kms_server::start_kms_server,
 };
 use tokio::sync::OnceCell;
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 
@@ -119,7 +119,7 @@ pub async fn start_test_server_with_options(
         generate_owner_conf(&server_params, authentication_options.api_token.clone())?;
     let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
 
-    println!(
+    info!(
         "Starting KMS test server at URL: {} with server params {:?}",
         owner_client_conf.kms_server_url, &server_params
     );
@@ -190,15 +190,15 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
             timeout -= 1;
             retry = timeout >= 0;
             if retry {
-                println!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
+                info!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
                 thread::sleep(std::time::Duration::from_secs(waiting));
                 waiting *= 2;
             } else {
-                println!("The server is still not up, stop trying");
+                info!("The server is still not up, stop trying");
                 client_bail!("Can't start the kms server to run tests");
             }
         } else {
-            println!("UP!");
+            info!("UP!");
             retry = false;
         }
     }
@@ -269,10 +269,10 @@ fn generate_server_params(
 
 fn set_access_token(server_params: &ServerParams, api_token: Option<String>) -> Option<String> {
     if server_params.identity_provider_configurations.is_some() {
-        println!("Setting access token for JWT: {AUTH0_TOKEN:?}");
+        trace!("Setting access token for JWT: {AUTH0_TOKEN:?}");
         Some(AUTH0_TOKEN.to_string())
     } else if api_token.is_some() {
-        println!("Setting access token for API: {api_token:?}");
+        trace!("Setting access token for API: {api_token:?}");
         api_token
     } else {
         None

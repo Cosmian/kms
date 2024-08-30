@@ -18,7 +18,7 @@ use crate::{
     core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
 };
 
-pub(crate) async fn manage_token_request<S, B>(
+pub(crate) async fn manage_api_token_request<S, B>(
     service: Rc<S>,
     kms_server: Arc<KMS>,
     req: ServiceRequest,
@@ -27,7 +27,7 @@ where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
 {
     trace!("API Token Authentication...");
-    match manage_token(kms_server, &req).await {
+    match manage_api_token(kms_server, &req).await {
         Ok(()) => {
             trace!("API Token Authentication successful");
             Ok(service.call(req).await?.map_into_left_body())
@@ -65,7 +65,7 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
-    // there can only be one private key
+    // there can only be one symmetric key
     let owm = owm_s.pop().ok_or_else(|| {
         KmsError::KmipError(
             ErrorReason::Item_Not_Found,
@@ -85,7 +85,7 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
         .to_lowercase())
 }
 
-async fn manage_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
+async fn manage_api_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
     trace!(
         "Token authentication using this API token ID: {:?}",
         kms_server.params.api_token_id

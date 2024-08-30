@@ -17,7 +17,7 @@ use futures::{
 };
 use tracing::debug;
 
-use super::{manage_jwt_request, manage_token_request, PeerCommonName};
+use super::{manage_api_token_request, manage_jwt_request, PeerCommonName};
 use crate::{core::KMS, middlewares::jwt::JwtConfig};
 
 #[derive(Clone)]
@@ -99,6 +99,6 @@ where
         }
 
         let kms_server = self.kms_server.clone();
-        Box::pin(async move { manage_token_request(service, kms_server, req).await })
+        Box::pin(async move { manage_api_token_request(service, kms_server, req).await })
     }
 }

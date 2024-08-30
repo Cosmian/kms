@@ -27,7 +27,7 @@ method can be either (one of them is enough):
 The server can be configured to use multiple authentication methods concurrently:
 
 - if server is started with TLS client certificate authentication, client MUST provide a valid certificate issued by the authority certificate provided by the server ;
-- if server only provides JWT and API token authentication, client MUST provide a valid JWT token or an API token in the `Authorization` header. Server will first try to authenticate using the JWT token, then the API token if JWT token is not provided.
+- if server only provides JWT and API token authentication, client MUST provide a valid JWT token OR an API token in the `Authorization` header. Server will first try to authenticate using the JWT token, then the API token if JWT token is not provided.
 
 At the end, if the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment
 variable) is set, the server still performs the authentication but maps all requests to the default

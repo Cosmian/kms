@@ -14,4 +14,4 @@ mod jwks;
 pub(crate) use jwks::JwksManager;
 
 mod token_auth;
-pub(crate) use token_auth::manage_token_request;
+pub(crate) use token_auth::manage_api_token_request;
