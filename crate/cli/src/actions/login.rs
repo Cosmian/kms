@@ -50,10 +50,12 @@ pub struct LoginAction;
 impl LoginAction {
     pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
-        let oauth2_conf = conf
-            .oauth2_conf
-            .as_ref()
-            .ok_or_else(|| CliError::Default(format!("No oauth2_conf object in {conf_path:?}")))?;
+        let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {
+            CliError::Default(format!(
+                "The `login` command (only used for JWT authentication) requires an Identity \
+                 Provider (IdP) that MUST be configured in the oauth2_conf object in {conf_path:?}"
+            ))
+        })?;
         let login_config = Oauth2LoginConfig {
             client_id: oauth2_conf.client_id.clone(),
             client_secret: oauth2_conf.client_secret.clone(),

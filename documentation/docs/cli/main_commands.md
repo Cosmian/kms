@@ -252,7 +252,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -938,7 +938,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1224,7 +1224,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1477,7 +1477,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 

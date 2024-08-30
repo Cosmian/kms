@@ -86,7 +86,7 @@ where
         if req.extensions().contains::<PeerCommonName>() {
             debug!(
                 "Request extension PeerCommonName found! Certificate client authentication has \
-                 already been done in success, continue..."
+                 already been done in success, no need to authenticate twice..."
             );
             return Box::pin(async move {
                 let res = service.call(req).await?;

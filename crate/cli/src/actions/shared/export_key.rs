@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use base64::Engine;
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::KeyFormatType, der_to_pem, export_object, write_bytes_to_file,
@@ -19,6 +20,7 @@ pub enum ExportKeyFormat {
     Pkcs8Der,
     SpkiPem,
     SpkiDer,
+    Base64,
     Raw,
 }
 
@@ -117,7 +119,9 @@ impl ExportKeyAction {
 
         let (key_format_type, encode_to_pem) = match self.key_format {
             // For Raw: use the default format then do the local extraction of the bytes
-            ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw => (None, false),
+            ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => {
+                (None, false)
+            }
             ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
             ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
             ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
@@ -145,6 +149,12 @@ impl ExportKeyAction {
         if self.key_format == ExportKeyFormat::JsonTtlv {
             // save it to a file
             write_kmip_object_to_file(&object, &self.key_file)?;
+        } else if self.key_format == ExportKeyFormat::Base64 {
+            // export the key bytes in base64
+            let base64_key = base64::engine::general_purpose::STANDARD
+                .encode(object.key_block()?.key_bytes()?)
+                .to_lowercase();
+            write_bytes_to_file(base64_key.as_bytes(), &self.key_file)?;
         } else {
             // export the bytes only
             let bytes = {

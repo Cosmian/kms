@@ -204,22 +204,16 @@ To generate a new API token, use the `ckms` CLI and save the symmetric key uniqu
 ckms sym keys create
 ```
 
-Then export the symmetric key content:
+Then export the symmetric key content in base64:
 
 ```sh
-ckms sym keys export -k <SYMMETRIC_KEY_ID> api_token.json
+ckms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
 ```
 
-From here, you can restart the server with the `--api-token-id` option.
+Reconfigure `ckms` client with the previous base64 encoded key as `kms_access_token`. Your `ckms` is now ready to authenticate using the API token.
+
+And finally, restart the server with the `--api-token-id` option.
 
 ```sh
 --api_token_id <SYMMETRIC_KEY_ID>
 ```
-
-Then extract the key bytes from `api_token.json` and convert it from hex to base64:
-
-```sh
-jq -r '.value[] | select(.tag == "KeyBlock") | .value[] | select(.tag == "KeyValue") | .value[] | select(.tag == "KeyMaterial") | .value[] | select(.tag == "ByteString") | .value' api_token.json | xxd -r -p | base64
-```
-
-And finally reconfigure `ckms` client with the previous base64 encoded key as `kms_access_token`. Your `ckms` is now ready to authenticate using the API token.
