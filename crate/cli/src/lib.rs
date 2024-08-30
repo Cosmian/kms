@@ -5,6 +5,7 @@
     keyword_idents,
     let_underscore,
     rust_2024_compatibility,
+    unreachable_pub,
     clippy::all,
     clippy::suspicious,
     clippy::complexity,

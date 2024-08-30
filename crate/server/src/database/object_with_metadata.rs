@@ -13,7 +13,7 @@ use crate::{error::KmsError, result::KResultHelper};
 
 /// An object with its metadata such as permissions and state
 #[derive(Debug, Clone, Serialize)]
-pub struct ObjectWithMetadata {
+pub(crate) struct ObjectWithMetadata {
     pub(crate) id: String,
     pub(crate) object: Object,
     pub(crate) owner: String,

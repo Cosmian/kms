@@ -30,7 +30,7 @@ pub(crate) async fn kmip(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(&req_http)?;
+    let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
@@ -44,7 +44,7 @@ pub(crate) async fn kmip(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation`s serialized in a single KMIP `Message`
-pub async fn handle_ttlv(
+async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,

@@ -148,7 +148,7 @@ impl DBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
     /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
-    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
+    pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
         Ok(if let Some(database_type) = &self.database_type {
             Some(match database_type.as_str() {
                 "postgresql" => {

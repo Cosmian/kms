@@ -25,7 +25,7 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> CliResult<Policy> {
+pub(crate) fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> CliResult<Policy> {
     let policy_buffer = read_bytes_from_file(bin_filename)?;
     Policy::parse_and_convert(policy_buffer.as_slice()).with_context(|| {
         format!(
@@ -35,7 +35,7 @@ pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> CliResult<Pol
     })
 }
 
-pub fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> CliResult<Policy> {
+pub(crate) fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> CliResult<Policy> {
     let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
     policy_specs.try_into().with_context(|| {
         format!(
@@ -530,7 +530,7 @@ mod tests {
     use super::policy_from_binary_file;
 
     #[test]
-    pub fn test_policy_bin_from_file() {
+    pub(crate) fn test_policy_bin_from_file() {
         //correct
         const CORRECT_FILE: &str = "test_data/policy.bin";
         let result = policy_from_binary_file(&PathBuf::from(CORRECT_FILE));

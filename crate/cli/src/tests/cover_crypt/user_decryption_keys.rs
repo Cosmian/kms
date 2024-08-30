@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-pub fn create_user_decryption_key(
+pub(crate) fn create_user_decryption_key(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,
@@ -50,7 +50,7 @@ pub fn create_user_decryption_key(
 }
 
 #[tokio::test]
-pub async fn test_user_decryption_key() -> CliResult<()> {
+pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
@@ -74,7 +74,7 @@ pub async fn test_user_decryption_key() -> CliResult<()> {
 }
 
 #[tokio::test]
-pub async fn test_user_decryption_key_error() -> CliResult<()> {
+pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair

@@ -35,7 +35,7 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate(mut shared_config: ServerParams) -> KResult<Self> {
+    pub(crate) async fn instantiate(mut shared_config: ServerParams) -> KResult<Self> {
         let db: Box<dyn Database + Sync + Send> = if let Some(mut db_params) =
             shared_config.db_params.as_mut()
         {

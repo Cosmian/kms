@@ -24,7 +24,7 @@ pub(crate) async fn list_owned_objects(
     let _enter = span.enter();
 
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(&req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /access/owned {user}");
 
     let list = kms
@@ -45,7 +45,7 @@ pub(crate) async fn list_access_rights_obtained(
     let _enter = span.enter();
 
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(&req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /access/granted {user}");
 
     let list = kms
@@ -67,7 +67,7 @@ pub(crate) async fn list_accesses(
 
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(&req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /accesses/{object_id} {user}");
 
     let list = kms
@@ -89,7 +89,7 @@ pub(crate) async fn grant_access(
 
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(&req)?;
+    let user = kms.get_user(&req);
     info!(
         user = user,
         access = access.to_string(),
@@ -120,7 +120,7 @@ pub(crate) async fn revoke_access(
 
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(&req)?;
+    let user = kms.get_user(&req);
     info!(
         user = user,
         access = access.to_string(),

@@ -129,6 +129,8 @@ pub enum Operation {
     LocateResponse(LocateResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
+    ReKey(ReKey),
+    ReKeyResponse(ReKeyResponse),
     ReKeyKeyPair(ReKeyKeyPair),
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     Destroy(Destroy),
@@ -152,6 +154,7 @@ impl Operation {
             | Self::Decrypt(_)
             | Self::Locate(_)
             | Self::Revoke(_)
+            | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
             | Self::Destroy(_)
             | Self::Validate(_) => Direction::Request,
@@ -167,6 +170,7 @@ impl Operation {
             | Self::DecryptResponse(_)
             | Self::LocateResponse(_)
             | Self::RevokeResponse(_)
+            | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
             | Self::DestroyResponse(_)
             | Self::ValidateResponse(_) => Direction::Response,
@@ -191,6 +195,7 @@ impl Operation {
             Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
             Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::Rekey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
                 OperationEnumeration::RekeyKeyPair
             }
@@ -1234,6 +1239,43 @@ pub struct Revoke {
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     /// The Unique Identifier of the object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+/// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
+///
+/// As the replacement key takes over the name attribute of the existing key, Re-key SHOULD only be performed once on a given key.
+///
+/// The server SHALL copy the Unique Identifier of the replacement key returned by this operation into the ID Placeholder variable.
+///
+/// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
+///
+/// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ReKey {
+    // Determines the existing Symmetric Key being re-keyed. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+
+    // An Interval object indicating the difference between the Initial Date and the Activation Date of the replacement key to be created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<i32>,
+
+    /// Specifies desired attributes to be associated with the new object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+
+    /// Specifies all permissible Protection Storage Mask selections for the new
+    /// object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ReKeyResponse {
+    // The Unique Identifier of the newly created replacement Private Key object.
     pub unique_identifier: UniqueIdentifier,
 }
 

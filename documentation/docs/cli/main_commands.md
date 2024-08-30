@@ -1420,13 +1420,15 @@ Create, destroy, import, and export symmetric keys
 
 **`create`** [[10.1.1]](#1011-ckms-sym-keys-create)  Create a new symmetric key
 
-**`export`** [[10.1.2]](#1012-ckms-sym-keys-export)  Export a key from the KMS
+**`re-key`** [[10.1.2]](#1012-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`import`** [[10.1.3]](#1013-ckms-sym-keys-import)  Import a private or public key in the KMS.
+**`export`** [[10.1.3]](#1013-ckms-sym-keys-export)  Export a key from the KMS
 
-**`revoke`** [[10.1.4]](#1014-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`import`** [[10.1.4]](#1014-ckms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`destroy`** [[10.1.5]](#1015-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`revoke`** [[10.1.5]](#1015-ckms-sym-keys-revoke)  Revoke a symmetric key
+
+**`destroy`** [[10.1.6]](#1016-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
@@ -1451,7 +1453,20 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ---
 
-## 10.1.2 ckms sym keys export
+## 10.1.2 ckms sym keys re-key
+
+Refresh an existing symmetric key
+
+### Usage
+`ckms sym keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 10.1.3 ckms sym keys export
 
 Export a key from the KMS
 
@@ -1495,7 +1510,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.1.3 ckms sym keys import
+## 10.1.4 ckms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -1536,7 +1551,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 10.1.4 ckms sym keys revoke
+## 10.1.5 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -1554,7 +1569,7 @@ Revoke a symmetric key
 
 ---
 
-## 10.1.5 ckms sym keys destroy
+## 10.1.6 ckms sym keys destroy
 
 Destroy a symmetric key
 

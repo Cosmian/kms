@@ -81,6 +81,7 @@ nav:
       - Get Attributes: kmip_2_1/_get_attributes.md
       - Import: kmip_2_1/_import.md
       - Locate: kmip_2_1/_locate.md
+      - Re-Key: kmip_2_1/_re-key.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
   - Google workspace Client-Side Encryption (CSE):

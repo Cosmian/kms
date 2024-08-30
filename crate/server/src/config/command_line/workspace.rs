@@ -34,7 +34,7 @@ impl Default for WorkspaceConfig {
 }
 
 impl WorkspaceConfig {
-    pub fn init(&self) -> KResult<Self> {
+    pub(crate) fn init(&self) -> KResult<Self> {
         let root_data_path = Self::finalize_directory_path(&self.root_data_path, None)?;
         let tmp_path = Self::finalize_directory_path(&self.tmp_path, Some(&root_data_path))?;
         Ok(Self {
@@ -58,7 +58,7 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_directory(&self, path: &PathBuf) -> KResult<PathBuf> {
+    pub(crate) fn finalize_directory(&self, path: &PathBuf) -> KResult<PathBuf> {
         Self::finalize_directory_path(path, Some(&self.root_data_path))
     }
 
@@ -77,7 +77,7 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_directory_path(
+    pub(crate) fn finalize_directory_path(
         path: &PathBuf,
         relative_root: Option<&Path>,
     ) -> KResult<PathBuf> {
@@ -112,7 +112,8 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_file_path(&self, path: &PathBuf) -> KResult<PathBuf> {
+    #[allow(dead_code)]
+    pub(crate) fn finalize_file_path(&self, path: &PathBuf) -> KResult<PathBuf> {
         let path = if path.is_relative() {
             self.root_data_path.join(path)
         } else {

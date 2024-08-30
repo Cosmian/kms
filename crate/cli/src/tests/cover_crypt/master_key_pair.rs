@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn create_cc_master_key_pair(
+pub(crate) fn create_cc_master_key_pair(
     cli_conf_path: &str,
     policy_option: &str,
     file: &str,
@@ -55,7 +55,7 @@ pub fn create_cc_master_key_pair(
 }
 
 #[tokio::test]
-pub async fn test_create_master_key_pair() -> CliResult<()> {
+pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // from specs
     create_cc_master_key_pair(
@@ -75,7 +75,7 @@ pub async fn test_create_master_key_pair() -> CliResult<()> {
 }
 
 #[tokio::test]
-pub async fn test_create_master_key_pair_error() -> CliResult<()> {
+pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let err = create_cc_master_key_pair(

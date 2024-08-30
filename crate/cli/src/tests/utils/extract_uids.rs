@@ -46,6 +46,6 @@ pub(crate) fn extract_database_secret(text: &str) -> Option<&str> {
 
 /// Extract the wrapping key from a test.
 #[cfg(not(feature = "fips"))]
-pub fn extract_wrapping_key(text: &str) -> Option<&str> {
+pub(crate) fn extract_wrapping_key(text: &str) -> Option<&str> {
     extract_uid(text, "Wrapping key")
 }

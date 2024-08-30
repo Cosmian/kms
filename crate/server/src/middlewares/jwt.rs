@@ -48,7 +48,7 @@ pub struct JwtConfig {
 
 impl JwtConfig {
     /// Decode a JWT bearer header
-    pub fn decode_bearer_header(&self, authorization_content: &str) -> KResult<UserClaim> {
+    pub(crate) fn decode_bearer_header(&self, authorization_content: &str) -> KResult<UserClaim> {
         let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
         kms_ensure!(
             bearer.len() == 2 && bearer[0] == "Bearer",
@@ -60,7 +60,7 @@ impl JwtConfig {
     }
 
     /// Decode a json web token (JWT)
-    pub fn decode_authentication_token(&self, token: &str) -> KResult<UserClaim> {
+    pub(crate) fn decode_authentication_token(&self, token: &str) -> KResult<UserClaim> {
         kms_ensure!(
             !token.is_empty(),
             KmsError::Unauthorized("token is empty".to_owned())
