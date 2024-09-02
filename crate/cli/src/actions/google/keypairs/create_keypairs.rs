@@ -3,15 +3,18 @@ use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
+    cosmian_kmip::crypto::{
+        generic::kmip_requests::build_encryption_request,
+        rsa::kmip_requests::create_rsa_key_pair_request,
+    },
     export_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::Certify,
         kmip_types::{
-            Attributes, CertificateAttributes, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, VendorAttribute,
+            Attributes, CertificateAttributes, CryptographicAlgorithm, CryptographicParameters,
+            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
         },
     },
     KmsClient,
@@ -123,17 +126,45 @@ impl CreateKeypairsAction {
             .await?;
 
         // Export wrapped private key with google CSE key
-        let (wrapped_private_key_object, _) = export_object(
+        let (raw_private_key_object, _) = export_object(
             kms_rest_client,
             &created_key_pair.private_key_unique_identifier.to_string(),
-            false,
-            Some(&self.csekey_id),
+            true,
+            None,
             false,
             None,
         )
         .await?;
-        let wrapped_private_key =
-            general_purpose::STANDARD.encode(wrapped_private_key_object.key_block()?.key_bytes()?);
+
+        let key_bytes = raw_private_key_object.key_block()?.key_bytes()?;
+
+        // Create the kmip query
+        let encrypt_request = build_encryption_request(
+            &self.csekey_id,
+            None,
+            key_bytes.to_vec(),
+            None,
+            None,
+            Some(CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            }),
+        )?;
+
+        let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
+
+        // extract the nonce and write it
+        let iv_counter_nonce = encrypt_response.iv_counter_nonce.unwrap();
+
+        // extract the ciphertext and write it
+        let data = encrypt_response.data.unwrap();
+
+        // extract the authentication tag and write it
+        let authenticated_encryption_tag = encrypt_response.authenticated_encryption_tag.unwrap();
+
+        let wrapped_private_key = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+
+        let encoded_private_key = general_purpose::STANDARD.encode(&wrapped_private_key);
 
         // Sign created public key with issuer private key
         let attributes = Attributes {
@@ -189,7 +220,7 @@ impl CreateKeypairsAction {
             Self::post_keypair(
                 &gmail_client.await?,
                 certificate_value,
-                wrapped_private_key,
+                encoded_private_key,
                 kacls_url.await?.kacls_url,
             )
             .await?;

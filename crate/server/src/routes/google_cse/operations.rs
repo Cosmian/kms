@@ -177,7 +177,7 @@ pub async fn wrap(
         KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
     })?;
 
-    let wrapped_dek = [data, iv_counter_nonce, authenticated_encryption_tag].concat();
+    let wrapped_dek = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
 
     debug!("wrap: exiting with success");
     Ok(WrapResponse {
@@ -241,12 +241,13 @@ pub async fn unwrap(
 
     debug!("unwrap: unwrap key");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let data = cse_symmetric_key_unwrap(
+    let data = cse_wrapped_key_decrypt(
         unwrap_request.wrapped_key,
         token_extracted_content.user,
         token_extracted_content.resource_name,
         kms,
         database_params,
+        EncodingOption::NoEncoding,
     )
     .await?;
     debug!("unwrap: exiting with success");
@@ -331,17 +332,19 @@ pub async fn private_key_sign(
     );
 
     // Unwrap private key which has been previously wrapped using AES
-    let dek = cse_private_key_unwrap(
+    let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
         token_extracted_content.user,
+        None,
         kms,
         database_params,
+        EncodingOption::TTLVEncoding,
     )
     .await?;
 
     // Sign with the unwrapped RSA private key
     debug!("private_key_sign: from_rsa");
-    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&dek)?)?;
+    let private_key = PKey::from_rsa(Rsa::<Private>::private_key_from_der(&private_key_der)?)?;
 
     debug!("private_key_sign: build signer");
     let mut ctx = PkeyCtx::new(&private_key)?;
@@ -443,11 +446,13 @@ pub async fn private_key_decrypt(
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
-    let private_key_der = cse_private_key_unwrap(
+    let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
         token_extracted_content.user,
+        None,
         kms,
         database_params,
+        EncodingOption::TTLVEncoding,
     )
     .await?;
 
@@ -528,12 +533,13 @@ pub async fn digest(
     let data = format!("ResourceKeyDigest:{resource_name}:{perimeter_id}");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
-    let dek_data = cse_symmetric_key_unwrap(
+    let dek_data = cse_wrapped_key_decrypt(
         digest_request.wrapped_key,
         user,
         Some(resource_name.into_bytes()),
         kms,
         database_params,
+        EncodingOption::NoEncoding,
     )
     .await?;
 
@@ -617,7 +623,7 @@ pub async fn privileged_wrap(
         KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_string())
     })?;
 
-    let wrapped_dek = [data, iv_counter_nonce, authenticated_encryption_tag].concat();
+    let wrapped_dek = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
 
     debug!("privileged-wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
@@ -661,12 +667,13 @@ pub async fn privileged_unwrap(
 
     debug!("privileged_unwrap: unwrap key");
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let data = cse_symmetric_key_unwrap(
+    let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         privileged_unwrap_request.wrapped_key,
         user,
         Some(resource_name),
         kms,
         database_params,
+        EncodingOption::NoEncoding,
     )
     .await?;
 
@@ -729,8 +736,15 @@ pub async fn privileged_private_key_decrypt(
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
-    let private_key_der =
-        cse_private_key_unwrap(request.wrapped_private_key, user, kms, database_params).await?;
+    let private_key_der = cse_wrapped_key_decrypt(
+        request.wrapped_private_key,
+        user,
+        None,
+        kms,
+        database_params,
+        EncodingOption::TTLVEncoding,
+    )
+    .await?;
 
     // Decrypt with the unwrapped RSA private key
     debug!("privileged_private_key_decrypt: from_rsa");
@@ -769,69 +783,8 @@ pub async fn privileged_private_key_decrypt(
     Ok(response)
 }
 
-/// Unwraps a private key
-///
-/// # Arguments
-///
-/// * `wrapped_private_key` - A base64-encoded string representing the wrapped private key.
-/// * `user` - A string identifying the user associated with the key.
-/// * `kms` - the KMS Server instance
-/// * `database_params` - An optional `ExtraDatabaseParams` containing additional parameters for database operations.
-///
-/// # Returns
-///
-/// The decrypted key bytes
-///
-/// # Errors
-///
-/// Returns an error if decoding base64 fails, adding key wrapping data fails, unwrapping the key fails, or extracting the key bytes fails.
-///
-async fn cse_private_key_unwrap(
-    wrapped_private_key: String,
-    user: String,
-    kms: &Arc<KMSServer>,
-    database_params: Option<ExtraDatabaseParams>,
-) -> KResult<Zeroizing<Vec<u8>>> {
-    debug!("cse_unwrap: decode base64 wrapped_dek");
-    // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
-    let mut wrapped_dek = create_symmetric_key_kmip_object(
-        &general_purpose::STANDARD.decode(&wrapped_private_key)?,
-        CryptographicAlgorithm::AES,
-    );
-
-    debug!("cse_unwrap: add key wrapping data substruct");
-    // add key wrapping parameters to the wrapped key
-    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(
-        KeyWrappingData {
-            wrapping_method: kmip_types::WrappingMethod::Encrypt,
-            encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("google_cse".to_owned()),
-                cryptographic_parameters: None,
-            }),
-            encoding_option: Some(EncodingOption::TTLVEncoding),
-            ..Default::default()
-        }
-        .into(),
-    );
-
-    debug!("cse_unwrap: unwrap private key");
-    unwrap_key(
-        wrapped_dek.key_block_mut()?,
-        kms,
-        &user,
-        database_params.as_ref(),
-    )
-    .await?;
-
-    debug!("cse_unwrap: unwrapped private key");
-
-    // re-extract the bytes from the key
-    let dek = wrapped_dek.key_block()?.key_bytes()?;
-    Ok(dek)
-}
-
-/// Decrypts a symmetric key
-/// Tries to decrypt it, using the `resource_name`. If it fails, key might be wrapped without it,
+/// Decrypts a wrapped key
+/// Tries to decrypt it, using the `resource_name` if present. If it fails, key might be wrapped without it,
 /// so we try to unwrap it as it was done initially.
 ///
 /// # Arguments
@@ -850,12 +803,13 @@ async fn cse_private_key_unwrap(
 ///
 /// Returns an error if decoding base64 fails, adding key wrapping data fails, unwrapping the key fails, or extracting the key bytes fails.
 ///
-async fn cse_symmetric_key_unwrap(
+async fn cse_wrapped_key_decrypt(
     wrapped_key: String,
     user: String,
     resource_name: Option<Vec<u8>>,
     kms: &Arc<KMSServer>,
     database_params: Option<ExtraDatabaseParams>,
+    encoding_option: EncodingOption,
 ) -> KResult<Zeroizing<Vec<u8>>> {
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
@@ -864,9 +818,9 @@ async fn cse_symmetric_key_unwrap(
             "Invalid wrapped key - insufficient length.".to_string(),
         ));
     }
+    let iv_counter_nonce = &wrapped_key_bytes[..NONCE_LENGTH];
+    let ciphertext = &wrapped_key_bytes[NONCE_LENGTH..len - TAG_LENGTH];
     let authenticated_tag = &wrapped_key_bytes[len - TAG_LENGTH..];
-    let iv_counter_nonce = &wrapped_key_bytes[len - (TAG_LENGTH + NONCE_LENGTH)..len - TAG_LENGTH];
-    let ciphertext = &wrapped_key_bytes[..len - (TAG_LENGTH + NONCE_LENGTH)];
 
     let decryption_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
@@ -879,36 +833,37 @@ async fn cse_symmetric_key_unwrap(
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let dek = decrypt(kms, decryption_request, &user, None).await;
-    let data = if let Ok(decrypted_key) = dek {
+    let key = decrypt(kms, decryption_request, &user, None).await;
+
+    let data = if let Ok(decrypted_key) = key {
         decrypted_key.data.ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid unwrapped key - missing data.".to_string())
+            KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_string())
         })?
     } else {
         // If decrypting key fails, try to unwrap it as it was done initially
         debug!("unwrap: key decryption fails, try to unwrap it instead");
 
-        let mut wrapped_dek = create_symmetric_key_kmip_object(
+        let mut wrapped_key = create_symmetric_key_kmip_object(
             &general_purpose::STANDARD.decode(&wrapped_key)?,
             CryptographicAlgorithm::AES,
         );
-        wrapped_dek.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
+        wrapped_key.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
                 cryptographic_parameters: None,
             }),
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(encoding_option),
             ..Default::default()
         }));
         unwrap_key(
-            wrapped_dek.key_block_mut()?,
+            wrapped_key.key_block_mut()?,
             kms,
             &user,
             database_params.as_ref(),
         )
         .await?;
-        wrapped_dek.key_block()?.key_bytes()?
+        wrapped_key.key_block()?.key_bytes()?
     };
     Ok(data)
 }
