@@ -204,6 +204,7 @@ pub(crate) async fn validate_cse_authentication_token(
 
 /// Validate the authorization token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+#[allow(unused_variables)]
 pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
@@ -227,6 +228,7 @@ pub(crate) async fn validate_cse_authorization_token(
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
+    #[cfg(any(not(feature = "insecure"), not(test)))]
     if let Some(roles) = roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_string())
@@ -240,6 +242,7 @@ pub(crate) async fn validate_cse_authorization_token(
         );
     }
 
+    #[cfg(any(not(feature = "insecure"), not(test)))]
     if authorization_token.resource_name.is_none() {
         return Err(KmsError::Unauthorized(
             "Authorization token should contain an resource_name".to_string(),
@@ -265,7 +268,7 @@ pub(crate) async fn validate_cse_authorization_token(
     Ok(authorization_token)
 }
 
-pub struct TokenExtractedContent {
+pub(crate) struct TokenExtractedContent {
     pub user: String,
     pub resource_name: Option<Vec<u8>>,
 }
@@ -330,7 +333,7 @@ mod tests {
     async fn test_wrap_auth() {
         cosmian_logger::log_utils::log_init(None);
 
-        let jwt = generate_google_jwt().await;
+        let jwt: String = generate_google_jwt().await;
 
         let wrap_request = format!(
             r#"
