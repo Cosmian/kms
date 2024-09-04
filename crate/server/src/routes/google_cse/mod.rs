@@ -17,7 +17,7 @@ pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,
-    PrivilegedWrapRequest,
+    PrivilegedWrapRequest, RewrapRequest,
 };
 
 /// Error reply for Google CSE
@@ -63,6 +63,7 @@ pub(crate) async fn get_status(
     cse_config: Data<Option<GoogleCseConfig>>,
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
+
     let cse_config = cse_config.as_ref().clone().ok_or_else(|| {
         KmsError::ServerError(
             "Unable to get a reference from as_ref of the Google CSE configuration".to_owned(),
@@ -74,21 +75,21 @@ pub(crate) async fn get_status(
 #[post("/digest")]
 pub(crate) async fn digest(
     req_http: HttpRequest,
-    digest_request: Json<DigestRequest>,
+    request: Json<DigestRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/digest");
 
-    let digest_request = digest_request.into_inner();
-    trace!("digest_request: {:?}", digest_request);
+    let request = request.into_inner();
+    trace!("digest_request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::digest(req_http, digest_request, &cse_config, &kms)
+    match operations::digest(req_http, request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(digest_response) => HttpResponse::Ok().json(digest_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
@@ -102,9 +103,8 @@ pub(crate) async fn privileged_private_key_decrypt(
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedprivatekeydecrypt");
 
-    // unwrap all calls parameters
     let request = request.into_inner();
-    trace!("request: {request:?}");
+    trace!("privileged_private_key_decrypt request: {request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
@@ -120,62 +120,66 @@ pub(crate) async fn privileged_private_key_decrypt(
 #[post("/privilegedunwrap")]
 pub(crate) async fn privileged_unwrap(
     req_http: HttpRequest,
-    privileged_unwrap_request: Json<PrivilegedUnwrapRequest>,
+    request: Json<PrivilegedUnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedunwrap");
 
-    let privileged_unwrap_request = privileged_unwrap_request.into_inner();
-    trace!("privileged_unwrap_request: {:?}", privileged_unwrap_request);
+    let request = request.into_inner();
+    trace!("privileged_unwrap request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::privileged_unwrap(req_http, privileged_unwrap_request, &cse_config, &kms)
+    match operations::privileged_unwrap(req_http, request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(digest_response) => HttpResponse::Ok().json(digest_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
 #[post("/privilegedwrap")]
 pub(crate) async fn privileged_wrap(
-    privileged_wrap_request: Json<PrivilegedWrapRequest>,
+    request: Json<PrivilegedWrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/privilegedwrap");
 
-    let privileged_wrap_request = privileged_wrap_request.into_inner();
-    trace!("privileged_wrap_request: {:?}", privileged_wrap_request);
+    let request = request.into_inner();
+    trace!("privileged_wrap request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::privileged_wrap(privileged_wrap_request, &cse_config, &kms)
+    match operations::privileged_wrap(request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(digest_response) => HttpResponse::Ok().json(digest_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct RewrapRequest {
-    pub authorization: String,
-    pub original_kacls_url: String,
-    pub reason: String,
-    pub wrapped_key: String,
-}
 #[post("/rewrap")]
 pub(crate) async fn rewrap(
-    _req_http: HttpRequest,
-    _request: Json<RewrapRequest>,
-    _cse_config: Data<Option<GoogleCseConfig>>,
-    _kms: Data<Arc<KMSServer>>,
+    req_http: HttpRequest,
+    request: Json<RewrapRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/rewrap: not implemented yet");
-    HttpResponse::Ok().finish()
+    info!("POST /google_cse/rewrap");
+
+    let request = request.into_inner();
+    trace!("rewrap request: {:?}", request);
+    let cse_config = cse_config.into_inner();
+
+    match operations::rewrap(req_http, request, &cse_config, &kms)
+        .await
+        .map(Json)
+    {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => CseErrorReply::from(&e).into(),
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -201,22 +205,19 @@ pub(crate) async fn wrapprivatekey(
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/wrap")]
 pub(crate) async fn wrap(
-    wrap_request: Json<operations::WrapRequest>,
+    request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrap");
 
-    let wrap_request = wrap_request.into_inner();
-    trace!("wrap_request: {:?}", wrap_request);
+    let request = request.into_inner();
+    trace!("wrap request: {:?}", request);
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::wrap(wrap_request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+    match operations::wrap(request, &cse_config, &kms).await.map(Json) {
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
@@ -228,23 +229,22 @@ pub(crate) async fn wrap(
 #[post("/unwrap")]
 pub(crate) async fn unwrap(
     req_http: HttpRequest,
-    unwrap_request: Json<operations::UnwrapRequest>,
+    request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/unwrap");
 
-    // unwrap all calls parameters
-    let unwrap_request = unwrap_request.into_inner();
-    trace!("unwrap_request: {:?}", unwrap_request);
+    let request = request.into_inner();
+    trace!("unwrap request: {:?}", request);
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::unwrap(req_http, unwrap_request, &cse_config, &kms)
+    match operations::unwrap(req_http, request, &cse_config, &kms)
         .await
         .map(Json)
     {
-        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+        Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => CseErrorReply::from(&e).into(),
     }
 }
@@ -261,9 +261,8 @@ pub(crate) async fn private_key_sign(
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeysign");
 
-    // unwrap all calls parameters
     let request = request.into_inner();
-    trace!("request: {request:?}");
+    trace!("privatekeysign request: {request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
@@ -288,9 +287,8 @@ pub(crate) async fn private_key_decrypt(
 ) -> HttpResponse {
     info!("POST /google_cse/privatekeydecrypt");
 
-    // unwrap all calls parameters
     let request = request.into_inner();
-    trace!("request: {request:?}");
+    trace!("privatekeydecrypt request: {request:?}");
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 

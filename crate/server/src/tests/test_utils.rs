@@ -88,7 +88,9 @@ pub(crate) async fn test_app(
         .service(routes::google_cse::privileged_wrap)
         .service(routes::google_cse::privileged_unwrap)
         .service(routes::google_cse::privileged_private_key_decrypt)
-        .service(routes::google_cse::digest);
+        .service(routes::google_cse::digest)
+        .service(routes::google_cse::rewrap);
+
     app = app.service(google_cse_scope);
 
     test::init_service(app).await
@@ -153,7 +155,7 @@ where
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
-            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
     let body = read_body(res).await;

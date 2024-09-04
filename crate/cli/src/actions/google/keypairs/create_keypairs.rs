@@ -184,17 +184,17 @@ impl CreateKeypairsAction {
         let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
 
         // extract the nonce and write it
-        let iv_counter_nonce = encrypt_response.iv_counter_nonce.unwrap();
+        let iv_counter_nonce = encrypt_response.iv_counter_nonce.unwrap_or_default();
 
         // extract the ciphertext and write it
-        let data = encrypt_response.data.unwrap();
+        let data = encrypt_response.data.unwrap_or_default();
 
         // extract the authentication tag and write it
-        let authenticated_encryption_tag = encrypt_response.authenticated_encryption_tag.unwrap();
+        let authenticated_encryption_tag = encrypt_response
+            .authenticated_encryption_tag
+            .unwrap_or_default();
 
         let wrapped_private_key = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
-
-        let encoded_private_key = general_purpose::STANDARD.encode(&wrapped_private_key);
 
         // Sign created public key with issuer private key
         let attributes = Attributes {
@@ -250,7 +250,7 @@ impl CreateKeypairsAction {
             Self::post_keypair(
                 &gmail_client.await?,
                 certificate_value,
-                encoded_private_key,
+                general_purpose::STANDARD.encode(&wrapped_private_key),
                 kacls_url.await?.kacls_url,
             )
             .await?;

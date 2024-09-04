@@ -99,7 +99,7 @@ pub(crate) fn decode_jwt_authorization_token(
                             .to_owned(),
                     )
                 })?
-                .to_string(),
+                .to_owned(),
         ),
         alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.clone()),
     ];
@@ -182,7 +182,8 @@ pub(crate) async fn validate_cse_authentication_token(
         );
     }
 
-    // When the authentication token contains the optional google_email claim, it must be compared against the email claim in the authorization token using a case-insensitive approach. Don't use the email claim within the authentication token for this comparison.
+    // When the authentication token contains the optional `google_email` claim, it must be compared against the email claim in the authorization token using a case-insensitive approach.
+    // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
     let authentication_email = if check_email {
         authentication_token
@@ -190,12 +191,12 @@ pub(crate) async fn validate_cse_authentication_token(
             .or(authentication_token.email)
             .ok_or_else(|| {
                 KmsError::Unauthorized(
-                    "Authentication token should contain a google_email or an email".to_string(),
+                    "Authentication token should contain a google_email or an email".to_owned(),
                 )
             })?
     } else {
-        // For `privileged_unwrap` endpoint, google_email or email claim is not required in authentication token
-        "privileged_user".to_string()
+        // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
+        "admin".to_owned()
     };
 
     tracing::trace!("authentication token validated for {authentication_email}");
@@ -262,7 +263,7 @@ pub(crate) async fn validate_cse_authorization_token(
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(
-            "Authorization token should contain an email".to_string(),
+            "Authorization token should contain an email".to_owned(),
         ))
     }
 
@@ -336,7 +337,7 @@ mod tests {
     async fn test_wrap_auth() {
         log_init(option_env!("RUST_LOG"));
 
-        let jwt: String = generate_google_jwt().await?;
+        let jwt = generate_google_jwt().await.unwrap();
 
         let wrap_request = format!(
             r#"
