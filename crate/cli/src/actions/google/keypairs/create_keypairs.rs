@@ -11,10 +11,11 @@ use cosmian_kms_client::{
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
-        kmip_operations::Certify,
+        kmip_operations::{Certify, GetAttributes},
         kmip_types::{
             Attributes, CertificateAttributes, CryptographicAlgorithm, CryptographicParameters,
-            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
+            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            VendorAttribute,
         },
     },
     KmsClient,
@@ -38,7 +39,7 @@ const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeypairsAction {
     /// The requester's primary email address
-    #[clap(long = "user-id", short = 'u', required = true)]
+    #[clap(required = true)]
     user_id: String,
 
     /// CSE key ID to wrap exported user private key
@@ -46,7 +47,7 @@ pub struct CreateKeypairsAction {
     csekey_id: String,
 
     /// The issuer certificate id
-    #[clap(long = "issuer_private_key_id", short = 'i')]
+    #[clap(long = "issuer-private-key-id", short = 'i', required = true)]
     issuer_private_key_id: String,
 
     /// When certifying a public key, or generating a keypair,
@@ -60,6 +61,10 @@ pub struct CreateKeypairsAction {
         required = true
     )]
     subject_name: String,
+
+    /// The existing private key id of an existing RSA keypair to use (optionnal - if no ID is provided, a RSA keypair will be created)
+    #[clap(long = "user-private-key-id", short = 'k')]
+    rsa_private_key_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -120,21 +125,46 @@ impl CreateKeypairsAction {
 
         let kacls_url = kms_rest_client.google_cse_status();
 
-        // Query the KMS to create RSA KEYPAIRS_ENDPOINT and get the key pair ids
-        let created_key_pair = kms_rest_client
-            .create_key_pair(create_rsa_key_pair_request(Vec::<String>::new(), RSA_4096)?)
-            .await?;
+        let (private_key_id, public_key_id) = match &self.rsa_private_key_id {
+            Some(id) => {
+                let attributes_response = kms_rest_client
+                    .get_attributes(GetAttributes {
+                        unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
+                        attribute_references: None,
+                    })
+                    .await?;
+                if let Some(ObjectType::PrivateKey) = attributes_response.attributes.object_type {
+                    // Do we need to add encryption Algorithm to RSA too ?
+                    if let Some(linked_public_key_id) = attributes_response
+                        .attributes
+                        .get_link(LinkType::PublicKeyLink)
+                    {
+                        (id.to_string(), linked_public_key_id.to_string())
+                    } else {
+                        return Err(CliError::ServerError(
+                            "Invalid private-key-id  - no linked public key found".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(CliError::ServerError(
+                        "Invalid private-key-id - must be of PrivateKey type".to_string(),
+                    ));
+                }
+            }
+            None => {
+                let created_key_pair = kms_rest_client
+                    .create_key_pair(create_rsa_key_pair_request(Vec::<String>::new(), RSA_4096)?)
+                    .await?;
+                (
+                    created_key_pair.private_key_unique_identifier.to_string(),
+                    created_key_pair.public_key_unique_identifier.to_string(),
+                )
+            }
+        };
 
         // Export wrapped private key with google CSE key
-        let (raw_private_key_object, _) = export_object(
-            kms_rest_client,
-            &created_key_pair.private_key_unique_identifier.to_string(),
-            true,
-            None,
-            false,
-            None,
-        )
-        .await?;
+        let (raw_private_key_object, _) =
+            export_object(kms_rest_client, &private_key_id, true, None, false, None).await?;
 
         let key_bytes = raw_private_key_object.key_block()?.key_bytes()?;
 
@@ -186,10 +216,10 @@ impl CreateKeypairsAction {
             ..Attributes::default()
         };
 
-        let unique_identifier = created_key_pair.public_key_unique_identifier;
-
         let certify_request = Certify {
-            unique_identifier: Some(unique_identifier),
+            unique_identifier: Some(
+                cosmian_kms_client::kmip::kmip_types::UniqueIdentifier::TextString(public_key_id),
+            ),
             attributes: Some(attributes),
             ..Certify::default()
         };
