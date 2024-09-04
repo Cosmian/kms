@@ -17,7 +17,7 @@ pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
 use self::operations::{
     DigestRequest, PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest,
-    PrivilegedWrapRequest,
+    PrivilegedWrapRequest, RewrapRequest,
 };
 
 /// Error reply for Google CSE
@@ -160,22 +160,26 @@ pub(crate) async fn privileged_wrap(
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct RewrapRequest {
-    pub authorization: String,
-    pub original_kacls_url: String,
-    pub reason: String,
-    pub wrapped_key: String,
-}
 #[post("/rewrap")]
 pub(crate) async fn rewrap(
-    _req_http: HttpRequest,
-    _request: Json<RewrapRequest>,
-    _cse_config: Data<Option<GoogleCseConfig>>,
-    _kms: Data<Arc<KMSServer>>,
+    req_http: HttpRequest,
+    request: Json<RewrapRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/rewrap: not implemented yet");
-    HttpResponse::Ok().finish()
+    info!("POST /google_cse/rewrap");
+
+    let rewrap_request = request.into_inner();
+    trace!("privileged_wrap_request: {:?}", rewrap_request);
+    let cse_config = cse_config.into_inner();
+
+    match operations::rewrap(req_http, rewrap_request, &cse_config, &kms)
+        .await
+        .map(Json)
+    {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => CseErrorReply::from(&e).into(),
+    }
 }
 
 #[derive(Deserialize, Debug)]

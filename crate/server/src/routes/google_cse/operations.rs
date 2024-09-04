@@ -217,6 +217,7 @@ pub async fn unwrap(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data = cse_wrapped_key_decrypt(
         unwrap_request.wrapped_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         token_extracted_content.user,
         token_extracted_content.resource_name,
         kms,
@@ -297,6 +298,7 @@ pub async fn private_key_sign(
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         token_extracted_content.user,
         None,
         kms,
@@ -399,6 +401,7 @@ pub async fn private_key_decrypt(
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         token_extracted_content.user,
         None,
         kms,
@@ -486,6 +489,7 @@ pub async fn digest(
 
     let dek_data = cse_wrapped_key_decrypt(
         digest_request.wrapped_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         user,
         Some(resource_name.into_bytes()),
         kms,
@@ -620,6 +624,7 @@ pub async fn privileged_unwrap(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         privileged_unwrap_request.wrapped_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         user,
         Some(resource_name),
         kms,
@@ -689,6 +694,7 @@ pub async fn privileged_private_key_decrypt(
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
+        UniqueIdentifier::TextString("google_cse".to_string()),
         user,
         None,
         kms,
@@ -734,6 +740,123 @@ pub async fn privileged_private_key_decrypt(
     Ok(response)
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RewrapRequest {
+    pub authorization: String,
+    pub original_kacls_url: String,
+    pub reason: String,
+    pub wrapped_key: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct RewrapResponse {
+    pub resource_key_hash: String,
+    pub wrapped_key: String,
+}
+
+/// Migrate from the old Key Access Control List Service (KACLS1) to the newer KACLS (KACLS2). It takes a Data Encryption Key (DEK) wrapped with KACLS1's wrap API, and returns a DEK wrapped with KACLS2's wrap API.
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/rewrap) and
+/// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+pub async fn rewrap(
+    req_http: HttpRequest,
+    request: RewrapRequest,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMSServer>,
+) -> KResult<RewrapResponse> {
+    let application = if request.reason.contains("Meet") {
+        "meet"
+    } else {
+        "drive"
+    };
+    debug!("rewrap: entering");
+
+    let roles = ["migrator"];
+    let authorization_token = validate_cse_authorization_token(
+        &request.authorization,
+        cse_config,
+        application,
+        Some(&roles),
+    )
+    .await?;
+
+    let perimeter_id = authorization_token.perimeter_id.unwrap_or(String::new());
+    let resource_name = authorization_token.resource_name.ok_or_else(|| {
+        KmsError::Unauthorized("Invalid authorization token - missing resource_name.".to_string())
+    })?;
+    let user = authorization_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain an email".to_string())
+    })?;
+
+    debug!("rewrap: unwrap key using imported original KMS wrapping key");
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+    let unwrapped_data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
+        request.wrapped_key,
+        UniqueIdentifier::TextString(request.original_kacls_url),
+        user.clone(),
+        Some(resource_name.clone().into_bytes()),
+        kms,
+        database_params,
+        EncodingOption::NoEncoding,
+    )
+    .await?;
+
+    debug!("rewrap: wrap key using current KMS");
+    let encryption_request = Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
+        cryptographic_parameters: None,
+        data: Some(unwrapped_data),
+        iv_counter_nonce: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+        authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
+    };
+    let encrypt_response = encrypt(kms, encryption_request, &user, None).await?;
+
+    // re-extract the bytes from the key
+    let data = encrypt_response.data.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_string())
+    })?;
+    let iv_counter_nonce = encrypt_response.iv_counter_nonce.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_string())
+    })?;
+    let authenticated_encryption_tag =
+        encrypt_response
+            .authenticated_encryption_tag
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Invalid wrapped key - authenticated encryption tag.".to_string(),
+                )
+            })?;
+
+    let wrapped_key = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+
+    debug!("rewrap: encode base64 wrapped_key to generate resource_key_hash");
+    // Create the data string for HMAC
+    let data = format!("ResourceKeyDigest:{resource_name}:{perimeter_id}");
+    // Create a PKey object from the unwrapped DEK
+    let key = PKey::hmac(&wrapped_key)?;
+
+    // Create a Signer object for HMAC-SHA256
+    let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
+
+    // Input the data into the signer
+    signer.update(data.as_bytes())?;
+
+    // Finalize the HMAC and retrieve the resulting bytes
+    let hmac_result = signer.sign_to_vec()?;
+
+    // Encode the result as a base64 string
+    let base64_result = general_purpose::STANDARD.encode(hmac_result);
+
+    debug!("rewrap: exiting with success");
+    Ok(RewrapResponse {
+        resource_key_hash: base64_result,
+        wrapped_key: general_purpose::STANDARD.encode(wrapped_key),
+    })
+}
+
 /// Decrypts a wrapped key
 /// Tries to decrypt it, using the `resource_name` if present. If it fails, key might be wrapped without it,
 /// so we try to unwrap it as it was done initially.
@@ -756,6 +879,7 @@ pub async fn privileged_private_key_decrypt(
 ///
 async fn cse_wrapped_key_decrypt(
     wrapped_key: String,
+    wrapping_key_id: UniqueIdentifier,
     user: String,
     resource_name: Option<Vec<u8>>,
     kms: &Arc<KMSServer>,
@@ -774,7 +898,7 @@ async fn cse_wrapped_key_decrypt(
     let authenticated_tag = &wrapped_key_bytes[len - TAG_LENGTH..];
 
     let decryption_request = Decrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
+        unique_identifier: Some(wrapping_key_id),
         cryptographic_parameters: None,
         data: Some(ciphertext.to_vec()),
         iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
