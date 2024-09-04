@@ -14,7 +14,8 @@ The sensitivity label must be configured to use Double Key Encryption with an UR
 
 ## Start the Cosmian KMS server
 
-The cosmian KMS server must be started behind a reverse proxy that exposes a valid TLS certificate on `dke.cosmian.com`
+The cosmian KMS server must be started behind a reverse proxy that exposes a valid TLS certificate
+on `dke.cosmian.com`
 and which maps the path `/ms_dke` to the corresponding path of the Cosmian KMS server.
 
 Enable DKE in the Cosmian KMS server by setting the `--ms-dke` flag.
@@ -33,18 +34,21 @@ Use the provided script to generate a RSA key pair for DKE.
 
 ## Import the key pair with the proper tags
 
-Import the private key with the tag `dke_key`, with a name `ms_dke_priv_key` and a link to the (future) public
+Import the private key with the tag `dke_key`, with a name `ms_dke_priv_key` and a link to the (
+future) public
 key `ms_dke_pub_key`.
 
 ```bash
-cargo run --bin ckms -- ec keys import -f pem -t dke_key -p ms_dke_priv_key crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
+cargo run --bin ckms -- rsa keys import -f pem -t dke_key -p ms_dke_pub_key \
+crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
 ```
 
 Import the public key with the tag `dke_key`, with a name `ms_dke_pub_key` and a link to the private
 key `ms_dke_priv_key`
 
 ```bash
-cargo run --bin ckms -- ec keys import -f pem -t dke_key -k ms_dke_priv_key crate/server/src/tests/ms_dke/public_key.pkcs8.pem ms_dke_pub_key
+cargo run --bin ckms -- rsa keys import -f pem -t dke_key -k ms_dke_priv_key \
+crate/server/src/tests/ms_dke/public_key.pkcs8.pem ms_dke_pub_key
 
 ```
 
@@ -52,12 +56,22 @@ Verify that you can export the keys using the `ckms` command line tool.
 
 ```bash
 # public key
-cargo run --bin ckms -- ec keys export -t dke_key -t _pk -f pkcs1-pem /tmp/pub_key.pkcs1.pem
+cargo run --bin ckms -- rsa keys export -t dke_key -t _pk -f pkcs1-pem /tmp/pub_key.pkcs1.pem
 # private key
-cargo run --bin ckms -- ec keys export -t dke_key -t _sk -f pkcs8-pem /tmp/priv_key.pkcs1.pem
+cargo run --bin ckms -- rsa keys export -t dke_key -t _sk -f pkcs8-pem /tmp/priv_key.pkcs1.pem
 ```
 
-**Note**: `ec` will be replaced by `rsa` in the near future.
+## Grant access to the keys
+
+The calls to the `ms_dke` endpoint are unauthenticated and hence made under the user `admin`. If
+you created the keys with a different user, you may have to grant accesses to `admin`:
+
+```shell
+cargo run --bin ckms -- access-rights grant admin ms_dke_priv_key decrypt
+cargo run --bin ckms -- access-rights grant admin ms_dke_pub_key encrypt export get
+```
+
+## Check
 
 Verify that you can export the keys using a call to the REST API.
 
