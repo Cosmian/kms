@@ -57,7 +57,7 @@ pub(crate) async fn unwrap_key(
         ObjectType::PublicKey | ObjectType::Certificate => {
             let attributes = match object_type {
                 ObjectType::PublicKey | ObjectType::Certificate => unwrapping_key.attributes,
-                _ => unreachable!("unwrap_key: unsupported object type: {object_type}"),
+                _ => kms_bail!("unwrap_key: unsupported object type: {object_type}"),
             };
             let private_key_uid =
                 attributes

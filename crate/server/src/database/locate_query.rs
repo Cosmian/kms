@@ -60,7 +60,7 @@ pub(crate) trait PlaceholderTrait {
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     #[must_use]
     fn extract_text_from_object_type_path() -> String {
-        "object ->> 'object_type'".to_string()
+        "object ->> 'object_type'".to_owned()
     }
 }
 
@@ -73,7 +73,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
     const TYPE_INTEGER: &'static str = "SIGNED";
 
     fn binder(_param_number: usize) -> String {
-        "?".to_string()
+        "?".to_owned()
     }
 
     fn additional_rq_from() -> Option<String> {

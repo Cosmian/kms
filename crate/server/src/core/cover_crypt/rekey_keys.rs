@@ -190,7 +190,7 @@ async fn get_master_keys_and_policy(
         .ok_or_else(|| {
             KmsError::KmipError(
                 ErrorReason::Invalid_Object_Type,
-                "Private key MUST contain a public key link".to_string(),
+                "Private key MUST contain a public key link".to_owned(),
             )
         })?;
 
@@ -212,7 +212,7 @@ async fn import_rekeyed_master_keys(
 ) -> KResult<()> {
     // re-import master secret key
     let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString(msk.0.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(msk.0),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
@@ -223,7 +223,7 @@ async fn import_rekeyed_master_keys(
 
     // re-import master public key
     let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString(mpk.0.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(mpk.0),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,

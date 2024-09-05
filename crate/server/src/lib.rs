@@ -10,13 +10,24 @@
     let_underscore,
     rust_2024_compatibility,
     unreachable_pub,
+    unused,
     clippy::all,
     clippy::suspicious,
     clippy::complexity,
     clippy::perf,
     clippy::style,
     clippy::pedantic,
-    clippy::cargo
+    clippy::cargo,
+
+    // restriction lints
+    clippy::unwrap_used,
+    clippy::get_unwrap,
+    clippy::renamed_function_params,
+    clippy::verbose_file_reads,
+    clippy::str_to_string,
+    clippy::string_to_string,
+    clippy::unreachable,
+
 )]
 #![allow(
     clippy::module_name_repetitions,

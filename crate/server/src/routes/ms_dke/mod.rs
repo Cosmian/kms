@@ -90,7 +90,7 @@ pub(crate) async fn version(
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req_http));
-    Ok(Json(crate_version!().to_string()))
+    Ok(Json(crate_version!().to_owned()))
 }
 
 #[get("/{key_name}")]
@@ -101,7 +101,7 @@ pub(crate) async fn get_key(
 ) -> HttpResponse {
     let mut key_name = path.into_inner();
     if key_name.is_empty() {
-        key_name = "dke_key".to_string();
+        "dke_key".clone_into(&mut key_name);
     }
     match _get_key(&key_name, req_http, &kms).await {
         Ok(key_data) => {
@@ -148,7 +148,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) ->
                          is not supported"
                     )
                 })?;
-                let mut existing_path = dke_service_url.path().to_string();
+                let mut existing_path = dke_service_url.path().to_owned();
                 // remove the trailing / if any
                 if existing_path.ends_with('/') {
                     existing_path.pop();
@@ -205,10 +205,7 @@ pub(crate) async fn decrypt(
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
-    info!(
-        "Encrypted Data : {}",
-        serde_json::to_string(&encrypted_data).unwrap()
-    );
+    info!("Encrypted Data : {encrypted_data:?}",);
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
     trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
@@ -262,6 +259,7 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
     use num_bigint_dig::BigUint;
 

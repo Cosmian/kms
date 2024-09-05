@@ -53,7 +53,7 @@ pub(crate) async fn revoke_operation(
     .await?;
 
     Ok(RevokeResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid_or_tags.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(uid_or_tags.to_owned()),
     })
 }
 

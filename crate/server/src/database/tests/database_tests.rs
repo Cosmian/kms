@@ -11,6 +11,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
 pub(crate) async fn tx_and_list<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -113,7 +114,7 @@ pub(crate) async fn tx_and_list<DB: Database>(
 pub(crate) async fn atomic<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -234,7 +235,7 @@ pub(crate) async fn atomic<DB: Database>(
 pub(crate) async fn upsert<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -277,7 +278,7 @@ pub(crate) async fn upsert<DB: Database>(
     let attributes = symmetric_key.attributes_mut()?;
     attributes.link = Some(vec![Link {
         link_type: LinkType::PreviousLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
+        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_owned()),
     }]);
 
     db.upsert(
@@ -300,11 +301,15 @@ pub(crate) async fn upsert<DB: Database>(
         1 => {
             assert_eq!(StateEnumeration::PreActive, objs_[0].state);
             assert_eq!(
-                objs_[0].object.attributes()?.link.as_ref().ok_or_else(
-                    || KmsError::ServerError("links should not be empty".to_string())
-                )?[0]
-                    .linked_object_identifier,
-                LinkedObjectIdentifier::TextString("foo".to_string())
+                objs_[0]
+                    .object
+                    .attributes()?
+                    .link
+                    .as_ref()
+                    .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
+                    [0]
+                .linked_object_identifier,
+                LinkedObjectIdentifier::TextString("foo".to_owned())
             );
         }
         _ => kms_bail!("There should be only one object"),
@@ -326,7 +331,7 @@ pub(crate) async fn upsert<DB: Database>(
 pub(crate) async fn crud<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -385,7 +390,7 @@ pub(crate) async fn crud<DB: Database>(
     let attributes = symmetric_key.attributes_mut()?;
     attributes.link = Some(vec![Link {
         link_type: LinkType::PreviousLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
+        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_owned()),
     }]);
 
     db.update_object(
@@ -407,11 +412,15 @@ pub(crate) async fn crud<DB: Database>(
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
             assert_eq!(
-                objs_[0].object.attributes()?.link.as_ref().ok_or_else(
-                    || KmsError::ServerError("links should not be empty".to_string())
-                )?[0]
-                    .linked_object_identifier,
-                LinkedObjectIdentifier::TextString("foo".to_string())
+                objs_[0]
+                    .object
+                    .attributes()?
+                    .link
+                    .as_ref()
+                    .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
+                    [0]
+                .linked_object_identifier,
+                LinkedObjectIdentifier::TextString("foo".to_owned())
             );
         }
         _ => kms_bail!("There should be only one object"),

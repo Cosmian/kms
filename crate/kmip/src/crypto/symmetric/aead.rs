@@ -104,7 +104,7 @@ impl AeadCipher {
             CryptographicAlgorithm::ChaCha20 => {
                 if block_cipher_mode.is_some() {
                     kmip_bail!(KmipError::NotSupported(
-                        "ChaCha20 is only supported with Pooly1305. Do not specify the Block \
+                        "ChaCha20 is only supported with Poly1305. Do not specify the Block \
                          Cipher Mode"
                             .to_owned()
                     ));

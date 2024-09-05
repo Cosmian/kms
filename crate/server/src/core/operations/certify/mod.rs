@@ -258,7 +258,7 @@ async fn get_subject(
             CertificateRequestType::PEM => X509Req::from_pem(pkcs10_bytes),
             CertificateRequestType::PKCS10 => X509Req::from_der(pkcs10_bytes),
             CertificateRequestType::CRMF => kms_bail!(KmsError::InvalidRequest(
-                "Certificate Request Type CRMF not supported".to_string()
+                "Certificate Request Type CRMF not supported".to_owned()
             )),
         }?;
         let certificate_id = request
@@ -312,7 +312,7 @@ async fn get_subject(
     let attributes = request.attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Certify from Subject: the attributes specifying the the subject name are missing"
-                .to_string(),
+                .to_owned(),
         )
     })?;
     let subject_name = attributes
@@ -320,7 +320,7 @@ async fn get_subject(
         .as_ref()
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Certify from Subject: the subject name is not found in the attributes".to_string(),
+                "Certify from Subject: the subject name is not found in the attributes".to_owned(),
             )
         })?
         .subject_name()?;
@@ -342,7 +342,7 @@ async fn get_subject(
     let (private_attributes, public_attributes) = {
         let cryptographic_algorithm = attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Keypair creation: the cryptographic algorithm is missing".to_string(),
+                "Keypair creation: the cryptographic algorithm is missing".to_owned(),
             )
         })?;
         let private_attributes = Attributes {
@@ -479,7 +479,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
                     "No private key linked to the certificate found to renew it as self-signed"
-                        .to_string(),
+                        .to_owned(),
                 )
             })?;
             Ok(Issuer::PrivateKeyAndCertificate(
@@ -503,7 +503,7 @@ async fn issuer_for_self_signed_certificate<'a>(
                 KmsError::InvalidRequest(
                     "No private key link found to create a self-signed certificate from a public \
                      key"
-                    .to_string(),
+                    .to_owned(),
                 )
             })?;
             // see if we can find an existing certificate to link to the public key
@@ -611,7 +611,7 @@ fn build_and_sign_certificate(
     // add subject tags if any
     tags.extend(subject.tags().iter().cloned());
     // add the certificate "system" tag
-    tags.insert("_cert".to_string());
+    tags.insert("_cert".to_owned());
 
     // link the certificate to the issuer certificate
     attributes.add_link(

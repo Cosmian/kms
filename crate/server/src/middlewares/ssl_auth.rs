@@ -97,9 +97,9 @@ where
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
 
     /// Poll the `SslAuthMiddleware` for readiness.
-    fn poll_ready(&self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&self, ctx: &mut Context) -> Poll<Result<(), Self::Error>> {
         // Poll the underlying service for readiness.
-        self.service.poll_ready(cx)
+        self.service.poll_ready(ctx)
     }
 
     /// Call the `SslAuthMiddleware`.

@@ -227,7 +227,7 @@ pub async fn prepare_kms_server(
     let google_cse_jwt_config = if enable_google_cse {
         let Some(jwks_manager) = jwks_manager else {
             return Err(KmsError::ServerError(
-                "No JWKS manager to handle Google CSE JWT authorization".to_string(),
+                "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
         Some(GoogleCseConfig {

@@ -68,12 +68,12 @@ impl JwtConfig {
         );
         tracing::trace!(
             "validating authentication token, expected JWT issuer: {}",
-            self.jwt_issuer_uri.to_string()
+            self.jwt_issuer_uri
         );
 
         let mut validations = vec![
             #[cfg(not(test))]
-            alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.to_string()),
+            alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.clone()),
             alcoholic_jwt::Validation::SubjectPresent,
             #[cfg(not(feature = "insecure"))]
             alcoholic_jwt::Validation::NotExpired,
@@ -88,14 +88,14 @@ impl JwtConfig {
         // needs to be fetched from the token headers.
         let kid = token_kid(token)
             .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
-            .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
+            .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
         tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", self.jwks);
 
         let jwk = self
             .jwks
             .find(&kid)
-            .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
+            .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_owned()))?;
 
         tracing::trace!("JWK has been found:\n{jwk:?}");
 

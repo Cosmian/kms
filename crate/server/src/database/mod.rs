@@ -20,15 +20,14 @@ pub(crate) mod redis;
 pub(crate) mod sqlite;
 pub(crate) use database_trait::{AtomicOperation, Database};
 mod locate_query;
+mod migrate;
 mod retrieve_object_utils;
 pub(crate) use locate_query::{
     query_from_attributes, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder,
 };
 pub(crate) use retrieve_object_utils::retrieve_object_for_operation;
 
-#[cfg(test)]
-mod tests;
-
+const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");
 const SQLITE_FILE_QUERIES: &str = include_str!("query.sql");
@@ -66,3 +65,6 @@ pub fn state_from_string(s: &str) -> KResult<StateEnumeration> {
         x => kms_bail!("invalid state in db: {}", x),
     }
 }
+
+#[cfg(test)]
+mod tests;

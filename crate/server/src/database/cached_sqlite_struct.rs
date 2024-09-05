@@ -484,6 +484,7 @@ impl FreeableSqliteCache {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
     use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};

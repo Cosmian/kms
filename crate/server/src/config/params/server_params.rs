@@ -1,4 +1,4 @@
-use std::{fmt, fs::File, io::Read, path::PathBuf};
+use std::{fmt, path::PathBuf};
 
 use openssl::x509::X509;
 
@@ -97,9 +97,7 @@ impl ServerParams {
 
     fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
         // Open and read the file into a byte vector
-        let mut file = File::open(authority_cert_file)?;
-        let mut pem_bytes = Vec::new();
-        file.read_to_end(&mut pem_bytes)?;
+        let pem_bytes = std::fs::read(authority_cert_file)?;
 
         // Parse the byte vector as a X509 object
         let x509 = X509::from_pem(pem_bytes.as_slice())?;

@@ -45,22 +45,22 @@ pub struct StatusResponse {
 pub fn get_status() -> StatusResponse {
     debug!("get_status");
     StatusResponse {
-        server_type: "KACLS".to_string(),
-        vendor_id: "Cosmian".to_string(),
-        version: crate_version!().to_string(),
-        name: "Cosmian KMS".to_string(),
+        server_type: "KACLS".to_owned(),
+        vendor_id: "Cosmian".to_owned(),
+        version: crate_version!().to_owned(),
+        name: "Cosmian KMS".to_owned(),
         operations_supported: vec![
-            "digest".to_string(),
-            "privatekeydecrypt".to_string(),
-            "privatekeysign".to_string(),
-            "privilegedprivatekeydecrypt".to_string(),
-            "privilegedunwrap".to_string(),
-            "privilegedwrap".to_string(),
-            "rewrap".to_string(),
-            "status".to_string(),
-            "unwrap".to_string(),
-            "wrap".to_string(),
-            "wrapprivatekey".to_string(),
+            "digest".to_owned(),
+            "privatekeydecrypt".to_owned(),
+            "privatekeysign".to_owned(),
+            "privilegedprivatekeydecrypt".to_owned(),
+            "privilegedunwrap".to_owned(),
+            "privilegedwrap".to_owned(),
+            "rewrap".to_owned(),
+            "status".to_owned(),
+            "unwrap".to_owned(),
+            "wrap".to_owned(),
+            "wrapprivatekey".to_owned(),
         ],
     }
 }
@@ -125,7 +125,7 @@ pub async fn wrap(
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encoding_option: Some(EncodingOption::NoEncoding),
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
+                unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_owned()),
                 cryptographic_parameters: Some(Box::default()),
             }),
             ..Default::default()
@@ -201,7 +201,7 @@ pub async fn unwrap(
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
         wrapping_method: kmip_types::WrappingMethod::Encrypt,
         encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-            unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
+            unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_owned()),
             cryptographic_parameters: None,
         }),
         encoding_option: Some(EncodingOption::NoEncoding),
@@ -443,7 +443,7 @@ async fn cse_symmetric_unwrap(
         KeyWrappingData {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
+                unique_identifier: UniqueIdentifier::TextString("google_cse".to_owned()),
                 cryptographic_parameters: None,
             }),
             encoding_option: Some(EncodingOption::TTLVEncoding),

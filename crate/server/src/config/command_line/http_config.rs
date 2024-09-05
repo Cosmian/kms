@@ -65,7 +65,7 @@ impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             port: DEFAULT_PORT,
-            hostname: DEFAULT_HOSTNAME.to_string(),
+            hostname: DEFAULT_HOSTNAME.to_owned(),
             https_p12_file: None,
             https_p12_password: None,
             authority_cert_file: None,

@@ -82,8 +82,8 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
             .to_vec(),
         ),
         unique_identifier: None,
-        validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_string()), // this is supposed to work but it does not.
-        Some("4804152030Z".to_string())
+        validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_owned()), // this is supposed to work but it does not.
+        Some("4804152030Z".to_owned())
     };
     let res = kms.validate(request, owner, None).await;
     assert!(res.is_err());
@@ -247,8 +247,8 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
                 res_root.unique_identifier.clone(),
             ],
         ),
-        validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_string()), // this is supposed to work but it does not.
-        Some("4804152030Z".to_string())
+        validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_owned()), // this is supposed to work but it does not.
+        Some("4804152030Z".to_owned())
     };
     let res = kms.validate(request, owner, None).await;
     assert!(res.is_err());

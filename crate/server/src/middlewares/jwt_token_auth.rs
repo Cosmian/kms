@@ -21,7 +21,7 @@ pub(crate) async fn manage_jwt_request<S, B>(
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
 {
-    trace!("JWT Authentication...");
+    trace!("Starting JWT Authentication...");
     match manage_jwt(configs, &req).await {
         Ok(auth_claim) => {
             req.extensions_mut().insert(auth_claim);

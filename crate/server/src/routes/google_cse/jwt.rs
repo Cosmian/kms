@@ -47,8 +47,7 @@ fn jwt_authorization_config_application(
     ));
 
     let jwt_audience = Some(
-        std::env::var("KMS_GOOGLE_CSE_AUDIENCE")
-            .unwrap_or_else(|_| "cse-authorization".to_string()),
+        std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
     );
 
     Arc::new(JwtConfig {
@@ -66,7 +65,7 @@ pub fn jwt_authorization_config(
         .iter()
         .map(|app| {
             (
-                (*app).to_string(),
+                (*app).to_owned(),
                 jwt_authorization_config_application(app, jwks_manager.clone()),
             )
         })
@@ -97,24 +96,24 @@ pub(crate) fn decode_jwt_authorization_token(
                     KmsError::ServerError(
                         "JWT audience should be configured with Google Workspace client-side \
                          encryption"
-                            .to_string(),
+                            .to_owned(),
                     )
                 })?
                 .to_string(),
         ),
-        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
+        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.clone()),
     ];
 
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.
     let kid = token_kid(token)
-        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
-        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
+        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_owned()))?
+        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
     tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
     let jwk = &jwt_config.jwks.find(&kid).ok_or_else(|| {
-        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_string())
+        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
     tracing::trace!("JWK has been found:\n{jwk:?}");
 
@@ -155,7 +154,7 @@ pub(crate) async fn validate_tokens(
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
-                .to_string(),
+                .to_owned(),
         )
     })?;
 
@@ -188,26 +187,26 @@ pub(crate) async fn validate_tokens(
 
     // The emails should match (case insensitive)
     let authentication_email = authentication_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authentication token should contain an email".to_string())
+        KmsError::Unauthorized("Authentication token should contain an email".to_owned())
     })?;
     let authorization_email = authorization_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain an email".to_string())
+        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
     kms_ensure!(
         authorization_email == authentication_email,
         KmsError::Unauthorized(
-            "Authentication and authorization emails in tokens do not match".to_string()
+            "Authentication and authorization emails in tokens do not match".to_owned()
         )
     );
 
     if let Some(roles) = roles {
         let role = authorization_token.role.ok_or_else(|| {
-            KmsError::Unauthorized("Authorization token should contain a role".to_string())
+            KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
         kms_ensure!(
             roles.contains(&role.as_str()),
             KmsError::Unauthorized(
-                "Authorization token should contain a role of writer or owner".to_string()
+                "Authorization token should contain a role of writer or owner".to_owned()
             )
         );
     }
@@ -229,6 +228,7 @@ pub(crate) async fn validate_tokens(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use std::sync::Arc;
 
     use tracing::info;
@@ -276,8 +276,8 @@ mod tests {
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_string()]),
-            jwks_uri: Some(vec![JWKS_URI.to_string()]),
+            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_owned()]),
+            jwks_uri: Some(vec![JWKS_URI.to_owned()]),
             jwt_audience: Some(vec![client_id]),
         };
         let jwt_authentication_config = JwtConfig {
@@ -292,17 +292,17 @@ mod tests {
         info!("AUTHENTICATION token: {:?}", authentication_token);
         assert_eq!(
             authentication_token.iss,
-            Some("https://accounts.google.com".to_string())
+            Some("https://accounts.google.com".to_owned())
         );
         assert_eq!(
             authentication_token.email,
-            Some("blue@cosmian.com".to_string())
+            Some("blue@cosmian.com".to_owned())
         );
         assert_eq!(
             authentication_token.aud,
             Some(
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
-                    .to_string()
+                    .to_owned()
             )
         );
 
@@ -317,7 +317,7 @@ mod tests {
         tracing::trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
-            jwt_authorization_config.get("drive").unwrap(),
+            &jwt_authorization_config["drive"],
             &wrap_request.authorization,
         )
         .unwrap();
@@ -326,14 +326,14 @@ mod tests {
 
         assert_eq!(
             authorization_token.email,
-            Some("blue@cosmian.com".to_string())
+            Some("blue@cosmian.com".to_owned())
         );
-        // prev: Some("cse-authorization".to_string())
+        // prev: Some("cse-authorization".to_owned())
         assert_eq!(
             authorization_token.aud,
             Some(
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
-                    .to_string()
+                    .to_owned()
             )
         );
     }

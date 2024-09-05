@@ -46,7 +46,7 @@ pub(crate) async fn find_attributes<DB: Database>(
     // Define the link vector
     let link = vec![Link {
         link_type: LinkType::ParentLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
+        linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_owned()),
     }];
 
     let attributes = symmetric_key.attributes_mut()?;
@@ -77,7 +77,7 @@ pub(crate) async fn find_attributes<DB: Database>(
             assert_eq!(&symmetric_key, &objs_[0].object);
             assert_eq!(
                 objs_[0].object.attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
-                LinkedObjectIdentifier::TextString("foo".to_string())
+                LinkedObjectIdentifier::TextString("foo".to_owned())
             );
         }
         _ => kms_bail!("There should be one object"),
@@ -103,7 +103,7 @@ pub(crate) async fn find_attributes<DB: Database>(
     // Define a link vector not present in any database objects
     let link = vec![Link {
         link_type: LinkType::ParentLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString("bar".to_string()),
+        linked_object_identifier: LinkedObjectIdentifier::TextString("bar".to_owned()),
     }];
 
     let researched_attributes = Some(Attributes {

@@ -144,8 +144,8 @@ pub(crate) async fn owner<DB: Database>(
         .list_user_granted_access_rights(user_id_2, db_params)
         .await?;
     assert_eq!(
-        objects.get(&uid).unwrap(),
-        &(
+        objects[&uid],
+        (
             String::from(owner),
             StateEnumeration::Active,
             vec![ObjectOperationType::Get].into_iter().collect(),

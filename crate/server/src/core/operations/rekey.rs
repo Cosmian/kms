@@ -58,7 +58,7 @@ pub(crate) async fn rekey(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_owned()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

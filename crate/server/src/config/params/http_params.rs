@@ -1,4 +1,4 @@
-use std::{fmt, fs::File, io::Read};
+use std::fmt;
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
@@ -20,9 +20,7 @@ impl HttpParams {
             (&config.https_p12_file, &config.https_p12_password)
         {
             // Open and read the file into a byte vector
-            let mut file = File::open(p12_file)?;
-            let mut der_bytes = Vec::new();
-            file.read_to_end(&mut der_bytes)?;
+            let der_bytes = std::fs::read(p12_file)?;
             // Parse the byte vector as a PKCS#12 object
             let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
             let p12 = sealed_p12

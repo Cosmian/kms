@@ -136,7 +136,7 @@ impl ObjectsDB {
     fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> KResult<RedisDbObject> {
         if ciphertext.len() <= Aes256Gcm::NONCE_LENGTH {
             return Err(KmsError::CryptographicError(
-                "invalid ciphertext".to_string(),
+                "invalid ciphertext".to_owned(),
             ))
         }
         let nonce_bytes = &ciphertext[..Aes256Gcm::NONCE_LENGTH];

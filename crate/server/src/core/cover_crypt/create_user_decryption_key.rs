@@ -58,7 +58,7 @@ async fn create_user_decryption_key_(
         .ok_or_else(|| {
             KmsError::InvalidRequest(
                 "there should be a reference to the master private key in the creation attributes"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
         .to_string();
@@ -130,7 +130,7 @@ pub(crate) async fn create_user_decryption_key_pair(
         .or(create_key_pair_request.common_attributes.as_ref())
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Missing private attributes in CoverCrypt Create Keypair request".to_string(),
+                "Missing private attributes in CoverCrypt Create Keypair request".to_owned(),
             )
         })?;
     let private_key = create_user_decryption_key_(
@@ -149,13 +149,13 @@ pub(crate) async fn create_user_decryption_key_pair(
         .or(create_key_pair_request.common_attributes.as_ref())
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Missing public attributes in CoverCrypt Create Keypair request".to_string(),
+                "Missing public attributes in CoverCrypt Create Keypair request".to_owned(),
             )
         })?;
     let master_public_key_uid = public_key_attributes.get_parent_id().ok_or_else(|| {
         KmsError::InvalidRequest(
             "the master public key id should be available in the public creation attributes"
-                .to_string(),
+                .to_owned(),
         )
     })?;
     let gr_public_key = kmip_server

@@ -128,7 +128,7 @@ impl RedisWithFindex {
         };
         // the database object to index and store
         let db_object =
-            RedisDbObject::new(object.clone(), owner.to_string(), state, Some(tags.clone()));
+            RedisDbObject::new(object.clone(), owner.to_owned(), state, Some(tags.clone()));
         // extract the keywords
         index_additions.insert(
             IndexedValue::Location(Location::from(uid.as_bytes())),
@@ -179,7 +179,7 @@ impl RedisWithFindex {
             .objects_db
             .object_get(uid)
             .await?
-            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_owned()))?;
         db_object.object = object.clone();
         if tags.is_some() {
             db_object.tags = tags.cloned();
@@ -215,7 +215,7 @@ impl RedisWithFindex {
             .objects_db
             .object_get(uid)
             .await?
-            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_owned()))?;
         db_object.state = state;
         // The state is not indexed, so no updates there
         Ok(db_object)
@@ -226,6 +226,10 @@ impl RedisWithFindex {
 impl Database for RedisWithFindex {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
+    }
+
+    async fn migrate(&self, _params: Option<&ExtraDatabaseParams>) -> KResult<()> {
+        Ok(())
     }
 
     /// Insert the given Object in the database.
@@ -288,7 +292,7 @@ impl Database for RedisWithFindex {
                 .collect::<KResult<HashSet<String>>>()?
         } else {
             // it is an UID
-            HashSet::from([uid_or_tags.to_string()])
+            HashSet::from([uid_or_tags.to_owned()])
         };
 
         // now retrieve the object
@@ -381,7 +385,7 @@ impl Database for RedisWithFindex {
     async fn upsert(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         object: &Object,
         _attributes: &Attributes,
         tags: Option<&HashSet<String>>,
@@ -389,7 +393,7 @@ impl Database for RedisWithFindex {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let db_object = self
-            .prepare_object_for_upsert(uid, owner, object, tags, state, params)
+            .prepare_object_for_upsert(uid, user, object, tags, state, params)
             .await?;
 
         // upsert the object
@@ -501,7 +505,7 @@ impl Database for RedisWithFindex {
             .objects_db
             .object_get(uid)
             .await?
-            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_owned()))?;
         Ok(object.owner == owner)
     }
 
@@ -614,7 +618,7 @@ impl Database for RedisWithFindex {
 
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -624,20 +628,13 @@ impl Database for RedisWithFindex {
                 AtomicOperation::Upsert((uid, object, _attributes, tags, state)) => {
                     //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
-                        .prepare_object_for_upsert(
-                            uid,
-                            owner,
-                            object,
-                            tags.as_ref(),
-                            *state,
-                            params,
-                        )
+                        .prepare_object_for_upsert(uid, user, object, tags.as_ref(), *state, params)
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::Create((uid, object, _attributes, tags)) => {
                     let (uid, db_object) = self
-                        .prepare_object_for_create(Some(uid.clone()), owner, object, tags)
+                        .prepare_object_for_create(Some(uid.clone()), user, object, tags)
                         .await?;
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }

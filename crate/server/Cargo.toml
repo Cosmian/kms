@@ -107,6 +107,7 @@ tracing-opentelemetry = "0.24.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+version-compare = "0.2.0"
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
@@ -114,6 +115,7 @@ zeroize = { workspace = true }
 actix-http = "3.6"
 cosmian_logger = { path = "../logger" }
 pem = "3.0.4"
+tempfile = "3.11"
 
 [build-dependencies]
 actix-http = "3.6"

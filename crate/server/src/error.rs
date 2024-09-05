@@ -312,16 +312,10 @@ mod tests {
         assert_eq!("Unexpected server error: interpolate 42", err.to_string());
 
         let err = bail();
-        assert_eq!(
-            "Unexpected server error: interpolate 43",
-            err.unwrap_err().to_string()
-        );
+        err.expect_err("Unexpected server error: interpolate 43");
 
         let err = ensure();
-        assert_eq!(
-            "Unexpected server error: interpolate 44",
-            err.unwrap_err().to_string()
-        );
+        err.expect_err("Unexpected server error: interpolate 44");
     }
 
     fn bail() -> Result<(), KmsError> {

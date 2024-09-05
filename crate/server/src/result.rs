@@ -34,7 +34,7 @@ where
 
 impl<T> KResultHelper<T> for Option<T> {
     fn context(self, context: &str) -> KResult<T> {
-        self.ok_or_else(|| KmsError::ServerError(context.to_string()))
+        self.ok_or_else(|| KmsError::ServerError(context.to_owned()))
     }
 
     fn with_context<O>(self, op: O) -> KResult<T>

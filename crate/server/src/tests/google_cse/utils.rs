@@ -57,7 +57,7 @@ pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
     let jwks_manager = Arc::new(JwksManager::new(uris).await?);
 
     let jwt_config = JwtConfig {
-        jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_string(),
+        jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_owned(),
         jwks: jwks_manager.clone(),
         jwt_audience: None,
     };
@@ -65,6 +65,6 @@ pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
     Ok(GoogleCseConfig {
         authentication: vec![jwt_config].into(),
         authorization: google_cse::jwt_authorization_config(&jwks_manager),
-        kacls_url: "http://0.0.0.0:9998/google_cse".to_string(),
+        kacls_url: "http://0.0.0.0:9998/google_cse".to_owned(),
     })
 }
