@@ -294,6 +294,7 @@ async fn process_private_key(
         .context("export: unable to parse the private key to openssl")?;
 
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
+
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(

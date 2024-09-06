@@ -3,19 +3,15 @@ use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{
-        generic::kmip_requests::build_encryption_request,
-        rsa::kmip_requests::create_rsa_key_pair_request,
-    },
+    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
     export_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
-            Attributes, CertificateAttributes, CryptographicAlgorithm, CryptographicParameters,
-            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
-            VendorAttribute,
+            Attributes, BlockCipherMode, CertificateAttributes, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
         },
     },
     KmsClient,
@@ -163,43 +159,21 @@ impl CreateKeypairsAction {
         };
 
         // Export wrapped private key with google CSE key
-        let (raw_private_key_object, _) =
-            export_object(kms_rest_client, &private_key_id, true, None, false, None).await?;
-
-        let key_bytes = raw_private_key_object.key_block()?.key_bytes()?;
-
-        // Create the kmip query
-        let encrypt_request = build_encryption_request(
-            &self.csekey_id,
+        let (wrapped_private_key, _attributes) = export_object(
+            kms_rest_client,
+            &private_key_id,
+            false,
+            Some(&self.csekey_id),
+            true,
             None,
-            key_bytes.to_vec(),
+            Some(BlockCipherMode::GCM),
             None,
-            None,
-            Some(CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                ..Default::default()
-            }),
-        )?;
+        )
+        .await?;
 
-        let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
+        let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
 
-        // extract the nonce and write it
-        let iv_counter_nonce = encrypt_response.iv_counter_nonce.unwrap_or_default();
-
-        // extract the ciphertext and write it
-        let data = encrypt_response.data.unwrap_or_default();
-
-        // extract the authentication tag and write it
-        let authenticated_encryption_tag = encrypt_response
-            .authenticated_encryption_tag
-            .unwrap_or_default();
-
-        let mut wrapped_private_key = Vec::with_capacity(
-            iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-        );
-        wrapped_private_key.extend_from_slice(&iv_counter_nonce);
-        wrapped_private_key.extend_from_slice(&data);
-        wrapped_private_key.extend_from_slice(&authenticated_encryption_tag);
+        let encoded_private_key = general_purpose::STANDARD.encode(wrapped_key_bytes);
 
         // Sign created public key with issuer private key
         let attributes = Attributes {
@@ -243,6 +217,8 @@ impl CreateKeypairsAction {
             None,
             false,
             Some(KeyFormatType::PKCS7),
+            None,
+            None,
         )
         .await?;
 

@@ -117,6 +117,8 @@ impl ExportCertificateAction {
             wrapping_key_id,
             self.allow_revoked,
             Some(key_format_type),
+            None,
+            None,
         )
         .await?;
 

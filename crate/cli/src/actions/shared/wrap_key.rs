@@ -111,9 +111,18 @@ impl WrapKeyAction {
             );
             symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false, None)
-                .await?
-                .0
+            export_object(
+                kms_rest_client,
+                key_id,
+                false,
+                None,
+                false,
+                None,
+                None,
+                None,
+            )
+            .await?
+            .0
         } else if let Some(key_file) = &self.wrap_key_file {
             read_object_from_json_ttlv_file(key_file)?
         } else {

@@ -15,7 +15,10 @@ use crate::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
         },
-        symmetric::rfc5649::rfc5649_wrap,
+        symmetric::{
+            aead::{aead_encrypt, random_nonce, AeadCipher},
+            rfc5649::rfc5649_wrap,
+        },
         wrap::common::rsa_parameters,
         FIPS_MIN_SALT_SIZE,
     },
@@ -27,8 +30,8 @@ use crate::{
         kmip_objects::Object,
         kmip_operations::ErrorReason,
         kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, EncodingOption, KeyFormatType,
-            PaddingMethod, WrappingMethod,
+            BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
+            KeyFormatType, PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail, kmip_error,
@@ -92,11 +95,27 @@ pub fn wrap_key_block(
         ..KeyWrappingData::default()
     };
 
+    let additionnal_data_encryption: &[u8] =
+        if let Some(attributes) = &key_wrapping_specification.attribute_name {
+            if let Some(data) = attributes.first() {
+                data.as_bytes()
+            } else {
+                &[]
+            }
+        } else {
+            &[]
+        };
+
     // wrap the key based on the encoding
     match encoding {
         EncodingOption::TTLVEncoding => {
             let key_to_wrap = Zeroizing::from(serde_json::to_vec(&object_key_block.key_value)?);
-            let ciphertext = wrap(wrapping_key, &key_wrapping_data, &key_to_wrap)?;
+            let ciphertext = wrap(
+                wrapping_key,
+                &key_wrapping_data,
+                &key_to_wrap,
+                additionnal_data_encryption,
+            )?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext.into()),
                 // not clear whether this should be filled or not
@@ -105,7 +124,12 @@ pub fn wrap_key_block(
         }
         EncodingOption::NoEncoding => {
             let key_to_wrap = object_key_block.key_bytes()?;
-            let ciphertext = wrap(wrapping_key, &key_wrapping_data, &key_to_wrap)?;
+            let ciphertext = wrap(
+                wrapping_key,
+                &key_wrapping_data,
+                &key_to_wrap,
+                additionnal_data_encryption,
+            )?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
         }
     };
@@ -120,6 +144,7 @@ pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
+    additionnal_data_encryption: &[u8],
 ) -> Result<Vec<u8>, KmipError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
@@ -160,10 +185,38 @@ pub(crate) fn wrap(
 
             let ciphertext = match key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
-                    // wrap using rfc_5649
-                    let wrap_secret = key_block.key_bytes()?;
-                    let ciphertext = rfc5649_wrap(key_to_wrap, &wrap_secret)?;
-                    Ok(ciphertext)
+                    let block_cipher_mode = key_wrapping_data
+                        .encryption_key_information
+                        .clone()
+                        .unwrap()
+                        .cryptographic_parameters
+                        .unwrap()
+                        .block_cipher_mode;
+                    match block_cipher_mode {
+                        Some(BlockCipherMode::GCM) => {
+                            // wrap using aes Gcm
+                            let aead = AeadCipher::Aes256Gcm;
+                            let nonce = random_nonce(aead)?;
+                            let wrap_secret = key_block.key_bytes()?;
+                            let (data, authenticated_encryption_tag) = aead_encrypt(
+                                aead,
+                                &wrap_secret,
+                                &nonce,
+                                additionnal_data_encryption,
+                                key_to_wrap,
+                            )?;
+                            let ciphertext =
+                                [nonce.clone(), data, authenticated_encryption_tag.clone()]
+                                    .concat();
+                            Ok(ciphertext)
+                        }
+                        _ => {
+                            // wrap using rfc_5649
+                            let wrap_secret = key_block.key_bytes()?;
+                            let ciphertext = rfc5649_wrap(key_to_wrap, &wrap_secret)?;
+                            Ok(ciphertext)
+                        }
+                    }
                 }
                 #[cfg(feature = "openssl")]
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {

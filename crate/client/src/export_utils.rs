@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, Operation},
-    kmip_types::AttributeReference,
+    kmip_types::{AttributeReference, BlockCipherMode, CryptographicParameters, EncodingOption},
 };
 
 use crate::{
@@ -22,8 +22,15 @@ fn export_request(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
 ) -> Export {
-    let key_wrapping_specification = key_wrapping_specification(unwrap, wrapping_key_id);
+    let key_wrapping_specification = key_wrapping_specification(
+        unwrap,
+        wrapping_key_id,
+        block_cipher_mode,
+        authenticated_encryption_additional_data,
+    );
     Export::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_string()),
         unwrap,
@@ -37,8 +44,15 @@ fn get_request(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
 ) -> Get {
-    let key_wrapping_specification = key_wrapping_specification(unwrap, wrapping_key_id);
+    let key_wrapping_specification = key_wrapping_specification(
+        unwrap,
+        wrapping_key_id,
+        block_cipher_mode,
+        authenticated_encryption_additional_data,
+    );
     Get::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_string()),
         unwrap,
@@ -51,9 +65,26 @@ fn get_request(
 fn key_wrapping_specification(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
 ) -> Option<KeyWrappingSpecification> {
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
         None
+    } else if let Some(BlockCipherMode::GCM) = block_cipher_mode {
+        wrapping_key_id.map(|id| KeyWrappingSpecification {
+            wrapping_method: WrappingMethod::Encrypt,
+            encryption_key_information: Some(EncryptionKeyInformation {
+                unique_identifier: UniqueIdentifier::TextString(id.to_string()),
+                cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                    block_cipher_mode,
+                    ..CryptographicParameters::default()
+                })),
+            }),
+            attribute_name: authenticated_encryption_additional_data
+                .map(|data| vec![String::from_utf8(data).expect("Failing on string conversion")]),
+            encoding_option: Some(EncodingOption::NoEncoding),
+            ..KeyWrappingSpecification::default()
+        })
     } else {
         wrapping_key_id.map(|id| KeyWrappingSpecification {
             wrapping_method: WrappingMethod::Encrypt,
@@ -85,6 +116,7 @@ fn key_wrapping_specification(
 /// * If the KMS cannot be reached
 /// * If the object cannot be exported
 /// * If the object cannot be written to a file
+#[allow(clippy::too_many_arguments)]
 pub async fn export_object(
     kms_rest_client: &KmsClient,
     object_id_or_tags: &str,
@@ -92,6 +124,8 @@ pub async fn export_object(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
 ) -> Result<(Object, Option<Attributes>), ClientError> {
     let (object, object_type, attributes) = if allow_revoked {
         //use the KMIP export function to get revoked objects
@@ -101,6 +135,8 @@ pub async fn export_object(
                 unwrap,
                 wrapping_key_id,
                 key_format_type,
+                block_cipher_mode,
+                authenticated_encryption_additional_data,
             ))
             .await
             .with_context(|| "Export")?;
@@ -117,6 +153,8 @@ pub async fn export_object(
                 unwrap,
                 wrapping_key_id,
                 key_format_type,
+                block_cipher_mode,
+                authenticated_encryption_additional_data,
             ))
             .await
             .with_context(|| "Get")?;
@@ -180,7 +218,14 @@ async fn batch_get(
         .flat_map(|id| {
             // Get  does not return (external) attributes, so we need to do a GetAttributes
             vec![
-                Operation::Get(get_request(&id, unwrap, wrapping_key_id, key_format_type)),
+                Operation::Get(get_request(
+                    &id,
+                    unwrap,
+                    wrapping_key_id,
+                    key_format_type,
+                    None,
+                    None,
+                )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
                     attribute_references: None, //all attributes
@@ -227,6 +272,8 @@ async fn batch_export(
                     unwrap,
                     wrapping_key_id,
                     key_format_type,
+                    None,
+                    None,
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
