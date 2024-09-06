@@ -482,7 +482,7 @@ mod tests {
     fn test_private_key_conversion_pkcs(
         private_key: &PKey<Private>,
         id: Id,
-        keysize: u32,
+        key_size: u32,
         kft: KeyFormatType,
     ) {
         #[cfg(feature = "fips")]
@@ -511,14 +511,14 @@ mod tests {
         if kft == KeyFormatType::PKCS8 {
             let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key_.private_key_to_pkcs8().unwrap(),
                 key_value.to_vec()
             );
             let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key_.private_key_to_pkcs8().unwrap(),
                 key_value.to_vec()
@@ -526,14 +526,14 @@ mod tests {
         } else {
             let private_key_ = PKey::private_key_from_der(&key_value).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key_.private_key_to_der().unwrap(),
                 key_value.to_vec()
             );
             let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key_.private_key_to_der().unwrap(),
                 key_value.to_vec()
@@ -541,7 +541,7 @@ mod tests {
         }
     }
 
-    fn test_private_key_conversion_sec1(private_key: &PKey<Private>, id: Id, keysize: u32) {
+    fn test_private_key_conversion_sec1(private_key: &PKey<Private>, id: Id, key_size: u32) {
         #[cfg(feature = "fips")]
         let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
         #[cfg(not(feature = "fips"))]
@@ -568,14 +568,14 @@ mod tests {
         let private_key_ =
             PKey::from_ec_key(EcKey::private_key_from_der(&key_value).unwrap()).unwrap();
         assert_eq!(private_key_.id(), id);
-        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(private_key_.bits(), key_size);
         assert_eq!(
             private_key_.private_key_to_der().unwrap(),
             key_value.to_vec()
         );
         let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
         assert_eq!(private_key_.id(), id);
-        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(private_key_.bits(), key_size);
         assert_eq!(
             private_key_.private_key_to_der().unwrap(),
             key_value.to_vec()
@@ -585,7 +585,7 @@ mod tests {
     fn test_private_key_conversion_transparent_rsa(
         private_key: &PKey<Private>,
         id: Id,
-        keysize: u32,
+        key_size: u32,
     ) {
         #[cfg(feature = "fips")]
         let mask = Some(FIPS_PRIVATE_RSA_MASK);
@@ -636,7 +636,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(private_key_.id(), id);
-        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(private_key_.bits(), key_size);
         assert_eq!(
             private_key.private_key_to_der().unwrap(),
             private_key_.private_key_to_der().unwrap()
@@ -644,7 +644,7 @@ mod tests {
 
         let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
         assert_eq!(private_key_.id(), id);
-        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(private_key_.bits(), key_size);
         assert_eq!(
             private_key.private_key_to_der().unwrap(),
             private_key_.private_key_to_der().unwrap()
@@ -657,7 +657,7 @@ mod tests {
         ec_group: Option<&EcGroup>,
         curve: RecommendedCurve,
         id: Id,
-        keysize: u32,
+        key_size: u32,
     ) {
         #[cfg(feature = "fips")]
         let mask = Some(FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
@@ -692,9 +692,9 @@ mod tests {
         let mut privkey_vec = d.to_bytes_be();
 
         // privkey size on curve.
-        let bytes_keysize = 1 + ((keysize as usize - 1) / 8);
+        let bytes_key_size = 1 + ((key_size as usize - 1) / 8);
 
-        pad_be_bytes(&mut privkey_vec, bytes_keysize);
+        pad_be_bytes(&mut privkey_vec, bytes_key_size);
         if id == Id::EC {
             let private_key_ = PKey::from_ec_key(
                 EcKey::from_private_components(
@@ -706,14 +706,14 @@ mod tests {
             )
             .unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key.private_key_to_der().unwrap(),
                 private_key_.private_key_to_der().unwrap()
             );
             let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key.private_key_to_der().unwrap(),
                 private_key_.private_key_to_der().unwrap()
@@ -721,14 +721,14 @@ mod tests {
         } else {
             let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, id).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key.raw_private_key().unwrap(),
                 private_key_.raw_private_key().unwrap()
             );
             let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
             assert_eq!(private_key_.id(), id);
-            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.bits(), key_size);
             assert_eq!(
                 private_key.raw_private_key().unwrap(),
                 private_key_.raw_private_key().unwrap()
@@ -742,26 +742,26 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 2048;
-        let rsa_private_key = Rsa::generate(keysize).unwrap();
+        let key_size = 2048;
+        let rsa_private_key = Rsa::generate(key_size).unwrap();
         let private_key = PKey::from_rsa(rsa_private_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::RSA, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_pkcs(&private_key, Id::RSA, keysize, KeyFormatType::PKCS1);
-        test_private_key_conversion_transparent_rsa(&private_key, Id::RSA, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::RSA, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::RSA, key_size, KeyFormatType::PKCS1);
+        test_private_key_conversion_transparent_rsa(&private_key, Id::RSA, key_size);
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_p_192_private_key() {
-        let keysize = 192;
+        let key_size = 192;
         let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
 
         test_private_key_conversion_transparent_ec(
             &private_key,
@@ -769,7 +769,7 @@ mod tests {
             Some(&ec_group),
             RecommendedCurve::P192,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -779,14 +779,14 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 224;
+        let key_size = 224;
         let ec_group = EcGroup::from_curve_name(Nid::SECP224R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
 
         test_private_key_conversion_transparent_ec(
             &private_key,
@@ -794,7 +794,7 @@ mod tests {
             Some(&ec_group),
             RecommendedCurve::P224,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -804,14 +804,14 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 256;
+        let key_size = 256;
         let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
 
         test_private_key_conversion_transparent_ec(
             &private_key,
@@ -819,7 +819,7 @@ mod tests {
             Some(&ec_group),
             RecommendedCurve::P256,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -829,14 +829,14 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 384;
+        let key_size = 384;
         let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP384R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
 
         test_private_key_conversion_transparent_ec(
             &private_key,
@@ -844,7 +844,7 @@ mod tests {
             Some(&ec_group),
             RecommendedCurve::P384,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -854,14 +854,14 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 521;
+        let key_size = 521;
         let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP521R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
-        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
 
         test_private_key_conversion_transparent_ec(
             &private_key,
@@ -869,24 +869,24 @@ mod tests {
             Some(&ec_group),
             RecommendedCurve::P521,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x25519_private_key() {
-        let keysize = 253;
+        let key_size = 253;
         let private_key = PKey::generate_x25519().unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::X25519, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::X25519, key_size, KeyFormatType::PKCS8);
         test_private_key_conversion_transparent_ec(
             &private_key,
             None,
             None,
             RecommendedCurve::CURVE25519,
             Id::X25519,
-            keysize,
+            key_size,
         );
     }
 
@@ -896,34 +896,34 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 256;
+        let key_size = 256;
         let private_key = PKey::generate_ed25519().unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::ED25519, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::ED25519, key_size, KeyFormatType::PKCS8);
         test_private_key_conversion_transparent_ec(
             &private_key,
             None,
             None,
             RecommendedCurve::CURVEED25519,
             Id::ED25519,
-            keysize,
+            key_size,
         );
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x448_private_key() {
-        let keysize = 448;
+        let key_size = 448;
         let private_key = PKey::generate_x448().unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::X448, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::X448, key_size, KeyFormatType::PKCS8);
         test_private_key_conversion_transparent_ec(
             &private_key,
             None,
             None,
             RecommendedCurve::CURVE448,
             Id::X448,
-            keysize,
+            key_size,
         );
     }
 
@@ -933,17 +933,17 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 456;
+        let key_size = 456;
         let private_key = PKey::generate_ed448().unwrap();
 
-        test_private_key_conversion_pkcs(&private_key, Id::ED448, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::ED448, key_size, KeyFormatType::PKCS8);
         test_private_key_conversion_transparent_ec(
             &private_key,
             None,
             None,
             RecommendedCurve::CURVEED448,
             Id::ED448,
-            keysize,
+            key_size,
         );
     }
 }

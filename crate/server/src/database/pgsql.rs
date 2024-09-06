@@ -454,7 +454,7 @@ where
             query = query.bind(tag);
         }
         // Bind the tags len and the user
-        query = query.bind(tags.len() as i16).bind(user);
+        query = query.bind(i16::try_from(tags.len())?).bind(user);
 
         // Execute the query
         query.fetch_all(executor).await?

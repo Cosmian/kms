@@ -107,12 +107,14 @@ pub(crate) fn decode_jwt_authorization_token(
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.
     let kid = token_kid(token)
-        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_owned()))?
+        .map_err(|e| {
+            KmsError::Unauthorized(format!("Failed to decode token headers. Error: {e:?}"))
+        })?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
     tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
-    let jwk = &jwt_config.jwks.find(&kid).ok_or_else(|| {
+    let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
         KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
     tracing::trace!("JWK has been found:\n{jwk:?}");

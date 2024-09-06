@@ -26,7 +26,7 @@ pub struct EncryptAction {
     input_files: Vec<PathBuf>,
 
     /// The encryption policy to encrypt the file with
-    /// Example: "department::marketing && level::confidential"`
+    /// Example: "`department::marketing` && `level::confidential`"
     #[clap(required = true)]
     encryption_policy: String,
 
@@ -105,9 +105,9 @@ impl EncryptAction {
 
         // Write the encrypted data
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?
+            write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?;
         } else {
-            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?
+            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?;
         }
         Ok(())
     }

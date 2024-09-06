@@ -59,7 +59,21 @@ pub struct ServerParams {
     pub ms_dke_service_url: Option<String>,
 }
 
+/// Represents the server parameters.
 impl ServerParams {
+    /// Tries to create a `ServerParams` instance from the given `ClapConfig`.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf` - The `ClapConfig` object containing the configuration parameters.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `KResult` containing the `ServerParams` instance if successful, or an error if the conversion fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
     pub fn try_from(conf: ClapConfig) -> KResult<Self> {
         let http_params = HttpParams::try_from(&conf.http)?;
 
@@ -95,6 +109,19 @@ impl ServerParams {
         })
     }
 
+    /// Loads the certificate from the given file path.
+    ///
+    /// # Arguments
+    ///
+    /// * `authority_cert_file` - The path to the authority certificate file.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `KResult` containing the loaded `X509` certificate if successful, or an error if the loading fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the certificate file cannot be read or if the parsing of the certificate fails.
     fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
         // Open and read the file into a byte vector
         let pem_bytes = std::fs::read(authority_cert_file)?;

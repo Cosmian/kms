@@ -118,11 +118,11 @@ impl CachedSqlCipher {
         group_id: u128,
         key: &Secret<AES_256_GCM_KEY_LENGTH>,
     ) -> KResult<Arc<Pool<Sqlite>>> {
-        if !self.cache.exists(group_id) {
+        if !self.cache.exists(group_id)? {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
             self.cache.save(group_id, key, pool).await?;
-        } else if !self.cache.opened(group_id) {
+        } else if !self.cache.opened(group_id)? {
             let pool = self.instantiate_group_database(group_id, key).await?;
             self.cache.save(group_id, key, pool).await?;
         }

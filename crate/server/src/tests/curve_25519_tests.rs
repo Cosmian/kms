@@ -10,6 +10,7 @@ use cosmian_kmip::{
         CURVE_25519_Q_LENGTH_BITS,
     },
     kmip::{
+        extra::tagging::EMPTY_TAGS,
         kmip_messages::{Message, MessageBatchItem, MessageHeader},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{ErrorReason, Import, Operation},
@@ -37,7 +38,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -84,14 +85,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes
             .link
             .as_ref()
-            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
             .len(),
         1
     );
     let link = &attributes
         .link
         .as_ref()
-        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -138,14 +139,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes
             .link
             .as_ref()
-            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
             .len(),
         1
     );
     let link = &attributes
         .link
         .as_ref()
-        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -156,7 +157,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,
-        CURVE_25519_Q_LENGTH_BITS as u32,
+        u32::try_from(CURVE_25519_Q_LENGTH_BITS)?,
         sk_uid,
         RecommendedCurve::CURVE25519,
         Some(CryptographicAlgorithm::ECDH),
@@ -210,7 +211,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                &[] as &[&str],
+                EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
             )?)),
             MessageBatchItem::new(Operation::Locate(
@@ -234,19 +235,19 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                &[] as &[&str],
+                EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                &[] as &[&str],
+                EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                &[] as &[&str],
+                EMPTY_TAGS,
                 RecommendedCurve::SECP256K1,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
-                &[] as &[&str],
+                EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
             )?)),
         ],
@@ -294,7 +295,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         response.items[2].result_message,
         Some(
             "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
-                .to_string()
+                .to_owned()
         )
     );
 

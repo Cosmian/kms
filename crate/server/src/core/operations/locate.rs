@@ -40,7 +40,7 @@ pub(crate) async fn locate(
 
     trace!("UIDs: {:?}", uids);
     let response = LocateResponse {
-        located_items: Some(uids.len() as i32),
+        located_items: Some(i32::try_from(uids.len())?),
         unique_identifiers: if uids.is_empty() { None } else { Some(uids) },
     };
 

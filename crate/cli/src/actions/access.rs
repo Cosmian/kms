@@ -21,6 +21,15 @@ pub enum AccessAction {
 }
 
 impl AccessAction {
+    /// Processes the access action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client used for the action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there was a problem running the action.
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Grant(action) => action.run(kms_rest_client).await?,
@@ -58,6 +67,16 @@ pub struct GrantAccess {
 }
 
 impl GrantAccess {
+    /// Runs the `GrantAccess` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
@@ -104,6 +123,16 @@ pub struct RevokeAccess {
 }
 
 impl RevokeAccess {
+    /// Runs the `RevokeAccess` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
@@ -138,6 +167,16 @@ pub struct ListAccessesGranted {
 }
 
 impl ListAccessesGranted {
+    /// Runs the `ListAccessesGranted` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let accesses = kms_rest_client
             .list_access(&self.object_uid)
@@ -164,6 +203,16 @@ impl ListAccessesGranted {
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
+    /// Runs the `ListOwnedObjects` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let objects = kms_rest_client
             .list_owned_objects()
@@ -190,6 +239,16 @@ impl ListOwnedObjects {
 pub struct ListAccessRightsObtained;
 
 impl ListAccessRightsObtained {
+    /// Runs the `ListAccessRightsObtained` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let objects = kms_rest_client
             .list_access_rights_obtained()

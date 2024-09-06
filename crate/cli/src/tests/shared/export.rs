@@ -178,46 +178,6 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // init the test server
-    let ctx = start_default_test_kms_server().await;
-
-    // generate a new master key pair
-    let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "test_data/policy_specifications.json",
-        &[],
-    )?;
-
-    _export_cc_test(
-        KeyFormatType::CoverCryptSecretKey,
-        &master_private_key_id,
-        tmp_path,
-        ctx,
-    )?;
-    _export_cc_test(
-        KeyFormatType::CoverCryptPublicKey,
-        &_master_public_key_id,
-        tmp_path,
-        ctx,
-    )?;
-
-    let user_key_id = create_user_decryption_key(
-        &ctx.owner_client_conf_path,
-        &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        &[],
-    )?;
-    _export_cc_test(
-        KeyFormatType::CoverCryptSecretKey,
-        &user_key_id,
-        tmp_path,
-        ctx,
-    )?;
-
     fn _export_cc_test(
         key_format_type: KeyFormatType,
         key_id: &str,
@@ -257,6 +217,46 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
         assert_eq!(&*key_bytes, bytes.as_slice());
         Ok(())
     }
+
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a new master key pair
+    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_client_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &[],
+    )?;
+
+    _export_cc_test(
+        KeyFormatType::CoverCryptSecretKey,
+        &master_private_key_id,
+        tmp_path,
+        ctx,
+    )?;
+    _export_cc_test(
+        KeyFormatType::CoverCryptPublicKey,
+        &master_public_key_id,
+        tmp_path,
+        ctx,
+    )?;
+
+    let user_key_id = create_user_decryption_key(
+        &ctx.owner_client_conf_path,
+        &master_private_key_id,
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
+    )?;
+    _export_cc_test(
+        KeyFormatType::CoverCryptSecretKey,
+        &user_key_id,
+        tmp_path,
+        ctx,
+    )?;
 
     Ok(())
 }
@@ -348,12 +348,12 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         Some(CryptographicAlgorithm::ECDH)
     );
     let kv = &key_block.key_value;
-    let (d, recommended_curve) = match &kv.key_material {
-        KeyMaterial::TransparentECPrivateKey {
-            d,
-            recommended_curve,
-        } => (d, recommended_curve),
-        _ => panic!("Invalid key value type"),
+    let KeyMaterial::TransparentECPrivateKey {
+        d,
+        recommended_curve,
+    } = &kv.key_material
+    else {
+        panic!("Invalid key value type");
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
     let mut d_vec = d.to_bytes_be();
@@ -407,12 +407,12 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         Some(CryptographicAlgorithm::ECDH)
     );
     let kv = &key_block.key_value;
-    let (q_string, recommended_curve) = match &kv.key_material {
-        KeyMaterial::TransparentECPublicKey {
-            q_string,
-            recommended_curve,
-        } => (q_string, recommended_curve),
-        _ => panic!("Invalid key value type"),
+    let KeyMaterial::TransparentECPublicKey {
+        q_string,
+        recommended_curve,
+    } = &kv.key_material
+    else {
+        panic!("Invalid key value type")
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
     let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519).unwrap();

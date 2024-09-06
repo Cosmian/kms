@@ -13,6 +13,16 @@ use crate::error::result::CliResult;
 pub struct LogoutAction;
 
 impl LogoutAction {
+    /// Process the logout action.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf_path` - The path to the ckms configuration file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an issue loading or saving the configuration file.
+    ///
     pub fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
         conf.kms_access_token = None;

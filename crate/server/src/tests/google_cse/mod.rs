@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::panic_in_result_fn)]
 
 use std::{
     fs::File,

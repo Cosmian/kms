@@ -410,7 +410,10 @@ async fn get_issuer<'a>(
         }
         None => (None, None),
     };
-
+    trace!(
+        "Issuer certificate id: {issuer_certificate_id:?}, issuer private key id: \
+         {issuer_private_key_id:?}"
+    );
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
         return issuer_for_self_signed_certificate(subject, kms, user, params).await;
@@ -543,7 +546,7 @@ fn build_and_sign_certificate(
     issuer: &Issuer,
     subject: &Subject,
     request: Certify,
-) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
+) -> KResult<(Object, HashSet<String>, Attributes)> {
     debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
@@ -566,10 +569,15 @@ fn build_and_sign_certificate(
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
     // retrieve the number of days for the validity of the certificate
-    let mut number_of_days = attributes.extract_requested_validity_days()?.unwrap_or(365) as u32;
+    let mut number_of_days =
+        u32::try_from(attributes.extract_requested_validity_days()?.unwrap_or(365))?;
+    trace!("Number of days: {}", number_of_days);
+
     // the number of days cannot exceed that of the issuer certificate
     if let Some(issuer_not_after) = issuer.not_after() {
-        number_of_days = min(issuer_not_after.diff(&now)?.days as u32, number_of_days);
+        trace!("Issuer certificate not after: {issuer_not_after}");
+        let days = u32::try_from(now.diff(issuer_not_after)?.days)?;
+        number_of_days = min(days, number_of_days);
     }
     x509_builder.set_not_before(now.as_ref())?;
     x509_builder.set_not_after(

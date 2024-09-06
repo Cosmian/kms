@@ -301,6 +301,7 @@ macro_rules! kms_bail {
     };
 }
 
+#[allow(clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::KmsError;

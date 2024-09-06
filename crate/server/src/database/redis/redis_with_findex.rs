@@ -287,7 +287,8 @@ impl Database for RedisWithFindex {
             locations
                 .into_iter()
                 .map(|location| {
-                    String::from_utf8(location.to_vec()).map_err(|_| kms_error!("Invalid uid"))
+                    String::from_utf8(location.to_vec())
+                        .map_err(|e| kms_error!(format!("Invalid uid. Error: {e:?}")))
                 })
                 .collect::<KResult<HashSet<String>>>()?
         } else {
@@ -553,7 +554,8 @@ impl Database for RedisWithFindex {
         let uids = locations
             .into_iter()
             .map(|location| {
-                String::from_utf8(location.to_vec()).map_err(|_| kms_error!("Invalid uid"))
+                String::from_utf8(location.to_vec())
+                    .map_err(|e| kms_error!(format!("Invalid uid. Error: {e:?}")))
             })
             .collect::<KResult<HashSet<String>>>()?;
         trace!("find: uids before permissions: {:?}", uids);

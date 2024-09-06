@@ -119,9 +119,11 @@ impl KMS {
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
-                    let key_len: usize = attributes
+                    let key_len = attributes
                         .cryptographic_length
-                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
+                        .map(|len| usize::try_from(len / 8))
+                        .transpose()?
+                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v);
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rand_bytes(&mut symmetric_key)?;
                     let object =

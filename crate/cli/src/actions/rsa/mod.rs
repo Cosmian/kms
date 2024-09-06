@@ -24,6 +24,15 @@ pub enum RsaCommands {
 }
 
 impl RsaCommands {
+    /// Process the RSA command by executing the corresponding action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used for communication with the KMS service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an issue executing the command.
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,

@@ -13,6 +13,11 @@ pub struct MarkdownAction {
 }
 
 impl MarkdownAction {
+    /// Process the given command and generate the markdown documentation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an issue creating or writing to the markdown file.
     pub fn process(&self, cmd: &Command) -> CliResult<()> {
         let mut output = String::new();
         writeln!(

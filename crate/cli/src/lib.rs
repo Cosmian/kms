@@ -6,6 +6,7 @@
     let_underscore,
     rust_2024_compatibility,
     unreachable_pub,
+    unused,
     clippy::all,
     clippy::suspicious,
     clippy::complexity,
@@ -16,7 +17,6 @@
 )]
 #![allow(
     clippy::module_name_repetitions,
-    clippy::missing_errors_doc,
     clippy::too_many_lines,
     clippy::cargo_common_metadata,
     clippy::multiple_crate_versions

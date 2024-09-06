@@ -4,9 +4,27 @@ use crate::error::KmsError;
 
 pub type KResult<R> = Result<R, KmsError>;
 
+/// A helper trait for `KResult` that provides additional methods for error handling.
 pub trait KResultHelper<T> {
+    /// Sets the reason for the error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `KResult` with the specified `ErrorReason` if the original result is an error.
     fn reason(self, reason: ErrorReason) -> KResult<T>;
+
+    /// Sets the context for the error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `KResult` with the specified context if the original result is an error.
     fn context(self, context: &str) -> KResult<T>;
+
+    /// Sets the context for the error using a closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `KResult` with the context returned by the closure if the original result is an error.
     fn with_context<O>(self, op: O) -> KResult<T>
     where
         O: FnOnce() -> String;

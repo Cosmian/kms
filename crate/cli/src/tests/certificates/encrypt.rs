@@ -198,7 +198,7 @@ async fn test_certificate_import_encrypt(
         true,
     )?;
 
-    let _subca_certificate_id = import_certificate(
+    let subca_certificate_id = import_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/{subca_path}"),
@@ -221,7 +221,7 @@ async fn test_certificate_import_encrypt(
         None,
         None,
         Some(private_key_id.clone()),
-        Some(_subca_certificate_id),
+        Some(subca_certificate_id),
         Some(tags),
         None,
         false,

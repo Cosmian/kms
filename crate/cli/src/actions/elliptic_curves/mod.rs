@@ -24,6 +24,16 @@ pub enum EllipticCurveCommands {
 }
 
 impl EllipticCurveCommands {
+    /// Runs the `EllipticCurveCommands` main commands.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,

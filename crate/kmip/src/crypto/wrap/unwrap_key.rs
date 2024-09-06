@@ -157,7 +157,7 @@ fn unwrap_with_private_key(
     match private_key.id() {
         Id::RSA => unwrap_with_rsa(private_key, key_wrapping_data, ciphertext),
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext),
         other => {
             kmip_bail!(
                 "Unable to wrap key: wrapping public key type not supported: {:?}",

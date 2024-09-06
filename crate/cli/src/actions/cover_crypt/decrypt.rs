@@ -107,13 +107,13 @@ impl DecryptAction {
                 &metadata_and_cleartext.plaintext,
                 &self.input_files,
                 self.output_file.as_ref(),
-            )?
+            )?;
         } else {
             write_single_decrypted_data(
                 &metadata_and_cleartext.plaintext,
                 &self.input_files[0],
                 self.output_file.as_ref(),
-            )?
+            )?;
         }
         Ok(())
     }

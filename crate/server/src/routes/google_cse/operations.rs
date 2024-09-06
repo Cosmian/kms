@@ -41,6 +41,10 @@ pub struct StatusResponse {
     pub operations_supported: Vec<String>,
 }
 
+/// Returns the status of the server.
+///
+/// # Returns
+/// - `StatusResponse`: The status of the server.
 #[must_use]
 pub fn get_status() -> StatusResponse {
     debug!("get_status");
@@ -78,10 +82,21 @@ pub struct WrapResponse {
     pub wrapped_key: String,
 }
 
-/// Returns encrypted Data Encryption Key (DEK) and associated data.
+/// Wraps a Data Encryption Key (DEK) using the specified authentication and authorization tokens.
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+/// # Arguments
+/// - `req_http`: The HTTP request.
+/// - `wrap_request`: The wrap request.
+/// - `cse_config`: The Google CSE configuration.
+/// - `kms`: The KMS server.
+///
+/// # Returns
+/// - `WrapResponse`: The wrapped key.
+///
+/// # Errors
+/// This function can return an error if there is a problem with the encryption process or if the tokens validation fails.
 pub async fn wrap(
     req_http: HttpRequest,
     wrap_request: WrapRequest,
@@ -158,10 +173,21 @@ pub struct UnwrapResponse {
     pub key: String,
 }
 
-/// Decrypt the Data Encryption Key (DEK) and associated data.
+/// Unwraps a wrapped Data Encryption Key (DEK) using the specified authentication and authorization tokens.
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+/// # Arguments
+/// - `req_http`: The HTTP request.
+/// - `unwrap_request`: The unwrap request.
+/// - `cse_config`: The Google CSE configuration.
+/// - `kms`: The KMS server.
+///
+/// # Returns
+/// - `UnwrapResponse`: The unwrapped key.
+///
+/// # Errors
+/// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn unwrap(
     req_http: HttpRequest,
     unwrap_request: UnwrapRequest,
@@ -263,6 +289,17 @@ pub struct PrivateKeySignResponse {
 /// See Google documentation:
 /// - Private Key Sign endpoint: <https://developers.google.com/workspace/cse/reference/private-key-sign>
 /// - S/MIME certificate profiles: <https://support.google.com/a/answer/7300887>
+/// # Arguments
+/// - `req_http`: The HTTP request.
+/// - `request`: The private key sign request.
+/// - `cse_config`: The Google CSE configuration.
+/// - `kms`: The KMS server.
+///
+/// # Returns
+/// - `PrivateKeySignResponse`: The signature.
+///
+/// # Errors
+/// This function can return an error if there is a problem with the encryption process or if the tokens validation fails.
 pub async fn private_key_sign(
     req_http: HttpRequest,
     request: PrivateKeySignRequest,
@@ -351,6 +388,18 @@ pub struct PrivateKeyDecryptResponse {
 ///
 /// See Google documentation:
 /// - Private Key Decrypt endpoint: <https://developers.google.com/workspace/cse/reference/private-key-decrypt>
+///
+/// # Arguments
+/// - `req_http`: The HTTP request.
+/// - `request`: The private key decrypt request.
+/// - `cse_config`: The Google CSE configuration.
+/// - `kms`: The KMS server.
+///
+/// # Returns
+/// - `PrivateKeyDecryptResponse`: The decrypted data encryption key.
+///
+/// # Errors
+/// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn private_key_decrypt(
     req_http: HttpRequest,
     request: PrivateKeyDecryptRequest,

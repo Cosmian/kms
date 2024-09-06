@@ -13,7 +13,21 @@ pub enum HttpParams {
     Http,
 }
 
+/// Represents the HTTP parameters for the server configuration.
 impl HttpParams {
+    /// Tries to create an instance of `HttpParams` from the given `HttpConfig`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The `HttpConfig` object containing the configuration parameters.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `KResult` containing the created `HttpParams` instance on success.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
     pub fn try_from(config: &HttpConfig) -> KResult<Self> {
         // start in HTTPS mode if a PKCS#12 file is provided
         if let (Some(p12_file), Some(p12_password)) =
@@ -33,6 +47,11 @@ impl HttpParams {
         }
     }
 
+    /// Checks if the server is running in HTTPS mode.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the server is running in HTTPS mode, `false` otherwise.
     #[must_use]
     pub const fn is_running_https(&self) -> bool {
         matches!(self, Self::Https(_))

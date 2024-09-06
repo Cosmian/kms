@@ -29,7 +29,7 @@ use crate::{
     result::KResult,
 };
 
-struct DummyDB {}
+struct DummyDB;
 #[async_trait]
 impl RemovedLocationsFinder for DummyDB {
     async fn find_removed_locations(

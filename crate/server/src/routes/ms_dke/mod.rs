@@ -252,7 +252,7 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
     let bytes = bu.to_bytes_be();
     let len = bytes.len();
     let min = std::cmp::min(4, len);
-    let mut padded = [0u8; 4];
+    let mut padded = [0_u8; 4];
     padded[4 - min..].copy_from_slice(&bytes[len - min..]);
     u32::from_be_bytes(padded)
 }

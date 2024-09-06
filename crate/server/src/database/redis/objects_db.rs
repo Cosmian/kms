@@ -119,7 +119,9 @@ impl ObjectsDB {
 
     fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<Vec<u8>> {
         let nonce = {
-            let mut rng = self.rng.lock().expect("failed acquiring a lock on the RNG");
+            let mut rng = self.rng.lock().map_err(|e| {
+                KmsError::DatabaseError(format!("failed acquiring a lock on the RNG. Error: {e:?}"))
+            })?;
             Nonce::new(&mut *rng)
         };
         let ct = self.dem.encrypt(
