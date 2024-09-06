@@ -172,6 +172,8 @@ pub fn password_wrap_import_test(
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     let object = read_object_from_json_ttlv_file(&key_file)?;

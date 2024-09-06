@@ -1,24 +1,20 @@
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{
-        generic::kmip_requests::build_encryption_request,
-        rsa::kmip_requests::create_rsa_key_pair_request,
-    },
+    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
     export_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
-            Attributes, CertificateAttributes, CryptographicAlgorithm, CryptographicParameters,
-            KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
-            VendorAttribute,
+            Attributes, BlockCipherMode, CertificateAttributes, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
         },
     },
-    KmsClient,
+    ExportObjectParams, KmsClient,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +42,7 @@ pub struct CreateKeypairsAction {
     #[clap(long = "csekey-id", short = 'w', required = true)]
     csekey_id: String,
 
-    /// The issuer certificate id
+    /// The issuer private key id
     #[clap(long, short = 'i', required = true)]
     issuer_private_key_id: String,
 
@@ -62,7 +58,7 @@ pub struct CreateKeypairsAction {
     )]
     subject_name: String,
 
-    /// The existing private key id of an existing RSA keypair to use (optionnal - if no ID is provided, a RSA keypair will be created)
+    /// The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
     #[clap(long, short = 'k')]
     rsa_private_key_id: Option<String>,
 }
@@ -163,43 +159,21 @@ impl CreateKeypairsAction {
         };
 
         // Export wrapped private key with google CSE key
-        let (raw_private_key_object, _) =
-            export_object(kms_rest_client, &private_key_id, true, None, false, None).await?;
+        let (wrapped_private_key, _attributes) = export_object(
+            kms_rest_client,
+            &private_key_id,
+            ExportObjectParams {
+                wrapping_key_id: Some(&self.csekey_id),
+                allow_revoked: true,
+                block_cipher_mode: Some(BlockCipherMode::GCM),
+                ..ExportObjectParams::default()
+            },
+        )
+        .await?;
 
-        let key_bytes = raw_private_key_object.key_block()?.key_bytes()?;
+        let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
 
-        // Create the kmip query
-        let encrypt_request = build_encryption_request(
-            &self.csekey_id,
-            None,
-            key_bytes.to_vec(),
-            None,
-            None,
-            Some(CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                ..Default::default()
-            }),
-        )?;
-
-        let encrypt_response = kms_rest_client.encrypt(encrypt_request).await?;
-
-        // extract the nonce and write it
-        let iv_counter_nonce = encrypt_response.iv_counter_nonce.unwrap_or_default();
-
-        // extract the ciphertext and write it
-        let data = encrypt_response.data.unwrap_or_default();
-
-        // extract the authentication tag and write it
-        let authenticated_encryption_tag = encrypt_response
-            .authenticated_encryption_tag
-            .unwrap_or_default();
-
-        let mut wrapped_private_key = Vec::with_capacity(
-            iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
-        );
-        wrapped_private_key.extend_from_slice(&iv_counter_nonce);
-        wrapped_private_key.extend_from_slice(&data);
-        wrapped_private_key.extend_from_slice(&authenticated_encryption_tag);
+        let encoded_private_key = general_purpose::STANDARD.encode(wrapped_key_bytes.clone());
 
         // Sign created public key with issuer private key
         let attributes = Attributes {
@@ -239,10 +213,10 @@ impl CreateKeypairsAction {
         let (pkcs7_object, _pkcs7_object_export_attributes) = export_object(
             kms_rest_client,
             &certificate_unique_identifier.to_string(),
-            false,
-            None,
-            false,
-            Some(KeyFormatType::PKCS7),
+            ExportObjectParams {
+                key_format_type: Some(KeyFormatType::PKCS7),
+                ..ExportObjectParams::default()
+            },
         )
         .await?;
 
@@ -255,7 +229,7 @@ impl CreateKeypairsAction {
             Self::post_keypair(
                 &gmail_client.await?,
                 certificate_value,
-                general_purpose::STANDARD.encode(&wrapped_private_key),
+                encoded_private_key,
                 kacls_url.await?.kacls_url,
             )
             .await?;

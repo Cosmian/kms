@@ -294,6 +294,7 @@ async fn process_private_key(
         .context("export: unable to parse the private key to openssl")?;
 
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
+
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
@@ -308,6 +309,7 @@ async fn process_private_key(
         )?;
         // add the attributes back
         let key_block = object.key_block_mut()?;
+
         key_block.key_value.attributes = Some(Box::new(attributes));
         // wrap the key
         wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
@@ -600,7 +602,7 @@ async fn process_symmetric_key(
                  Type. It must be the default"
             )
         }
-        // The key is wrapped and as expected the requested  Key Format Type is the default (none)
+        // The key is wrapped and as expected the requested Key Format Type is the default (none)
         // => The key is exported as such
         return Ok(())
     }

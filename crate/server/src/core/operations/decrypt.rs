@@ -201,7 +201,9 @@ fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Decr
                 .authenticated_encryption_tag
                 .as_deref()
                 .unwrap_or(EMPTY_SLICE);
+
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
                 data: Some(plaintext),

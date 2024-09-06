@@ -10,7 +10,7 @@ use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult
 #[clap(verbatim_doc_comment)]
 pub struct ListKeypairsAction {
     /// The requester's primary email address
-    #[clap(long = "user-id", short = 'u', required = true)]
+    #[clap(required = true)]
     user_id: String,
 }
 

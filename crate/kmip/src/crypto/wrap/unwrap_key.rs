@@ -2,19 +2,19 @@ use openssl::pkey::{Id, PKey, Private};
 use tracing::debug;
 use zeroize::Zeroizing;
 
-use super::WRAPPING_SECRET_LENGTH;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::{
     crypto::{
-        password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
         },
-        symmetric::rfc5649::rfc5649_unwrap,
+        symmetric::{
+            aead::{aead_decrypt, AeadCipher},
+            rfc5649::rfc5649_unwrap,
+        },
         wrap::common::rsa_parameters,
-        FIPS_MIN_SALT_SIZE,
     },
     error::{result::KmipResultHelper, KmipError},
     kmip::{
@@ -22,24 +22,16 @@ use crate::{
         kmip_objects::Object,
         kmip_operations::ErrorReason,
         kmip_types::{
-            CryptographicAlgorithm, CryptographicUsageMask, EncodingOption, KeyFormatType,
-            PaddingMethod, WrappingMethod,
+            BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
+            KeyFormatType, PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail,
     openssl::kmip_private_key_to_openssl,
 };
 
-/// Unwrap a key using a password
-pub fn unwrap_key_bytes(
-    salt: &[u8; FIPS_MIN_SALT_SIZE],
-    key: &[u8],
-    wrapping_password: &str,
-) -> Result<Zeroizing<Vec<u8>>, KmipError> {
-    let wrapping_secret =
-        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
-    rfc5649_unwrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
-}
+const NONCE_LENGTH: usize = 12;
+const TAG_LENGTH: usize = 16;
 
 /// Unwrap a key block with a wrapping key
 ///
@@ -52,6 +44,9 @@ pub fn unwrap_key_block(
     object_key_block: &mut KeyBlock,
     unwrapping_key: &Object,
 ) -> Result<(), KmipError> {
+    // Extract authenticated addtionnal data on attributes if exist
+    let aad = object_key_block.attributes_mut()?.remove_aad();
+
     // check that the key wrapping data is present
     let key_wrapping_data = object_key_block
         .key_wrapping_data
@@ -72,12 +67,22 @@ pub fn unwrap_key_block(
     let key_value: KeyValue = match encoding {
         EncodingOption::TTLVEncoding => {
             let ciphertext = object_key_block.key_bytes()?;
-            let plaintext = unwrap(unwrapping_key, key_wrapping_data, ciphertext.as_slice())?;
+            let plaintext = unwrap(
+                unwrapping_key,
+                key_wrapping_data,
+                ciphertext.as_slice(),
+                aad.as_deref(),
+            )?;
             serde_json::from_slice::<KeyValue>(&plaintext)?
         }
         EncodingOption::NoEncoding => {
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
-            let plain_text = unwrap(unwrapping_key, key_wrapping_data, &ciphertext)?;
+            let plain_text = unwrap(
+                unwrapping_key,
+                key_wrapping_data,
+                &ciphertext,
+                aad.as_deref(),
+            )?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
                     key: plain_text.to_vec().into(),
@@ -103,6 +108,7 @@ pub(crate) fn unwrap(
     unwrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     ciphertext: &[u8],
+    aad: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     debug!(
         "decrypt_bytes: with object: {:?} on ciphertext length: {}",
@@ -130,10 +136,38 @@ pub(crate) fn unwrap(
     }
     let plaintext = match unwrapping_key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey => {
-            // unwrap using rfc_5649
+            let block_cipher_mode = key_wrapping_data
+                .encryption_key_information
+                .clone()
+                .and_then(|information| information.cryptographic_parameters)
+                .and_then(|parameters| parameters.block_cipher_mode);
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
-            Ok(plaintext)
+
+            match block_cipher_mode {
+                Some(BlockCipherMode::GCM) => {
+                    // unwrap using aes Gcm
+                    let len = ciphertext.len();
+                    let aead = AeadCipher::Aes256Gcm;
+                    let nonce = &ciphertext[..NONCE_LENGTH];
+                    let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
+                    let tag = &ciphertext[len - TAG_LENGTH..];
+                    let authenticated_data = aad.unwrap_or_default();
+                    let plaintext = aead_decrypt(
+                        aead,
+                        &unwrap_secret,
+                        nonce,
+                        authenticated_data,
+                        wrapped_key_bytes,
+                        tag,
+                    )?;
+                    Ok(plaintext)
+                }
+                _ => {
+                    // unwrap using rfc_5649
+                    let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
+                    Ok(plaintext)
+                }
+            }
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
             // convert to an openssl private key

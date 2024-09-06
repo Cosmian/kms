@@ -30,7 +30,7 @@ use crate::{
             certify::{certify, create_self_signed_cert, import_root_and_intermediate, CertifyOp},
             import::{import_certificate, ImportCertificateInput},
         },
-        shared::export_key,
+        shared::{export_key, ExportKeyParams},
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -71,17 +71,16 @@ async fn test_import_export_p12_25519() {
     let tmp_exported_cert_p12 = tmp_dir.path().join("exported_p12_cert.p12");
 
     // export the private key
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &imported_p12_sk,
-        tmp_exported_sk.to_str().unwrap(),
-        Some(JsonTtlv),
-        false,
-        None,
-        false,
-    )
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: imported_p12_sk.clone(),
+        key_file: tmp_exported_sk.to_str().unwrap().to_string(),
+        key_format: Some(JsonTtlv),
+        ..Default::default()
+    })
     .unwrap();
+
     let sk = read_object_from_json_ttlv_file(&tmp_exported_sk).unwrap();
     assert_eq!(
         sk.key_block().unwrap().key_bytes().unwrap().to_vec(),
@@ -238,16 +237,14 @@ async fn test_import_p12_rsa() {
 
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &imported_p12_sk,
-        key_file.to_str().unwrap(),
-        Some(JsonTtlv),
-        false,
-        None,
-        false,
-    )
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: imported_p12_sk,
+        key_file: key_file.to_str().unwrap().to_string(),
+        key_format: Some(JsonTtlv),
+        ..Default::default()
+    })
     .unwrap();
     // export object by object
     let sk = read_object_from_json_ttlv_file(&key_file).unwrap();

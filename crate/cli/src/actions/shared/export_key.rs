@@ -1,15 +1,16 @@
 use std::path::PathBuf;
 
 use base64::Engine;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::KeyFormatType, der_to_pem, export_object, write_bytes_to_file,
-    write_kmip_object_to_file, ClientResultHelper, KmsClient,
+    cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
+    der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper,
+    ExportObjectParams, KmsClient,
 };
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
     JsonTtlv,
     Sec1Pem,
@@ -104,6 +105,22 @@ pub struct ExportKeyAction {
         verbatim_doc_comment
     )]
     allow_revoked: bool,
+
+    /// Block cipher mode
+    #[clap(
+        long = "block-cipher-mode",
+        short = 'm',
+        default_value = None
+    )]
+    block_cipher_mode: Option<BlockCipherMode>,
+
+    /// Authenticated encryption additional data
+    #[clap(
+        long = "authenticated-additional-data",
+        short = 'd',
+        default_value = None,
+    )]
+    authenticated_additional_data: Option<String>,
 }
 
 impl ExportKeyAction {
@@ -123,6 +140,27 @@ impl ExportKeyAction {
             serde_json::to_string(&tags)?
         } else {
             cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let (block_mode, aad) = match self.block_cipher_mode {
+            Some(BlockCipherMode::NISTKeyWrap) | None => {
+                if self.authenticated_additional_data.is_some() {
+                    cli_bail!(
+                        "Authenticated encryption additional data can't be provided using {}",
+                        BlockCipherMode::NISTKeyWrap
+                    )
+                }
+                (None, None)
+            }
+            Some(BlockCipherMode::GCM) => self
+                .authenticated_additional_data
+                .as_ref()
+                .map_or((Some(BlockCipherMode::GCM), None), |aad| {
+                    (Some(BlockCipherMode::GCM), Some(aad))
+                }),
+            Some(mode) => {
+                cli_bail!("Block cipher mode {} is not yet supported", mode)
+            }
         };
 
         let (key_format_type, encode_to_pem) = match self.key_format {
@@ -146,10 +184,14 @@ impl ExportKeyAction {
         let (object, _) = export_object(
             kms_rest_client,
             &id,
-            self.unwrap,
-            self.wrap_key_id.as_deref(),
-            self.allow_revoked,
-            key_format_type,
+            ExportObjectParams {
+                unwrap: self.unwrap,
+                wrapping_key_id: self.wrap_key_id.as_deref(),
+                allow_revoked: self.allow_revoked,
+                key_format_type,
+                block_cipher_mode: block_mode,
+                authenticated_encryption_additional_data: aad.cloned(),
+            },
         )
         .await?;
 

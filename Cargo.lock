@@ -1265,6 +1265,7 @@ dependencies = [
  "argon2",
  "bitflags 2.6.0",
  "chrono",
+ "clap",
  "cloudproof",
  "cosmian_logger",
  "hex",
