@@ -229,7 +229,7 @@ impl Database for RedisWithFindex {
     }
 
     async fn migrate(&self, _params: Option<&ExtraDatabaseParams>) -> KResult<()> {
-        Ok(())
+        unimplemented!("Redis-with-Findex does not support migrate operation");
     }
 
     /// Insert the given Object in the database.
