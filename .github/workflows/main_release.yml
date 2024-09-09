@@ -88,9 +88,10 @@ jobs:
           done
 
       - name: Push to package.cosmian.com
+        shell: bash
         run: |
           set -x
-          if [[ ${GITHUB_REF} = *'refs/tags/'* ]]; then
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
             BRANCH="${GITHUB_REF_NAME}"
           else
             BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
