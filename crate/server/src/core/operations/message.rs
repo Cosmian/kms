@@ -70,11 +70,11 @@ pub(crate) async fn message(
     let response_message = MessageResponse {
         header: MessageResponseHeader {
             protocol_version: request.header.protocol_version,
-            batch_count: response_items.len() as u32,
+            batch_count: u32::try_from(response_items.len())?,
             client_correlation_value: None,
             server_correlation_value: None,
             attestation_type: None,
-            timestamp: chrono::Utc::now().timestamp() as u64,
+            timestamp: u64::try_from(chrono::Utc::now().timestamp())?,
             nonce: None,
             server_hashed_password: None,
         },

@@ -106,9 +106,9 @@ pub(crate) fn generate_key_pair_and_tags(
     Attributes::check_user_tags(&tags)?;
     // Update the tags for the private key and the public key.
     let mut sk_tags = tags.clone();
-    sk_tags.insert("_sk".to_string());
+    sk_tags.insert("_sk".to_owned());
     let mut pk_tags = tags;
-    pk_tags.insert("_pk".to_string());
+    pk_tags.insert("_pk".to_owned());
 
     // Grab whatever attributes were supplied on the  create request.
     let any_attributes = Some(&common_attributes)
@@ -133,7 +133,7 @@ pub(crate) fn generate_key_pair_and_tags(
     // Check that the cryptographic algorithm is specified.
     let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
         KmsError::InvalidRequest(
-            "the cryptographic algorithm must be specified for key pair creation".to_string(),
+            "the cryptographic algorithm must be specified for key pair creation".to_owned(),
         )
     })?;
 
@@ -195,7 +195,7 @@ pub(crate) fn generate_key_pair_and_tags(
                         || cryptographic_algorithm == CryptographicAlgorithm::EC
                     {
                         kms_bail!(KmsError::NotSupported(
-                            "Edwards curve can't be created for EC or ECDSA".to_string()
+                            "Edwards curve can't be created for EC or ECDSA".to_owned()
                         ))
                     }
                     warn!(
@@ -217,7 +217,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     kms_bail!(KmsError::NotSupported(
                         "An Edwards Keypair on curve 25519 should not be requested to perform \
                          Elliptic Curves operations in FIPS mode"
-                            .to_string()
+                            .to_owned()
                     ))
                 }
                 #[cfg(not(feature = "fips"))]
@@ -226,7 +226,7 @@ pub(crate) fn generate_key_pair_and_tags(
                         || cryptographic_algorithm == CryptographicAlgorithm::EC
                     {
                         kms_bail!(KmsError::NotSupported(
-                            "Edwards curve can't be created for EC or ECDSA".to_string()
+                            "Edwards curve can't be created for EC or ECDSA".to_owned()
                         ))
                     }
                     warn!(
@@ -248,7 +248,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     kms_bail!(KmsError::NotSupported(
                         "An Edwards Keypair on curve 448 should not be requested to perform ECDH \
                          in FIPS mode."
-                            .to_string()
+                            .to_owned()
                     ))
                 }
                 other => kms_bail!(KmsError::NotSupported(format!(
@@ -260,7 +260,7 @@ pub(crate) fn generate_key_pair_and_tags(
             let key_size_in_bits = u32::try_from(
                 any_attributes
                     .cryptographic_length
-                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?,
+                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_owned()))?,
             )?;
             trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
 

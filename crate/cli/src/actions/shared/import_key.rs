@@ -111,6 +111,23 @@ pub struct ImportKeyAction {
 }
 
 impl ImportKeyAction {
+    /// Run the import key action.
+    ///
+    /// # Errors
+    ///
+    /// This function can return a [`CliError`] if an error occurs during the import process.
+    ///
+    /// Possible error cases include:
+    ///
+    /// - Failed to read the key file.
+    /// - Failed to parse the key file in the specified format.
+    /// - Invalid key format specified.
+    /// - Failed to assign cryptographic usage mask.
+    /// - Failed to generate import attributes.
+    /// - Failed to import the key.
+    /// - Failed to write the response to stdout.
+    ///
+    /// [`CliError`]: ../error/result/enum.CliError.html
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let cryptographic_usage_mask = self
             .key_usage

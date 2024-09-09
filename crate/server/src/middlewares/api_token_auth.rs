@@ -26,12 +26,8 @@ pub(crate) async fn manage_api_token_request<S, B>(
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
 {
-    trace!("API Token Authentication...");
     match manage_api_token(kms_server, &req).await {
-        Ok(()) => {
-            trace!("API Token Authentication successful");
-            Ok(service.call(req).await?.map_into_left_body())
-        }
+        Ok(()) => Ok(service.call(req).await?.map_into_left_body()),
         Err(e) => {
             error!("{:?} {} 401 unauthorized: {e:?}", req.method(), req.path(),);
             Ok(req
@@ -86,21 +82,15 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
 }
 
 async fn manage_api_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
-    trace!(
-        "Token authentication using this API token ID: {:?}",
-        kms_server.params.api_token_id
-    );
-
     match &kms_server.params.api_token_id {
         Some(api_token_id) => {
+            trace!("Token authentication using this API token ID: {api_token_id}");
             let api_token = get_api_token(&kms_server, api_token_id.as_str()).await?;
 
             let client_token = req
                 .headers()
                 .get(header::AUTHORIZATION)
-                .ok_or_else(|| {
-                    KmsError::InvalidRequest("Missing Authorization header".to_string())
-                })?
+                .ok_or_else(|| KmsError::InvalidRequest("Missing Authorization header".to_owned()))?
                 .to_str()
                 .map_err(|e| {
                     KmsError::InvalidRequest(format!(
@@ -131,7 +121,7 @@ async fn manage_api_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult
                     req.path(),
                 );
                 Err(KmsError::Unauthorized(
-                    "Client and server authentication tokens mismatch".to_string(),
+                    "Client and server authentication tokens mismatch".to_owned(),
                 ))
             }
         }

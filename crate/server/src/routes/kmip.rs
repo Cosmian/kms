@@ -17,7 +17,7 @@ use crate::{
     result::KResult,
 };
 
-/// Generate KMIP generic key pair
+/// Generate KMIP JSON TTLV and send it to the KMIP server
 #[post("/kmip/2_1")]
 pub(crate) async fn kmip(
     req_http: HttpRequest,

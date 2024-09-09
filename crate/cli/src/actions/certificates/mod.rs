@@ -36,6 +36,16 @@ pub enum CertificatesCommands {
 }
 
 impl CertificatesCommands {
+    /// Process the `Certificates` main commands.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn process(&self, client_connector: &KmsClient) -> CliResult<()> {
         match self {
             Self::Certify(action) => action.run(client_connector).await,

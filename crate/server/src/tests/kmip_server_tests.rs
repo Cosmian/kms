@@ -13,6 +13,7 @@ use cosmian_kmip::{
         symmetric::symmetric_key_create_request,
     },
     kmip::{
+        extra::tagging::EMPTY_TAGS,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Get, Import},
@@ -42,7 +43,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -88,14 +89,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(
         attr.link
             .as_ref()
-            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
             .len(),
         1
     );
     let link = &attr
         .link
         .as_ref()
-        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -141,14 +142,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(
         attr.link
             .as_ref()
-            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?
             .len(),
         1
     );
     let link = &attr
         .link
         .as_ref()
-        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_owned()))?[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -159,7 +160,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,
-        CURVE_25519_Q_LENGTH_BITS as u32,
+        u32::try_from(CURVE_25519_Q_LENGTH_BITS)?,
         sk_uid,
         RecommendedCurve::CURVE25519,
         Some(CryptographicAlgorithm::ECDH),
@@ -218,7 +219,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
                 attributes: None,
             },
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(wrapped_symmetric_key.len() as i32 * 8),
+            cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
             key_wrapping_data: Some(Box::new(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 iv_counter_nonce: Some(aesgcm_nonce.to_vec()),
@@ -237,7 +238,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         attributes: Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(wrapped_symmetric_key.len() as i32),
+            cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())?),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
         },
@@ -261,7 +262,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request =
-        symmetric_key_create_request(256, CryptographicAlgorithm::AES, &[] as &[&str]).unwrap();
+        symmetric_key_create_request(256, CryptographicAlgorithm::AES, EMPTY_TAGS).unwrap();
 
     trace!("request: {:?}", request);
     let response = kms.create(request, owner, None).await?;
@@ -305,7 +306,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
@@ -350,7 +351,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    assert!(sk_response.is_err());
+    sk_response.unwrap_err();
 
     let pk_response = kms
         .get(
@@ -364,7 +365,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    assert!(pk_response.is_err());
+    pk_response.unwrap_err();
 
     Ok(())
 }

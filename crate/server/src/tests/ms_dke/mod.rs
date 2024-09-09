@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout)]
+
 use base64::{engine::general_purpose::STANDARD, Engine};
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},

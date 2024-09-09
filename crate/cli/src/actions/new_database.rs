@@ -19,6 +19,16 @@ use crate::error::result::{CliResult, CliResultHelper};
 pub struct NewDatabaseAction;
 
 impl NewDatabaseAction {
+    /// Process the `NewDatabaseAction` by querying the KMS to get a new database.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Query the KMS to get a new database
         let token = kms_rest_client

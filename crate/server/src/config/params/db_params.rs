@@ -63,14 +63,16 @@ impl Display for DbParams {
 }
 
 /// Redact the username and password from the URL for logging purposes
+#[allow(clippy::expect_used)]
 fn redact_url(original: &Url) -> Url {
     let mut url = original.clone();
 
     if url.username() != "" {
-        url.set_username("****").unwrap();
+        url.set_username("****").expect("masking username failed");
     }
     if url.password().is_some() {
-        url.set_password(Some("****")).unwrap();
+        url.set_password(Some("****"))
+            .expect("masking password failed");
     }
 
     url

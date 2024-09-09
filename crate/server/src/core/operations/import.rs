@@ -98,7 +98,7 @@ pub(crate) async fn process_symmetric_key(
         Attributes::check_user_tags(tags)?;
         // Insert the tag corresponding to the object type if tags should be
         // updated.
-        tags.insert("_kk".to_string());
+        tags.insert("_kk".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -139,7 +139,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         Attributes::check_user_tags(tags)?;
         // Insert the tag corresponding to the object type if tags should be
         // updated.
-        tags.insert("_cert".to_string());
+        tags.insert("_cert".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -213,7 +213,7 @@ async fn process_public_key(
     let mut tags = attributes.remove_tags();
     if let Some(tags) = tags.as_mut() {
         Attributes::check_user_tags(tags)?;
-        tags.insert("_pk".to_string());
+        tags.insert("_pk".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -384,7 +384,7 @@ fn private_key_from_openssl(
     let sk_uid = if request_uid.is_empty() {
         Uuid::new_v4().to_string()
     } else {
-        request_uid.to_string()
+        request_uid.to_owned()
     };
 
     let sk_key_block = sk.key_block_mut()?;
@@ -399,7 +399,7 @@ fn private_key_from_openssl(
     );
 
     let sk_tags = user_tags.map(|mut tags| {
-        tags.insert("_sk".to_string());
+        tags.insert("_sk".to_owned());
         tags
     });
     Ok((sk_uid, sk, sk_tags))
@@ -460,7 +460,7 @@ fn process_pkcs12(
     // build the private key
     let (private_key_id, mut private_key, private_key_tags) = {
         let openssl_sk = pkcs12.pkey.ok_or_else(|| {
-            KmsError::InvalidRequest("Private key not found in PKCS12".to_string())
+            KmsError::InvalidRequest("Private key not found in PKCS12".to_owned())
         })?;
         private_key_from_openssl(
             &openssl_sk,
@@ -479,12 +479,12 @@ fn process_pkcs12(
     ) = {
         // Recover the PKCS12 X509 certificate
         let openssl_cert = pkcs12.cert.ok_or_else(|| {
-            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
+            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_owned())
         })?;
 
         // insert the tag corresponding to the object type if tags should be updated
         let mut leaf_certificate_tags = user_tags.clone().unwrap_or_default();
-        leaf_certificate_tags.insert("_cert".to_string());
+        leaf_certificate_tags.insert("_cert".to_owned());
 
         // convert to KMIP
         let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
@@ -504,7 +504,7 @@ fn process_pkcs12(
         for openssl_cert in cas {
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone().unwrap_or_default();
-            chain_certificate_tags.insert("_cert".to_string());
+            chain_certificate_tags.insert("_cert".to_owned());
 
             // convert to KMIP
             let chain_certificate = openssl_certificate_to_kmip(&openssl_cert)?;

@@ -93,7 +93,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
 
     kms_bail!(KmsError::InvalidRequest(
         "Either an issuer certificate id or an issuer private key id or both must be provided"
-            .to_string(),
+            .to_owned(),
     ))
 }
 
@@ -120,7 +120,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
             .attributes
             .get_link(LinkType::PublicKeyLink)
             .ok_or_else(|| {
-                KmsError::InvalidRequest("No public key link found for the private key".to_string())
+                KmsError::InvalidRequest("No public key link found for the private key".to_owned())
             })?;
         find_link_in_public_key(
             LinkType::CertificateLink,
@@ -179,7 +179,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
             .get_link(LinkType::PublicKeyLink)
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
-                    "No private or public key link found for the certificate".to_string(),
+                    "No private or public key link found for the certificate".to_owned(),
                 )
             })?;
         find_link_in_public_key(

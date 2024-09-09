@@ -571,7 +571,7 @@ Encrypt a file using Covercrypt
 ### Arguments
 ` <FILE>` The files to encrypt
 
-` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "department::marketing && level::confidential"`
+` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "`department::marketing` && `level::confidential`"
 
 `--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
 

@@ -553,7 +553,7 @@ impl KMS {
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't grant yourself, you have already all rights on your own objects"
-                    .to_string()
+                    .to_owned()
             ))
         }
 
@@ -595,7 +595,7 @@ impl KMS {
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't revoke yourself, you should keep all rights on your own objects"
-                    .to_string()
+                    .to_owned()
             ))
         }
 

@@ -18,6 +18,9 @@ pub(crate) trait Database {
     /// Return the filename of the database or `None` if not supported
     fn filename(&self, group_id: u128) -> Option<PathBuf>;
 
+    /// Migrate the database to the latest version
+    async fn migrate(&self, params: Option<&ExtraDatabaseParams>) -> KResult<()>;
+
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.

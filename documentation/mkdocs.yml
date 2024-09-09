@@ -52,6 +52,7 @@ nav:
   - Cryptographic algorithms: algorithms.md
   - Enabling TLS: tls.md
   - Logging and telemetry: logging.md
+  - Configuring database: database.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
   - Running in the cloud or any zero-trust environment: zero_trust.md

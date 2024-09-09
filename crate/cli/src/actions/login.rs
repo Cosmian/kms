@@ -48,6 +48,29 @@ use crate::{
 pub struct LoginAction;
 
 impl LoginAction {
+    /// This function processes the login action.
+    /// It loads the client configuration from the specified path, retrieves the `OAuth2` configuration,
+    /// initializes the login state, prompts the user to browse to the authorization URL,
+    /// finalizes the login process by receiving the authorization code and exchanging it for an access token,
+    /// updates the configuration with the access token, and saves the configuration to the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf_path` - The path to the client configuration file.
+    ///
+    /// # Errors
+    ///
+    /// This function can return a `CliError` in the following cases:
+    ///
+    /// * The `login` command requires an Identity Provider (`IdP`) that must be configured in the `oauth2_conf` object in the client configuration file.
+    /// * The client configuration file cannot be loaded.
+    /// * The `OAuth2` configuration is missing or invalid in the client configuration file.
+    /// * The authorization URL cannot be parsed.
+    /// * The authorization code is not received or does not match the CSRF token.
+    /// * The access token cannot be requested from the Identity Provider.
+    /// * The token exchange request fails.
+    /// * The token exchange response cannot be parsed.
+    /// * The client configuration cannot be updated or saved.
     pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
         let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {
@@ -189,6 +212,18 @@ impl LoginState {
     /// This function should be called immediately after the user has been instructed to browse to the authorization URL.
     /// It starts a server on localhost:17899 and waits for the authorization code to be received
     /// from the browser window. Once the code is received, the server is closed and the code is returned.
+    ///
+    /// # Errors
+    ///
+    /// This function can return a `CliError` in the following cases:
+    ///
+    /// * The authorization code, state, or other parameters are not received from the redirect URL.
+    /// * The received state does not match the CSRF token.
+    /// * The authorization code is not received on authentication.
+    /// * The code received on authentication does not match the CSRF token.
+    /// * The access token cannot be requested from the Identity Provider.
+    /// * The token exchange request fails.
+    /// * The token exchange response cannot be parsed.
     pub async fn finalize(&self) -> CliResult<String> {
         // recover the authorization code, state and other parameters from the redirect URL
         let auth_parameters = Self::receive_authorization_parameters()?;
@@ -294,6 +329,20 @@ pub struct OAuthResponse {
 /// not in the `access_token` field.
 ///
 /// For Google see: <https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo>
+///
+/// # Arguments
+///
+/// * `login_config` - The `Oauth2LoginConfig` containing the client configuration.
+/// * `redirect_url` - The redirect URL used in the `OAuth2` flow.
+/// * `pkce_verifier` - The PKCE code verifier used in the `OAuth2` flow.
+/// * `authorization_code` - The authorization code received from the Identity Provider.
+///
+/// # Errors
+///
+/// This function can return a `CliError` in the following cases:
+///
+/// * The token exchange request fails.
+/// * The token exchange response cannot be parsed.
 pub async fn request_token(
     login_config: &Oauth2LoginConfig,
     redirect_url: &Url,

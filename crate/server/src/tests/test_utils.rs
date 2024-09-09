@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::expect_used)]
+
 use std::{env::temp_dir, path::PathBuf, sync::Arc};
 
 use actix_http::Request;
@@ -37,11 +39,11 @@ pub(crate) fn https_clap_config_opts(google_cse_kacls_url: Option<String>) -> Cl
     ClapConfig {
         http: HttpConfig {
             https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
-            https_p12_password: Some("password".to_string()),
+            https_p12_password: Some("password".to_owned()),
             ..Default::default()
         },
         db: DBConfig {
-            database_type: Some("sqlite".to_string()),
+            database_type: Some("sqlite".to_owned()),
             database_url: None,
             sqlite_path,
             clear_database: true,
@@ -104,7 +106,7 @@ where
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
-            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
     let body = read_body(res).await;
@@ -130,7 +132,7 @@ where
     if res.status() != StatusCode::OK {
         kms_bail!(
             "{}",
-            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_string())
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
         );
     }
     println!("OK before bytes");

@@ -51,7 +51,6 @@ where
     type Transform = AuthMiddleware<S>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        debug!("JWT/Token Authentication enabled");
         ok(AuthMiddleware {
             service: Rc::new(service),
             jwt_configurations: self.jwt_configurations.clone(),
@@ -76,8 +75,8 @@ where
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
 
-    fn poll_ready(&self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
+    fn poll_ready(&self, ctx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(ctx)
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {

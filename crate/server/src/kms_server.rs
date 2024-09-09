@@ -171,6 +171,10 @@ async fn start_https_kms_server(
  * Returns a `Result` type that contains a `Server` instance if successful, or an error if
  * something went wrong.
  *
+ * # Errors
+ *
+ * This function can return the following errors:
+ * - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
  */
 pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
@@ -227,7 +231,7 @@ pub async fn prepare_kms_server(
     let google_cse_jwt_config = if enable_google_cse {
         let Some(jwks_manager) = jwks_manager else {
             return Err(KmsError::ServerError(
-                "No JWKS manager to handle Google CSE JWT authorization".to_string(),
+                "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
         Some(GoogleCseConfig {

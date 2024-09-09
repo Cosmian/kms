@@ -81,7 +81,7 @@ pub(crate) async fn validate_operation(
     {
         (None, None) => {
             return Err(KmsError::Certificate(
-                "Empty chain cannot be validated".to_string(),
+                "Empty chain cannot be validated".to_owned(),
             ));
         }
         (None, Some(certificates)) => Ok::<_, KmsError>((certificates.clone(), certificates.len())),
@@ -112,7 +112,7 @@ pub(crate) async fn validate_operation(
         return Err(KmsError::Certificate(
             "Number of certificates found in database and number of certificates in request do \
              not match"
-                .to_string(),
+                .to_owned(),
         ));
     };
 
@@ -249,7 +249,7 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
     if sorted_chains.is_empty() {
         return Err(KmsError::Certificate(
-            "No root authority found, cannot proceed full chain validation".to_string(),
+            "No root authority found, cannot proceed full chain validation".to_owned(),
         ));
     }
 
@@ -310,7 +310,7 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 
     if sorted_chains.len() != certificates.len() {
         return Err(KmsError::Certificate(
-            "Failed to sort the certificates. Certificate chain incomplete?".to_string(),
+            "Failed to sort the certificates. Certificate chain incomplete?".to_owned(),
         ));
     }
 
@@ -343,7 +343,7 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
 fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     if certificates.is_empty() {
         return Err(KmsError::Certificate(
-            "Certificate chain is empty".to_string(),
+            "Certificate chain is empty".to_owned(),
         ));
     }
 
@@ -352,7 +352,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
 
     // Get leaf
     let leaf = certificates.last().ok_or_else(|| {
-        KmsError::Certificate("Failed to get last element of the chain".to_string())
+        KmsError::Certificate("Failed to get last element of the chain".to_owned())
     })?;
 
     // Add authorities to the store
@@ -378,7 +378,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
 
     if !result {
         return Err(KmsError::Certificate(
-            "Result of the function verify_cert: {result:?}".to_string(),
+            "Result of the function verify_cert: {result:?}".to_owned(),
         ));
     }
 
@@ -386,7 +386,7 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
     let mut issuer_public_key = certificates
         .first()
         .ok_or_else(|| {
-            KmsError::Certificate("Failed to get the first element of the chain".to_string())
+            KmsError::Certificate("Failed to get the first element of the chain".to_owned())
         })?
         .public_key()?;
     for cert in certificates {
@@ -441,10 +441,10 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
         } else {
             let path_buf = path::Path::new(&uri).canonicalize()?;
             match path_buf.to_str() {
-                Some(s) => Some(UriType::Path(s.to_string())),
+                Some(s) => Some(UriType::Path(s.to_owned())),
                 None => {
                     return Err(KmsError::Certificate(
-                        "The uri provided is invalid".to_string(),
+                        "The uri provided is invalid".to_owned(),
                     ))
                 }
             }
@@ -499,7 +499,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
             }
             _ => {
                 return Err(KmsError::Certificate(
-                    "Error that should not manifest".to_string(),
+                    "Error that should not manifest".to_owned(),
                 ))
             }
         };
@@ -555,7 +555,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                 debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
                     return Err(KmsError::Certificate(
-                        "Certificate is revoked or removed from CRL".to_string(),
+                        "Certificate is revoked or removed from CRL".to_owned(),
                     ));
                 }
             }
@@ -571,8 +571,8 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                     .and_then(|x| x.get(0))
                     .and_then(GeneralNameRef::uri);
                 if let Some(crl_uri) = crl_uri {
-                    if !uri_list.contains(&crl_uri.to_string()) {
-                        uri_list.push(crl_uri.to_string());
+                    if !uri_list.contains(&crl_uri.to_owned()) {
+                        uri_list.push(crl_uri.to_owned());
                         trace!("Found CRL URI: {crl_uri}");
                     }
                 }
@@ -602,7 +602,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                 debug!("Revocation status: result: {res:?}");
                 if res == ValidityIndicator::Invalid {
                     return Err(KmsError::Certificate(
-                        "Certificate is revoked or removed from CRL".to_string(),
+                        "Certificate is revoked or removed from CRL".to_owned(),
                     ));
                 }
             }
@@ -624,7 +624,7 @@ async fn certificates_by_uid(
     let mut results = Vec::new();
     for unique_identifier in unique_identifiers {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
-            KmsError::Certificate("as_str returned None in certificates_by_uid".to_string())
+            KmsError::Certificate("as_str returned None in certificates_by_uid".to_owned())
         })?;
         let result = certificate_by_uid(unique_identifier, kms, user, params).await?;
         results.push(result);

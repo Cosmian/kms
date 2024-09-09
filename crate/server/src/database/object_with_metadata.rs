@@ -62,7 +62,8 @@ impl TryFrom<&SqliteRow> for ObjectWithMetadata {
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let attributes = serde_json::from_str(&row.get::<String, _>(2))?;
+        let raw_attributes = row.get::<Value, _>(2);
+        let attributes = serde_json::from_value(raw_attributes)?;
         let owner = row.get::<String, _>(3);
         let state = state_from_string(&row.get::<String, _>(4))?;
         let raw_permissions = row.get::<Vec<u8>, _>(5);

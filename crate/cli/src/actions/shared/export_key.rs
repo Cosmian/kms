@@ -108,6 +108,14 @@ pub struct ExportKeyAction {
 
 impl ExportKeyAction {
     /// Export a key from the KMS
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if:
+    ///
+    /// - Either `--key-id` or one or more `--tag` is not specified.
+    /// - There is a server error while exporting the object.
+    ///
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()

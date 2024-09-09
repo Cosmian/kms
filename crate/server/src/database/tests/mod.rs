@@ -1,6 +1,10 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::path::PathBuf;
 
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_logger::log_utils::log_init;
+use tempfile::TempDir;
 
 use self::{
     additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
@@ -35,7 +39,7 @@ fn get_redis_url() -> String {
     if let Ok(var_env) = std::env::var("REDIS_HOST") {
         format!("redis://{var_env}:6379")
     } else {
-        "redis://localhost:6379".to_string()
+        "redis://localhost:6379".to_owned()
     }
 }
 
@@ -131,8 +135,8 @@ pub(crate) async fn test_sql_cipher() -> KResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_sqlite() -> KResult<()> {
-    find_attributes(&get_sqlite().await?).await?;
     json_access(&get_sqlite().await?).await?;
+    find_attributes(&get_sqlite().await?).await?;
     owner(&get_sqlite().await?).await?;
     permissions(&get_sqlite().await?).await?;
     tags(&get_sqlite().await?, true).await?;
@@ -159,14 +163,35 @@ pub(crate) async fn test_pgsql() -> KResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_mysql() -> KResult<()> {
-    crud(&get_mysql().await?).await?;
-    upsert(&get_mysql().await?).await?;
-    tx_and_list(&get_mysql().await?).await?;
-    atomic(&get_mysql().await?).await?;
+    log_init(None);
     json_access(&get_mysql().await?).await?;
     find_attributes(&get_mysql().await?).await?;
     owner(&get_mysql().await?).await?;
     permissions(&get_mysql().await?).await?;
     tags(&get_mysql().await?, true).await?;
+    tx_and_list(&get_mysql().await?).await?;
+    atomic(&get_mysql().await?).await?;
+    upsert(&get_mysql().await?).await?;
+    crud(&get_mysql().await?).await?;
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_migrate_sqlite() -> KResult<()> {
+    log_init(None);
+    for sqlite_path in [
+        "src/tests/migrate/kms_4.12.0.sqlite",
+        "src/tests/migrate/kms_4.16.0.sqlite",
+        "src/tests/migrate/kms_4.17.0.sqlite",
+    ] {
+        let tmp_dir = TempDir::new().unwrap();
+        let tmp_path = tmp_dir.path();
+        let tmp_file_path = tmp_path.join("kms.db");
+        if tmp_file_path.exists() {
+            std::fs::remove_file(&tmp_file_path)?;
+        }
+        std::fs::copy(sqlite_path, &tmp_file_path)?;
+        SqlitePool::instantiate(&tmp_file_path, false).await?;
+    }
     Ok(())
 }

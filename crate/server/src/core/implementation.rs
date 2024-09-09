@@ -60,7 +60,7 @@ impl KMS {
                 DbParams::RedisFindex(url, master_key, label) => {
                     // There is no reason to keep a copy of the key in the shared config
                     // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
-                    // and zerorize the one in the shared config
+                    // and zeroize the one in the shared config
                     let new_master_key =
                         Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
                             &mut master_key.to_bytes(),
@@ -94,7 +94,7 @@ impl KMS {
         // check that the cryptographic algorithm is specified
         let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
-                "the cryptographic algorithm must be specified for secret key creation".to_string(),
+                "the cryptographic algorithm must be specified for secret key creation".to_owned(),
             )
         })?;
 
@@ -102,7 +102,7 @@ impl KMS {
         let mut tags = attributes.get_tags();
         Attributes::check_user_tags(&tags)?;
         //update the tags
-        tags.insert("_kk".to_string());
+        tags.insert("_kk".to_owned());
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
@@ -115,14 +115,15 @@ impl KMS {
             | CryptographicAlgorithm::SHAKE128
             | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
                 None => Err(KmsError::InvalidRequest(
-                    "Unable to create a symmetric key, the format type is not specified"
-                        .to_string(),
+                    "Unable to create a symmetric key, the format type is not specified".to_owned(),
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
-                    let key_len: usize = attributes
+                    let key_len = attributes
                         .cryptographic_length
-                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
+                        .map(|len| usize::try_from(len / 8))
+                        .transpose()?
+                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v);
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rand_bytes(&mut symmetric_key)?;
                     let object =
@@ -159,8 +160,7 @@ impl KMS {
         // check that the cryptographic algorithm is specified
         let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
-                "the cryptographic algorithm must be specified for private key creation"
-                    .to_string(),
+                "the cryptographic algorithm must be specified for private key creation".to_owned(),
             )
         })?;
 
@@ -168,7 +168,7 @@ impl KMS {
         let mut tags = attributes.get_tags();
         Attributes::check_user_tags(&tags)?;
         //update the tags
-        tags.insert("_uk".to_string());
+        tags.insert("_uk".to_owned());
 
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {

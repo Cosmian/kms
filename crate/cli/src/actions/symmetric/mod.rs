@@ -18,6 +18,16 @@ pub enum SymmetricCommands {
 }
 
 impl SymmetricCommands {
+    /// Process the symmetric command and execute the corresponding action.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if any of the underlying actions encounter an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client used for communication with the KMS service.
+    ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,

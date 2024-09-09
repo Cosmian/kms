@@ -20,6 +20,16 @@ pub enum GoogleCommands {
 }
 
 impl GoogleCommands {
+    /// Process the Google command by delegating the execution to the appropriate subcommand.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf_path` - The path to the configuration file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `CliResult` indicating the success or failure of the command.
+    ///
     pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         match self {
             Self::Keypairs(command) => command.process(conf_path).await?,

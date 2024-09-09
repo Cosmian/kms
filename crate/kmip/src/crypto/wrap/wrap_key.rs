@@ -197,7 +197,7 @@ fn wrap_with_public_key(
     match public_key.id() {
         Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(&public_key, key_to_wrap),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, key_to_wrap),
         other => Err(kmip_error!(
             "Unable to wrap key: wrapping public key type not supported: {other:?}"
         )),

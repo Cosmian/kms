@@ -6,7 +6,7 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{kmip::extra::tagging::EMPTY_TAGS, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
@@ -78,7 +78,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             Some(128),
             None,
             None,
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  AES 256 bit key from a base64 encoded key
         rng.fill_bytes(&mut key);
@@ -88,7 +88,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             None,
             Some(&key_b64),
             None,
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
 
@@ -100,7 +100,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             None,
             None,
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         // ChaCha20 128 bit key
         create_symmetric_key(
@@ -108,7 +108,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             Some(128),
             None,
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  ChaCha20 256 bit key from a base64 encoded key
         let mut rng = CsRng::from_entropy();
@@ -120,7 +120,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             None,
             Some(&key_b64),
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
 
@@ -132,7 +132,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             None,
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         // ChaCha20 salts
         create_symmetric_key(
@@ -140,28 +140,28 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             Some(224),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(256),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(384),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(512),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  ChaCha20 256 bit salt from a base64 encoded salt
         let mut rng = CsRng::from_entropy();
@@ -173,7 +173,7 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
             None,
             Some(&key_b64),
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
     Ok(())

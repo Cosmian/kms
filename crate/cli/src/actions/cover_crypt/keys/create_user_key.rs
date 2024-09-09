@@ -54,7 +54,7 @@ pub struct CreateUserKeyAction {
 
     /// The access policy as a boolean expression combining policy attributes.
     ///
-    /// Example: "(Department::HR || Department::MKG) && Security Level::Confidential"
+    /// Example: "(`Department::HR` || `Department::MKG`) && Security `Level::Confidential`"
     #[clap(required = true)]
     access_policy: String,
 

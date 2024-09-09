@@ -78,6 +78,21 @@ pub struct GetAttributesAction {
 }
 
 impl GetAttributesAction {
+    /// Get the KMIP object attributes and tags.
+    ///
+    /// When using tags to retrieve the object, rather than the object id,
+    /// an error is returned if multiple objects matching the tags are found.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if:
+    ///
+    /// - The `--id` or one or more `--tag` options is not specified.
+    /// - There is an error serializing the tags to a string.
+    /// - There is an error performing the Get Attributes request.
+    /// - There is an error serializing the attributes to JSON.
+    /// - There is an error writing the attributes to the output file.
+    /// - There is an error writing to the console.
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         trace!("GetAttributesAction: {:?}", self);
         let id = if let Some(key_id) = &self.id {

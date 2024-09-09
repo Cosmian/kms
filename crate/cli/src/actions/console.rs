@@ -90,53 +90,78 @@ impl Stdout {
         self.object_owned = Some(object_owned);
     }
 
+    /// Writes the output to the console.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an issue with writing to the console.
     pub fn write(&self) -> CliResult<()> {
+        // Check if the output format should be JSON
         let json_format_from_env = std::env::var(KMS_CLI_FORMAT)
             .unwrap_or_else(|_| CLI_DEFAULT_FORMAT.to_string())
             .to_lowercase()
             == CLI_JSON_FORMAT;
 
         if json_format_from_env {
+            // Serialize the output as JSON and print it
             let console_stdout = serde_json::to_string_pretty(&self)?;
             println!("{console_stdout}");
         } else {
+            // Print the output in text format
             if !self.stdout.is_empty() {
                 println!("{}", self.stdout);
             }
 
+            // Print the unique identifier if present
             if let Some(id) = &self.unique_identifier {
                 println!("\t  Unique identifier: {id}");
             }
+
+            // Print the list of unique identifiers if present
             if let Some(ids) = &self.unique_identifiers {
                 for id in ids {
                     println!("{id}");
                 }
             }
+
+            // Print the public key unique identifier if present
             if let Some(id) = &self.public_key_unique_identifier {
                 println!("\t  Public key unique identifier: {id}");
             }
+
+            // Print the private key unique identifier if present
             if let Some(id) = &self.private_key_unique_identifier {
                 println!("\t  Private key unique identifier: {id}");
             }
+
+            // Print the attributes if present
             if let Some(attributes) = &self.attributes {
                 let json = serde_json::to_string_pretty(attributes)?;
                 println!("{json}");
             }
+
+            // Print the list of accesses if present
             if let Some(accesses) = &self.accesses {
                 for access in accesses {
                     println!(" - {}: {:?}", access.user_id, access.operations);
                 }
             }
+
+            // Print the list of access rights obtained if present
             if let Some(access_rights_obtained) = &self.access_rights_obtained {
                 for access in access_rights_obtained {
                     println!("{access}");
                 }
             }
+
+            // Print the list of objects owned if present
             if let Some(object_owned) = &self.object_owned {
                 for obj in object_owned {
                     println!("{obj}");
                 }
             }
+
+            // Print the list of tags if present
             if let Some(t) = &self.tags {
                 if !t.is_empty() {
                     println!("\n  Tags:");

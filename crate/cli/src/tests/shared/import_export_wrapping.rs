@@ -15,6 +15,7 @@ use cosmian_kms_client::{
             },
         },
     },
+    kmip::extra::tagging::EMPTY_TAGS,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use kms_test_server::start_default_test_kms_server;
@@ -96,7 +97,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
         None,
         None,
         None,
-        &[] as &[&str],
+        &EMPTY_TAGS,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -192,7 +193,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         None,
         None,
         None,
-        &[] as &[&str],
+        &EMPTY_TAGS,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,

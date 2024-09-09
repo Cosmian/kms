@@ -64,7 +64,7 @@ impl PolicyCommands {
             Self::View(action) => action.run(kms_rest_client).await?,
             Self::Specs(action) => action.run(kms_rest_client).await?,
             Self::Binary(action) => action.run(kms_rest_client).await?,
-            Self::Create(action) => action.run().await?,
+            Self::Create(action) => action.run()?,
             Self::AddAttribute(action) => action.run(kms_rest_client).await?,
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
@@ -125,7 +125,7 @@ pub struct CreateAction {
 }
 
 impl CreateAction {
-    pub async fn run(&self) -> CliResult<()> {
+    pub fn run(&self) -> CliResult<()> {
         // Parse the json policy file
         let policy = policy_from_json_file(&self.policy_specifications_file)?;
 
@@ -524,6 +524,7 @@ impl RemoveAttributeAction {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_statements)]
 mod tests {
     use std::path::PathBuf;
 

@@ -29,7 +29,7 @@ impl CseErrorReply {
     fn from(e: &KmsError) -> Self {
         Self {
             code: e.status_code().as_u16(),
-            message: "A CSE request to the Cosmian KMS failed".to_string(),
+            message: "A CSE request to the Cosmian KMS failed".to_owned(),
             details: e.to_string(),
         }
     }

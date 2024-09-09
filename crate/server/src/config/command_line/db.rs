@@ -201,7 +201,7 @@ impl DBConfig {
 
 fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
     let url = if let Some(url) = database_url {
-        Ok(url.to_string())
+        Ok(url.to_owned())
     } else {
         std::env::var(alternate_env_variable).map_err(|_e| {
             kms_error!(
@@ -220,7 +220,7 @@ fn ensure_value(
     env_variable_name: &str,
 ) -> KResult<String> {
     if let Some(value) = value {
-        Ok(value.to_string())
+        Ok(value.to_owned())
     } else {
         std::env::var(env_variable_name).map_err(|_e| {
             kms_error!(

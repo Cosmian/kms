@@ -25,6 +25,16 @@ pub enum CovercryptCommands {
 }
 
 impl CovercryptCommands {
+    /// Process the Covercrypt command and execute the corresponding action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client used for communication with the KMS service.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if any of the underlying actions encounter an error.
+    ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Policy(command) => command.process(kms_rest_client).await?,

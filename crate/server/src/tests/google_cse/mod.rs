@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::panic_in_result_fn)]
+
 use std::{
     fs::File,
     io::Read,
@@ -70,7 +72,7 @@ fn import_google_cse_symmetric_key() -> Import {
     let object = read_object_from_json_ttlv_bytes(&symmetric_key).unwrap();
 
     let request = Import {
-        unique_identifier: UniqueIdentifier::TextString("google_cse".to_string()),
+        unique_identifier: UniqueIdentifier::TextString("google_cse".to_owned()),
         object_type: object.object_type(),
         replace_existing: Some(false),
         key_wrap_type: None,
@@ -140,7 +142,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
     let jwt = generate_google_jwt().await;
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_string())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     let import_request = import_google_cse_symmetric_key();
     tracing::debug!("import_request created");
@@ -150,8 +152,8 @@ async fn test_cse_private_key_sign() -> KResult<()> {
 
     tracing::debug!("grant post");
     let access = Access {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
-        user_id: "*".to_string(),
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
+        user_id: "*".to_owned(),
         operation_types: vec![
             ObjectOperationType::Create,
             ObjectOperationType::Destroy,
@@ -173,11 +175,11 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     let pksr = PrivateKeySignRequest {
         authentication: jwt.clone(),
         authorization: jwt,
-        algorithm: "SHA256withRSA".to_string(),
-        digest: digest.to_string(),
+        algorithm: "SHA256withRSA".to_owned(),
+        digest: digest.to_owned(),
         rsa_pss_salt_length: None,
-        reason: "Gmail".to_string(),
-        wrapped_private_key: wrapped_private_key.to_string(),
+        reason: "Gmail".to_owned(),
+        wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
     tracing::debug!("private key sign request post");
@@ -215,7 +217,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
 
     let jwt = generate_google_jwt().await;
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_string())).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     let path = std::env::current_dir()?;
     println!("The current directory is {}", path.display());
@@ -251,8 +253,8 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
 
     tracing::debug!("grant post");
     let access = Access {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_string())),
-        user_id: "*".to_string(),
+        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
+        user_id: "*".to_owned(),
         operation_types: vec![
             ObjectOperationType::Create,
             ObjectOperationType::Destroy,
@@ -273,12 +275,12 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let request = PrivateKeyDecryptRequest {
         authentication: jwt.clone(),
         authorization: jwt,
-        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
+        algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
         encrypted_data_encryption_key: general_purpose::STANDARD
             .encode(encrypted_data_encryption_key),
         rsa_oaep_label: None,
-        reason: "Gmail".to_string(),
-        wrapped_private_key: wrapped_private_key.to_string(),
+        reason: "Gmail".to_owned(),
+        wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
     tracing::debug!("private key decrypt request post");

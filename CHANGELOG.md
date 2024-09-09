@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.18.0] - 2024-09-XX
+
+### 🚀 Features
+
+- Add ReKey KMIP operation ([#294](https://github.com/Cosmian/kms/pull/294))
+- Add API token authentication between server and clients ([#290](https://github.com/Cosmian/kms/pull/290))
+- Build a generic database upgrade mechanism ([#299](https://github.com/Cosmian/kms/pull/299))
+
+### 🐛 Bug Fixes
+
+- KMIP Attributes:
+  * In get_attributes, use attributes from ObjectWithMetadata instead of Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
+  * When inserting in db, force Object::Attributes to be synced with Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
+- Certificates handling/tasks:
+  * **Validate** KMIP operation:
+    - Simplify getting CRLs and get returned errors ([#268](https://github.com/Cosmian/kms/pull/268))
+    - Validate certificate generation ([#283](https://github.com/Cosmian/kms/pull/283))
+    - Use certificate file path in ckms arguments ([#292](https://github.com/Cosmian/kms/pull/292))
+  * **Certify** KMIP operation: Server must sign x509 after adding X509 extensions ([#282](https://github.com/Cosmian/kms/pull/282))
+- Merge decrypt match in same function ([#295](https://github.com/Cosmian/kms/pull/295))
+- Fix Public RSA Key size in get attributes ([#275](https://github.com/Cosmian/kms/pull/275))
+- RUSTSEC:
+  * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
+  * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291) and [#297](https://github.com/Cosmian/kms/pull/297))
+
+### ⚙️ Miscellaneous Tasks
+
+- **clippy** tasks:
+  * Only expose pub functions that need to be public ([#277](https://github.com/Cosmian/kms/pull/277))
+  * Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
+- Rename MacOS artifacts giving CPU architecture
+- Configure `ckms` to build reqwest with minimal idle connections reuse ([#272](https://github.com/Cosmian/kms/pull/272))
+- Do not delete tags if none are provided ([#276](https://github.com/Cosmian/kms/pull/276))
+
 ## [4.17.0] - 2024-07-05
 
 ### 🚀 Features

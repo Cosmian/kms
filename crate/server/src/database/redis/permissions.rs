@@ -29,8 +29,8 @@ pub(crate) struct Triple {
 impl Triple {
     pub(crate) fn new(obj_uid: &str, user_id: &str, permission: ObjectOperationType) -> Self {
         Self {
-            obj_uid: obj_uid.to_string(),
-            user_id: user_id.to_string(),
+            obj_uid: obj_uid.to_owned(),
+            user_id: user_id.to_owned(),
             permission,
         }
     }
@@ -82,8 +82,8 @@ impl TryFrom<&Location> for Triple {
             KmsError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         Ok(Self {
-            obj_uid: uid.to_string(),
-            user_id: user_id.to_string(),
+            obj_uid: uid.to_owned(),
+            user_id: user_id.to_owned(),
             permission: serde_json::from_str(permission)?,
         })
     }
