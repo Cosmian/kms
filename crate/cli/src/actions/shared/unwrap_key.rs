@@ -93,7 +93,7 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)?
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(kms_rest_client, key_id, ExportObjectParams::default())
                 .await?

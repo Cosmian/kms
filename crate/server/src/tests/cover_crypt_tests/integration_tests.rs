@@ -237,7 +237,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let ap_to_edit = "Department::MKG".to_owned();
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
+        &RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -312,7 +312,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Prune old keys associated to the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::PruneAccessPolicy(ap_to_edit),
+        &RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -344,7 +344,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::AddAttribute(new_policy_attributes),
+        &RekeyEditAction::AddAttribute(new_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -376,7 +376,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
+        &RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -405,7 +405,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let disable_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::DisableAttribute(disable_policy_attributes),
+        &RekeyEditAction::DisableAttribute(disable_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -435,7 +435,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let remove_policy_attributes = vec![Attribute::from(("Department", "HumanResources"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RemoveAttribute(remove_policy_attributes),
+        &RekeyEditAction::RemoveAttribute(remove_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

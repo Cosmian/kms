@@ -76,7 +76,7 @@ impl Backend for CkmsBackend {
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
             &self.kms_client,
-            &[disk_encryption_tag, "_cert".to_string()],
+            &[disk_encryption_tag, "_cert".to_owned()],
             Some(KeyFormatType::X509),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
@@ -110,7 +110,7 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         Ok(
-            locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])?
+            locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_owned()])?
                 .into_iter()
                 .map(|id| {
                     Arc::new(Pkcs11PrivateKey::new(id, RemoteObjectType::PrivateKey))
@@ -139,8 +139,8 @@ impl Backend for CkmsBackend {
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
             &self.kms_client,
-            &[disk_encryption_tag, "_kk".to_string()],
-            Some(KeyFormatType::Raw), // that is the default format type
+            &[disk_encryption_tag, "_kk".to_owned()],
+            Some(KeyFormatType::Raw),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
@@ -188,7 +188,7 @@ impl PrivateKey for EmptyPrivateKeyImpl {
     }
 
     fn label(&self) -> String {
-        "PrivateKeyImpl".to_string()
+        "PrivateKeyImpl".to_owned()
     }
 
     fn sign(

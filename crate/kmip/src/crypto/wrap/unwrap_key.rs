@@ -143,30 +143,27 @@ pub(crate) fn unwrap(
                 .and_then(|parameters| parameters.block_cipher_mode);
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
 
-            match block_cipher_mode {
-                Some(BlockCipherMode::GCM) => {
-                    // unwrap using aes Gcm
-                    let len = ciphertext.len();
-                    let aead = AeadCipher::Aes256Gcm;
-                    let nonce = &ciphertext[..NONCE_LENGTH];
-                    let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
-                    let tag = &ciphertext[len - TAG_LENGTH..];
-                    let authenticated_data = aad.unwrap_or_default();
-                    let plaintext = aead_decrypt(
-                        aead,
-                        &unwrap_secret,
-                        nonce,
-                        authenticated_data,
-                        wrapped_key_bytes,
-                        tag,
-                    )?;
-                    Ok(plaintext)
-                }
-                _ => {
-                    // unwrap using rfc_5649
-                    let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
-                    Ok(plaintext)
-                }
+            if block_cipher_mode == Some(BlockCipherMode::GCM) {
+                // unwrap using aes Gcm
+                let len = ciphertext.len();
+                let aead = AeadCipher::Aes256Gcm;
+                let nonce = &ciphertext[..NONCE_LENGTH];
+                let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
+                let tag = &ciphertext[len - TAG_LENGTH..];
+                let authenticated_data = aad.unwrap_or_default();
+                let plaintext = aead_decrypt(
+                    aead,
+                    &unwrap_secret,
+                    nonce,
+                    authenticated_data,
+                    wrapped_key_bytes,
+                    tag,
+                )?;
+                Ok(plaintext)
+            } else {
+                // unwrap using rfc_5649
+                let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
+                Ok(plaintext)
             }
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {

@@ -62,7 +62,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     // plaintext no auth
     let ctx = start_test_server_with_options(
         DBConfig {
-            database_type: Some("sqlite".to_string()),
+            database_type: Some("sqlite".to_owned()),
             sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
             clear_database: true,
             ..DBConfig::default()
@@ -83,7 +83,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     ctx.stop_server().await?;
 
     let default_db_config = DBConfig {
-        database_type: Some("sqlite".to_string()),
+        database_type: Some("sqlite".to_owned()),
         sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
         clear_database: false,
         ..DBConfig::default()
@@ -145,8 +145,8 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             use_jwt_token: true,
             use_https: true,
             use_client_cert: false,
-            api_token_id: Some("my_bad_token_id".to_string()),
-            api_token: Some("my_bad_token".to_string()),
+            api_token_id: Some("my_bad_token_id".to_owned()),
+            api_token: Some("my_bad_token".to_owned()),
         },
     )
     .await?;
@@ -177,8 +177,8 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             use_jwt_token: false,
             use_https: true,
             use_client_cert: true,
-            api_token_id: Some("my_bad_token_id".to_string()),
-            api_token: Some("my_bad_token".to_string()),
+            api_token_id: Some("my_bad_token_id".to_owned()),
+            api_token: Some("my_bad_token".to_owned()),
         },
     )
     .await?;
@@ -193,8 +193,8 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             use_jwt_token: true,
             use_https: true,
             use_client_cert: true,
-            api_token_id: Some("my_bad_token_id".to_string()),
-            api_token: Some("my_bad_token".to_string()),
+            api_token_id: Some("my_bad_token_id".to_owned()),
+            api_token: Some("my_bad_token".to_owned()),
         },
     )
     .await?;

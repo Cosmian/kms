@@ -50,7 +50,7 @@ pub fn wrapped_secret_key(
         ..Attributes::default()
     };
 
-    let cryptographic_length = sk.encrypted_symmetric_key.len() as i32 * 8;
+    let cryptographic_length = Some(i32::try_from(sk.encrypted_symmetric_key.len())? * 8);
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(sk.encrypted_symmetric_key)),
         attributes: Some(Box::new(wrapped_key_attributes)),
@@ -67,7 +67,7 @@ pub fn wrapped_secret_key(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value,
-            cryptographic_length: Some(cryptographic_length),
+            cryptographic_length,
             key_wrapping_data: Some(Box::new(key_wrapping_data)),
         },
     })
@@ -103,7 +103,7 @@ fn prepare_symmetric_key(
     let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
         KmipError::InvalidKmipObject(
             ErrorReason::Attribute_Not_Found,
-            "the master public key does not have attributes with the Policy".to_string(),
+            "the master public key does not have attributes with the Policy".to_owned(),
         )
     })?)?;
 
@@ -138,14 +138,14 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
         {
             return Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Data_Type,
-                "this Secret Key does not contain an CoverCrypt key".to_string(),
+                "this Secret Key does not contain an CoverCrypt key".to_owned(),
             ))
         }
 
         if sk.key_wrapping_data.is_some() {
             return Err(KmipError::KmipNotSupported(
                 ErrorReason::Key_Wrap_Type_Not_Supported,
-                "unwrapping an CoverCrypt Secret Key is not yet supported".to_string(),
+                "unwrapping an CoverCrypt Secret Key is not yet supported".to_owned(),
             ))
         }
         serde_json::from_slice::<Self>(match &sk.key_value.key_material {

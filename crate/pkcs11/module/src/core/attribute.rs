@@ -374,7 +374,7 @@ impl Attributes {
     pub fn get_class(&self) -> MResult<CK_OBJECT_CLASS> {
         match self.get(AttributeType::Class) {
             Some(Attribute::Class(class)) => Ok(*class),
-            None => Err(MError::Todo("get_class: no class attribute".to_string())),
+            None => Err(MError::Todo("get_class: no class attribute".to_owned())),
             other => Err(MError::Todo(format!(
                 "get_class: unexpected attribute value: {other:?}, on class attribute type"
             ))),

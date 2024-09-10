@@ -39,7 +39,7 @@ pub(crate) async fn find_attributes<DB: Database>(
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let mut symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES)?;
 
     let uid = Uuid::new_v4().to_string();
 

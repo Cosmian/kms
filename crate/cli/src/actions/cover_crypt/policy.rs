@@ -132,7 +132,7 @@ impl CreateAction {
 
         // write the binary file
         write_json_object_to_file(&policy, &self.policy_binary_file)
-            .with_context(|| "failed writing the policy binary file".to_string())?;
+            .with_context(|| "failed writing the policy binary file".to_owned())?;
 
         let stdout = format!(
             "The binary policy file was generated in {:?}.",
@@ -341,7 +341,7 @@ impl AddAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            RekeyEditAction::AddAttribute(vec![(attr, enc_hint)]),
+            &RekeyEditAction::AddAttribute(vec![(attr, enc_hint)]),
         )?;
 
         // Query the KMS with your kmip data
@@ -402,7 +402,7 @@ impl RenameAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            RekeyEditAction::RenameAttribute(vec![(attr, self.new_name.clone())]),
+            &RekeyEditAction::RenameAttribute(vec![(attr, self.new_name.clone())]),
         )?;
 
         // Query the KMS with your kmip data
@@ -455,7 +455,7 @@ impl DisableAttributeAction {
 
         // Create the kmip query
         let rekey_query =
-            build_rekey_keypair_request(&id, RekeyEditAction::DisableAttribute(vec![attr]))?;
+            build_rekey_keypair_request(&id, &RekeyEditAction::DisableAttribute(vec![attr]))?;
 
         // Query the KMS with your kmip data
         let rekey_response = kms_rest_client
@@ -510,7 +510,7 @@ impl RemoveAttributeAction {
 
         // Create the kmip query
         let rekey_query =
-            build_rekey_keypair_request(&id, RekeyEditAction::RemoveAttribute(vec![attr]))?;
+            build_rekey_keypair_request(&id, &RekeyEditAction::RemoveAttribute(vec![attr]))?;
 
         // Query the KMS with your kmip data
         let rekey_response = kms_rest_client

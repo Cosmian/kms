@@ -291,9 +291,9 @@ pub(crate) fn generate_key_pair_and_tags(
             &Covercrypt::default(),
             private_key_uid,
             public_key_uid,
-            Some(common_attributes),
-            request.private_key_attributes,
-            request.public_key_attributes,
+            &Some(common_attributes),
+            &request.private_key_attributes,
+            &request.public_key_attributes,
         )
         .map_err(Into::into),
         other => {

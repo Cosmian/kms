@@ -143,17 +143,17 @@ mod tests {
             mgr.clone(),
             &["key"],
             Context {
-                new_value: "blah".to_string(),
+                new_value: "blah".to_owned(),
             },
             return_blah
         )?;
-        assert_eq!(res, vec!["blah".to_string()]);
+        assert_eq!(res, vec!["blah".to_owned()]);
 
         let res: Vec<String> = transaction_async!(
             mgr.clone(),
             &["key"],
             Context {
-                new_value: "blah".to_string(),
+                new_value: "blah".to_owned(),
             },
             |mut mgr: ConnectionManager, mut pipeline: Pipeline, context: Context| async move {
                 pipeline
@@ -164,7 +164,7 @@ mod tests {
                     .await
             }
         )?;
-        assert_eq!(res, vec!["blah".to_string()]);
+        assert_eq!(res, vec!["blah".to_owned()]);
 
         // now insert a key/value and modify it in a transaction
         mgr.clone().set("key", "value").await?;
@@ -187,7 +187,7 @@ mod tests {
             mgr.clone(),
             &["key"],
             Context {
-                new_value: "new".to_string()
+                new_value: "new".to_owned()
             },
             modify_key
         )?;

@@ -27,10 +27,10 @@ impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
         Ok(Self {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
-            attribute_value: serde_json::to_vec(&request).map_err(|_| {
+            attribute_value: serde_json::to_vec(&request).map_err(|e| {
                 KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Attribute_Value,
-                    "failed serializing the shared key setup value".to_string(),
+                    format!("failed serializing the shared key setup value. Error: {e:?}"),
                 )
             })?,
         })
@@ -46,13 +46,13 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
         {
             return Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Attribute_Value,
-                "the attributes in not a shared key create request".to_string(),
+                "the attributes in not a shared key create request".to_owned(),
             ))
         }
-        serde_json::from_slice::<Self>(&attribute.attribute_value).map_err(|_| {
+        serde_json::from_slice::<Self>(&attribute.attribute_value).map_err(|e| {
             KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Attribute_Value,
-                "failed deserializing the Shared Key Create Request".to_string(),
+                format!("failed deserializing the Shared Key Create Request. Error: {e:?}"),
             )
         })
     }
@@ -67,7 +67,7 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
                 ErrorReason::Invalid_Attribute_Value,
                 "the attributes do not contain any vendor attribute, hence no shared key setup \
                  data"
-                    .to_string(),
+                    .to_owned(),
             )
         })?;
 
@@ -82,7 +82,7 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
                     ErrorReason::Invalid_Attribute_Value,
                     "the attributes do not contain any vendor attribute, hence no shared key \
                      setup data"
-                        .to_string(),
+                        .to_owned(),
                 )
             })?;
         Self::try_from(va)

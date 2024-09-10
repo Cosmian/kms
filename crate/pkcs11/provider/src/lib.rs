@@ -19,7 +19,7 @@ mod pkcs11_private_key;
 #[no_mangle]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
     let debug_level =
-        std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_string());
+        std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
     initialize_logging("ckms-pkcs11", Level::from_str(&debug_level).ok(), None);
     // Instantiate a backend with a kms client using the `kms.json` file in the local default directory.
     cosmian_pkcs11_module::traits::register_backend(Box::new(backend::CkmsBackend::instantiate(

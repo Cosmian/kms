@@ -176,11 +176,13 @@ pub fn openssl_public_key_to_kmip(
         cryptographic_usage_mask
     };
 
+    let cryptographic_length = Some(i32::try_from(public_key.bits())?);
     let key_block = match key_format_type {
         KeyFormatType::PKCS1 => {
             let rsa_public_key = public_key
                 .rsa()
                 .context("The public key is not an openssl RSA public key")?;
+            let cryptographic_length = Some(i32::try_from(rsa_public_key.size())? * 8);
             KeyBlock {
                 key_format_type,
                 key_value: KeyValue {
@@ -189,7 +191,7 @@ pub fn openssl_public_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PublicKey),
                         cryptographic_usage_mask,
@@ -197,7 +199,7 @@ pub fn openssl_public_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -217,7 +219,7 @@ pub fn openssl_public_key_to_kmip(
                     key_material: KeyMaterial::ByteString(spki_der),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PublicKey),
                         cryptographic_usage_mask,
@@ -225,7 +227,7 @@ pub fn openssl_public_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm,
-                cryptographic_length: Some(public_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -245,7 +247,7 @@ pub fn openssl_public_key_to_kmip(
                     },
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
                         object_type: Some(ObjectType::PublicKey),
                         cryptographic_usage_mask,
@@ -253,7 +255,7 @@ pub fn openssl_public_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(public_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -299,7 +301,7 @@ pub fn openssl_public_key_to_kmip(
                             },
                             attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                                cryptographic_length: Some(public_key.bits() as i32),
+                                cryptographic_length,
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
                                 cryptographic_domain_parameters: Some(
@@ -313,7 +315,7 @@ pub fn openssl_public_key_to_kmip(
                             })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_wrapping_data: None,
                         key_compression_type: None,
                     }
@@ -329,7 +331,7 @@ pub fn openssl_public_key_to_kmip(
                             },
                             attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                                cryptographic_length: Some(public_key.bits() as i32),
+                                cryptographic_length,
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
                                 cryptographic_domain_parameters: Some(
@@ -343,7 +345,7 @@ pub fn openssl_public_key_to_kmip(
                             })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_wrapping_data: None,
                         key_compression_type: None,
                     }
@@ -359,7 +361,7 @@ pub fn openssl_public_key_to_kmip(
                             },
                             attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
-                                cryptographic_length: Some(public_key.bits() as i32),
+                                cryptographic_length,
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
                                 cryptographic_domain_parameters: Some(
@@ -373,7 +375,7 @@ pub fn openssl_public_key_to_kmip(
                             })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_wrapping_data: None,
                         key_compression_type: None,
                     }
@@ -389,7 +391,7 @@ pub fn openssl_public_key_to_kmip(
                             },
                             attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                                cryptographic_length: Some(public_key.bits() as i32),
+                                cryptographic_length,
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
                                 cryptographic_domain_parameters: Some(
@@ -403,7 +405,7 @@ pub fn openssl_public_key_to_kmip(
                             })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_wrapping_data: None,
                         key_compression_type: None,
                     }
@@ -419,7 +421,7 @@ pub fn openssl_public_key_to_kmip(
                             },
                             attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
-                                cryptographic_length: Some(public_key.bits() as i32),
+                                cryptographic_length,
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
                                 cryptographic_domain_parameters: Some(
@@ -433,7 +435,7 @@ pub fn openssl_public_key_to_kmip(
                             })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
-                        cryptographic_length: Some(public_key.bits() as i32),
+                        cryptographic_length,
                         key_wrapping_data: None,
                         key_compression_type: None,
                     }
@@ -447,6 +449,7 @@ pub fn openssl_public_key_to_kmip(
     Ok(Object::PublicKey { key_block })
 }
 
+#[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
     use openssl::{

@@ -122,7 +122,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     // since we are going to rewrite the conf, use a different port
     let ctx = start_test_server_with_options(
         DBConfig {
-            database_type: Some("sqlite-enc".to_string()),
+            database_type: Some("sqlite-enc".to_owned()),
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
             clear_database: true,
             ..DBConfig::default()

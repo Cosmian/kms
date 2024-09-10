@@ -47,7 +47,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // Re_key all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
+        &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -264,7 +264,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // Rekey all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
+        &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(

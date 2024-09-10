@@ -35,7 +35,7 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
         }),
         _ => Err(KmipError::InvalidKmipValue(
             crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
-            "expected a certificate".to_string(),
+            "expected a certificate".to_owned(),
         )),
     }
 }
@@ -220,6 +220,7 @@ impl CertificateAttributes {
     }
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -245,55 +246,52 @@ mod tests {
         // ----> Check subject name
         assert_eq!(
             certificate_attributes.certificate_subject_c,
-            "US".to_string()
+            "US".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_subject_st,
-            "Denial".to_string()
+            "Denial".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_subject_l,
-            "Springfield".to_string()
+            "Springfield".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_subject_o,
-            "Dis".to_string()
+            "Dis".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_subject_cn,
-            "www.RSA-4096-example.com".to_string()
+            "www.RSA-4096-example.com".to_owned()
         );
 
         // ----> Check issuer name
-        assert_eq!(
-            certificate_attributes.certificate_issuer_c,
-            "US".to_string()
-        );
+        assert_eq!(certificate_attributes.certificate_issuer_c, "US".to_owned());
         assert_eq!(
             certificate_attributes.certificate_issuer_st,
-            "Denial".to_string()
+            "Denial".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_issuer_l,
-            "Springfield".to_string()
+            "Springfield".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_issuer_o,
-            "Dis".to_string()
+            "Dis".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_issuer_cn,
-            "www.RSA-4096-example.com".to_string()
+            "www.RSA-4096-example.com".to_owned()
         );
 
         // ----> Check SPKI
         assert_eq!(
             certificate_attributes.certificate_subject_uid,
-            "33a90ad71894709603a677775d0b902edcd9eaeb".to_string()
+            "33a90ad71894709603a677775d0b902edcd9eaeb".to_owned()
         );
         assert_eq!(
             certificate_attributes.certificate_subject_serial_number,
-            "715437E16BFD2371DB5074169C3EE44E30EEB88C".to_string()
+            "715437E16BFD2371DB5074169C3EE44E30EEB88C".to_owned()
         );
     }
 }

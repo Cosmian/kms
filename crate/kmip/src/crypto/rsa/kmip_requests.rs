@@ -27,10 +27,10 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     let public_key_mask = CryptographicUsageMask::Unrestricted;
 
     let algorithm = CryptographicAlgorithm::RSA;
-
+    let cryptographic_length = Some(i32::try_from(cryptographic_length)?);
     let mut common_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
-        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_length,
         cryptographic_domain_parameters: None,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(private_key_mask | public_key_mask),
@@ -46,7 +46,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     // public key and private key usage masks on key creation.
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
-        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_length,
         cryptographic_domain_parameters: None,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(private_key_mask),
@@ -57,7 +57,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 
     let public_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
-        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_length,
         cryptographic_domain_parameters: None,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(public_key_mask),
@@ -77,7 +77,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 #[must_use]
 pub fn get_private_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         ..Get::default()
     }
@@ -86,7 +86,7 @@ pub fn get_private_key_request(uid: &str) -> Get {
 #[must_use]
 pub fn get_public_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
         key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
         ..Get::default()
     }

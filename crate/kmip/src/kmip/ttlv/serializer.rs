@@ -28,13 +28,6 @@ pub fn to_ttlv<T>(value: &T) -> Result<TTLV>
 where
     T: Serialize,
 {
-    let mut serializer = TTLVSerializer {
-        parents: vec![],
-        current: TTLV::default(),
-    };
-    value.serialize(&mut serializer)?;
-    let mut ttlv = serializer.current;
-
     // postfix the TTLV if it is a root object
     trait Detect {
         fn detect(&self) -> Option<ObjectType>;
@@ -49,6 +42,14 @@ where
             Some(self.object_type())
         }
     }
+
+    let mut serializer = TTLVSerializer {
+        parents: vec![],
+        current: TTLV::default(),
+    };
+    value.serialize(&mut serializer)?;
+    let mut ttlv = serializer.current;
+
     if let Some(object_type) = value.detect() {
         ttlv.tag = object_type.to_string();
     };
@@ -138,12 +139,14 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
 
     // assume this is an integer
     //#[instrument(skip(self))]
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
     fn serialize_f32(self, v: f32) -> Result<Self::Ok> {
         self.serialize_i32(v.round() as i32)
     }
 
     // assume this is a Long integer
     //#[instrument(skip(self))]
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
     fn serialize_f64(self, v: f64) -> Result<Self::Ok> {
         self.serialize_i64(v.round() as i64)
     }
@@ -153,7 +156,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_char(self, _v: char) -> Result<Self::Ok> {
         Err(TtlvError::custom(
-            "'char' type is unsupported in TTLV".to_string(),
+            "'char' type is unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -209,7 +212,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_none(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
-            "'Option.None' is unsupported in TTLV".to_string(),
+            "'Option.None' is unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -272,14 +275,14 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_unit(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
-            "'value ()' is unsupported in TTLV".to_string(),
+            "'value ()' is unsupported in TTLV".to_owned(),
         ))
     }
 
     //#[instrument(skip(self))]
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok> {
         Err(TtlvError::custom(
-            "'unit struct' is unsupported in TTLV".to_string(),
+            "'unit struct' is unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -287,11 +290,11 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_unit_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         variant: &'static str,
     ) -> Result<Self::Ok> {
-        trace!("serialize_unit_variant, name: {_name}::{variant}");
+        trace!("serialize_unit_variant, name: {name}::{variant}");
         self.current.value = TTLValue::Enumeration(TTLVEnumeration::Name(variant.to_owned()));
         Ok(())
     }
@@ -333,15 +336,15 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self, value))]
     fn serialize_newtype_variant<T>(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
     {
-        trace!("serialize_newtype_variant, name: {_name}::{_variant}");
+        trace!("serialize_newtype_variant, name: {name}::{variant}");
         value.serialize(self)
     }
 
@@ -388,7 +391,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
         Err(TtlvError::custom(
-            "'tuple variant' is unsupported in TTLV".to_string(),
+            "'tuple variant' is unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -399,9 +402,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     // data.
     //#[instrument(skip(self))]
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        Err(TtlvError::custom(
-            "'map' is unsupported in TTLV".to_string(),
-        ))
+        Err(TtlvError::custom("'map' is unsupported in TTLV".to_owned()))
     }
 
     // A statically sized heterogeneous key-value pairing
@@ -471,7 +472,7 @@ impl<'a> ser::SerializeSeq for &'a mut TTLVSerializer {
         let parent: &mut TTLV = self
             .parents
             .last_mut()
-            .ok_or_else(|| TtlvError::custom("'no parent for the element !".to_string()))?;
+            .ok_or_else(|| TtlvError::custom("'no parent for the element !".to_owned()))?;
         // give the same tag as tag of the parent
         self.current.tag.clone_from(&parent.tag);
 
@@ -503,7 +504,7 @@ impl<'a> ser::SerializeSeq for &'a mut TTLVSerializer {
             Some(p) => p,
             None => {
                 return Err(TtlvError::custom(
-                    "'unexpected end of seq: no parent ".to_string(),
+                    "'unexpected end of seq: no parent ".to_owned(),
                 ))
             }
         };
@@ -563,7 +564,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut TTLVSerializer {
         T: ?Sized + Serialize,
     {
         Err(TtlvError::custom(
-            "'tuple variant' fields are unsupported in TTLV".to_string(),
+            "'tuple variant' fields are unsupported in TTLV".to_owned(),
         ))
         //value.serialize(&mut **self)
     }
@@ -571,7 +572,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut TTLVSerializer {
     // //#[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
         Err(TtlvError::custom(
-            "'tuple variant' is unsupported in TTLV".to_string(),
+            "'tuple variant' is unsupported in TTLV".to_owned(),
         ))
     }
 }
@@ -591,7 +592,7 @@ impl<'a> ser::SerializeMap for &'a mut TTLVSerializer {
         T: ?Sized + Serialize,
     {
         Err(TtlvError::custom(
-            "'map' keys are unsupported in TTLV".to_string(),
+            "'map' keys are unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -604,7 +605,7 @@ impl<'a> ser::SerializeMap for &'a mut TTLVSerializer {
         T: ?Sized + Serialize,
     {
         Err(TtlvError::custom(
-            "'map' values are unsupported in TTLV".to_string(),
+            "'map' values are unsupported in TTLV".to_owned(),
         ))
     }
 
@@ -612,7 +613,7 @@ impl<'a> ser::SerializeMap for &'a mut TTLVSerializer {
     fn end(self) -> Result<Self::Ok> {
         Ok(())
         // Err(TtlvError::custom(
-        //     "'map' is unsupported in TTLV".to_string(),
+        //     "'map' is unsupported in TTLV".to_owned(),
         // ))
     }
 }
@@ -682,7 +683,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
 
         let parent: &mut TTLV = match self.parents.last_mut() {
             Some(p) => p,
-            None => return Err(TtlvError::custom("'no parent for the field !".to_string())),
+            None => return Err(TtlvError::custom("'no parent for the field !".to_owned())),
         };
 
         match &mut parent.value {
@@ -711,7 +712,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
             Some(p) => p,
             None => {
                 return Err(TtlvError::custom(
-                    "'unexpected end of struct fields: no parent ".to_string(),
+                    "'unexpected end of struct fields: no parent ".to_owned(),
                 ))
             }
         };

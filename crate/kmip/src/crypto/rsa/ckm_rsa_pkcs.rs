@@ -1,6 +1,6 @@
 //! Implements the RSA Key Encryption Mechanism `CKM_RSA_PKCS`
 //! a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
-//! https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226893
+//! <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 //!
 //! This scheme is no longer FIPS approved for wrap/unwrap encrypt/decrypt operations.
 use openssl::{
@@ -17,7 +17,7 @@ use crate::kmip_bail;
 
 /// Key Wrap using `CKM_RSA_PKCS`
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
-/// https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226893
+/// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///
 /// The maximum dek length is k-11 where k is the length in octets of the RSA modulus
 /// The output length is the same as the modulus length.
@@ -33,7 +33,7 @@ pub fn ckm_rsa_pkcs_key_wrap(pub_key: &PKey<Public>, dek: &[u8]) -> Result<Vec<u
 
 /// Encryption using `CKM_RSA_PKCS`
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
-/// https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226893
+/// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///
 /// The maximum plaintext length is  k-11 where k is the length in octets of the RSA modulus
 /// The output length is the same as the modulus length.
@@ -56,7 +56,7 @@ fn init_ckm_rsa_pkcs_encryption_context(
     let rsa_pub_key = pub_key.rsa()?;
 
     // The ciphertext has the same length as the modulus.
-    let encapsulation_bytes_len = rsa_pub_key.size() as usize;
+    let encapsulation_bytes_len = usize::try_from(rsa_pub_key.size())?;
     let ciphertext = Vec::with_capacity(encapsulation_bytes_len);
 
     // Perform OAEP encryption.
@@ -68,7 +68,7 @@ fn init_ckm_rsa_pkcs_encryption_context(
 
 /// Key Unwrap using `CKM_RSA_PKCS`
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
-/// https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226893
+/// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///
 /// The wrapped data encryption key (dek) should be of size k where k is the length in octets of the RSA modulus.
 ///
@@ -88,7 +88,7 @@ pub fn ckm_rsa_pkcs_key_unwrap(
 
 /// Decrypt using `CKM_RSA_PKCS`
 /// a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40 available at
-/// https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226893
+/// <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226893
 ///
 /// The ciphertext should be of size k where k is the length in octets of the RSA modulus.
 ///
@@ -113,7 +113,7 @@ fn init_ckm_rsa_pkcs_decryption_context(
     let rsa_priv_key = priv_key.rsa()?;
 
     // The plaintext has length equal to the modulus length - 11 bytes.
-    let plaintext_bytes_len = rsa_priv_key.size() as usize - 11;
+    let plaintext_bytes_len = usize::try_from(rsa_priv_key.size())? - 11;
     let plaintext = Zeroizing::from(Vec::with_capacity(plaintext_bytes_len));
 
     // Perform OAEP encryption.
@@ -123,6 +123,7 @@ fn init_ckm_rsa_pkcs_decryption_context(
     Ok((ctx, plaintext))
 }
 
+#[allow(clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests {
     use openssl::pkey::PKey;

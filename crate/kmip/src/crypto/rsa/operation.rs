@@ -105,7 +105,7 @@ pub fn to_rsa_public_key(
                     link: Some(vec![Link {
                         link_type: LinkType::PrivateKeyLink,
                         linked_object_identifier: LinkedObjectIdentifier::TextString(
-                            private_key_uid.to_string(),
+                            private_key_uid.to_owned(),
                         ),
                     }]),
                     ..Attributes::default()
@@ -179,7 +179,7 @@ pub fn to_rsa_private_key(
                     link: Some(vec![Link {
                         link_type: LinkType::PublicKeyLink,
                         linked_object_identifier: LinkedObjectIdentifier::TextString(
-                            public_key_uid.to_string(),
+                            public_key_uid.to_owned(),
                         ),
                     }]),
                     ..Attributes::default()
@@ -231,6 +231,7 @@ pub fn create_rsa_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
+#[allow(clippy::unwrap_used)]
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_mask() {
@@ -266,6 +267,7 @@ fn test_create_rsa_incorrect_mask() {
     assert!(res.is_err());
 }
 
+#[allow(clippy::unwrap_used)]
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_mask_unrestricted() {
@@ -301,6 +303,7 @@ fn test_create_rsa_incorrect_mask_unrestricted() {
     assert!(res.is_err());
 }
 
+#[allow(clippy::unwrap_used)]
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_fips_mask() {
@@ -318,9 +321,10 @@ fn test_create_rsa_fips_mask() {
         Some(FIPS_PUBLIC_RSA_MASK),
     );
 
-    assert!(res.is_ok());
+    res.unwrap();
 }
 
+#[allow(clippy::unwrap_used)]
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_algorithm() {

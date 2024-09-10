@@ -476,7 +476,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
             public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -519,7 +519,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
             public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             certificate_extensions: Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
             ..Default::default()
@@ -618,7 +618,7 @@ async fn test_certify_issue_with_subject_name() -> CliResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
@@ -661,7 +661,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
         CertifyOp {
             public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -694,7 +694,7 @@ pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<Str
         CertifyOp {
             public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -740,7 +740,7 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             tags: Some(vec!["certify_self_signed".to_owned()]),
             certificate_extensions: Some(PathBuf::from(
