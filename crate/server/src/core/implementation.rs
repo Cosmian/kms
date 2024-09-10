@@ -127,7 +127,7 @@ impl KMS {
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rand_bytes(&mut symmetric_key)?;
                     let object =
-                        create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
+                        create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm)?;
 
                     //return the object and the tags
                     Ok((object, tags))

@@ -72,7 +72,7 @@ fn ecies_get_key(
 /// Notice we don't send the IV since it is derived by hashing the public key as
 /// well as the ephemeral public key.
 #[allow(non_snake_case)]
-pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, KmipError> {
+pub(crate) fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, KmipError> {
     let mut ctx = BigNumContext::new_secure()?;
     let Q = pubkey.ec_key()?;
     let curve = Q.group();
@@ -110,7 +110,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 /// The IV for decryption is computed by taking the hash of the recipient public
 /// key and the ephemeral public key.
 #[allow(non_snake_case)]
-pub fn ecies_decrypt(
+pub(crate) fn ecies_decrypt(
     private_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
@@ -121,7 +121,7 @@ pub fn ecies_decrypt(
 
     // OpenSSL stored compressed coordinates with one extra byte for some
     // reason hence the + 1 at the end.
-    let pubkey_vec_size = idiv_ceil(curve.order_bits() as usize, 8) + 1;
+    let pubkey_vec_size = idiv_ceil(usize::try_from(curve.order_bits())?, 8) + 1;
     if ciphertext.len() <= pubkey_vec_size + aead.tag_size() {
         kmip_bail!("ECIES: Decryption error: invalid ciphertext")
     }
@@ -161,9 +161,9 @@ fn aead_and_digest(curve: &EcGroupRef) -> Result<(AeadCipher, MessageDigest), Km
     Ok((aead, md))
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
 
     use openssl::{
         ec::{EcGroup, EcKey},
@@ -181,12 +181,12 @@ mod tests {
         let pubkey = PKey::from_ec_key(ec_pubkey).unwrap();
         let privkey = PKey::from_ec_key(ec_privkey).unwrap();
 
-        let plaintext = "i love pancakes".as_bytes();
+        let plaintext = b"i love pancakes";
 
         let ct = ecies_encrypt(&pubkey, plaintext).unwrap();
         let pt = ecies_decrypt(&privkey, &ct).unwrap();
 
-        assert_eq!(plaintext, pt.deref());
+        assert_eq!(plaintext.to_vec(), *pt);
     }
 
     #[test]

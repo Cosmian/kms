@@ -36,7 +36,7 @@ where
 
 impl<T> KmipResultHelper<T> for Option<T> {
     fn context(self, context: &str) -> KmipResult<T> {
-        self.ok_or_else(|| KmipError::Default(context.to_string()))
+        self.ok_or_else(|| KmipError::Default(context.to_owned()))
     }
 
     fn with_context<D, O>(self, op: O) -> KmipResult<T>

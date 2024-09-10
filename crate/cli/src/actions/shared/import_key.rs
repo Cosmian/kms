@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -20,7 +20,7 @@ use crate::{
     error::{result::CliResult, CliError},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(ValueEnum, Debug, Clone)]
 pub(crate) enum ImportKeyFormat {
     JsonTtlv,
     Pem,

@@ -86,7 +86,7 @@ impl EncryptionSystem for AesGcmSystem {
         // see `Block` in crypto_base.
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                aad.extend((block_number as usize).to_le_bytes());
+                aad.extend(usize::try_from(block_number)?.to_le_bytes());
             }
         }
 
@@ -150,7 +150,7 @@ impl DecryptionSystem for AesGcmSystem {
 
         // Recover nonce.
         let request_nonce_bytes = request.iv_counter_nonce.as_ref().ok_or_else(|| {
-            KmipError::NotSupported("The nonce is mandatory for AES GCM.".to_string())
+            KmipError::NotSupported("The nonce is mandatory for AES GCM.".to_owned())
         })?;
         let nonce: [u8; AES_256_GCM_IV_LENGTH] = request_nonce_bytes.as_slice().try_into()?;
 
@@ -160,7 +160,7 @@ impl DecryptionSystem for AesGcmSystem {
         // see `Block` in crypto_base.
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                aad.extend((block_number as usize).to_le_bytes());
+                aad.extend(usize::try_from(block_number)?.to_le_bytes());
             }
         }
 

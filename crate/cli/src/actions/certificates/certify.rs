@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// The algorithm to use for the keypair generation
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub(crate) enum Algorithm {
     #[cfg(not(feature = "fips"))]
     NistP192,
@@ -283,7 +283,7 @@ impl CertifyAction {
                 Some(Box::new(CertificateAttributes::parse_subject_line(
                     self.subject_name.as_ref().ok_or_else(|| {
                         CliError::Default(
-                            "subject name is required when certifying a public key".to_string(),
+                            "subject name is required when certifying a public key".to_owned(),
                         )
                     })?,
                 )?));
@@ -299,7 +299,7 @@ impl CertifyAction {
                 Some(Box::new(CertificateAttributes::parse_subject_line(
                     self.subject_name.as_ref().ok_or_else(|| {
                         CliError::Default(
-                            "subject name is required when generating a keypair".to_string(),
+                            "subject name is required when generating a keypair".to_owned(),
                         )
                     })?,
                 )?));

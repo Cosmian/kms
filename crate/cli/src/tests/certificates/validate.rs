@@ -169,7 +169,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["test_data/certificates/chain/leaf2.cert.der".to_string()],
+        vec!["test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
@@ -185,10 +185,10 @@ async fn test_validate_cli() -> CliResult<()> {
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["test_data/certificates/chain/leaf2.cert.der".to_string()],
+        vec!["test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![intermediate_certificate_id, root_certificate_id.clone()],
         // Date: 15/04/2048
-        Some("4804152030Z".to_string()),
+        Some("4804152030Z".to_owned()),
     );
     info!(
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \

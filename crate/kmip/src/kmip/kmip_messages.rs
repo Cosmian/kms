@@ -46,8 +46,10 @@ impl Serialize for Message {
     where
         S: serde::Serializer,
     {
+        let header_batch_count = usize::try_from(self.header.batch_count)
+            .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
         // check batch item count
-        if self.header.batch_count as usize != self.items.len() {
+        if header_batch_count != self.items.len() {
             return Err(ser::Error::custom(format!(
                 "mismatch number of batch items between header (`{}`) and items list (`{}`)",
                 self.header.batch_count,
@@ -363,8 +365,11 @@ impl Serialize for MessageResponse {
     where
         S: serde::Serializer,
     {
+        let header_batch_count = usize::try_from(self.header.batch_count)
+            .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
+
         // check batch item count
-        if self.header.batch_count as usize != self.items.len() {
+        if header_batch_count != self.items.len() {
             return Err(ser::Error::custom(format!(
                 "mismatch number of batch items between header (`{}`) and items list (`{}`)",
                 self.header.batch_count,
@@ -422,6 +427,7 @@ pub struct MessageResponseHeader {
 ///
 /// The timestamp is automatically set to now (UTC time)
 impl Default for MessageResponseHeader {
+    #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
     fn default() -> Self {
         Self {
             timestamp: Utc::now().timestamp() as u64,

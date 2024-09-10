@@ -119,10 +119,12 @@ impl CovercryptDecryption {
         let nb_chunks = {
             let len = de.read_leb128_u64()?;
             ser.write_leb128_u64(len)?;
-            usize::try_from(len).map_err(|_| {
+            usize::try_from(len).map_err(|e| {
                 KmipError::KmipError(
                     ErrorReason::Invalid_Message,
-                    format!("size of vector is too big for architecture: {len} bytes"),
+                    format!(
+                        "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
+                    ),
                 )
             })?
         };
@@ -169,7 +171,7 @@ impl CovercryptDecryption {
         let cleartext_header = cleartext_header.ok_or_else(|| {
             KmipError::KmipError(
                 ErrorReason::Internal_Server_Error,
-                "unable to recover any header".to_string(),
+                "unable to recover any header".to_owned(),
             )
         })?;
 
@@ -190,7 +192,7 @@ impl DecryptionSystem for CovercryptDecryption {
         let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
             KmipError::KmipError(
                 ErrorReason::Invalid_Message,
-                "The decryption request should contain encrypted data".to_string(),
+                "The decryption request should contain encrypted data".to_owned(),
             )
         })?;
 

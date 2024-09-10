@@ -17,8 +17,11 @@ use crate::{
 
 #[allow(non_snake_case)]
 /// Encrypt `plaintext` data using `pubkey`, a Curve 25519 public key, following ECIES
-/// in a way that is compatible with libsodium SalsaSealBox.
-pub fn sealbox_encrypt(public_key: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, KmipError> {
+/// in a way that is compatible with libsodium `SalsaSealBox`.
+pub(crate) fn sealbox_encrypt(
+    public_key: &PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipError> {
     let ciphertext = match public_key.id() {
         Id::ED25519 => {
             trace!("encrypt: Ed25519");
@@ -51,8 +54,8 @@ pub fn sealbox_encrypt(public_key: &PKey<Public>, plaintext: &[u8]) -> Result<Ve
 }
 
 /// Decrypt `ciphertext` data using `privkey`, a curve 25519 private key following ECIES
-/// in a way compatible with Salsa SealBox provided by libsodium.
-pub fn sealbox_decrypt(
+/// in a way compatible with Salsa `SealBox` provided by libsodium.
+pub(crate) fn sealbox_decrypt(
     private_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {

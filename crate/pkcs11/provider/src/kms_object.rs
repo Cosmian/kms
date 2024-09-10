@@ -151,6 +151,6 @@ pub(crate) async fn kms_decrypt_async(
     };
     let response = kms_client.decrypt(decryption_request).await?;
     response.data.ok_or_else(|| {
-        Pkcs11Error::ServerError("Decryption response does not contain data".to_string())
+        Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
     })
 }

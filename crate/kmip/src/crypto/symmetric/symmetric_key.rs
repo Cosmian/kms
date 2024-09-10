@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::{
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -11,18 +11,17 @@ use crate::{
 };
 
 /// Create a symmetric key for the given algorithm
-#[must_use]
 pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
-) -> Object {
+) -> KmipResult<Object> {
     // this length is in bits
-    let symmetric_key_len = key_bytes.len() as i32 * 8;
+    let cryptographic_length = Some(i32::try_from(key_bytes.len())? * 8);
 
     let attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(cryptographic_algorithm),
-        cryptographic_length: Some(symmetric_key_len),
+        cryptographic_length,
         cryptographic_usage_mask: Some(
             CryptographicUsageMask::Encrypt
                 | CryptographicUsageMask::Decrypt
@@ -39,7 +38,7 @@ pub fn create_symmetric_key_kmip_object(
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
     // The key created here has a format of TransparentSymmetricKey
     // This is no a problem since when it is exported, it is by default converted to a Raw key
-    Object::SymmetricKey {
+    Ok(Object::SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
@@ -50,10 +49,10 @@ pub fn create_symmetric_key_kmip_object(
                 },
                 attributes: Some(Box::new(attributes)),
             },
-            cryptographic_length: Some(symmetric_key_len),
+            cryptographic_length,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 /// Build a `CreateKeyPairRequest` for a symmetric key
@@ -62,9 +61,10 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     cryptographic_algorithm: CryptographicAlgorithm,
     tags: T,
 ) -> Result<Create, KmipError> {
+    let cryptographic_length = Some(i32::try_from(key_len_in_bits)?);
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(cryptographic_algorithm),
-        cryptographic_length: Some(key_len_in_bits as i32),
+        cryptographic_length,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(
             CryptographicUsageMask::Encrypt

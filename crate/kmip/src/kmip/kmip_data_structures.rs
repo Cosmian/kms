@@ -92,7 +92,7 @@ impl KeyBlock {
                 ErrorReason::Invalid_Data_Type,
                 "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
                  material."
-                    .to_string(),
+                    .to_owned(),
             )),
         }
     }
@@ -167,9 +167,10 @@ impl KeyBlock {
         }
 
         // Find the link of the requested type in the list of links, if it exists
-        match links.iter().find(|&link| link.link_type == link_type) {
-            None => Ok(None),
-            Some(link) => match &link.linked_object_identifier {
+        links
+            .iter()
+            .find(|&link| link.link_type == link_type)
+            .map_or(Ok(None), |link| match &link.linked_object_identifier {
                 // If the linked object identifier is a text string, return it
                 LinkedObjectIdentifier::TextString(s) => Ok(Some(s.clone())),
                 // Enumeration and index identifiers are not yet supported
@@ -179,8 +180,7 @@ impl KeyBlock {
                 LinkedObjectIdentifier::Index(_) => Err(KmipError::NotSupported(
                     "Link Index not yet supported".to_owned(),
                 )),
-            },
-        }
+            })
     }
 
     /// Recover the cryptographic algorithm.
@@ -221,10 +221,7 @@ pub struct KeyValue {
 
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
 fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
-    match val {
-        Some(v) => *v == T::default(),
-        None => true,
-    }
+    val.as_ref().map_or(true, |v| *v == T::default())
 }
 
 impl KeyValue {
@@ -232,7 +229,7 @@ impl KeyValue {
         self.attributes.as_deref().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
-                "key is missing its attributes".to_string(),
+                "key is missing its attributes".to_owned(),
             )
         })
     }
@@ -241,7 +238,7 @@ impl KeyValue {
         self.attributes.as_deref_mut().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
-                "key is missing its mutable attributes".to_string(),
+                "key is missing its mutable attributes".to_owned(),
             )
         })
     }
@@ -425,6 +422,7 @@ pub enum KeyMaterial {
     },
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Serialize, Deserialize, Clone, Copy)]
 enum KeyTypeSer {
     DH,
@@ -605,6 +603,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 formatter.write_str("struct KeyMaterialVisitor")
             }
 
+            #[allow(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,

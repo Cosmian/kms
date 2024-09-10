@@ -31,4 +31,5 @@ pub mod rfc5649;
 
 #[cfg(feature = "openssl")]
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests;

@@ -69,6 +69,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 fn test_password_derivation() {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
@@ -82,8 +83,10 @@ fn test_password_derivation() {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 #[cfg(feature = "fips")]
 fn test_password_derivation_bad_size() {
+    const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -91,10 +94,9 @@ fn test_password_derivation_bad_size() {
     let my_weak_password = b"123princ3ss".to_vec();
     let secure_mk_res = derive_key_from_password::<13>(salt, &my_weak_password);
 
-    assert!(secure_mk_res.is_err());
+    secure_mk_res.unwrap_err();
 
-    const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
     let secure_mk_res = derive_key_from_password::<BIG_KEY_LENGTH>(salt, &my_weak_password);
 
-    assert!(secure_mk_res.is_err());
+    secure_mk_res.unwrap_err();
 }

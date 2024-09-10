@@ -148,11 +148,11 @@ pub enum KeyFormatType {
     PKCS10 = 0x17,
     #[cfg(not(feature = "fips"))]
     /// This mode is to support legacy, but common, PKCS#12 formats that use
-    /// PBE_WITHSHA1AND40BITRC2_CBC for the encryption algorithm of certificate,
-    /// PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC for the encryption algorithm of the key
+    /// `PBE_WITHSHA1AND40BITRC2_CBC` for the encryption algorithm of certificate,
+    /// `PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC` for the encryption algorithm of the key
     /// and SHA-1 for the MAC.
     /// This is not a standard PKCS#12 format but is used by some software
-    /// such as Java KeyStores, Mac OS X Keychains, and some versions of OpenSSL (1x).
+    /// such as Java `KeyStores`, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
@@ -490,7 +490,7 @@ impl Serialize for CryptographicUsageMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for CryptographicUsageMask {
@@ -519,14 +519,18 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -534,7 +538,9 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(CryptographicUsageMaskVisitor)
@@ -569,7 +575,7 @@ impl Serialize for ProtectionStorageMasks {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for ProtectionStorageMasks {
@@ -598,14 +604,18 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -613,7 +623,9 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(ProtectionStorageMasksVisitor)
@@ -646,7 +658,7 @@ impl Serialize for StorageStatusMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for StorageStatusMask {
@@ -675,14 +687,18 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -690,7 +706,9 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(StorageStatusMaskVisitor)
@@ -1193,14 +1211,12 @@ impl Attributes {
     /// Get the link to the object.
     #[must_use]
     pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
-        if let Some(links) = &self.link {
+        self.link.as_ref().and_then(|links| {
             links
                 .iter()
                 .find(|&l| l.link_type == link_type)
                 .map(|l| l.linked_object_identifier.clone())
-        } else {
-            None
-        }
+        })
     }
 
     /// Remove the link from the attributes
@@ -1247,11 +1263,9 @@ impl Attributes {
 
     /// Set the bits in `mask` to the attributes's `CryptographicUsageMask` bits.
     pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
-        let mask = if let Some(attr_mask) = self.cryptographic_usage_mask {
-            attr_mask | mask
-        } else {
-            mask
-        };
+        let mask = self
+            .cryptographic_usage_mask
+            .map_or(mask, |attr_mask| attr_mask | mask);
 
         self.cryptographic_usage_mask = Some(mask);
     }
@@ -1266,7 +1280,7 @@ impl Attributes {
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-                "CryptographicUsageMask is None".to_string(),
+                "CryptographicUsageMask is None".to_owned(),
             )
         })?;
 
@@ -1583,7 +1597,7 @@ impl CertificateAttributes {
                 .next()
                 .ok_or_else(|| {
                     KmipError::Default(
-                        "Missing x509 certificate `subject name` identifier".to_string(),
+                        "Missing x509 certificate `subject name` identifier".to_owned(),
                     )
                 })?
                 .trim();
@@ -1644,8 +1658,8 @@ impl AttributeReference {
     #[must_use]
     pub fn tags_reference() -> Self {
         Self::Vendor(VendorAttributeReference {
-            vendor_identification: VENDOR_ID_COSMIAN.to_string(),
-            attribute_name: VENDOR_ATTR_TAG.to_string(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
         })
     }
 }
@@ -2763,6 +2777,11 @@ impl UniqueIdentifier {
 }
 
 impl From<LinkedObjectIdentifier> for UniqueIdentifier {
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::as_conversions
+    )]
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),

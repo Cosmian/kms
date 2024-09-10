@@ -1,3 +1,5 @@
+use std::num::TryFromIntError;
+
 use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use thiserror::Error;
 
@@ -122,6 +124,12 @@ impl From<pkcs8::Error> for KmipError {
     }
 }
 
+impl From<TryFromIntError> for KmipError {
+    fn from(e: TryFromIntError) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -172,6 +180,7 @@ macro_rules! kmip_bail {
     };
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::KmipError;

@@ -1,4 +1,5 @@
 mod common;
+#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests;
 #[cfg(feature = "openssl")]

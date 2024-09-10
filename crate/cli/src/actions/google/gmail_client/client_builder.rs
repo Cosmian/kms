@@ -41,7 +41,7 @@ impl GmailClientBuilder {
             client: Client::new(),
             token,
             base_url: [
-                "https://gmail.googleapis.com/gmail/v1/users/".to_string(),
+                "https://gmail.googleapis.com/gmail/v1/users/".to_owned(),
                 self.user_id,
             ]
             .concat(),

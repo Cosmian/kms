@@ -57,9 +57,10 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     ///
     /// All bytes are initially set to 0.
     #[must_use]
+    #[allow(unsafe_code)]
     pub fn new() -> Self {
         // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
-        let data = vec![0u8; LENGTH].into_boxed_slice();
+        let data = vec![0_u8; LENGTH].into_boxed_slice();
         // cast the raw pointer back to our fixed-length type
         // it is considered safe because `data` is initialized in the previous line
         let data = unsafe { Box::from_raw(Box::into_raw(data).cast::<[u8; LENGTH]>()) };

@@ -670,7 +670,7 @@ impl From<&String> for Export {
 impl From<&str> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::from(uid.to_string())
+        Self::from(uid.to_owned())
     }
 }
 
@@ -762,7 +762,7 @@ impl Get {
     /// use cosmian_kmip::kmip::kmip_operations::Get;
     /// use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
     ///
-    /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_string()), false, None, None);
+    /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_owned()), false, None, None);
     /// ```
     #[must_use]
     pub const fn new(
@@ -818,7 +818,7 @@ impl From<&str> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
         Self::new(
-            UniqueIdentifier::TextString(uid.to_string()),
+            UniqueIdentifier::TextString(uid.to_owned()),
             false,
             None,
             None,

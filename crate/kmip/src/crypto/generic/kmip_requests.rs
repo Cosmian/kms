@@ -21,7 +21,7 @@ pub fn build_revoke_key_request(
     revocation_reason: RevocationReason,
 ) -> Result<Revoke, KmipError> {
     Ok(Revoke {
-        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         revocation_reason,
         compromise_occurrence_date: None,
     })
@@ -143,7 +143,7 @@ pub fn build_import_object_request(
     attributes: Attributes,
     unique_identifier: &str,
     replace_existing: Option<bool>,
-    _key_wrapping_specification: Option<KeyWrappingSpecification>,
+    _key_wrapping_specification: &Option<KeyWrappingSpecification>,
 ) -> Import {
     let key_wrap_type = if object.key_wrapping_data().is_some() {
         Some(KeyWrapType::AsRegistered)

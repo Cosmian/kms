@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::{
         crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
@@ -12,7 +12,7 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Curve {
     #[cfg(not(feature = "fips"))]
     NistP192,
