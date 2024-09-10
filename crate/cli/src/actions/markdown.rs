@@ -18,6 +18,7 @@ impl MarkdownAction {
     /// # Errors
     ///
     /// Returns an error if there is an issue creating or writing to the markdown file.
+    #[allow(clippy::print_stdout)]
     pub fn process(&self, cmd: &Command) -> CliResult<()> {
         let mut output = String::new();
         writeln!(

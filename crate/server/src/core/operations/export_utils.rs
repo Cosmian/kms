@@ -319,48 +319,45 @@ async fn process_private_key(
     }
 
     //No wrapping requested: export the private key to the requested format
-    match key_format_type {
-        Some(kft) => {
-            #[cfg(not(feature = "fips"))]
-            let supported_formats = [
-                KeyFormatType::PKCS1,
-                KeyFormatType::PKCS8,
-                KeyFormatType::TransparentECPrivateKey,
-                KeyFormatType::TransparentRSAPrivateKey,
-                KeyFormatType::ECPrivateKey,
-                KeyFormatType::PKCS12,
-                KeyFormatType::Pkcs12Legacy,
-            ];
-            #[cfg(feature = "fips")]
-            let supported_formats = [
-                KeyFormatType::PKCS1,
-                KeyFormatType::PKCS8,
-                KeyFormatType::TransparentECPrivateKey,
-                KeyFormatType::TransparentRSAPrivateKey,
-                KeyFormatType::ECPrivateKey,
-                KeyFormatType::PKCS12,
-            ];
-            if !supported_formats.contains(kft) {
-                kms_bail!(
-                    "export: unsupported Key Format Type: {:?} for a private key",
-                    kft
-                )
-            }
-            let object = openssl_private_key_to_kmip(
-                &openssl_key,
-                *kft,
-                attributes.cryptographic_usage_mask,
-            )?;
-            object_with_metadata.object = object;
+    if let Some(key_format_type) = key_format_type {
+        #[cfg(not(feature = "fips"))]
+        let supported_formats = [
+            KeyFormatType::PKCS1,
+            KeyFormatType::PKCS8,
+            KeyFormatType::TransparentECPrivateKey,
+            KeyFormatType::TransparentRSAPrivateKey,
+            KeyFormatType::ECPrivateKey,
+            KeyFormatType::PKCS12,
+            KeyFormatType::Pkcs12Legacy,
+        ];
+        #[cfg(feature = "fips")]
+        let supported_formats = [
+            KeyFormatType::PKCS1,
+            KeyFormatType::PKCS8,
+            KeyFormatType::TransparentECPrivateKey,
+            KeyFormatType::TransparentRSAPrivateKey,
+            KeyFormatType::ECPrivateKey,
+            KeyFormatType::PKCS12,
+        ];
+        if !supported_formats.contains(key_format_type) {
+            kms_bail!(
+                "export: unsupported Key Format Type: {:?} for a private key",
+                key_format_type
+            )
         }
-        None => {
-            // No format type requested: export the private key to the default format
-            let object = openssl_private_key_to_kmip_default_format(
-                &openssl_key,
-                attributes.cryptographic_usage_mask,
-            )?;
-            object_with_metadata.object = object;
-        }
+        let object = openssl_private_key_to_kmip(
+            &openssl_key,
+            *key_format_type,
+            attributes.cryptographic_usage_mask,
+        )?;
+        object_with_metadata.object = object;
+    } else {
+        // No format type requested: export the private key to the default format
+        let object = openssl_private_key_to_kmip_default_format(
+            &openssl_key,
+            attributes.cryptographic_usage_mask,
+        )?;
+        object_with_metadata.object = object;
     }
     // add the attributes back
     let key_block = object_with_metadata.object.key_block_mut()?;
@@ -452,29 +449,28 @@ async fn process_public_key(
     }
 
     //No wrapping requested: export the private key to the requested format
-    match key_format_type {
-        Some(kft) => match kft {
+    if let Some(key_format_type) = key_format_type {
+        match key_format_type {
             KeyFormatType::PKCS1
             | KeyFormatType::PKCS8
             | KeyFormatType::TransparentECPublicKey
             | KeyFormatType::TransparentRSAPublicKey => {
                 let object = openssl_public_key_to_kmip(
                     &openssl_key,
-                    *kft,
+                    *key_format_type,
                     attributes.cryptographic_usage_mask,
                 )?;
                 object_with_metadata.object = object;
             }
-            _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
-        },
-        None => {
-            // No format type requested: export the private key to the default format
-            let object = openssl_public_key_to_kmip_default_format(
-                &openssl_key,
-                attributes.cryptographic_usage_mask,
-            )?;
-            object_with_metadata.object = object;
+            _ => kms_bail!("export: unsupported Key Format Type: {:?}", key_format_type),
         }
+    } else {
+        // No format type requested: export the private key to the default format
+        let object = openssl_public_key_to_kmip_default_format(
+            &openssl_key,
+            attributes.cryptographic_usage_mask,
+        )?;
+        object_with_metadata.object = object;
     }
 
     // add the attributes back

@@ -1,11 +1,13 @@
+use cosmian_logger::log_utils::log_init;
 use num_bigint_dig::BigUint;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
+use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::secret::SafeBigUint,
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
@@ -15,12 +17,13 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation,
+            LocateResponse, Operation, SetAttribute,
         },
         kmip_types::{
-            AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
-            Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+            AsynchronousIndicator, AttestationType, Attribute, Attributes,
+            BatchErrorContinuationOption, Credential, CryptographicAlgorithm,
+            CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
@@ -226,7 +229,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -246,7 +249,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -264,7 +267,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -298,7 +301,7 @@ fn test_ser_big_int() {
 
 #[test]
 fn test_ser_aes_key() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -307,7 +310,7 @@ fn test_ser_aes_key() {
 
 #[test]
 fn test_des_int() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -342,7 +345,7 @@ fn test_des_int() {
 
 #[test]
 fn test_des_array() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -373,7 +376,7 @@ fn test_des_array() {
 
 #[test]
 fn test_des_enum() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -400,7 +403,7 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ]);
@@ -418,7 +421,7 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ttlv = TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![
@@ -473,7 +476,7 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
@@ -492,7 +495,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_aes_key_block() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
@@ -506,7 +509,7 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
@@ -520,7 +523,7 @@ fn test_aes_key_value() {
 
 #[test]
 fn test_aes_key_material() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
@@ -529,7 +532,7 @@ fn test_aes_key_material() {
 
 #[test]
 fn test_some_attributes() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
     #[serde(untagged)]
     enum Wrapper {
@@ -557,7 +560,7 @@ fn test_some_attributes() {
 
 #[test]
 fn test_java_import_request() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ir_java = r#"
 {
   "tag" : "Import",
@@ -624,7 +627,7 @@ fn test_java_import_request() {
 
 #[test]
 fn test_java_import_response() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ir = ImportResponse {
         unique_identifier: UniqueIdentifier::TextString("blah".to_string()),
     };
@@ -635,7 +638,7 @@ fn test_java_import_response() {
 
 #[test]
 fn test_byte_string_key_material() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
@@ -651,7 +654,7 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -664,7 +667,7 @@ fn test_aes_key_full() {
 
 #[test]
 pub(crate) fn test_attributes_with_links() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let _attributes: Attributes = from_ttlv(&ttlv).unwrap();
@@ -672,10 +675,10 @@ pub(crate) fn test_attributes_with_links() {
 
 #[test]
 pub(crate) fn test_import_correct_object() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
-    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.
+    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialization of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let import: Import = from_ttlv(&ttlv).unwrap();
@@ -726,11 +729,11 @@ pub(crate) fn test_create() {
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // this works
     let _: KeyBlock = serialize_deserialize(get_key_block()).unwrap();
-    println!("KeyBlock serialize/deserialize OK");
+    trace!("KeyBlock serialize/deserialize OK");
 
     // this should work too but does not deserialize
     // because of the empty Attributes in the KeyValue
@@ -783,7 +786,7 @@ fn get_key_block() -> KeyBlock {
 
 #[test]
 pub(crate) fn test_message_request() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     let req = Message {
         header: MessageHeader {
@@ -841,7 +844,7 @@ pub(crate) fn test_message_request() {
 
 #[test]
 pub(crate) fn test_message_response() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     let res = MessageResponse {
         header: MessageResponseHeader {
@@ -930,7 +933,7 @@ pub(crate) fn test_message_response() {
 
 #[test]
 pub(crate) fn test_message_enforce_enum() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // check Message request serializer reinforcement
     let req = Message {
@@ -1155,4 +1158,167 @@ pub(crate) fn test_message_enforce_enum() {
         to_ttlv(&res).unwrap_err().to_string(),
         "response payload operation is not a response type operation (`Request`)".to_string()
     );
+}
+
+#[test]
+fn test_deserialization_set_attribute() -> KmipResult<()> {
+    log_init(None);
+    let set_attribute_request = r#"
+    {
+      "tag": "SetAttribute",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "173cb39b-c95a-4e98-ae0d-3e8079e145e6"
+        },
+        {
+          "tag": "NewAttribute",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(set_attribute_request).unwrap();
+    let _set_attribute_request: SetAttribute = from_ttlv(&ttlv).unwrap();
+    trace!("ttlv: {:?}", ttlv);
+
+    Ok(())
+}
+
+#[test]
+fn test_deserialization_attribute() -> KmipResult<()> {
+    log_init(None);
+    let attribute_str = r#"
+    {
+          "tag": "NewAttribute",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+            }
+          ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(attribute_str).unwrap();
+    trace!("ttlv: {:?}", ttlv);
+
+    let attribute: Attribute = from_ttlv(&ttlv).unwrap();
+    trace!("attribute: {:?}", attribute);
+
+    Ok(())
+}
+
+#[test]
+fn test_deserialization_link() -> KmipResult<()> {
+    log_init(None);
+    let link_str = r#"
+    {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(link_str).unwrap();
+    trace!("ttlv: {:?}", ttlv);
+
+    let link: Link = from_ttlv(&ttlv).unwrap();
+    trace!("attribute: {:?}", link);
+
+    Ok(())
+}
+
+#[test]
+fn test_serialization_set_attribute() -> KmipResult<()> {
+    log_init(None);
+    let set_attribute_request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_string(),
+        )),
+        new_attribute: Attribute::Links(vec![
+            Link {
+                link_type: LinkType::PublicKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    "public_key_id".to_string(),
+                ),
+            },
+            Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    "private_key_id".to_string(),
+                ),
+            },
+        ]),
+    };
+
+    let set_attribute = to_ttlv(&set_attribute_request)?;
+    trace!("set_attribute: {:#?}", set_attribute);
+
+    let set_attribute_deserialized: SetAttribute = from_ttlv(&set_attribute)?;
+    trace!(
+        "set_attribute_deserialized: {:?}",
+        set_attribute_deserialized
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_serialization_link() -> KmipResult<()> {
+    log_init(None);
+    let link_request = vec![Link {
+        link_type: LinkType::PublicKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString("public_key_id".to_string()),
+    }];
+
+    let link = to_ttlv(&link_request)?;
+    trace!("link: {:#?}", link);
+
+    let link_deserialized: Vec<Link> = from_ttlv(&link)?;
+    trace!("set_attribute_deserialized: {:?}", link_deserialized);
+
+    Ok(())
 }

@@ -34,6 +34,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 <!-- toc -->
 
 - [Quick start](#quick-start)
+  * [Example](#example)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
   * [Linux](#linux)
@@ -65,20 +66,21 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running 
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
+
 ```sh
 cargo run --bin ckms -- --help
 ```
 
-**Example**
+### Example
 
-1. Create a 256-bit symmetric key 
+1. Create a 256-bit symmetric key
 
 ```sh
 ➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag project1
 ...
 The symmetric key was successfully generated.
-	  Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+   Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
 
   Tags:
     - project1
@@ -93,12 +95,12 @@ The encrypted file is available at "image.enc"
 ```
 
 3. Decrypt the `image.enc` file using the key
+
 ```sh
 ➜ cargo run --bin ckms -- sym decrypt --tag project1 --output-file image2.png image.enc
 ...
 The decrypted file is available at "image2.png"
 ```
-
 
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 

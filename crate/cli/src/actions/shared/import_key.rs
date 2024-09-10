@@ -231,6 +231,7 @@ impl ImportKeyAction {
 }
 
 /// Read a key from a PEM file
+#[allow(clippy::print_stdout)]
 fn read_key_from_pem(bytes: &[u8]) -> CliResult<Object> {
     let mut objects = objects_from_pem(bytes)?;
     let object = objects

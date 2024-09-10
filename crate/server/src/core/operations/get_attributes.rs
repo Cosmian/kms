@@ -11,6 +11,7 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use strum::IntoEnumIterator;
 use tracing::{debug, trace};
 
 use crate::{
@@ -25,20 +26,6 @@ use crate::{
     error::KmsError,
     result::{KResult, KResultHelper},
 };
-
-/// All the tags that can be retrieved
-const ALL_TAGS: [Tag; 10] = [
-    Tag::ActivationDate,
-    Tag::CryptographicAlgorithm,
-    Tag::CryptographicLength,
-    Tag::CryptographicParameters,
-    Tag::CryptographicDomainParameters,
-    Tag::CryptographicUsageMask,
-    Tag::KeyFormatType,
-    Tag::Certificate,
-    Tag::PrivateKey,
-    Tag::PublicKey,
-];
 
 pub(crate) async fn get_attributes(
     kms: &KMS,
@@ -65,7 +52,7 @@ pub(crate) async fn get_attributes(
     )
     .await?;
     trace!(
-        "Retrieved object for get attributes: {:?}",
+        "Get Attributes: Retrieved object for get attributes: {:?}",
         serde_json::to_string(&owm)
     );
     let object_type = owm.object.object_type();
@@ -74,15 +61,6 @@ pub(crate) async fn get_attributes(
         Object::Certificate { .. } => {
             // KMIP Attributes retrieved from dedicated column `Attributes`
             owm.attributes
-        }
-        Object::CertificateRequest { .. }
-        | Object::OpaqueObject { .. }
-        | Object::PGPKey { .. }
-        | Object::SecretData { .. }
-        | Object::SplitKey { .. } => {
-            return Err(KmsError::InvalidRequest(format!(
-                "get: unsupported object type for {uid_or_tags}",
-            )))
         }
         Object::PrivateKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
@@ -138,9 +116,21 @@ pub(crate) async fn get_attributes(
             attributes.link.clone_from(&owm.attributes.link);
             *attributes
         }
+        Object::CertificateRequest { .. }
+        | Object::OpaqueObject { .. }
+        | Object::PGPKey { .. }
+        | Object::SecretData { .. }
+        | Object::SplitKey { .. } => {
+            return Err(KmsError::InvalidRequest(format!(
+                "get: unsupported object type for {uid_or_tags}",
+            )))
+        }
     };
 
+    trace!("Get Attributes: Attributes: {:?}", attributes);
+
     let mut req_attributes = request.attribute_references.unwrap_or_default();
+    trace!("Get Attributes: Requested attributes: {req_attributes:?}");
 
     // request all attributes
     if req_attributes.is_empty() {
@@ -150,7 +140,12 @@ pub(crate) async fn get_attributes(
             attribute_name: VENDOR_ATTR_TAG.to_owned(),
         }));
         // standard attributes
-        req_attributes.extend(ALL_TAGS.iter().map(|t| AttributeReference::Standard(*t)));
+        let mut all_tags = Vec::new();
+        for tag in Tag::iter() {
+            all_tags.push(tag);
+        }
+
+        req_attributes.extend(all_tags.iter().map(|t| AttributeReference::Standard(*t)));
     };
 
     // request selected attributes
@@ -185,6 +180,12 @@ pub(crate) async fn get_attributes(
                 Tag::ActivationDate => {
                     res.activation_date = attributes.activation_date;
                 }
+                Tag::CertificateLength => {
+                    res.certificate_length = attributes.certificate_length;
+                }
+                Tag::CertificateType => {
+                    res.certificate_type = attributes.certificate_type;
+                }
                 Tag::CryptographicAlgorithm => {
                     res.cryptographic_algorithm = attributes.cryptographic_algorithm;
                 }
@@ -205,25 +206,28 @@ pub(crate) async fn get_attributes(
                 Tag::KeyFormatType => {
                     res.key_format_type = attributes.key_format_type;
                 }
-                Tag::PrivateKey => {
-                    if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
-                        res.set_link(LinkType::PrivateKeyLink, link);
-                    }
-                }
-                Tag::PublicKey => {
-                    if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
-                        res.set_link(LinkType::PublicKeyLink, link);
-                    }
-                }
                 Tag::Certificate => {
-                    if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
-                        res.set_link(LinkType::PKCS12CertificateLink, link);
-                    }
-                    if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
-                        res.set_link(LinkType::CertificateLink, link);
+                    if let Some(certificate_attributes) = attributes.certificate_attributes.clone()
+                    {
+                        res.certificate_attributes = Some(certificate_attributes);
                     }
                 }
-
+                Tag::ObjectType => {
+                    res.object_type = attributes.object_type;
+                }
+                Tag::VendorExtension => {
+                    if let Some(vendor_attributes) = attributes.vendor_attributes.clone() {
+                        res.vendor_attributes = Some(vendor_attributes);
+                    }
+                }
+                Tag::LinkType => {
+                    trace!("Get Attributes: LinkType: {:?}", attributes.link);
+                    for link_type in LinkType::iter() {
+                        if let Some(link) = attributes.get_link(link_type).as_ref() {
+                            res.set_link(link_type, link.clone());
+                        }
+                    }
+                }
                 _ => {}
             },
         }
@@ -234,6 +238,7 @@ pub(crate) async fn get_attributes(
         owm.id,
         res.get_tags()
     );
+    trace!("Get Attributes: Response: {res:?}");
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         attributes: res,

@@ -63,6 +63,7 @@ impl GmailClient {
             .await
     }
 
+    #[allow(clippy::print_stdout)]
     pub(crate) async fn handle_response(response: Response) -> CliResult<()> {
         if response.status().is_success() {
             let stdout = response.text().await.map_err(GoogleApiError::Reqwest)?;

@@ -433,7 +433,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "cc".to_owned(),
-        key_id: master_private_key_id.clone(),
+        key_id: master_private_key_id,
         key_file: "/does_not_exist/output.export".to_owned(),
         ..Default::default()
     })
@@ -447,6 +447,8 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
 #[tokio::test]
 pub(crate) async fn test_export_x25519() -> CliResult<()> {
     // create a temp dir
+
+    use tracing::trace;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
@@ -490,14 +492,14 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
     let mut d_vec = d.to_bytes_be();
     // 32 is privkey size on x25519.
     pad_be_bytes(&mut d_vec, 32);
-    println!("d_vec size is {:?}", d_vec.len());
+    trace!("d_vec size is {:?}", d_vec.len());
     let pkey_1 = PKey::private_key_from_raw_bytes(&d_vec, Id::X25519).unwrap();
 
     // Export the bytes only
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
-        key_id: private_key_id.clone(),
+        key_id: private_key_id,
         key_file: tmp_path
             .join("output.export.bytes")
             .to_str()
@@ -551,7 +553,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
-        key_id: public_key_id.clone(),
+        key_id: public_key_id,
         key_file: tmp_path
             .join("output.export.bytes")
             .to_str()

@@ -71,6 +71,7 @@ impl LoginAction {
     /// * The token exchange request fails.
     /// * The token exchange response cannot be parsed.
     /// * The client configuration cannot be updated or saved.
+    #[allow(clippy::print_stdout)]
     pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
         let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {

@@ -7,7 +7,7 @@ pub mod ecies;
 pub mod kmip_requests;
 pub mod operation;
 
-// Montgomerry curves key length.
+// Montgomery curves key length.
 pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const X448_PRIVATE_KEY_LENGTH: usize = 0x38;

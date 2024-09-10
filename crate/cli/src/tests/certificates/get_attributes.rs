@@ -1,7 +1,10 @@
+use cosmian_kms_client::kmip::kmip_types::{LinkType, Tag};
 use kms_test_server::start_default_test_kms_server;
+use tracing::debug;
 
 use crate::{
-    actions::{certificates::CertificateInputFormat, shared::AttributeTag},
+    actions::certificates::CertificateInputFormat,
+    error::result::CliResult,
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},
         shared::get_attributes,
@@ -9,7 +12,7 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_get_attributes_p12() {
+async fn test_get_attributes_p12() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -24,51 +27,54 @@ async fn test_get_attributes_p12() {
         tags: Some(&["import_pkcs12"]),
         replace_existing: true,
         ..Default::default()
-    })
-    .unwrap();
+    })?;
 
     //get the attributes of the private key and check that they are correct
-    let attributes = get_attributes(
+    let pkcs12_attributes = get_attributes(
         &ctx.owner_client_conf_path,
         &imported_p12_sk_uid,
-        &[
-            AttributeTag::KeyFormatType,
-            AttributeTag::LinkedPublicKeyId,
-            AttributeTag::LinkedCertificateId,
-        ],
-    )
-    .unwrap();
+        &[Tag::KeyFormatType, Tag::LinkType],
+        &[],
+    )?;
 
-    assert!(!attributes.contains_key(&AttributeTag::LinkedPublicKeyId));
+    debug!("test_get_attributes_p12: pkcs12_attributes: {pkcs12_attributes:?}");
+    assert!(!pkcs12_attributes.contains_key(&LinkType::PublicKeyLink.to_string()));
     assert_eq!(
-        attributes.get(&AttributeTag::KeyFormatType).unwrap(),
+        pkcs12_attributes
+            .get(&Tag::KeyFormatType.to_string())
+            .unwrap(),
         &serde_json::json!("PKCS1")
     );
-    let intermediate_certificate_id = attributes
-        .get(&AttributeTag::LinkedCertificateId)
-        .unwrap()
-        .as_str()
-        .unwrap();
+    let intermediate_certificate_id: String = serde_json::from_value(
+        pkcs12_attributes
+            .get(&LinkType::PKCS12CertificateLink.to_string())
+            .unwrap()
+            .clone(),
+    )?;
 
     //get the attributes of the certificate and check that they are correct
-    let attributes = get_attributes(
+    let intermediate_attributes = get_attributes(
         &ctx.owner_client_conf_path,
-        intermediate_certificate_id,
-        &[
-            AttributeTag::KeyFormatType,
-            AttributeTag::LinkedPrivateKeyId,
-            AttributeTag::LinkedIssuerCertificateId,
-        ],
-    )
-    .unwrap();
+        &intermediate_certificate_id,
+        &[Tag::KeyFormatType, Tag::LinkType],
+        &[],
+    )?;
+
+    debug!("test_get_attributes_p12: intermediate_attributes: {intermediate_attributes:?}");
 
     assert_eq!(
-        attributes.get(&AttributeTag::KeyFormatType).unwrap(),
+        intermediate_attributes
+            .get(&Tag::KeyFormatType.to_string())
+            .unwrap(),
         &serde_json::json!("X509")
     );
     assert_eq!(
-        attributes.get(&AttributeTag::LinkedPrivateKeyId).unwrap(),
+        intermediate_attributes
+            .get(&LinkType::PrivateKeyLink.to_string())
+            .unwrap(),
         &serde_json::json!(imported_p12_sk_uid)
     );
-    assert!(!attributes.contains_key(&AttributeTag::LinkedIssuerCertificateId));
+    assert!(!intermediate_attributes.contains_key(&LinkType::CertificateLink.to_string()));
+
+    Ok(())
 }

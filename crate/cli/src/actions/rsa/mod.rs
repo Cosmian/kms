@@ -60,7 +60,7 @@ impl Display for EncryptionAlgorithm {
             Self::CkmRsaPkcsOaep => write!(f, "ckm-rsa-pkcs-oaep"),
             Self::CkmRsaAesKeyWrap => write!(f, "ckm-rsa-aes-key-wrap"),
             #[cfg(not(feature = "fips"))]
-            EncryptionAlgorithm::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
+            Self::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
         }
     }
 }

@@ -5,6 +5,7 @@ use cosmian_kms_client::{write_json_object_to_file, GmailApiConf, KMS_CLI_CONF_E
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use serde::Deserialize;
 use tempfile::TempDir;
+use tracing::trace;
 
 use crate::{
     error::CliError,
@@ -161,7 +162,7 @@ async fn test_google_identities() -> Result<(), CliError> {
     let owner_client_conf_path = create_gmail_api_conf(ctx)?;
     // Read the content of the owner client conf file
     let conf_content = std::fs::read_to_string(&owner_client_conf_path)?;
-    println!("{conf_content}");
+    trace!("{conf_content}");
 
     // Fetch and list identities and compare them
     let listed_identities = list_identities(&owner_client_conf_path, user_id)?;

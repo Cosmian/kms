@@ -1,6 +1,8 @@
 use cosmian_kms_client::kmip::kmip_types::CryptographicUsageMask;
+use serde::Deserialize;
+use strum::EnumIter;
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Deserialize, Debug, Clone, EnumIter, PartialEq, Eq)]
 pub enum KeyUsage {
     Sign,
     Verify,

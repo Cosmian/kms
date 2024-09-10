@@ -92,6 +92,7 @@ sqlx = { version = "0.8.1", default-features = false, features = [
   "postgres",
   "sqlite",
 ] }
+strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
