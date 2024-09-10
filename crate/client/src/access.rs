@@ -27,7 +27,7 @@ impl fmt::Display for Access {
             self.user_id,
             self.unique_identifier
                 .as_ref()
-                .map_or_else(|| "[N/A]".to_string(), std::string::ToString::to_string),
+                .map_or_else(|| "[N/A]".to_owned(), std::string::ToString::to_string),
             self.operation_types
         )
     }

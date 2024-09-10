@@ -36,6 +36,7 @@ fn sqlite_db_config() -> DBConfig {
     trace!("TESTS: using sqlite");
     let tmp_dir = TempDir::new().unwrap();
     let file_path = tmp_dir.path().join("test_sqlite.db");
+    // let file_path = PathBuf::from("test_sqlite.db");
     if file_path.exists() {
         std::fs::remove_file(&file_path).unwrap();
     }
@@ -299,7 +300,7 @@ fn generate_http_config(
             HttpConfig {
                 port,
                 https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
-                https_p12_password: Some("password".to_string()),
+                https_p12_password: Some("password".to_owned()),
                 authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
                 api_token_id,
                 ..HttpConfig::default()
@@ -308,7 +309,7 @@ fn generate_http_config(
             HttpConfig {
                 port,
                 https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
-                https_p12_password: Some("password".to_string()),
+                https_p12_password: Some("password".to_owned()),
                 api_token_id,
                 ..HttpConfig::default()
             }
@@ -388,16 +389,14 @@ fn generate_owner_conf(
             let p = root_dir.join("certificates/owner/owner.client.acme.com.old.format.p12");
             Some(
                 p.to_str()
-                    .ok_or_else(|| {
-                        ClientError::Default("Can't convert path to string".to_string())
-                    })?
+                    .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
                     .to_string(),
             )
         } else {
             None
         },
         ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
-            Some("password".to_string())
+            Some("password".to_owned())
         } else {
             None
         },
@@ -426,11 +425,11 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
         let p = root_dir.join("certificates/user/user.client.acme.com.old.format.p12");
         Some(
             p.to_str()
-                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_string()))?
+                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
                 .to_string(),
         )
     };
-    user_conf.ssl_client_pkcs12_password = Some("password".to_string());
+    user_conf.ssl_client_pkcs12_password = Some("password".to_owned());
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.json");
@@ -450,7 +449,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 
     let mut invalid_conf = correct_conf.clone();
     // and a temp file
-    let invalid_conf_path = "/tmp/invalid_conf.json".to_string();
+    let invalid_conf_path = "/tmp/invalid_conf.json".to_owned();
     // Generate a wrong token with valid group id
     let secrets = b64
         .decode(

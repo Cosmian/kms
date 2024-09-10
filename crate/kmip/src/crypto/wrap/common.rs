@@ -10,20 +10,21 @@ pub(crate) fn rsa_parameters(
         .encryption_key_information
         .as_ref()
         .and_then(|eki| eki.cryptographic_parameters.as_ref())
-        .map(|cp| {
-            (
-                cp.cryptographic_algorithm
-                    .unwrap_or(CryptographicAlgorithm::AES),
-                cp.padding_method.unwrap_or(PaddingMethod::OAEP),
-                cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                // default to CKM_RSA_AES_KEY_WRAP
-                CryptographicAlgorithm::AES,
-                PaddingMethod::OAEP,
-                HashingAlgorithm::SHA256,
-            )
-        })
+        .map_or_else(
+            || {
+                (
+                    CryptographicAlgorithm::AES,
+                    PaddingMethod::OAEP,
+                    HashingAlgorithm::SHA256,
+                )
+            },
+            |cp| {
+                (
+                    cp.cryptographic_algorithm
+                        .unwrap_or(CryptographicAlgorithm::AES),
+                    cp.padding_method.unwrap_or(PaddingMethod::OAEP),
+                    cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
+                )
+            },
+        )
 }

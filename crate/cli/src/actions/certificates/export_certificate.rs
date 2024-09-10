@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     export_object,
     kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
@@ -11,7 +11,7 @@ use tracing::log::trace;
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
     JsonTtlv,
     Pem,

@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+use clap::ValueEnum;
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
@@ -157,7 +158,7 @@ impl Object {
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                "This object does not have a key block".to_string(),
+                "This object does not have a key block".to_owned(),
             )),
         }
     }
@@ -193,7 +194,7 @@ impl Object {
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                "This object does not have a key block (function `key_block_mut`)".to_string(),
+                "This object does not have a key block (function `key_block_mut`)".to_owned(),
             )),
         }
     }
@@ -235,7 +236,7 @@ impl TryFrom<&[u8]> for Object {
         serde_json::from_slice(object_bytes).map_err(|_e| {
             Self::Error::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
-                "failed deserializing to an Object".to_string(),
+                "failed deserializing to an Object".to_owned(),
             )
         })
     }
@@ -248,7 +249,7 @@ impl TryInto<Vec<u8>> for Object {
         serde_json::to_vec(&self).map_err(|_e| {
             Self::Error::InvalidKmipObject(
                 ErrorReason::Invalid_Attribute_Value,
-                "failed serializing Object to bytes".to_string(),
+                "failed serializing Object to bytes".to_owned(),
             )
         })
     }
@@ -257,7 +258,7 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(clap::ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
+#[derive(ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
     #[value(name = "Certificate")]
@@ -305,15 +306,15 @@ impl TryFrom<&str> for ObjectType {
 impl From<ObjectType> for String {
     fn from(object_type: ObjectType) -> Self {
         match object_type {
-            ObjectType::Certificate => "Certificate".to_string(),
-            ObjectType::SymmetricKey => "SymmetricKey".to_string(),
-            ObjectType::PublicKey => "PublicKey".to_string(),
-            ObjectType::PrivateKey => "PrivateKey".to_string(),
-            ObjectType::SplitKey => "SplitKey".to_string(),
-            ObjectType::SecretData => "SecretData".to_string(),
-            ObjectType::OpaqueObject => "OpaqueObject".to_string(),
-            ObjectType::PGPKey => "PGPKey".to_string(),
-            ObjectType::CertificateRequest => "CertificateRequest".to_string(),
+            ObjectType::Certificate => "Certificate".to_owned(),
+            ObjectType::SymmetricKey => "SymmetricKey".to_owned(),
+            ObjectType::PublicKey => "PublicKey".to_owned(),
+            ObjectType::PrivateKey => "PrivateKey".to_owned(),
+            ObjectType::SplitKey => "SplitKey".to_owned(),
+            ObjectType::SecretData => "SecretData".to_owned(),
+            ObjectType::OpaqueObject => "OpaqueObject".to_owned(),
+            ObjectType::PGPKey => "PGPKey".to_owned(),
+            ObjectType::CertificateRequest => "CertificateRequest".to_owned(),
         }
     }
 }

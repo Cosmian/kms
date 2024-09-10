@@ -1,7 +1,6 @@
 //! The lib is mostly useful for the CLI tests but
 //! since it is declared, all the modules in other Files
 //! will be resolved against the lib. So everything is exported
-
 #![deny(
     nonstandard_style,
     refining_impl_trait,

@@ -61,7 +61,7 @@ pub(crate) async fn test_objects_db() -> KResult<()> {
 
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let object = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES);
+    let object = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES)?;
 
     // clean up
     o_db.clear_all().await?;

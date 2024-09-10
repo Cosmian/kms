@@ -616,7 +616,7 @@ impl KmsClient {
             Some(d) => {
                 trace!(
                     "==>\n{}",
-                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_string())
+                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_owned())
                 );
                 self.client.post(server_url).json(d).send().await?
             }
@@ -628,7 +628,7 @@ impl KmsClient {
             let response = response.json::<R>().await?;
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_string())
+                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_owned())
             );
             return Ok(response)
         }
@@ -656,7 +656,7 @@ impl KmsClient {
         }
         trace!(
             "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
         );
         request = request.json(&ttlv);
 
@@ -672,7 +672,7 @@ impl KmsClient {
             }
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
         }
@@ -695,8 +695,8 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
         endpoint,
         if text.is_empty() {
             match status {
-                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
-                StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
+                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_owned(),
+                StatusCode::UNAUTHORIZED => "Bad authorization token".to_owned(),
                 _ => format!("{status} {text}"),
             }
         } else {

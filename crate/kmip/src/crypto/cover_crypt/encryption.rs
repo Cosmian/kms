@@ -46,7 +46,7 @@ impl CoverCryptEncryption {
         let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
             KmipError::KmipError(
                 ErrorReason::Attribute_Not_Found,
-                "the master public key does not have attributes with the Policy".to_string(),
+                "the master public key does not have attributes with the Policy".to_owned(),
             )
         })?)?;
 
@@ -101,10 +101,12 @@ impl CoverCryptEncryption {
         let nb_chunks = {
             let len = de.read_leb128_u64()?;
             ser.write_leb128_u64(len)?;
-            usize::try_from(len).map_err(|_| {
+            usize::try_from(len).map_err(|e| {
                 KmipError::KmipError(
                     ErrorReason::Invalid_Message,
-                    format!("size of vector is too big for architecture: {len} bytes"),
+                    format!(
+                        "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
+                    ),
                 )
             })?
         };
@@ -175,7 +177,7 @@ impl EncryptionSystem for CoverCryptEncryption {
                 .ok_or_else(|| {
                     KmipError::KmipError(
                         ErrorReason::Invalid_Attribute_Value,
-                        "encryption policy missing".to_string(),
+                        "encryption policy missing".to_owned(),
                     )
                 })?;
         let encryption_policy = AccessPolicy::from_boolean_expression(encryption_policy_string)

@@ -162,7 +162,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         RecommendedCurve::CURVE25519,
         Some(CryptographicAlgorithm::ECDH),
         Some(CryptographicUsageMask::Unrestricted),
-    );
+    )?;
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PublicKey,

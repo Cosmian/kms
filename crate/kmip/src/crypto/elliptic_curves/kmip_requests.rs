@@ -65,7 +65,8 @@ fn build_mask_from_curve(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 #[cfg(not(feature = "fips"))]
-fn build_mask_from_curve(
+#[allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)]
+const fn build_mask_from_curve(
     _curve: RecommendedCurve,
     _is_private_mask: bool,
 ) -> Result<CryptographicUsageMask, KmipError> {
@@ -149,7 +150,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 #[must_use]
 pub fn get_private_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Get::default()
     }
@@ -158,7 +159,7 @@ pub fn get_private_key_request(uid: &str) -> Get {
 #[must_use]
 pub fn get_public_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         ..Get::default()
     }

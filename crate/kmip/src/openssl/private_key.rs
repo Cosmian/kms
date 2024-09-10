@@ -211,6 +211,8 @@ pub fn openssl_private_key_to_kmip(
     key_format_type: KeyFormatType,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, KmipError> {
+    let cryptographic_length = Some(i32::try_from(private_key.bits())?);
+
     #[cfg(not(feature = "fips"))]
     // When not in FIPS mode, None defaults to Unrestricted.
     let cryptographic_usage_mask = if cryptographic_usage_mask.is_none() {
@@ -269,7 +271,7 @@ pub fn openssl_private_key_to_kmip(
                     },
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some(private_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
@@ -277,7 +279,7 @@ pub fn openssl_private_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(private_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -338,6 +340,7 @@ pub fn openssl_private_key_to_kmip(
                 ),
                 x => kmip_bail!("Unsupported curve: {:?} in KMIP format", x),
             };
+            let cryptographic_length = Some(i32::try_from(private_key.bits())?);
             KeyBlock {
                 key_format_type,
                 key_value: KeyValue {
@@ -351,7 +354,7 @@ pub fn openssl_private_key_to_kmip(
                         certificate_type: None,
                         certificate_length: None,
                         cryptographic_algorithm: Some(cryptographic_algorithm),
-                        cryptographic_length: Some(private_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                         link: None,
                         object_type: Some(ObjectType::PrivateKey),
@@ -366,7 +369,7 @@ pub fn openssl_private_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(cryptographic_algorithm),
-                cryptographic_length: Some(private_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -388,7 +391,7 @@ pub fn openssl_private_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
-                        cryptographic_length: Some(private_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
@@ -396,7 +399,7 @@ pub fn openssl_private_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm,
-                cryptographic_length: Some(private_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -414,7 +417,7 @@ pub fn openssl_private_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                        cryptographic_length: Some(private_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::ECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
@@ -422,7 +425,7 @@ pub fn openssl_private_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                cryptographic_length: Some(private_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -439,7 +442,7 @@ pub fn openssl_private_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some(private_key.bits() as i32),
+                        cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
@@ -447,7 +450,7 @@ pub fn openssl_private_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(private_key.bits() as i32),
+                cryptographic_length,
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -460,6 +463,7 @@ pub fn openssl_private_key_to_kmip(
     Ok(Object::PrivateKey { key_block })
 }
 
+#[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
     use openssl::{

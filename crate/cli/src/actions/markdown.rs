@@ -40,7 +40,7 @@ fn write_command(out: &mut dyn Write, index: &str, parent: &str, cmd: &Command) 
         writeln!(out)?;
     }
     let full_command = if parent.is_empty() {
-        "ckms".to_string()
+        "ckms".to_owned()
     } else {
         format!("{} {}", parent, cmd.get_name())
     };

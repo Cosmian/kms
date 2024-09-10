@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::{
         crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
@@ -14,7 +14,7 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub(crate) enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,
@@ -96,7 +96,7 @@ impl CreateKeyAction {
         };
 
         let unique_identifier = if let Some(key_bytes) = key_bytes {
-            let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm);
+            let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm)?;
             import_object(
                 kms_rest_client,
                 None,

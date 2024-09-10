@@ -95,7 +95,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let sym_key_object =
-        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES)?;
     let uid = Uuid::new_v4().to_string();
 
     kms.db

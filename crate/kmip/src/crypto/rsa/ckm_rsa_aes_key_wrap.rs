@@ -40,7 +40,7 @@ pub fn ckm_rsa_aes_key_wrap(
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipError> {
     // Generate temporary AES key.
-    let mut kek = Zeroizing::from(vec![0u8; AES_KWP_KEY_LENGTH]);
+    let mut kek = Zeroizing::from(vec![0_u8; AES_KWP_KEY_LENGTH]);
     rand_bytes(&mut kek)?;
 
     // Encapsulate it using RSA-OAEP.
@@ -84,7 +84,7 @@ pub fn ckm_rsa_aes_key_unwrap(
         )
     }
 
-    let encapsulation_bytes_len = rsa_privkey.size() as usize;
+    let encapsulation_bytes_len = usize::try_from(rsa_privkey.size())?;
     if ciphertext.len() <= encapsulation_bytes_len {
         kmip_bail!(
             "CKM_RSA_OAEP decryption error: encrypted data of insufficient length: got {}",
@@ -105,6 +105,7 @@ pub fn ckm_rsa_aes_key_unwrap(
     Ok(plaintext)
 }
 
+#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use openssl::pkey::PKey;

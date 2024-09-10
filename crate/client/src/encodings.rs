@@ -83,17 +83,17 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
             }),
             "X509 CRL" => {
                 return Err(ClientError::NotSupported(
-                    "X509 CRL not supported on this server".to_string(),
+                    "X509 CRL not supported on this server".to_owned(),
                 ))
             }
             "NEW CERTIFICATE REQUEST" => {
                 return Err(ClientError::NotSupported(
-                    "NEW CERTIFICATE REQUEST not supported on this server".to_string(),
+                    "NEW CERTIFICATE REQUEST not supported on this server".to_owned(),
                 ))
             }
             "CERTIFICATE REQUEST" => {
                 return Err(ClientError::NotSupported(
-                    "CERTIFICATE REQUEST not supported on this server".to_string(),
+                    "CERTIFICATE REQUEST not supported on this server".to_owned(),
                 ))
             }
             x => {

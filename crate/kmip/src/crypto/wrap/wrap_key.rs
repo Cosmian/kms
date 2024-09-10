@@ -56,24 +56,21 @@ fn check_block_cipher_mode_in_encryption_key_information(
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> KmipResult<()> {
-    match wrapping_key {
-        Object::SymmetricKey { .. } => Ok(()),
-        _ => {
-            if let Some(encryption_key_information) = key_wrapping_specification
-                .encryption_key_information
-                .as_ref()
-            {
-                if let Some(cryptographic_parameters) =
-                    encryption_key_information.cryptographic_parameters.as_ref()
-                {
-                    if cryptographic_parameters.block_cipher_mode.is_some() {
-                        kmip_bail!("BlockCipherMode is only used for a SymmetricKey object")
-                    }
-                }
+    if let Object::SymmetricKey { .. } = wrapping_key {
+        // Do nothing
+    } else if let Some(encryption_key_information) = key_wrapping_specification
+        .encryption_key_information
+        .as_ref()
+    {
+        if let Some(cryptographic_parameters) =
+            encryption_key_information.cryptographic_parameters.as_ref()
+        {
+            if cryptographic_parameters.block_cipher_mode.is_some() {
+                kmip_bail!("BlockCipherMode is only used for a SymmetricKey object")
             }
-            Ok(())
         }
     }
+    Ok(())
 }
 
 /// Wrap a key block with a wrapping key
@@ -236,40 +233,37 @@ pub(crate) fn wrap(
                     debug!("wrap: block_cipher_mode: {:?}", block_cipher_mode);
                     let key_bytes = key_block.key_bytes()?;
                     let aad = additional_data_encryption.unwrap_or_default();
-                    match block_cipher_mode {
-                        Some(BlockCipherMode::GCM) => {
-                            // wrap using aes GCM
-                            let aead = AeadCipher::from_algorithm_and_key_size(
-                                cryptographic_algorithm,
-                                block_cipher_mode,
-                                key_bytes.len(),
-                            )?;
+                    if block_cipher_mode == Some(BlockCipherMode::GCM) {
+                        // wrap using aes GCM
+                        let aead = AeadCipher::from_algorithm_and_key_size(
+                            cryptographic_algorithm,
+                            block_cipher_mode,
+                            key_bytes.len(),
+                        )?;
 
-                            let nonce = random_nonce(aead)?;
+                        let nonce = random_nonce(aead)?;
 
-                            let (ct, authenticated_encryption_tag) =
-                                aead_encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
-                            let mut ciphertext = Vec::with_capacity(
-                                nonce.len() + ct.len() + authenticated_encryption_tag.len(),
-                            );
-                            ciphertext.extend_from_slice(&nonce);
-                            ciphertext.extend_from_slice(&ct);
-                            ciphertext.extend_from_slice(&authenticated_encryption_tag);
+                        let (ct, authenticated_encryption_tag) =
+                            aead_encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
+                        let mut ciphertext = Vec::with_capacity(
+                            nonce.len() + ct.len() + authenticated_encryption_tag.len(),
+                        );
+                        ciphertext.extend_from_slice(&nonce);
+                        ciphertext.extend_from_slice(&ct);
+                        ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
-                            debug!(
-                                "wrap: nonce: {}, aad: {}, tag: {}",
-                                general_purpose::STANDARD.encode(&nonce),
-                                general_purpose::STANDARD.encode(aad),
-                                general_purpose::STANDARD.encode(&authenticated_encryption_tag),
-                            );
+                        debug!(
+                            "wrap: nonce: {}, aad: {}, tag: {}",
+                            general_purpose::STANDARD.encode(&nonce),
+                            general_purpose::STANDARD.encode(aad),
+                            general_purpose::STANDARD.encode(&authenticated_encryption_tag),
+                        );
 
-                            Ok(ciphertext)
-                        }
-                        _ => {
-                            // wrap using rfc_5649
-                            let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
-                            Ok(ciphertext)
-                        }
+                        Ok(ciphertext)
+                    } else {
+                        // wrap using rfc_5649
+                        let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
+                        Ok(ciphertext)
                     }
                 }
                 #[cfg(feature = "openssl")]

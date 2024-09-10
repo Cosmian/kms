@@ -23,8 +23,8 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 
     let keys = get_kms_objects_async(
         &kms_client,
-        &["disk-encryption".to_string(), "_kk".to_string()],
-        None, //default key format type is Raw
+        &["disk-encryption".to_owned()],
+        Some(KeyFormatType::Raw),
     )
     .await?;
     assert_eq!(keys.len(), 2);
@@ -33,7 +33,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
         .flat_map(|k| k.other_tags.clone())
         .collect::<Vec<String>>();
     labels.sort();
-    assert_eq!(labels, vec!["vol1".to_string(), "vol2".to_string()]);
+    assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
     Ok(())
 }
 
@@ -58,10 +58,10 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
 }
 
 async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
-    let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES);
+    let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES)?;
     let _vol1_id = import_object(
         kms_client,
-        Some("vol1".to_string()),
+        Some("vol1".to_owned()),
         vol1,
         None,
         false,
@@ -70,10 +70,10 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
     )
     .await?;
 
-    let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES);
+    let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES)?;
     let _vol2_id = import_object(
         kms_client,
-        Some("vol2".to_string()),
+        Some("vol2".to_owned()),
         vol2,
         None,
         false,
@@ -113,7 +113,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
 
     let p12_id = import_object(
         &kms_client,
-        Some("test.p12".to_string()),
+        Some("test.p12".to_owned()),
         p12_sk,
         None,
         false,
@@ -136,7 +136,7 @@ fn test_backend() -> Result<(), Pkcs11Error> {
         .map(|dao| dao.label())
         .collect::<Vec<String>>();
     labels.sort();
-    assert_eq!(labels, vec!["vol1".to_string(), "vol2".to_string()]);
+    assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
 
     // RSA certificate
     let certificates = backend.find_all_certificates()?;

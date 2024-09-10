@@ -66,7 +66,7 @@ pub fn parse_v3_ca(
 ) -> Result<Vec<X509Extension>, KmipError> {
     let v3_ca = conf.section(Some("v3_ca")).ok_or_else(|| {
         KmipError::NotSupported(
-            "unable to find `v3_ca` parag from X.509 extension content".to_string(),
+            "unable to find `v3_ca` parag from X.509 extension content".to_owned(),
         )
     })?;
 
@@ -291,6 +291,7 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
     Ok(val)
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use cosmian_logger::log_utils::log_init;
@@ -312,7 +313,7 @@ mod tests {
     fn test_split() {
         let split = colon_split("email:dummy@gmail.com", "email").unwrap();
         assert_eq!(split, "dummy@gmail.com");
-        assert!(colon_split("email:dummy@gmail.com", "emails").is_err());
+        colon_split("email:dummy@gmail.com", "emails").unwrap_err();
     }
 
     #[test]
@@ -365,7 +366,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
         let cert_as_txt = x509.as_ref().to_text().unwrap();
         let cert = String::from_utf8_lossy(&cert_as_txt);
 
-        let _cert = r"            X509v3 Basic Constraints: 
+        let cert_ = r"            X509v3 Basic Constraints: 
                 CA:TRUE, pathlen:0
             X509v3 Key Usage: 
                 Digital Signature, Certificate Sign
@@ -378,7 +379,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     Signature Value:
 
 ";
-        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, _cert);
+        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, cert_);
 
         for ext in &exts_with_x509_parser {
             info!("\n\next: {:?}", ext);
