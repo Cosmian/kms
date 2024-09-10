@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cosmian_kms_client::{
     access::{AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse},
-    kmip::kmip_types::UniqueIdentifier,
+    kmip::kmip_types::{Attribute, UniqueIdentifier},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -26,6 +26,8 @@ pub struct Stdout {
     public_key_unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attribute: Option<Attribute>,
     #[serde(skip_serializing_if = "Option::is_none")]
     attributes: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +73,10 @@ impl Stdout {
         self.public_key_unique_identifier = Some(public_key_unique_identifier.into());
     }
 
+    pub fn set_attribute(&mut self, attribute: Attribute) {
+        self.attribute = Some(attribute);
+    }
+
     pub fn set_attributes(&mut self, attributes: HashMap<String, Value>) {
         self.attributes = Some(attributes);
     }
@@ -95,6 +101,7 @@ impl Stdout {
     /// # Errors
     ///
     /// Returns an error if there is an issue with writing to the console.
+    #[allow(clippy::print_stdout)]
     pub fn write(&self) -> CliResult<()> {
         // Check if the output format should be JSON
         let json_format_from_env = std::env::var(KMS_CLI_FORMAT)
@@ -134,7 +141,13 @@ impl Stdout {
                 println!("\t  Private key unique identifier: {id}");
             }
 
-            // Print the attributes if present
+            // Print the attribute if present: attribute is a single element
+            if let Some(attribute) = &self.attribute {
+                let json = serde_json::to_string_pretty(attribute)?;
+                println!("{json}");
+            }
+
+            // Print the attributes if present: attributes are a hashmap of key-value pairs
             if let Some(attributes) = &self.attributes {
                 let json = serde_json::to_string_pretty(attributes)?;
                 println!("{json}");

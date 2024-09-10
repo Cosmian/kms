@@ -11,6 +11,7 @@
     rust_2024_compatibility,
     unreachable_pub,
     unused,
+    unsafe_code,
     clippy::all,
     clippy::suspicious,
     clippy::complexity,
@@ -39,6 +40,7 @@
     clippy::empty_structs_with_brackets,
     clippy::unseparated_literal_suffix,
     clippy::map_err_ignore,
+    clippy::redundant_clone,
 )]
 #![allow(
     clippy::module_name_repetitions,
@@ -66,6 +68,6 @@ pub mod telemetry;
 
 pub use database::KMSServer;
 
-#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used, unsafe_code)]
 #[cfg(test)]
 mod tests;

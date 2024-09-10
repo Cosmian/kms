@@ -108,6 +108,7 @@ impl CreateKeyPairsAction {
         GmailClient::handle_response(response).await
     }
 
+    #[allow(clippy::print_stdout)]
     pub async fn run(
         &self,
         conf_path: &PathBuf,

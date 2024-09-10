@@ -9,6 +9,7 @@ use cosmian_kms_client::{
     },
     ClientError,
 };
+use hex::FromHexError;
 use pem::PemError;
 use thiserror::Error;
 
@@ -184,7 +185,13 @@ impl From<KmipError> for CliError {
 
 impl From<base64::DecodeError> for CliError {
     fn from(e: base64::DecodeError) -> Self {
-        Self::Default(e.to_string())
+        Self::Conversion(e.to_string())
+    }
+}
+
+impl From<FromHexError> for CliError {
+    fn from(e: FromHexError) -> Self {
+        Self::Conversion(e.to_string())
     }
 }
 

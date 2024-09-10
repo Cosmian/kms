@@ -1,7 +1,8 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Certify, Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes,
-        Import, Locate, Operation, ReKey, ReKeyKeyPair, Revoke, Validate,
+        Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
+        GetAttributes, Import, Locate, Operation, ReKey, ReKeyKeyPair, Revoke, SetAttribute,
+        Validate,
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
@@ -65,6 +66,16 @@ pub(crate) async fn dispatch(
             let req = from_ttlv::<GetAttributes>(ttlv)?;
             let resp = kms.get_attributes(req, user, database_params).await?;
             Operation::GetAttributesResponse(resp)
+        }
+        "SetAttribute" => {
+            let req = from_ttlv::<SetAttribute>(ttlv)?;
+            let resp = kms.set_attribute(req, user, database_params).await?;
+            Operation::SetAttributeResponse(resp)
+        }
+        "DeleteAttribute" => {
+            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
+            let resp = kms.delete_attribute(req, user, database_params).await?;
+            Operation::DeleteAttributeResponse(resp)
         }
         "Import" => {
             let req = from_ttlv::<Import>(ttlv)?;

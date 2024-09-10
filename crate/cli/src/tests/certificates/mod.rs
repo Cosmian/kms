@@ -1,4 +1,4 @@
-mod certify;
+pub(crate) mod certify;
 pub(crate) mod encrypt;
 mod export;
 mod get_attributes;

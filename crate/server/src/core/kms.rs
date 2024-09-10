@@ -14,10 +14,11 @@ use cosmian_kmip::{
         kmip_messages::{Message, MessageResponse},
         kmip_operations::{
             Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-            Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-            ImportResponse, Locate, LocateResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-            ReKeyResponse, Revoke, RevokeResponse, Validate, ValidateResponse,
+            Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
+            DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+            GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
+            ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
+            SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
         },
         kmip_types::{StateEnumeration, UniqueIdentifier},
     },
@@ -334,6 +335,26 @@ impl KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
         operations::get_attributes(self, request, user, params).await
+    }
+
+    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
+    pub(crate) async fn set_attribute(
+        &self,
+        request: SetAttribute,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<SetAttributeResponse> {
+        operations::set_attribute(self, request, user, params).await
+    }
+
+    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
+    pub(crate) async fn delete_attribute(
+        &self,
+        request: DeleteAttribute,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<DeleteAttributeResponse> {
+        operations::delete_attribute(self, request, user, params).await
     }
 
     /// This operation requests that the server search for one or more Managed

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
@@ -7,7 +8,10 @@ use std::{
 
 use cosmian_kmip::kmip::{
     kmip_messages::{Message, MessageResponse},
-    kmip_operations::{ReKey, ReKeyResponse},
+    kmip_operations::{
+        DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
+        SetAttributeResponse,
+    },
 };
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
@@ -225,6 +229,24 @@ impl KmsClient {
         request: GetAttributes,
     ) -> Result<GetAttributesResponse, ClientError> {
         self.post_ttlv::<GetAttributes, GetAttributesResponse>(&request)
+            .await
+    }
+
+    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
+    pub async fn set_attribute(
+        &self,
+        request: SetAttribute,
+    ) -> Result<SetAttributeResponse, ClientError> {
+        self.post_ttlv::<SetAttribute, SetAttributeResponse>(&request)
+            .await
+    }
+
+    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
+    pub async fn delete_attribute(
+        &self,
+        request: DeleteAttribute,
+    ) -> Result<DeleteAttributeResponse, ClientError> {
+        self.post_ttlv::<DeleteAttribute, DeleteAttributeResponse>(&request)
             .await
     }
 
@@ -618,9 +640,10 @@ impl KmsClient {
 
     pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, ClientError>
     where
-        O: Serialize,
+        O: Serialize + Debug,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
+        trace!("kmip_request: {:?}", kmip_request);
         let endpoint = "/kmip/2_1";
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);
@@ -663,6 +686,7 @@ impl KmsClient {
 /// Some errors are returned by the Middleware without going through our own error manager.
 /// In that case, we make the error clearer here for the client.
 async fn handle_error(endpoint: &str, response: Response) -> Result<String, ClientError> {
+    trace!("Error response received on {endpoint}: Response: {response:?}");
     let status = response.status();
     let text = response.text().await?;
 

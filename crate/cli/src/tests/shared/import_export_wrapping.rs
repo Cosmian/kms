@@ -20,7 +20,7 @@ use cosmian_kms_client::{
 };
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::ExportKeyParams;
 use crate::{
@@ -50,7 +50,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key
-    println!("importing wrapping key");
+    trace!("importing wrapping key");
     let wrap_key_uid = import_key(ImportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "sym".to_string(),
@@ -276,7 +276,7 @@ fn test_import_export_wrap_private_key(
         export_key(ExportKeyParams {
             cli_conf_path: cli_conf_path.to_string(),
             sub_command: sub_command.to_string(),
-            key_id: unwrapped_key_id.to_string(),
+            key_id: unwrapped_key_id,
             key_file: re_exported_key_file.to_str().unwrap().to_string(),
             ..Default::default()
         })?;
@@ -314,7 +314,7 @@ fn test_import_export_wrap_private_key(
         export_key(ExportKeyParams {
             cli_conf_path: cli_conf_path.to_string(),
             sub_command: sub_command.to_string(),
-            key_id: wrapped_key_id.to_string(),
+            key_id: wrapped_key_id,
             key_file: exported_unwrapped_key_file.to_str().unwrap().to_string(),
             unwrap: true,
             ..Default::default()

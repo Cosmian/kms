@@ -4,6 +4,7 @@ use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
+use tracing::trace;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::cover_crypt::{
@@ -142,7 +143,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id).is_err());
 
-        println!("OK. revoking");
+        trace!("OK. revoking");
 
         // revoke then destroy
         revoke(
@@ -152,7 +153,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
             "revocation test",
         )?;
 
-        println!("OK. destroying");
+        trace!("OK. destroying");
 
         // destroy via the private key
         destroy(&ctx.owner_client_conf_path, "ec", &public_key_id)?;
@@ -302,7 +303,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.clone(),
                 sub_command: "cc".to_owned(),
-                key_id: master_private_key_id.clone(),
+                key_id: master_private_key_id,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
                 ..Default::default()
             })
@@ -312,7 +313,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.clone(),
                 sub_command: "cc".to_owned(),
-                key_id: master_public_key_id.clone(),
+                key_id: master_public_key_id,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
                 ..Default::default()
             })
@@ -322,7 +323,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.clone(),
                 sub_command: "cc".to_owned(),
-                key_id: user_key_id_2.clone(),
+                key_id: user_key_id_2,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
                 ..Default::default()
             })

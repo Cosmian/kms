@@ -18,8 +18,7 @@ pub(crate) async fn demo_timeout() {
         {
             let now = OffsetDateTime::now_utc();
             let end = OffsetDateTime::parse(
-                &String::from_utf8(DEMO_TIMEOUT.to_vec())
-                    .expect("should be ok to convert back to String"),
+                core::str::from_utf8(DEMO_TIMEOUT).expect("should be ok to convert back to String"),
                 &Rfc2822,
             )
             .expect("should be able to parse rfc2822 datetime");

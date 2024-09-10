@@ -257,17 +257,26 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
+#[derive(clap::ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
+    #[value(name = "Certificate")]
     Certificate = 0x0000_0001,
+    #[value(name = "SymmetricKey")]
     SymmetricKey = 0x0000_0002,
+    #[value(name = "PublicKey")]
     PublicKey = 0x0000_0003,
+    #[value(name = "PrivateKey")]
     PrivateKey = 0x0000_0004,
+    #[value(name = "SplitKey")]
     SplitKey = 0x0000_0005,
+    #[value(name = "SecretData")]
     SecretData = 0x0000_0007,
+    #[value(name = "OpaqueObject")]
     OpaqueObject = 0x0000_0008,
+    #[value(name = "PGPKey")]
     PGPKey = 0x0000_0009,
+    #[value(name = "CertificateRequest")]
     CertificateRequest = 0x0000_000A,
 }
 

@@ -3,6 +3,7 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
+use tracing::trace;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
@@ -387,7 +388,7 @@ pub(crate) async fn test_list_access_rights() -> CliResult<()> {
 
     // the owner can list access rights granted
     let owner_list = list_access(&ctx.owner_client_conf_path, &key_id)?;
-    print!("owner list {owner_list}");
+    trace!("owner list {owner_list}");
     assert!(owner_list.contains("user.client@acme.com: {get}"));
 
     // The user is not the owner and thus should not be able to list accesses on this object
@@ -458,7 +459,7 @@ pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
 
     // the user should have the "get" access granted
     let list = list_accesses_rights_obtained(&ctx.user_client_conf_path)?;
-    println!("user list {list}");
+    trace!("user list {list}");
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
 
@@ -593,7 +594,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()>
 
     // the user should have the "get" access granted
     let list = list_accesses_rights_obtained(&ctx.user_client_conf_path)?;
-    println!("user list {list}");
+    trace!("user list {list}");
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
     assert!(list.contains("encrypt"));

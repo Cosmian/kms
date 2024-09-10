@@ -4,7 +4,7 @@ use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::debug;
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 use super::SUB_COMMAND;
@@ -259,7 +259,7 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         ..Default::default()
     })?;
 
-    println!("import private key with unwrap");
+    trace!("import private key with unwrap");
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
     import_key(ImportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -273,7 +273,7 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         replace_existing: true,
         authenticated_additional_data: None,
     })?;
-    println!("import private key with unwrap OK");
+    trace!("import private key with unwrap OK");
 
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
     let wrapped_private_key_uid = import_key(ImportKeyParams {

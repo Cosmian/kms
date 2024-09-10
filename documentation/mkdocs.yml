@@ -80,6 +80,8 @@ nav:
       - Export: kmip_2_1/_export.md
       - Get: kmip_2_1/_get.md
       - Get Attributes: kmip_2_1/_get_attributes.md
+      - Set Attributes: kmip_2_1/_set_attributes.md
+      - Delete Attributes: kmip_2_1/_delete_attributes.md
       - Import: kmip_2_1/_import.md
       - Locate: kmip_2_1/_locate.md
       - Re-Key: kmip_2_1/_re-key.md

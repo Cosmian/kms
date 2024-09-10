@@ -263,7 +263,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.to_string(),
                 sub_command: "cc".to_owned(),
-                key_id: master_private_key_id.to_string(),
+                key_id: master_private_key_id,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_string(),
                 ..Default::default()
             })
@@ -273,7 +273,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.to_string(),
                 sub_command: "cc".to_owned(),
-                key_id: master_public_key_id.to_string(),
+                key_id: master_public_key_id,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_string(),
                 ..Default::default()
             })
@@ -283,7 +283,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             export_key(ExportKeyParams {
                 cli_conf_path: ctx.owner_client_conf_path.to_string(),
                 sub_command: "cc".to_owned(),
-                key_id: user_key_id_2.to_string(),
+                key_id: user_key_id_2,
                 key_file: tmp_path.join("output.export").to_str().unwrap().to_string(),
                 ..Default::default()
             })
