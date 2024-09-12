@@ -32,6 +32,7 @@ use crate::{
         kmip_operations::ErrorReason,
     },
 };
+pub const VENDOR_ATTR_AAD: &str = "aad";
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -1161,6 +1162,29 @@ impl Attributes {
         let flag = flag | CryptographicUsageMask::Unrestricted;
 
         Ok((usage_mask & flag).bits() != 0)
+    }
+
+    /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
+    #[must_use]
+    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
+        let aad = self
+            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
+            .map(|value: &[u8]| value.to_vec());
+
+        if aad.is_some() {
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
+        }
+        aad
+    }
+
+    /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
+    pub fn add_aad(&mut self, value: &[u8]) {
+        let va = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_AAD.to_owned(),
+            attribute_value: value.to_vec(),
+        };
+        self.add_vendor_attribute(va);
     }
 }
 

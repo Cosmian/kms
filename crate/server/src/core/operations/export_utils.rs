@@ -309,6 +309,15 @@ async fn process_private_key(
         )?;
         // add the attributes back
         let key_block = object.key_block_mut()?;
+
+        let additional_data_encryption = key_wrapping_specification
+            .attribute_name
+            .as_ref()
+            .and_then(|attributes| attributes.first())
+            .map(std::string::String::as_bytes);
+        if let Some(aad) = additional_data_encryption {
+            attributes.add_aad(aad);
+        }
         key_block.key_value.attributes = Some(Box::new(attributes));
         // wrap the key
         wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
@@ -601,7 +610,7 @@ async fn process_symmetric_key(
                  Type. It must be the default"
             )
         }
-        // The key is wrapped and as expected the requested  Key Format Type is the default (none)
+        // The key is wrapped and as expected the requested Key Format Type is the default (none)
         // => The key is exported as such
         return Ok(())
     }

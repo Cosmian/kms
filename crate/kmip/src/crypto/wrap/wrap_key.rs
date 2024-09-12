@@ -95,16 +95,12 @@ pub fn wrap_key_block(
         ..KeyWrappingData::default()
     };
 
-    let additionnal_data_encryption: &[u8] =
-        if let Some(attributes) = &key_wrapping_specification.attribute_name {
-            if let Some(data) = attributes.first() {
-                data.as_bytes()
-            } else {
-                &[]
-            }
-        } else {
-            &[]
-        };
+    let additional_data_encryption = key_wrapping_specification
+        .attribute_name
+        .as_ref()
+        .and_then(|attributes| attributes.first())
+        .map(std::string::String::as_bytes)
+        .unwrap_or(&[]);
 
     // wrap the key based on the encoding
     match encoding {
@@ -114,7 +110,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                additionnal_data_encryption,
+                additional_data_encryption,
             )?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext.into()),
@@ -128,7 +124,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                additionnal_data_encryption,
+                additional_data_encryption,
             )?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
         }
@@ -188,16 +184,14 @@ pub(crate) fn wrap(
                     let block_cipher_mode = key_wrapping_data
                         .encryption_key_information
                         .clone()
-                        .unwrap()
-                        .cryptographic_parameters
-                        .unwrap()
-                        .block_cipher_mode;
+                        .and_then(|info| info.cryptographic_parameters)
+                        .and_then(|params| params.block_cipher_mode);
+                    let wrap_secret = key_block.key_bytes()?;
                     match block_cipher_mode {
                         Some(BlockCipherMode::GCM) => {
                             // wrap using aes Gcm
                             let aead = AeadCipher::Aes256Gcm;
                             let nonce = random_nonce(aead)?;
-                            let wrap_secret = key_block.key_bytes()?;
                             let (data, authenticated_encryption_tag) = aead_encrypt(
                                 aead,
                                 &wrap_secret,
@@ -212,7 +206,6 @@ pub(crate) fn wrap(
                         }
                         _ => {
                             // wrap using rfc_5649
-                            let wrap_secret = key_block.key_bytes()?;
                             let ciphertext = rfc5649_wrap(key_to_wrap, &wrap_secret)?;
                             Ok(ciphertext)
                         }

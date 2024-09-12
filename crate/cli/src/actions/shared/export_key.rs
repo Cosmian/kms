@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use base64::Engine;
+use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
@@ -128,7 +128,7 @@ pub struct ExportKeyAction {
         default_value = None,
         group = "wrapping"
     )]
-    authenticated_additional_data: Option<Vec<u8>>,
+    authenticated_additional_data: Option<String>,
 }
 
 impl ExportKeyAction {
@@ -150,7 +150,7 @@ impl ExportKeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        let (block_mode, auth_data) = match self.block_cipher_mode {
+        let (block_mode, aad) = match self.block_cipher_mode {
             Some(ExportBlockCipherMode::NISTKeyWrap) | None => {
                 if self.authenticated_additional_data.is_some() {
                     cli_bail!(
@@ -161,10 +161,10 @@ impl ExportKeyAction {
                 (None, None)
             }
             Some(ExportBlockCipherMode::Gcm) => {
-                if self.authenticated_additional_data.is_some() {
+                if let Some(aad) = &self.authenticated_additional_data {
                     (
                         Some(BlockCipherMode::GCM),
-                        self.authenticated_additional_data.clone(),
+                        Some(general_purpose::STANDARD.decode(aad)?),
                     )
                 } else {
                     (Some(BlockCipherMode::GCM), None)
@@ -198,7 +198,7 @@ impl ExportKeyAction {
             self.allow_revoked,
             key_format_type,
             block_mode,
-            auth_data,
+            aad,
         )
         .await?;
 
