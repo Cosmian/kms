@@ -16,8 +16,10 @@ Let us create a self-signed root certificate with the following details:
 - Key Algorithm: NIST P-256
 
 ```sh
-ckms certificates certify --certificate-id acme_root_ca --generate-key-pair --algorithm 
-nist-p256  --subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" --days 3650
+ckms certificates certify --certificate-id acme_root_ca \
+--generate-key-pair --algorithm nist-p256  \
+--subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+--days 3650
 ```
 
 ## Verify the certificate and recover the id of the generated private key

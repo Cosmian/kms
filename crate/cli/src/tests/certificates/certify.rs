@@ -686,24 +686,32 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
     Ok(())
 }
 
+pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<String> {
+    // create an RSA key pair
+    let (_private_key_id, public_key_id) =
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+
+    // Certify the public key with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            public_key_id_to_certify: Some(public_key_id),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    Ok(certificate_id)
+}
+
 #[tokio::test]
 async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-
-    // Certify the CSR without issuer i.e. self signed
-    let certificate_id = certify(
-        &ctx.owner_client_conf_path,
-        CertifyOp {
-            generate_keypair: true,
-            algorithm: Some(Algorithm::NistP256),
-            subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
-            ),
-            tags: Some(vec!["certify_a_csr_test".to_owned()]),
-            ..Default::default()
-        },
-    )?;
+    // create a self signed certificate
+    let certificate_id = create_self_signed_cert(ctx).await?;
 
     let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
     // since the certificate is self signed, the Certificate Link should point back to itself

@@ -21,7 +21,9 @@ use crate::{
     },
     error::{result::CliResult, CliError},
     tests::{
-        certificates::import::import_certificate, shared::export_key, utils::recover_cmd_logs,
+        certificates::{certify::create_self_signed_cert, import::import_certificate},
+        shared::export_key,
+        utils::recover_cmd_logs,
         PROG_NAME,
     },
 };
@@ -309,4 +311,14 @@ pub(crate) fn export_certificate(
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
+}
+
+#[tokio::test]
+async fn test_self_signed_export_loop() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+    // Create a self-signed certificate
+    let _certificate_id = create_self_signed_cert(ctx).await?;
+
+    Ok(())
 }
