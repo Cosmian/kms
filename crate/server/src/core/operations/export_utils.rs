@@ -176,7 +176,7 @@ async fn export_get_private_key(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
     request: &Export,
-    mut owm: &mut ObjectWithMetadata,
+    owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
     // determine if the user wants a PKCS#12
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
@@ -193,7 +193,7 @@ async fn export_get_private_key(
         key_block.key_format_type = KeyFormatType::Opaque;
     } else {
         process_private_key(
-            &mut owm,
+            owm,
             &request.key_format_type,
             &request.key_wrap_type,
             if is_pkcs12 {
@@ -211,7 +211,7 @@ async fn export_get_private_key(
     }
     //in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
-        post_process_pkcs12_for_private_key(kms, operation_type, user, params, &request, &mut owm)
+        post_process_pkcs12_for_private_key(kms, operation_type, user, params, request, owm)
             .await?;
     }
     Ok(())
@@ -638,7 +638,7 @@ async fn post_process_pkcs12_for_private_key(
     let mut chain: Stack<X509> = Stack::new()?;
     while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
         // if the parent_id is identical to the current certificate => self-signed cert, we must stop
-        if &parent_id.to_string() == &cert_owm.id {
+        if parent_id.to_string() == cert_owm.id {
             break;
         }
         // retrieve the parent certificate
