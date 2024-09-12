@@ -636,7 +636,7 @@ pub(crate) fn upsert_imported_links_in_attributes(
         for new_link in new_links {
             // one can only have one link of a given type
             attributes.set_link(
-                new_link.link_type.clone(),
+                new_link.link_type,
                 new_link.linked_object_identifier.clone(),
             );
         }
