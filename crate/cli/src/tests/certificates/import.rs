@@ -2,6 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use kms_test_server::start_default_test_kms_server;
 
 use crate::{
     actions::{certificates::CertificateInputFormat, shared::utils::KeyUsage},
@@ -12,22 +13,59 @@ use crate::{
     },
 };
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug)]
+pub(crate) struct ImportCertificateInput<'a> {
+    pub(crate) cli_conf_path: &'a str,
+    pub(crate) sub_command: &'a str,
+    pub(crate) key_file: &'a str,
+    pub(crate) format: &'a CertificateInputFormat,
+    pub(crate) pkcs12_password: Option<&'a str>,
+    pub(crate) certificate_id: Option<String>,
+    pub(crate) private_key_id: Option<String>,
+    pub(crate) issuer_certificate_id: Option<String>,
+    pub(crate) tags: Option<&'a [&'a str]>,
+    pub(crate) key_usage_vec: Option<Vec<KeyUsage>>,
+    pub(crate) unwrap: bool,
+    pub(crate) replace_existing: bool,
+}
+
+impl Default for ImportCertificateInput<'_> {
+    fn default() -> Self {
+        Self {
+            cli_conf_path: "",
+            sub_command: "",
+            key_file: "",
+            format: &CertificateInputFormat::JsonTtlv,
+            pkcs12_password: None,
+            certificate_id: None,
+            private_key_id: None,
+            issuer_certificate_id: None,
+            tags: None,
+            key_usage_vec: None,
+            unwrap: false,
+            replace_existing: false,
+        }
+    }
+}
+
 pub(crate) fn import_certificate(
-    cli_conf_path: &str,
-    sub_command: &str,
-    key_file: &str,
-    format: &CertificateInputFormat,
-    pkcs12_password: Option<&str>,
-    certificate_id: Option<String>,
-    private_key_id: Option<String>,
-    issuer_certificate_id: Option<String>,
-    tags: Option<&[&str]>,
-    key_usage_vec: Option<Vec<KeyUsage>>,
-    unwrap: bool,
-    replace_existing: bool,
+    import_certificate_input: ImportCertificateInput,
 ) -> CliResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let ImportCertificateInput {
+        cli_conf_path,
+        sub_command,
+        key_file,
+        format,
+        pkcs12_password,
+        certificate_id,
+        private_key_id,
+        issuer_certificate_id,
+        tags,
+        key_usage_vec,
+        unwrap,
+        replace_existing,
+    } = import_certificate_input;
+    let mut cmd = Command::cargo_bin(PROG_NAME).unwrap();
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec!["import".to_owned(), key_file.to_owned()];
@@ -88,73 +126,74 @@ pub(crate) fn import_certificate(
     ))
 }
 
-// #[tokio::test]
-// pub async fn test_certificate_import_different_format() -> CliResult<()> {
-//     // Create a test server
-//     let ctx = start_default_test_kms_server().await;
-//     // import as TTLV JSON
-//     import_certificate(
-//         &ctx.owner_client_conf_path,
-//         "certificates",
-//         "test_data/certificates/exported_certificate_ttlv.json",
-//         CertificateInputFormat::JsonTtlv,
-//         None,
-//         Some("ttlv_cert".to_string()),
-//         None,
-//         None,
-//         None,
-//         None,
-//         false,
-//         true,
-//     )?;
+#[tokio::test]
+async fn test_certificate_import_different_format() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
 
-//     // import as PEM
-//     import_certificate(
-//         &ctx.owner_client_conf_path,
-//         "certificates",
-//         "test_data/certificates/ca.crt",
-//         CertificateInputFormat::Pem,
-//         None,
-//         Some("pem_cert".to_string()),
-//         None,
-//         None,
-//         Some(&["import_cert"]),
-//         None,
-//         false,
-//         true,
-//     )?;
+    // import as TTLV JSON
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/exported_certificate_ttlv.json",
+        format: &CertificateInputFormat::JsonTtlv,
+        pkcs12_password: None,
+        certificate_id: Some("ttlv_cert".to_string()),
+        private_key_id: None,
+        issuer_certificate_id: None,
+        tags: None,
+        key_usage_vec: None,
+        unwrap: false,
+        replace_existing: true,
+    })?;
 
-//     // import a chain
-//     import_certificate(
-//         &ctx.owner_client_conf_path,
-//         "certificates",
-//         "test_data/certificates/mozilla_IncludedRootsPEM.txt",
-//         CertificateInputFormat::Chain,
-//         None,
-//         Some("chain_cert".to_string()),
-//         None,
-//         None,
-//         Some(&["import_chain"]),
-//         None,
-//         false,
-//         true,
-//     )?;
+    // import as PEM
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/ca.crt",
+        format: &CertificateInputFormat::Pem,
+        pkcs12_password: None,
+        certificate_id: Some("pem_cert".to_string()),
+        private_key_id: None,
+        issuer_certificate_id: None,
+        tags: None,
+        key_usage_vec: None,
+        unwrap: false,
+        replace_existing: true,
+    })?;
 
-//     // import a PKCS12
-//     import_certificate(
-//         &ctx.owner_client_conf_path,
-//         "certificates",
-//         "test_data/certificates/p12/output.p12",
-//         CertificateInputFormat::Pkcs12,
-//         Some("secret"),
-//         Some("p12_cert".to_string()),
-//         None,
-//         None,
-//         Some(&["import_pkcs12"]),
-//         None,
-//         false,
-//         true,
-//     )?;
+    // import a chain
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/mozilla_IncludedRootsPEM.txt",
+        format: &CertificateInputFormat::Chain,
+        pkcs12_password: None,
+        certificate_id: Some("chain_cert".to_string()),
+        private_key_id: None,
+        issuer_certificate_id: None,
+        tags: Some(&["import_chain"]),
+        key_usage_vec: None,
+        unwrap: false,
+        replace_existing: true,
+    })?;
 
-//     Ok(())
-// }
+    // import a PKCS12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/p12/output.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some("p12_cert".to_string()),
+        private_key_id: None,
+        issuer_certificate_id: None,
+        tags: Some(&["import_pkcs12"]),
+        key_usage_vec: None,
+        unwrap: false,
+        replace_existing: true,
+    })?;
+
+    Ok(())
+}

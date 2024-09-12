@@ -111,6 +111,13 @@ pub(crate) async fn certify(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
             );
+            // update the link to the private for the certificate
+            if let Some(private_key_id) = public_key_attributes.get_link(LinkType::PrivateKeyLink) {
+                certificate_attributes.add_link(
+                    LinkType::PrivateKeyLink,
+                    LinkedObjectIdentifier::from(private_key_id),
+                );
+            }
             (
                 vec![
                     // upsert the certificate

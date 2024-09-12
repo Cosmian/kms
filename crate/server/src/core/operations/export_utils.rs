@@ -62,49 +62,7 @@ pub(crate) async fn export_get(
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
-            // determine if the user wants a PKCS#12
-            let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
-            // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
-            if export
-                && (owm.state == StateEnumeration::Destroyed
-                    || owm.state == StateEnumeration::Destroyed_Compromised)
-            {
-                let key_block = owm.object.key_block_mut()?;
-                key_block.key_value = KeyValue {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-                    attributes: None,
-                };
-                key_block.key_format_type = KeyFormatType::Opaque;
-            } else {
-                process_private_key(
-                    &mut owm,
-                    &request.key_format_type,
-                    &request.key_wrap_type,
-                    if is_pkcs12 {
-                        // the key wrapping specifications supplied are to encrypt the PKCS#12,
-                        // not the private key
-                        &None
-                    } else {
-                        &request.key_wrapping_specification
-                    },
-                    kms,
-                    user,
-                    params,
-                )
-                .await?;
-            }
-            //in the case of a PKCS#12, the private key must be packaged with the certificate
-            if is_pkcs12 {
-                post_process_pkcs12_for_private_key(
-                    kms,
-                    operation_type,
-                    user,
-                    params,
-                    &request,
-                    &mut owm,
-                )
-                .await?;
-            }
+            export_get_private_key(kms, operation_type, user, params, &request, &mut owm).await?;
         }
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -158,7 +116,37 @@ pub(crate) async fn export_get(
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
-                if *key_format_type != KeyFormatType::X509 {
+                if *key_format_type == KeyFormatType::PKCS12 {
+                    // check if the private key link is available
+                    let private_key_id =
+                        owm.attributes.get_link(LinkType::PrivateKeyLink).context(
+                            "export certificate to PKCS#12: the private key link is missing",
+                        )?;
+                    // retrieve the private key
+                    owm = retrieve_object_for_operation(
+                        &private_key_id.to_string(),
+                        operation_type,
+                        kms,
+                        user,
+                        params,
+                    )
+                    .await?;
+                    export_get_private_key(
+                        kms,
+                        operation_type,
+                        user,
+                        params,
+                        &Export {
+                            unique_identifier: Some(UniqueIdentifier::from(private_key_id)),
+                            key_format_type: Some(KeyFormatType::PKCS12),
+                            key_wrap_type: Some(KeyWrapType::NotWrapped),
+                            key_compression_type: request.key_compression_type,
+                            key_wrapping_specification: request.key_wrapping_specification.clone(),
+                        },
+                        &mut owm,
+                    )
+                    .await?;
+                } else if *key_format_type != KeyFormatType::X509 {
                     kms_bail!(
                         "export: unsupported Key Format Type for a certificate: {:?}",
                         key_format_type
@@ -180,6 +168,53 @@ pub(crate) async fn export_get(
         attributes: owm.attributes,
         object: owm.object,
     })
+}
+
+async fn export_get_private_key(
+    kms: &KMS,
+    operation_type: ObjectOperationType,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+    request: &Export,
+    mut owm: &mut ObjectWithMetadata,
+) -> Result<(), KmsError> {
+    // determine if the user wants a PKCS#12
+    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
+    // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+    if (operation_type == ObjectOperationType::Export)
+        && (owm.state == StateEnumeration::Destroyed
+            || owm.state == StateEnumeration::Destroyed_Compromised)
+    {
+        let key_block = owm.object.key_block_mut()?;
+        key_block.key_value = KeyValue {
+            key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+            attributes: None,
+        };
+        key_block.key_format_type = KeyFormatType::Opaque;
+    } else {
+        process_private_key(
+            &mut owm,
+            &request.key_format_type,
+            &request.key_wrap_type,
+            if is_pkcs12 {
+                // the key wrapping specifications supplied are to encrypt the PKCS#12,
+                // not the private key
+                &None
+            } else {
+                &request.key_wrapping_specification
+            },
+            kms,
+            user,
+            params,
+        )
+        .await?;
+    }
+    //in the case of a PKCS#12, the private key must be packaged with the certificate
+    if is_pkcs12 {
+        post_process_pkcs12_for_private_key(kms, operation_type, user, params, &request, &mut owm)
+            .await?;
+    }
+    Ok(())
 }
 
 async fn process_private_key(
@@ -602,6 +637,10 @@ async fn post_process_pkcs12_for_private_key(
     // retrieve the certificate chain
     let mut chain: Stack<X509> = Stack::new()?;
     while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
+        // if the parent_id is identical to the current certificate => self-signed cert, we must stop
+        if &parent_id.to_string() == &cert_owm.id {
+            break;
+        }
         // retrieve the parent certificate
         cert_owm = retrieve_object_for_operation(
             &parent_id.to_string(),

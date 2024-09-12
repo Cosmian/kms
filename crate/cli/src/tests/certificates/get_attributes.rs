@@ -2,7 +2,10 @@ use kms_test_server::start_default_test_kms_server;
 
 use crate::{
     actions::{certificates::CertificateInputFormat, shared::AttributeTag},
-    tests::{certificates::import::import_certificate, shared::get_attributes},
+    tests::{
+        certificates::import::{import_certificate, ImportCertificateInput},
+        shared::get_attributes,
+    },
 };
 
 #[tokio::test]
@@ -11,20 +14,17 @@ async fn test_get_attributes_p12() {
     let ctx = start_default_test_kms_server().await;
 
     //import the certificate
-    let imported_p12_sk_uid = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some("get_attributes_test_p12_cert".to_string()),
-        None,
-        None,
-        Some(&["import_pkcs12"]),
-        None,
-        false,
-        true,
-    )
+    let imported_p12_sk_uid = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some("get_attributes_test_p12_cert".to_string()),
+        tags: Some(&["import_pkcs12"]),
+        replace_existing: true,
+        ..Default::default()
+    })
     .unwrap();
 
     //get the attributes of the private key and check that they are correct

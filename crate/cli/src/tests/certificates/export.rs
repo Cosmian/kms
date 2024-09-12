@@ -21,7 +21,10 @@ use crate::{
     },
     error::{result::CliResult, CliError},
     tests::{
-        certificates::{certify::create_self_signed_cert, import::import_certificate},
+        certificates::{
+            certify::create_self_signed_cert,
+            import::{import_certificate, ImportCertificateInput},
+        },
         shared::export_key,
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -39,20 +42,17 @@ async fn test_import_export_p12_25519() {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/another_p12/server.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["import_pkcs12"]),
-        None,
-        false,
-        true,
-    )
+    let imported_p12_sk = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/another_p12/server.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        replace_existing: true,
+        tags: Some(&["import_pkcs12"]),
+        ..Default::default()
+    })
     .unwrap();
 
     //
@@ -219,21 +219,32 @@ async fn test_import_p12_rsa() {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        None,
-        None,
-        None,
-        Some(&["import_pkcs12"]),
-        None,
-        false,
-        true,
-    )
+    let imported_p12_sk = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        replace_existing: true,
+        tags: Some(&["import_pkcs12"]),
+        ..Default::default()
+    })
     .unwrap();
+    // let imported_p12_sk = import_certificate(
+    //     &ctx.owner_client_conf_path,
+    //     "certificates",
+    //     "test_data/certificates/csr/intermediate.p12",
+    //     &CertificateInputFormat::Pkcs12,
+    //     Some("secret"),
+    //     None,
+    //     None,
+    //     None,
+    //     Some(&["import_pkcs12"]),
+    //     None,
+    //     false,
+    //     true,
+    // )
+    // .unwrap();
 
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
@@ -317,8 +328,30 @@ pub(crate) fn export_certificate(
 async fn test_self_signed_export_loop() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    // Create a self-signed certificate
-    let _certificate_id = create_self_signed_cert(ctx).await?;
+    // Create a self-signed certificate - the certificate link points to the certificate itself
+    let certificate_id = create_self_signed_cert(ctx).await?;
+
+    // export
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &certificate_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12),
+        Some(String::from("secret")),
+        false, //to get attributes
+    )?;
+
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
 
     Ok(())
 }

@@ -21,7 +21,10 @@ use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::{result::CliResult, CliError},
     tests::{
-        certificates::{export::export_certificate, import::import_certificate},
+        certificates::{
+            export::export_certificate,
+            import::{import_certificate, ImportCertificateInput},
+        },
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
         shared::export_key,
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
@@ -31,18 +34,18 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(crate) struct CertifyOp {
-    issuer_certificate_key_id: Option<String>,
-    issuer_private_key_id: Option<String>,
-    csr_file: Option<String>,
-    public_key_id_to_certify: Option<String>,
-    certificate_id_to_re_certify: Option<String>,
-    generate_keypair: bool,
-    subject_name: Option<String>,
-    algorithm: Option<Algorithm>,
-    certificate_id: Option<String>,
-    days: Option<u32>,
-    certificate_extensions: Option<PathBuf>,
-    tags: Option<Vec<String>>,
+    pub(crate) issuer_certificate_key_id: Option<String>,
+    pub(crate) issuer_private_key_id: Option<String>,
+    pub(crate) csr_file: Option<String>,
+    pub(crate) public_key_id_to_certify: Option<String>,
+    pub(crate) certificate_id_to_re_certify: Option<String>,
+    pub(crate) generate_keypair: bool,
+    pub(crate) subject_name: Option<String>,
+    pub(crate) algorithm: Option<Algorithm>,
+    pub(crate) certificate_id: Option<String>,
+    pub(crate) days: Option<u32>,
+    pub(crate) certificate_extensions: Option<PathBuf>,
+    pub(crate) tags: Option<Vec<String>>,
 }
 
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<String> {
@@ -115,51 +118,40 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
 
 fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
     // import Root CA
-    let root_ca_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/ca.crt",
-        &CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    let root_ca_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/ca.crt",
+        format: &CertificateInputFormat::Pem,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
-    let intermediate_ca_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.crt",
-        &CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    // import Intermediate CA
+    let intermediate_ca_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.crt",
+        format: &CertificateInputFormat::Pem,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        tags: Some(&["root_ca"]),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     // import Intermediate p12
-    let intermediate_ca_private_key_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["intermediate_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    let intermediate_ca_private_key_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        tags: Some(&["intermediate_ca"]),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     Ok((
         root_ca_id,
