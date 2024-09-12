@@ -1093,12 +1093,15 @@ impl Attributes {
         self.get_link(LinkType::ParentLink)
     }
 
-    /// Add a link to the object.
-    pub fn add_link(
+    /// Set a link to an object.
+    /// If a link of the same type already exists, it is removed.
+    /// There can only be one link of a given type.
+    pub fn set_link(
         &mut self,
         link_type: LinkType,
         linked_object_identifier: LinkedObjectIdentifier,
     ) {
+        self.remove_link(link_type);
         let links = self.link.get_or_insert_with(Vec::new);
         links.push(Link {
             link_type,

@@ -247,7 +247,7 @@ async fn process_public_key(
     };
 
     // add imported links to attributes
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         object
             .key_block_mut()?
             .key_value
@@ -311,7 +311,7 @@ async fn process_private_key(
         || object_key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt)
     {
         // add imported links to attributes
-        add_imported_links_to_attributes(
+        upsert_imported_links_in_attributes(
             &mut attributes,
             object_key_block
                 .key_value
@@ -390,7 +390,7 @@ fn private_key_from_openssl(
     let sk_key_block = sk.key_block_mut()?;
 
     // add imported links to attributes
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         request_attributes,
         sk_key_block
             .key_value
@@ -530,7 +530,7 @@ fn process_pkcs12(
         .key_value
         .attributes
         .get_or_insert(Box::default())
-        .add_link(
+        .set_link(
             //Note: it is unclear what link type should be used here according to KMIP
             // CertificateLink seems to be for public key only and there is not description
             // for PKCS12CertificateLink
@@ -559,7 +559,7 @@ fn process_pkcs12(
     // Add links to the leaf certificate
     // add private key link to certificate
     // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
-    leaf_certificate_attributes.add_link(
+    leaf_certificate_attributes.set_link(
         LinkType::PrivateKeyLink,
         LinkedObjectIdentifier::TextString(private_key_id.clone()),
     );
@@ -567,7 +567,7 @@ fn process_pkcs12(
     // add parent link to certificate
     // (according to the KMIP spec, this would be LinkType::CertificateLink)
     if let Some((parent_id, _, _, _)) = chain.first() {
-        leaf_certificate_attributes.add_link(
+        leaf_certificate_attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(parent_id.clone()),
         );
@@ -604,7 +604,7 @@ fn process_pkcs12(
         if let Some(parent_certificate_id) = parent_certificate_id {
             // add parent link to certificate
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
-            chain_certificate_attributes.add_link(
+            chain_certificate_attributes.set_link(
                 LinkType::ParentLink,
                 LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
             );
@@ -623,27 +623,22 @@ fn process_pkcs12(
     Ok((private_key_id, operations))
 }
 
-pub(crate) fn add_imported_links_to_attributes(
+pub(crate) fn upsert_imported_links_in_attributes(
     attributes: &mut Attributes,
     links_to_add: &Attributes,
 ) {
     trace!(
-        "Adding imported links to attributes: attributes={:?}, links_to_add={:?}",
-        attributes,
-        links_to_add
+        "Upserting imported links in attributes: existing attributes links={:?}, links_to_add={:?}",
+        attributes.link,
+        links_to_add.link
     );
     if let Some(new_links) = links_to_add.link.as_ref() {
-        match attributes.link.as_mut() {
-            Some(existing_links) => {
-                for new_link in new_links {
-                    if !existing_links.contains(new_link) {
-                        existing_links.push(new_link.clone());
-                    }
-                }
-            }
-            None => {
-                attributes.link = Some(new_links.clone());
-            }
+        for new_link in new_links {
+            // one can only have one link of a given type
+            attributes.set_link(
+                new_link.link_type.clone(),
+                new_link.linked_object_identifier.clone(),
+            );
         }
     }
     trace!(

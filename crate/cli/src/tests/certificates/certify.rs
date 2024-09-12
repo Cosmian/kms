@@ -9,6 +9,7 @@ use cosmian_kms_client::{
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
@@ -34,7 +35,7 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(crate) struct CertifyOp {
-    pub(crate) issuer_certificate_key_id: Option<String>,
+    pub(crate) issuer_certificate_id: Option<String>,
     pub(crate) issuer_private_key_id: Option<String>,
     pub(crate) csr_file: Option<String>,
     pub(crate) public_key_id_to_certify: Option<String>,
@@ -53,7 +54,7 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec!["certify".to_owned()];
-    if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_key_id {
+    if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_id {
         args.push("--issuer-certificate-id".to_owned());
         args.push(issuer_certificate_key_id);
     }
@@ -160,6 +161,7 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String
     ))
 }
 
+/// Fetch a certificate and return its Object, attributes and DER bytes
 fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attributes, Vec<u8>) {
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
@@ -757,6 +759,54 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
         None,
     )?;
     assert!(validation.contains("Valid"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_certify_twice() -> CliResult<()> {
+    log_init(Some("info,cosmian_kms_server=trace"));
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Certify the CSR without issuer i.e. self signed
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
+    let private_key_id = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+    let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
+
+    // Certify again with the same certificate id
+    let certificate_id2 = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            certificate_id: Some(certificate_id.clone()),
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes2, _) = fetch_certificate(ctx, &certificate_id2);
+    let private_key_id2 = attributes2.get_link(LinkType::PrivateKeyLink).unwrap();
+    let public_key_id2 = attributes2.get_link(LinkType::PublicKeyLink).unwrap();
+
+    assert_eq!(certificate_id, certificate_id2);
+    assert_ne!(private_key_id, private_key_id2);
+    assert_ne!(public_key_id, public_key_id2);
 
     Ok(())
 }

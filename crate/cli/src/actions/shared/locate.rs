@@ -118,21 +118,21 @@ impl LocateObjectsAction {
         }
 
         if let Some(public_key_id) = &self.public_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.to_string()),
             );
         }
 
         if let Some(private_key_id) = &self.private_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.to_string()),
             );
         }
 
         if let Some(certificate_id) = &self.certificate_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(certificate_id.to_string()),
             );

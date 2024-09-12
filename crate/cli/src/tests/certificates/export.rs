@@ -16,13 +16,13 @@ use uuid::Uuid;
 
 use crate::{
     actions::{
-        certificates::{CertificateExportFormat, CertificateInputFormat},
+        certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
         shared::ExportKeyFormat::JsonTtlv,
     },
     error::{result::CliResult, CliError},
     tests::{
         certificates::{
-            certify::create_self_signed_cert,
+            certify::{certify, create_self_signed_cert, CertifyOp},
             import::{import_certificate, ImportCertificateInput},
         },
         shared::export_key,
@@ -343,6 +343,65 @@ async fn test_self_signed_export_loop() -> CliResult<()> {
         false, //to get attributes
     )?;
 
+    // try re-importing the PKCS#12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_export_root_and_intermediate_pkcs12() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Generate a self-signed root CA
+    let ca_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // Certify an intermediate CA with the root CA
+    let intermediate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            issuer_certificate_id: Some(ca_id),
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // export the intermediate CA to PKCS#12
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &intermediate_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12),
+        Some(String::from("secret")),
+        false,
+    )?;
+
+    // try re-importing the PKCS#12
     import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",

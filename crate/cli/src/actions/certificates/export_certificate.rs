@@ -6,8 +6,9 @@ use cosmian_kms_client::{
     kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, KmsClient,
 };
-use tracing::trace;
+use tracing::log::trace;
 
+// use tracing::trace;
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
@@ -86,7 +87,7 @@ impl ExportCertificateAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either `--unique-id` or one or more `--tag` must be specified")
+            cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
         };
 
         let (key_format_type, wrapping_key_id) = match self.output_format {

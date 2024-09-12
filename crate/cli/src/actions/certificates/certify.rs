@@ -243,7 +243,7 @@ impl CertifyAction {
 
         // set the issuer certificate id
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
@@ -251,7 +251,7 @@ impl CertifyAction {
 
         // set the issuer private key id
         if let Some(issuer_private_key_id) = &self.issuer_private_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
             );

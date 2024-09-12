@@ -101,19 +101,19 @@ pub(crate) async fn certify(
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes;
-            public_key_attributes.add_link(
+            public_key_attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
             let mut certificate_attributes = attributes.clone();
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
             );
             // update the link to the private for the certificate
             if let Some(private_key_id) = public_key_attributes.get_link(LinkType::PrivateKeyLink) {
-                certificate_attributes.add_link(LinkType::PrivateKeyLink, private_key_id);
+                certificate_attributes.set_link(LinkType::PrivateKeyLink, private_key_id);
             }
             (
                 vec![
@@ -137,36 +137,44 @@ pub(crate) async fn certify(
             )
         }
         Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
+            trace!(
+                "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: \
+                 {keypair_data:?}"
+            );
             // update the private key attributes with the public key identifier
-            keypair_data.private_key_object.attributes_mut()?.add_link(
+            keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
             );
             // update the private key attributes with a link to the certificate
-            keypair_data.private_key_object.attributes_mut()?.add_link(
+            keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the public key attributes with a link to the private key
-            keypair_data.public_key_object.attributes_mut()?.add_link(
+            keypair_data.public_key_object.attributes_mut()?.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
             // update the public key attributes with a link to the certificate
-            keypair_data.public_key_object.attributes_mut()?.add_link(
+            keypair_data.public_key_object.attributes_mut()?.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
             let mut certificate_attributes = attributes.clone();
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
             );
             // update the certificate attributes with a link to the private key
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
+            );
+            trace!(
+                "Certificate attributes links: {:?}",
+                certificate_attributes.link
             );
             (
                 vec![
@@ -373,7 +381,7 @@ async fn get_subject(
         public_protection_storage_masks: None,
         public_key_attributes: public_attributes,
     };
-    info!("Creating key pair for certification");
+    info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
         create_key_pair_request,
         &sk_uid.to_string(),
@@ -626,7 +634,7 @@ fn build_and_sign_certificate(
     tags.insert("_cert".to_owned());
 
     // link the certificate to the issuer certificate
-    attributes.add_link(
+    attributes.set_link(
         LinkType::CertificateLink,
         issuer.unique_identifier().clone().into(),
     );

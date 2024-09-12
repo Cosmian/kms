@@ -79,7 +79,9 @@ DELETE FROM objects WHERE id=? AND owner=?;
 INSERT INTO objects (id, object, attributes, state, owner) VALUES (?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
                 object = IF(objects.owner=?, VALUES(object), object),
-                state = IF(objects.owner=?, VALUES(state), state);
+                attributes = IF(objects.owner=?, VALUES(attributes), attributes),
+                state = IF(objects.owner=?, VALUES(state), state),
+                owner = IF(objects.owner=?, VALUES(owner), owner);
 
 -- name: select-user-accesses-for-object
 SELECT permissions

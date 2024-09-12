@@ -125,21 +125,21 @@ impl ImportCertificateAction {
         let mut leaf_certificate_attributes = None;
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         };
         if let Some(public_key_id) = &self.public_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
@@ -285,7 +285,7 @@ impl ImportCertificateAction {
         attributes.set_cryptographic_usage_mask(cryptographic_usage_mask);
 
         if let Some(password) = &self.pkcs12_password {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PKCS12PasswordLink,
                 LinkedObjectIdentifier::TextString(password.clone()),
             );
@@ -333,7 +333,7 @@ impl ImportCertificateAction {
             // add link to issuer/parent certificate if any
             if let Some(id) = previous_identifier {
                 let attributes = import_attributes.get_or_insert(Attributes::default());
-                attributes.add_link(
+                attributes.set_link(
                     LinkType::CertificateLink,
                     LinkedObjectIdentifier::TextString(id.clone()),
                 );

@@ -24,9 +24,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        certificate::retrieve_certificate_for_private_key,
+        certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         extra_database_params::ExtraDatabaseParams,
-        operations::{import::add_imported_links_to_attributes, unwrap_key, wrapping::wrap_key},
+        operations::{import::upsert_imported_links_in_attributes, unwrap_key, wrapping::wrap_key},
         KMS,
     },
     database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
@@ -117,14 +117,9 @@ pub(crate) async fn export_get(
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
                 if *key_format_type == KeyFormatType::PKCS12 {
-                    // check if the private key link is available
-                    let private_key_id =
-                        owm.attributes.get_link(LinkType::PrivateKeyLink).context(
-                            "export certificate to PKCS#12: the private key link is missing",
-                        )?;
                     // retrieve the private key
-                    owm = retrieve_object_for_operation(
-                        &private_key_id.to_string(),
+                    owm = retrieve_private_key_for_certificate(
+                        uid_or_tags,
                         operation_type,
                         kms,
                         user,
@@ -137,7 +132,7 @@ pub(crate) async fn export_get(
                         user,
                         params,
                         &Export {
-                            unique_identifier: Some(UniqueIdentifier::from(private_key_id)),
+                            unique_identifier: Some(UniqueIdentifier::TextString(owm.id.clone())),
                             key_format_type: Some(KeyFormatType::PKCS12),
                             key_wrap_type: Some(KeyWrapType::NotWrapped),
                             key_compression_type: request.key_compression_type,
@@ -178,6 +173,11 @@ async fn export_get_private_key(
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
+    trace!(
+        "export_get_private_key: {} for operation: {}",
+        owm.id,
+        operation_type
+    );
     // determine if the user wants a PKCS#12
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -211,8 +211,7 @@ async fn export_get_private_key(
     }
     //in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
-        post_process_pkcs12_for_private_key(kms, operation_type, user, params, request, owm)
-            .await?;
+        build_pkcs12_for_private_key(kms, operation_type, user, params, request, owm).await?;
     }
     Ok(())
 }
@@ -260,7 +259,7 @@ async fn process_private_key(
 
     // Make a copy of the existing attributes
     let mut attributes = object_with_metadata.attributes.clone();
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         &mut attributes,
         key_block.key_value.attributes.get_or_insert(Box::default()),
     );
@@ -368,7 +367,7 @@ async fn process_public_key(
 
     //make a copy of the existing attributes
     let mut attributes = object_with_metadata.attributes.clone();
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         &mut attributes,
         key_block.key_value.attributes.get_or_insert(Box::default()),
     );
@@ -618,21 +617,22 @@ async fn process_symmetric_key(
     Ok(())
 }
 
-async fn post_process_pkcs12_for_private_key(
+async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: ObjectOperationType,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
     request: &Export,
-    owm: &mut ObjectWithMetadata,
+    private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
-    // convert the Private Key to openssl
-    let private_key = kmip_private_key_to_openssl(&owm.object)
-        .context("export: unable to parse the private key to openssl")?;
+    trace!("build_pkcs12_for_private_key:  {}", private_key_owm.id);
 
     let mut cert_owm =
-        retrieve_certificate_for_private_key(owm, operation_type, kms, user, params).await?;
+        retrieve_certificate_for_private_key(private_key_owm, operation_type, kms, user, params)
+            .await?;
     let certificate = kmip_certificate_to_openssl(&cert_owm.object)?;
+
+    trace!("building chain from leaf certificate:  {}", cert_owm.id);
 
     // retrieve the certificate chain
     let mut chain: Stack<X509> = Stack::new()?;
@@ -641,6 +641,7 @@ async fn post_process_pkcs12_for_private_key(
         if parent_id.to_string() == cert_owm.id {
             break;
         }
+        trace!("certificate parent id is:  {}", parent_id);
         // retrieve the parent certificate
         cert_owm = retrieve_object_for_operation(
             &parent_id.to_string(),
@@ -661,15 +662,24 @@ async fn post_process_pkcs12_for_private_key(
         .and_then(|kws| kws.encryption_key_information.as_ref())
         .map(|eki| eki.unique_identifier.to_string())
         .unwrap_or_default();
+    // convert the Private Key to openssl
+    trace!(
+        "converting the private key {} to openssl pkey",
+        private_key_owm.id
+    );
+    let private_key = kmip_private_key_to_openssl(&private_key_owm.object)
+        .context("export: unable to parse the private key to openssl")?;
     // Create the PKCS12
+    trace!("building the PKCS12");
     let pkcs12 = openssl::pkcs12::Pkcs12::builder()
         .pkey(&private_key)
         .cert(&certificate)
         .ca(chain)
-        .build2(&password)?;
+        .build2(&password)
+        .context("export: unable to build the PKCS12")?;
 
     // add the certificate to the private key
-    owm.object = Object::PrivateKey {
+    private_key_owm.object = Object::PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,

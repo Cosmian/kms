@@ -72,8 +72,8 @@ Note: these extensions make the intermediate CA compatible with Google CSE for G
 [S/MIME requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 
 ```sh
- ckms -- certificates certify --certificate-id acme_intermediate_ca \
- --issuer-private-key-id 1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8 \
+ ckms certificates certify --certificate-id acme_intermediate_ca \
+ --issuer-certificate-id acme_root_ca \
  --generate-key-pair --algorithm nist-p256  \
  --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
  --days 1825 \
