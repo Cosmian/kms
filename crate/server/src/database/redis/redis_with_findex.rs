@@ -19,7 +19,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use redis::aio::ConnectionManager;
-use tracing::{log::info, trace};
+use tracing::trace;
 use uuid::Uuid;
 
 use super::{
@@ -76,12 +76,6 @@ impl RedisWithFindex {
             &mut db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
             &*master_key
-        );
-        info!(
-            "Master Key: {}\nfindex_key: {}\ndb_key: {}",
-            hex::encode(master_key.to_vec().as_slice()),
-            hex::encode(findex_key.to_vec().as_slice()),
-            hex::encode(db_key.to_vec().as_slice())
         );
 
         let client = redis::Client::open(redis_url)?;
