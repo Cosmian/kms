@@ -7,34 +7,58 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Add ReKey KMIP operation ([#294](https://github.com/Cosmian/kms/pull/294))
-- Add API token authentication between server and clients ([#290](https://github.com/Cosmian/kms/pull/290))
+- Add API token authentication between server and
+  clients ([#290](https://github.com/Cosmian/kms/pull/290))
 - Build a generic database upgrade mechanism ([#299](https://github.com/Cosmian/kms/pull/299))
+- Export of certificates can now be performed using the certificate id (instead of just the private
+  key id)
+- Made test DB backend selectable using env. var. `KMS_TEST_URL`
+- More intuitive PKCS#12 import
+
+- Documentation (S/MIME)
 
 ### 🐛 Bug Fixes
 
 - KMIP Attributes:
-  * In get_attributes, use attributes from ObjectWithMetadata instead of Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
-  * When inserting in db, force Object::Attributes to be synced with Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
+    * In get_attributes, use attributes from ObjectWithMetadata instead of
+      Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
+    * When inserting in db, force Object::Attributes to be synced with
+      Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
 - Certificates handling/tasks:
-  * **Validate** KMIP operation:
-    - Simplify getting CRLs and get returned errors ([#268](https://github.com/Cosmian/kms/pull/268))
-    - Validate certificate generation ([#283](https://github.com/Cosmian/kms/pull/283))
-    - Use certificate file path in ckms arguments ([#292](https://github.com/Cosmian/kms/pull/292))
-  * **Certify** KMIP operation: Server must sign x509 after adding X509 extensions ([#282](https://github.com/Cosmian/kms/pull/282))
+    * **Validate** KMIP operation:
+        - Simplify getting CRLs and get returned
+          errors ([#268](https://github.com/Cosmian/kms/pull/268))
+        - Validate certificate generation ([#283](https://github.com/Cosmian/kms/pull/283))
+        - Use certificate file path in ckms
+          arguments ([#292](https://github.com/Cosmian/kms/pull/292))
+    * **Certify** KMIP operation: Server must sign x509 after adding X509
+      extensions ([#282](https://github.com/Cosmian/kms/pull/282))
 - Merge decrypt match in same function ([#295](https://github.com/Cosmian/kms/pull/295))
 - Fix Public RSA Key size in get attributes ([#275](https://github.com/Cosmian/kms/pull/275))
 - RUSTSEC:
-  * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
-  * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291) and [#297](https://github.com/Cosmian/kms/pull/297))
+    * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade
+      crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
+    * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing
+      Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291)
+      and [#297](https://github.com/Cosmian/kms/pull/297))
+- CLI doc fixes (certificates certify)
+- Fix PKCS#12 export of self-signed cert ([#305](https://github.com/Cosmian/kms/issues/305))
+- Fix serialization of `Attributes` in
+  `redis-findex` ([#307](https://github.com/Cosmian/kms/issues/307)
+  com/Cosmian/kms/issues/307)
 
 ### ⚙️ Miscellaneous Tasks
 
 - **clippy** tasks:
-  * Only expose pub functions that need to be public ([#277](https://github.com/Cosmian/kms/pull/277))
-  * Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
+    * Only expose pub functions that need to be
+      public ([#277](https://github.com/Cosmian/kms/pull/277))
+    * Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
 - Rename MacOS artifacts giving CPU architecture
-- Configure `ckms` to build reqwest with minimal idle connections reuse ([#272](https://github.com/Cosmian/kms/pull/272))
+- Configure `ckms` to build reqwest with minimal idle connections
+  reuse ([#272](https://github.com/Cosmian/kms/pull/272))
 - Do not delete tags if none are provided ([#276](https://github.com/Cosmian/kms/pull/276))
+- De-activated Google CSE tests when tokens are not supplied through env. var.
+- Cleaned-up and improved certificates import tests
 
 ## [4.17.0] - 2024-07-05
 
@@ -42,20 +66,25 @@ All notable changes to this project will be documented in this file.
 
 - Add KMIP operation `Validate` for certificates ([#247](https://github.com/Cosmian/kms/pull/247))
 - Added RSA benchmarks ([#251](https://github.com/Cosmian/kms/pull/251))
-- Add OpenTelemetry OTLP protocol support to KMS server ([#253](https://github.com/Cosmian/kms/pull/253))
-- Support for multiple certification scenarios and self-signing ([#248](https://github.com/Cosmian/kms/pull/248))
+- Add OpenTelemetry OTLP protocol support to KMS
+  server ([#253](https://github.com/Cosmian/kms/pull/253))
+- Support for multiple certification scenarios and
+  self-signing ([#248](https://github.com/Cosmian/kms/pull/248))
 
 ### 🐛 Bug Fixes
 
 - Fix vulnerability RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
-- Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254)) and ([#255](https://github.com/Cosmian/kms/pull/255))
+- Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254))
+  and ([#255](https://github.com/Cosmian/kms/pull/255))
 
 ### ⚙️ Miscellaneous Tasks
 
-- Create Debian/RPM packages for Ubuntu 2x.04 and RHEL 9 ([#264](https://github.com/Cosmian/kms/pull/264))
+- Create Debian/RPM packages for Ubuntu 2x.04 and RHEL
+  9 ([#264](https://github.com/Cosmian/kms/pull/264))
 - Drop Centos 7 support ([#265](https://github.com/Cosmian/kms/pull/265))
 - Replace `cargo audit` with `cargo deny` ([#245](https://github.com/Cosmian/kms/pull/245))
-- Replace Linux cross-compiling for Windows with compiling on Windows Github runner ([#249](https://github.com/Cosmian/kms/pull/249))
+- Replace Linux cross-compiling for Windows with compiling on Windows Github
+  runner ([#249](https://github.com/Cosmian/kms/pull/249))
 - Add support for build on MacOS ARM
 
 ## [4.16.0] - 2024-05-06
@@ -73,7 +102,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Create Gmail key pairs and identities with `ckms` via Gmail API ([#243](https://github.com/Cosmian/kms/pull/243))
+- Create Gmail key pairs and identities with `ckms` via Gmail
+  API ([#243](https://github.com/Cosmian/kms/pull/243))
 
 ### 🐛 Bug Fixes
 
@@ -83,7 +113,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add Google Workspace CSE endpoints for **encrypted Gmail** ([#192](https://github.com/Cosmian/kms/pull/192))
+- Add Google Workspace CSE endpoints for **encrypted Gmail
+  ** ([#192](https://github.com/Cosmian/kms/pull/192))
 
 ### 🐛 Bug Fixes
 
@@ -191,10 +222,10 @@ All notable changes to this project will be documented in this file.
 
 - Save KMIP Attributes in a proper column of `Objects`
   table [#166](https://github.com/Cosmian/kms/pull/166):
-  - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
+    - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
 - Add support for CoverCrypt `rekey`, `prune`, and `Policy` editing
   methods [#179](https://github.com/Cosmian/kms/pull/179):
-  - Add CLI commands to perform these actions
+    - Add CLI commands to perform these actions
 - Accurate CryptographicUsageMask for KMIP creation (RSA and EC
   keys) [#189](https://github.com/Cosmian/kms/pull/189)
   and [#187](https://github.com/Cosmian/kms/pull/187).
@@ -309,10 +340,10 @@ All notable changes to this project will be documented in this file.
 
 - Redis-Findex: `create` now checks for the pre-existence of the object
 - Better KMIP compliance:
-  - improved KeyBlock definition [#76](https://github.com/Cosmian/kms/issues/76)
-  - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
-  - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
-  - Use od standards attributes instead of Vendor attributes wherever possible
+    - improved KeyBlock definition [#76](https://github.com/Cosmian/kms/issues/76)
+    - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
+    - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
+    - Use od standards attributes instead of Vendor attributes wherever possible
 
 ## [4.9.1] - 2023-11-14
 
@@ -357,13 +388,13 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - KMS running inside TEE (SGX or SEV)
-  - review the `verify` subcommand
-  - force checking the leaf TLS certificate when querying a KMS running inside a TEE
-  - verify RA-TLS certificate before querying the bootstrap server
-  - review the TLS certificate generation using the key tied to the TEE
-  - remove libsgx and create a new dependance to tee_attestation crate
-  - update KMS server argument regarding the TEE and certbot
-  - review documentation regarding the KMS usage inside a TEE
+    - review the `verify` subcommand
+    - force checking the leaf TLS certificate when querying a KMS running inside a TEE
+    - verify RA-TLS certificate before querying the bootstrap server
+    - review the TLS certificate generation using the key tied to the TEE
+    - remove libsgx and create a new dependance to tee_attestation crate
+    - update KMS server argument regarding the TEE and certbot
+    - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])
 
 ### Ci
@@ -376,17 +407,17 @@ All notable changes to this project will be documented in this file.
 
 - Added the wildcard user `*` to grant access rights to all users on an object
 - About certificates:
-  - add validation of the complete chain instead of the leaf and parent certificates
-  - add verifications before using a certificate:
-    - check that each certificate is not expired (both chain and leaf certificates)
-    - check that no certificate is revoked (both chain and leaf certificates)
-    - check that each certificate has a valid signature (both chain and leaf certificates)
-    - check that certificate CRL signature is valid
-  - add RSA X509 certificate support
-  - add Covercrypt bulk encryption
+    - add validation of the complete chain instead of the leaf and parent certificates
+    - add verifications before using a certificate:
+        - check that each certificate is not expired (both chain and leaf certificates)
+        - check that no certificate is revoked (both chain and leaf certificates)
+        - check that each certificate has a valid signature (both chain and leaf certificates)
+        - check that certificate CRL signature is valid
+    - add RSA X509 certificate support
+    - add Covercrypt bulk encryption
 - KMS CLI `ckms`:
-  - can import the Mozilla Common CA Database (CCADB)
-  - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private
+    - can import the Mozilla Common CA Database (CCADB)
+    - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private
       key)
 
 ### 🐛 Bug Fixes
@@ -411,25 +442,25 @@ All notable changes to this project will be documented in this file.
   components, including the database encryption secret and the HTTPS certificate key, directly into
   the encrypted machine memory, through a secure connection
 - Add certificate support:
-  - in cosmian_kms_server:
-    - implement `Certify` KMIP operation
-    - in addition, the KMS server will automatically add:
-      - the system tag `_cert` on `Certificate` object
-      - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the
+    - in cosmian_kms_server:
+        - implement `Certify` KMIP operation
+        - in addition, the KMS server will automatically add:
+            - the system tag `_cert` on `Certificate` object
+            - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the
               link between public/private key objects and the related certificate object
-      - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where
+            - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where
               SPKI refers
               to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI
               value identifies uniquely the underlying certificate
-      - the system tag `_cert_ca=<Subject Common Name>` on CA `Certificate` object
-    - import X509 certificate as PEM and also import private key as PEM
-    - export generic KMIP key `wrapped` by X509 certificate
-    - import a wrapped key with unwrapping on the fly
-    - encrypt with X509 certificate and decrypt with PKCS8 private key
-  - in `ckms`, add:
-    - create/destroy certificate
-    - export/import certificate
-    - revoke certificate
+            - the system tag `_cert_ca=<Subject Common Name>` on CA `Certificate` object
+        - import X509 certificate as PEM and also import private key as PEM
+        - export generic KMIP key `wrapped` by X509 certificate
+        - import a wrapped key with unwrapping on the fly
+        - encrypt with X509 certificate and decrypt with PKCS8 private key
+    - in `ckms`, add:
+        - create/destroy certificate
+        - export/import certificate
+        - revoke certificate
 - Add the export wrapping with X509 certificate encryption
 
 ## [4.5.0] - 2023-08-21
@@ -498,8 +529,8 @@ Use the tags to export objects, locate them, or request data encryption and decr
 - Use of cloudproof_rust as a dependency rather than Covercrypt and Crypto Core directly to avoid
   version conflicts
 - Authentication:
-  - support for more JWT providers
-  - support for certificate authentication
+    - support for more JWT providers
+    - support for certificate authentication
 - Removal of global static conf and use of proper injection (was hindering testing)
 - Authorization: re-factor of endpoints and fix delegation issues around revoke and destroy
 
@@ -584,7 +615,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 ### 🚀 Features
 
 - Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
-  - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
+    - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
 
 ### Ci
 
