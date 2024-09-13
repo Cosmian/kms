@@ -372,7 +372,7 @@ async fn process_private_key(
 /// and return the uid, the object and the tags
 /// The user tags are optional and will be updated if present
 /// The request attributes will be updated with the imported links
-/// The sk_uid is the unique identifier of the private key
+/// The `sk_uid` is the unique identifier of the private key
 /// If it is empty, a new one will be generated
 fn private_key_from_openssl(
     sk: &PKey<Private>,
@@ -496,7 +496,7 @@ fn process_pkcs12(
         let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
         (
-            certificate_id.to_string(),
+            certificate_id.to_owned(),
             leaf_certificate,
             leaf_certificate_tags,
             CertificateAttributes::from(&openssl_cert),
