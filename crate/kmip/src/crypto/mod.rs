@@ -1,4 +1,6 @@
 pub use elliptic_curves::CURVE_25519_Q_LENGTH_BITS;
+#[cfg(any(feature = "openssl", feature = "fips"))]
+pub use password_derivation::FIPS_MIN_SALT_SIZE;
 
 use crate::{
     error::KmipError,

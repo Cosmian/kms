@@ -391,14 +391,6 @@ fn check_public_and_private_key_linked(
 
 #[tokio::test]
 async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
-    // unsafe {
-    //     set_var(
-    //         "RUST_LOG",
-    //         "error,cosmian_kms_server=debug,cosmian_kms_cli=info",
-    //     );
-    //     set_var("RUST_BACKTRACE", "1");
-    //     set_var("KMS_TEST_DB", "redis-findex");
-    // }
     log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;

@@ -19,7 +19,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use redis::aio::ConnectionManager;
-use tracing::trace;
+use tracing::{log::info, trace};
 use uuid::Uuid;
 
 use super::{
@@ -38,6 +38,7 @@ use crate::{
 };
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
 pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
@@ -63,7 +64,6 @@ impl RedisWithFindex {
         label: &[u8],
     ) -> KResult<Self> {
         // derive a Findex Key
-        // let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
             &mut findex_key,
@@ -76,6 +76,12 @@ impl RedisWithFindex {
             &mut db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
             &*master_key
+        );
+        info!(
+            "Master Key: {}\nfindex_key: {}\ndb_key: {}",
+            hex::encode(master_key.to_vec().as_slice()),
+            hex::encode(findex_key.to_vec().as_slice()),
+            hex::encode(db_key.to_vec().as_slice())
         );
 
         let client = redis::Client::open(redis_url)?;
@@ -97,6 +103,7 @@ impl RedisWithFindex {
         master_password: &str,
     ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
         let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+            REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT,
             master_password.as_bytes(),
         )?;
 

@@ -22,29 +22,6 @@ ckms certificates certify --certificate-id acme_root_ca \
 --days 3650
 ```
 
-## Verify the certificate and recover the id of the generated private key
-
-```sh
-ckms get-attributes -i acme_root_ca
-```
-
-The response will look like
-
-```text
-{
-  "key-format-type": "X509",
-  "linked-private-key-id": "1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8",
-  "linked-public-key-id": "456fd5ee-d83b-4aa0-8e4f-9ed5e3cae27d",
-  "linked-issuer-certificate-id": "acme_root_ca",
-  "tags": [
-    "_cert"
-  ]
-}
-
-```
-
-The private key id is the value of the property `linked-private-key-id` in the response.
-
 ## Creating an intermediate CA
 
 Let us create an intermediate CA signed by the Root CA. This intermediate will be used to issue
@@ -58,7 +35,7 @@ end-users S/MIME certificates. It will be created with the following details:
 - Country: US
 - Validity: 5 years (1825 days)
 - Key Algorithm: NIST P-256
-- Extensions: a intermediate.ext file with the following content:
+- Extensions: a `intermediate.ext` file with the following content:
 
 ```text
 [ v3_ca ]
@@ -79,29 +56,6 @@ Note: these extensions make the intermediate CA compatible with Google CSE for G
  --days 1825 \
  --certificate-extensions intermediate.ext
  ```
-
-## Verify the intermediate certificate and recover the id of the generated private key
-
-```sh
-ckms get-attributes -i acme_intermediate_ca
-```
-
-The response should look like:
-
-```text
-{
-  "linked-private-key-id": "395909b7-d613-4360-a1a3-641affa78dba",
-  "key-format-type": "X509",
-  "linked-issuer-certificate-id": "acme_root_ca",
-  "linked-public-key-id": "6ddc1c0a-81a4-4527-b1ad-d7b2a35763fe",
-  "tags": [
-    "_cert"
-  ]
-}
-```
-
-The private key id is the value of the property `linked-private-key-id` in the response.
-The `linked-issuer-certificate-id` property contains the id of the root certificate.
 
 ## Generate a S/MIME certificate for a user
 
@@ -128,7 +82,7 @@ crlDistributionPoints=URI:https://acme.com/crl.pem
 
 ```sh
 ckms certificates certify --certificate-id john_doe \
---issuer-private-key-id 395909b7-d613-4360-a1a3-641affa78dba \
+--issuer-certificate-id acme_intermediate_ca \
 --generate-key-pair --algorithm nist-p256  \
 --subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
 --certificate-extensions user.ext
@@ -205,37 +159,82 @@ IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
 
 ## Export the certificate and the private key in PKCS12 format
 
-To export the certificate and the private key in PKCS12 format, you need to provide the id of
-the private key.
-
-To get the private key id, use the following command:
-
-```shell
-ckms get-attributes -i john_doe
-```
-
-The response will look like:
-
-```text
-{
-  "linked-issuer-certificate-id": "acme_intermediate_ca",
-  "tags": [
-    "_cert"
-  ],
-  "linked-private-key-id": "7b3434d1-37bb-4e86-877e-b7675ac9a3a6",
-  "key-format-type": "X509",
-  "linked-public-key-id": "210c9ef4-2868-4a98-90ea-0798f71872dc"
-}
-```
-
-Exporting the certificate and private key requires supplying the private key id:
+To export the certificate and the private key in PKCS12 format,
 
 ```sh
- ckms certificates export --certificate-id john_doe --format pkcs12 --private-key-id 7b3434d1-37bb-4e86-877e-b7675ac9a3a6 john_doe.p12
- ``` 
-
-```sh
- ckms certificates export --certificate-id 7b3434d1-37bb-4e86-877e-b7675ac9a3a6 \
+ ckms certificates export --certificate-id john_doe \
  --format pkcs12 --pkcs12-password mysecret \
  john_doe.p12
  ```
+
+```shell
+> openssl pkcs12 -info -in john_doe.p12 -nodes
+
+Enter Import Password:
+MAC Iteration 2048
+MAC verified OK
+PKCS7 Encrypted data: Certificate bag
+Bag Attributes
+    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58 
+subject=/CN=john.doe@acme.com/OU=IT/C=US/ST=California/L=San Francisco/O=ACME
+issuer=/CN=ACME S/MIME intermediate/OU=IT/C=US/ST=New York/L=New York/O=ACME
+-----BEGIN CERTIFICATE-----
+MIICQDCCAeagAwIBAgIBADAKBggqhkjOPQQDAjByMSEwHwYDVQQDDBhBQ01FIFMv
+TUlNRSBpbnRlcm1lZGlhdGUxCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzERMA8G
+A1UECAwITmV3IFlvcmsxETAPBgNVBAcMCE5ldyBZb3JrMQ0wCwYDVQQKDARBQ01F
+MB4XDTI0MDkxMzA5MzkwMloXDTI1MDkxMzA5MzkwMlowcjEaMBgGA1UEAwwRam9o
+bi5kb2VAYWNtZS5jb20xCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzETMBEGA1UE
+CAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwE
+QUNNRTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABOvAZj+RBjElLMWVipGx+rbG
+mniD8NApM2inWLN+1avvd2QslOh9mhiT18u2KJkrjG9hIbVh8cyr4/dxtWL6Goij
+bTBrMAsGA1UdDwQEAwIDyDATBgNVHSUEDDAKBggrBgEFBQcDBDAcBgNVHREEFTAT
+gRFqb2huLmRvZUBhY21lLmNvbTApBgNVHR8EIjAgMB6gHKAahhhodHRwczovL2Fj
+bWUuY29tL2NybC5wZW0wCgYIKoZIzj0EAwIDSAAwRQIgYUf5lGAU3dQ9wIPdX5x+
+RtJioGwdVZZmprEAdNL203wCIQDbDk9yRjfPUUWph05LlC45EA8B3OJYEShdo3s9
+pImIww==
+-----END CERTIFICATE-----
+Certificate bag
+Bag Attributes: <No Attributes>
+subject=/CN=ACME S/MIME intermediate/OU=IT/C=US/ST=New York/L=New York/O=ACME
+issuer=/CN=ACME Root CA/OU=IT/C=US/ST=New York/L=New York/O=ACME
+-----BEGIN CERTIFICATE-----
+MIICJjCCAc2gAwIBAgIBADAKBggqhkjOPQQDAjBmMRUwEwYDVQQDDAxBQ01FIFJv
+b3QgQ0ExCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzERMA8GA1UECAwITmV3IFlv
+cmsxETAPBgNVBAcMCE5ldyBZb3JrMQ0wCwYDVQQKDARBQ01FMB4XDTI0MDkxMzA5
+MzYwNVoXDTI5MDkxMjA5MzYwNVowcjEhMB8GA1UEAwwYQUNNRSBTL01JTUUgaW50
+ZXJtZWRpYXRlMQswCQYDVQQLDAJJVDELMAkGA1UEBhMCVVMxETAPBgNVBAgMCE5l
+dyBZb3JrMREwDwYDVQQHDAhOZXcgWW9yazENMAsGA1UECgwEQUNNRTBZMBMGByqG
+SM49AgEGCCqGSM49AwEHA0IABEG7Ei75r1WuGrfMdXEQseoxf4n5KM7Bov5GIP+0
+ZSHt2CYEgIkvBElHiLtDs2XP8vPmHKQPA2fOTIqsxGG7NPijYDBeMA8GA1UdEwQI
+MAYBAf8CAQAwCwYDVR0PBAQDAgKEMBMGA1UdJQQMMAoGCCsGAQUFBwMEMCkGA1Ud
+HwQiMCAwHqAcoBqGGGh0dHBzOi8vYWNtZS5jb20vY3JsLnBlbTAKBggqhkjOPQQD
+AgNHADBEAiBbVpxNtT+wLNxAUIrA9r9fR4UT1aCw15rShZZiCjrvcAIgURwRsODz
+bB/+NeaLa9WgwjtZk7Vm1c7fVnb30TBcN78=
+-----END CERTIFICATE-----
+Certificate bag
+Bag Attributes: <No Attributes>
+subject=/CN=ACME Root CA/OU=IT/C=US/ST=New York/L=New York/O=ACME
+issuer=/CN=ACME Root CA/OU=IT/C=US/ST=New York/L=New York/O=ACME
+-----BEGIN CERTIFICATE-----
+MIIBujCCAV+gAwIBAgIBADAKBggqhkjOPQQDAjBmMRUwEwYDVQQDDAxBQ01FIFJv
+b3QgQ0ExCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzERMA8GA1UECAwITmV3IFlv
+cmsxETAPBgNVBAcMCE5ldyBZb3JrMQ0wCwYDVQQKDARBQ01FMB4XDTI0MDkxMzA5
+MzQxNFoXDTM0MDkxMTA5MzQxNFowZjEVMBMGA1UEAwwMQUNNRSBSb290IENBMQsw
+CQYDVQQLDAJJVDELMAkGA1UEBhMCVVMxETAPBgNVBAgMCE5ldyBZb3JrMREwDwYD
+VQQHDAhOZXcgWW9yazENMAsGA1UECgwEQUNNRTBZMBMGByqGSM49AgEGCCqGSM49
+AwEHA0IABPj86uAwMjnITXnnnLY9wmHbxtGz2IWAN7JLdbmD77RfbpvcK+BxMzVI
+20ITcWv8dyfhcMLyBa+ygDVPgVK1jLQwCgYIKoZIzj0EAwIDSQAwRgIhAJenykHa
+jjVPke8vX+GyaMTqNJZN94QyCYHgqUeDeZVCAiEAuokqc/TfyzvkzmWcJgeGsFyM
+Nk/pqUsPr8eR1sHQWgg=
+-----END CERTIFICATE-----
+PKCS7 Data
+Shrouded Keybag: Bag Attributes
+    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58 
+Key Attributes: <No Attributes>
+-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQge5si3Le85K18XOLc
+ae8QE50qCE0yUMipcPvHwZM1k1ChRANCAATrwGY/kQYxJSzFlYqRsfq2xpp4g/DQ
+KTNop1izftWr73dkLJTofZoYk9fLtiiZK4xvYSG1YfHMq+P3cbVi+hqI
+-----END PRIVATE KEY-----
+
+```

@@ -17,6 +17,7 @@ use crate::{
         },
         symmetric::rfc5649::rfc5649_wrap,
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     error::KmipError,
     kmip::{
@@ -35,9 +36,13 @@ use crate::{
 };
 
 /// Wrap a key using a password
-pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
+pub fn wrap_key_bytes(
+    key: &[u8],
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
+    wrapping_password: &str,
+) -> Result<Vec<u8>, KmipError> {
     let wrapping_secret =
-        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(wrapping_password.as_bytes())?;
+        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
     rfc5649_wrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
 }
 

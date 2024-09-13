@@ -176,6 +176,18 @@ Example: testing with a plain SQLite and some logging
 RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
 ````
 
+Alternatively, when writing a test, or running a test from your IDE, the following can be inserted
+ath the top of the test:
+
+```rust
+unsafe {
+set_var("RUST_LOG", "error,cosmian_kms_server=debug,cosmian_kms_cli=info");
+set_var("RUST_BACKTRACE", "1");
+set_var("KMS_TEST_DB", "redis-findex");
+}
+log_init(option_env!("RUST_LOG"));
+```
+
 ## Setup as a `Supervisor` service
 
 Supervisor (A Process Control System) is a client/server system that allows its users to monitor and

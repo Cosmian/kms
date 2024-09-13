@@ -109,7 +109,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
     let key = Zeroizing::from(if let Some(wrapping_password) = wrapping_password {
-        wrap_key_bytes(private_key, &wrapping_password)?
+        wrap_key_bytes(private_key, &[0_u8; 16], &wrapping_password)?
     } else {
         private_key.to_vec()
     });
@@ -185,7 +185,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
     let key = Zeroizing::from(if let Some(wrapping_password) = wrapping_password {
-        wrap_key_bytes(private_key, &wrapping_password)?
+        wrap_key_bytes(private_key, &[0_u8; 16], &wrapping_password)?
     } else {
         private_key.to_vec()
     });

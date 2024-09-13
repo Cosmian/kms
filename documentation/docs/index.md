@@ -208,7 +208,7 @@ Options:
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
       --database-url <DATABASE_URL>
-          The url of the database for postgresql, mysql or findex-redis
+          The url of the database for postgresql, mysql or redis-findex
 
           [env: KMS_DATABASE_URL=]
 

@@ -12,9 +12,12 @@ use cloudproof_findex::{
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
     Keyword, Location,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_types::{Attributes, StateEnumeration},
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{Attributes, StateEnumeration},
+    },
+    KmipResultHelper,
 };
 use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
@@ -148,12 +151,16 @@ impl ObjectsDB {
             ))
         }
         let nonce_bytes = &ciphertext[..Aes256Gcm::NONCE_LENGTH];
-        let plaintext = self.dem.decrypt(
-            &Nonce::try_from(nonce_bytes)?,
-            &ciphertext[Aes256Gcm::NONCE_LENGTH..],
-            Some(uid.as_bytes()),
-        )?;
-        let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)?;
+        let plaintext = self
+            .dem
+            .decrypt(
+                &Nonce::try_from(nonce_bytes)?,
+                &ciphertext[Aes256Gcm::NONCE_LENGTH..],
+                Some(uid.as_bytes()),
+            )
+            .with_context(|| format!("decrypt_object uid: {uid}"))?;
+        let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)
+            .with_context(|| format!("decrypt_object uid: {uid}"))?;
         Ok(redis_db_object)
     }
 

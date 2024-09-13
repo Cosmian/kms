@@ -3,6 +3,7 @@ use std::{fmt::Display, path::PathBuf};
 use clap::Args;
 use cloudproof_findex::Label;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
@@ -175,9 +176,18 @@ impl DBConfig {
                         "redis-master-password",
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
+
+                    info!("REDIS MASTER PASSWORD: {}", redis_master_password);
+
                     // Generate the symmetric key from the master password
                     let master_key =
                         RedisWithFindex::master_key_from_password(&redis_master_password)?;
+
+                    info!(
+                        "MASTER KEY: {:?}",
+                        hex::encode(master_key.to_vec().as_slice())
+                    );
+
                     let redis_findex_label = ensure_value(
                         self.redis_findex_label.as_deref(),
                         "redis-findex-label",

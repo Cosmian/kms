@@ -1391,6 +1391,7 @@ dependencies = [
  "futures",
  "hex",
  "lazy_static",
+ "log",
  "num-bigint-dig",
  "openssl",
  "opentelemetry",
