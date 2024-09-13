@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::path::PathBuf;
+
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_logger::log_utils::log_init;
 use tempfile::TempDir;
@@ -41,35 +43,20 @@ fn get_redis_url() -> String {
     }
 }
 
-fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
-    let dir = TempDir::new()?;
-
-    // generate a database key
-    let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
-
-    // SQLCipher uses a directory
-    let dir_path = dir.path().join("test_sqlite_enc.db");
-    if dir_path.exists() {
-        std::fs::remove_dir_all(&dir_path)?;
-    }
-    std::fs::create_dir_all(&dir_path)?;
-
-    let db = CachedSqlCipher::instantiate(&dir_path, true)?;
+fn get_sql_cipher(
+    dir: &PathBuf,
+    db_key: &Secret<AES_256_GCM_KEY_LENGTH>,
+) -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
+    let db = CachedSqlCipher::instantiate(dir, true)?;
     let params = ExtraDatabaseParams {
         group_id: 0,
-        key: db_key,
+        key: db_key.clone(),
     };
     Ok((db, Some(params)))
 }
 
-async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
-    let dir = TempDir::new()?;
-
-    let file_path = dir.path().join("test_sqlite.db");
-    if file_path.exists() {
-        std::fs::remove_file(&file_path)?;
-    }
-    Ok((SqlitePool::instantiate(&file_path, true).await?, None))
+async fn get_sqlite(db_file: &PathBuf) -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
+    Ok((SqlitePool::instantiate(&db_file, true).await?, None))
 }
 
 // To run local tests with a Postgres in Docker, run
@@ -118,29 +105,48 @@ pub(crate) async fn test_redis_with_findex() -> KResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_sql_cipher() -> KResult<()> {
-    json_access(&get_sql_cipher()?).await?;
-    find_attributes(&get_sql_cipher()?).await?;
-    owner(&get_sql_cipher()?).await?;
-    permissions(&get_sql_cipher()?).await?;
-    tags(&get_sql_cipher()?, true).await?;
-    tx_and_list(&get_sql_cipher()?).await?;
-    atomic(&get_sql_cipher()?).await?;
-    upsert(&get_sql_cipher()?).await?;
-    crud(&get_sql_cipher()?).await?;
+    log_init(option_env!("RUST_LOG"));
+    let dir = TempDir::new()?;
+    // SQLCipher uses a directory
+    let dir_path = dir.path().join("test_sqlite_enc.db");
+    if dir_path.exists() {
+        std::fs::remove_dir_all(&dir_path)?;
+    }
+    std::fs::create_dir_all(&dir_path)?;
+
+    // generate a database key
+    let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
+
+    json_access(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    find_attributes(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    owner(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    permissions(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    tags(&get_sql_cipher(&dir_path, &db_key)?, true).await?;
+    tx_and_list(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    atomic(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    upsert(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    crud(&get_sql_cipher(&dir_path, &db_key)?).await?;
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_sqlite() -> KResult<()> {
-    json_access(&get_sqlite().await?).await?;
-    find_attributes(&get_sqlite().await?).await?;
-    owner(&get_sqlite().await?).await?;
-    permissions(&get_sqlite().await?).await?;
-    tags(&get_sqlite().await?, true).await?;
-    tx_and_list(&get_sqlite().await?).await?;
-    atomic(&get_sqlite().await?).await?;
-    upsert(&get_sqlite().await?).await?;
-    crud(&get_sqlite().await?).await?;
+    log_init(option_env!("RUST_LOG"));
+    let dir = TempDir::new()?;
+    let db_file = dir.path().join("test_sqlite.db");
+    if db_file.exists() {
+        std::fs::remove_file(&db_file)?;
+    }
+
+    json_access(&get_sqlite(&db_file).await?).await?;
+    find_attributes(&get_sqlite(&db_file).await?).await?;
+    owner(&get_sqlite(&db_file).await?).await?;
+    permissions(&get_sqlite(&db_file).await?).await?;
+    tags(&get_sqlite(&db_file).await?, true).await?;
+    tx_and_list(&get_sqlite(&db_file).await?).await?;
+    atomic(&get_sqlite(&db_file).await?).await?;
+    upsert(&get_sqlite(&db_file).await?).await?;
+    crud(&get_sqlite(&db_file).await?).await?;
     Ok(())
 }
 

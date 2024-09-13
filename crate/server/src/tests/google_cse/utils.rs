@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::{
     config::JwtAuthConfig,
+    error::KmsError,
     middlewares::{JwksManager, JwtConfig},
     result::KResult,
     routes::google_cse::{self, GoogleCseConfig},
@@ -15,15 +16,21 @@ pub(crate) const GOOGLE_JWT_ISSUER_URI: &str = "https://accounts.google.com";
 // Default Google JWT Set URI
 pub(crate) const GOOGLE_JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-pub(crate) async fn generate_google_jwt() -> String {
+pub(crate) async fn generate_google_jwt() -> KResult<String> {
     #[derive(Deserialize)]
     struct RefreshToken {
         pub id_token: String,
     }
 
-    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
-    let client_secret = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_SECRET").unwrap();
-    let refresh_token = std::env::var("TEST_GOOGLE_OAUTH_REFRESH_TOKEN").unwrap();
+    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").map_err(|e| {
+        KmsError::ServerError(format!("Failed to get Google OAuth client ID: {}", e))
+    })?;
+    let client_secret = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_SECRET").map_err(|e| {
+        KmsError::ServerError(format!("Failed to get Google OAuth client secret: {}", e))
+    })?;
+    let refresh_token = std::env::var("TEST_GOOGLE_OAUTH_REFRESH_TOKEN").map_err(|e| {
+        KmsError::ServerError(format!("Failed to get Google OAuth refresh token: {}", e))
+    })?;
 
     assert!(!client_id.is_empty());
     assert!(!client_secret.is_empty());
@@ -38,14 +45,13 @@ pub(crate) async fn generate_google_jwt() -> String {
             ("refresh_token", refresh_token.as_str()),
         ])
         .send()
-        .await
-        .unwrap();
+        .await?;
 
-    let id_token = res.json::<RefreshToken>().await.unwrap().id_token;
+    let id_token = res.json::<RefreshToken>().await?.id_token;
 
     tracing::debug!("ID token: {id_token:?}");
 
-    id_token
+    Ok(id_token)
 }
 
 pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {

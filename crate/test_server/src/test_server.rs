@@ -110,16 +110,15 @@ fn redis_findex_db_config() -> DBConfig {
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    let db_config = env::var_os("KMS_TEST_DB").map_or_else(
-        || sqlite_enc_db_config(),
-        |v| match v.to_str().unwrap_or("") {
+    let db_config = env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
+        match v.to_str().unwrap_or("") {
             "redis-findex" => redis_findex_db_config(),
             "mysql" => mysql_db_config(),
             "sqlite" => sqlite_db_config(),
             "postgresql" => postgres_db_config(),
             _ => sqlite_enc_db_config(),
-        },
-    );
+        }
+    });
     ONCE.get_or_try_init(|| {
         start_test_server_with_options(
             db_config,

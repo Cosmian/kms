@@ -11,7 +11,7 @@ use std::{
 use cloudproof::reexport::crypto_core::reexport::tiny_keccak;
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use sqlx::{Pool, Sqlite};
-use tracing::info;
+use tracing::{debug, info, trace};
 
 use crate::{error::KmsError, kms_bail, kms_error, result::KResult};
 
@@ -226,7 +226,7 @@ impl KMSSqliteCache {
 
     /// Remove oldest sqlite handlers until reaching down the max cache size allowed
     async fn flush(&self) -> KResult<()> {
-        info!(
+        trace!(
             "CachedSQLCipher: cache size = {}",
             self.current_size.load(Ordering::Relaxed)
         );
@@ -264,7 +264,7 @@ impl KMSSqliteCache {
             self.current_size.fetch_sub(1, Ordering::Relaxed);
         }
 
-        info!(
+        debug!(
             "CachedSQLCipher: cache size after flush = {}",
             self.current_size.load(Ordering::Relaxed)
         );
@@ -301,14 +301,14 @@ impl KMSSqliteCache {
                 return Ok(())
             }
 
-            info!("CachedSQLCipher: reopen group_id={id}");
+            trace!("CachedSQLCipher: reopen group_id={id}");
 
             item.sqlite = Arc::new(pool);
             item.closed = false;
             item.in_used = 1;
             item.last_used_at = _now()?;
         } else {
-            info!("CachedSQLCipher: new group_id={id}");
+            trace!("CachedSQLCipher: new group_id={id}");
 
             // Book a slot for it
             let freeable_cache_id = freeable_sqlites.push(id);
