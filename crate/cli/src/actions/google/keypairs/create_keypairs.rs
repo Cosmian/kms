@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
-    export_object,
+    cosmian_kmip::crypto::{
+        generic::kmip_requests::build_decryption_request,
+        rsa::kmip_requests::create_rsa_key_pair_request, wrap::unwrap_key_block,
+    },
+    export_object, import_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
@@ -19,6 +22,7 @@ use cosmian_kms_client::{
 use serde::{Deserialize, Serialize};
 
 use super::KEYPAIRS_ENDPOINT;
+// use super::KEYPAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
 const RSA_4096: usize = 4096;
@@ -173,7 +177,126 @@ impl CreateKeypairsAction {
 
         let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
 
-        let encoded_private_key = general_purpose::STANDARD.encode(wrapped_key_bytes);
+        let encoded_private_key = general_purpose::STANDARD.encode(wrapped_key_bytes.clone());
+
+        println!("WRAPPED {encoded_private_key:?}");
+
+        let (not_wrapped_private_key, _attributes) = export_object(
+            kms_rest_client,
+            &private_key_id,
+            true,
+            None,
+            true,
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        let not_wrapped_key_bytes = not_wrapped_private_key.key_block()?.key_bytes()?;
+
+        let not_wrapped_encoded_private_key =
+            general_purpose::STANDARD.encode(not_wrapped_key_bytes);
+
+        println!("NOT WRAPPED {not_wrapped_encoded_private_key:?}");
+
+        const NONCE_LENGTH: usize = 12;
+        const TAG_LENGTH: usize = 16;
+
+        let len = wrapped_key_bytes.clone().len();
+        let iv_counter_nonce = &wrapped_key_bytes[..NONCE_LENGTH];
+        let ciphertext = &wrapped_key_bytes[NONCE_LENGTH..len - TAG_LENGTH];
+        let authenticated_tag = &wrapped_key_bytes[len - TAG_LENGTH..];
+
+        let decrypt_request = build_decryption_request(
+            &self.csekey_id,
+            Some(iv_counter_nonce.to_vec()),
+            ciphertext.to_vec(),
+            Some(authenticated_tag.to_vec()),
+            None,
+            None,
+        );
+
+        let decrypt_response = kms_rest_client.decrypt(decrypt_request).await?;
+
+        let plaintext = decrypt_response.data.unwrap();
+        let res1 = general_purpose::STANDARD.encode(plaintext);
+
+        println!("RES 1 {res1:?}");
+
+        let mut second_wrapped_key = wrapped_private_key.clone();
+        let (unwrapping_key, _attributes) = export_object(
+            kms_rest_client,
+            &self.csekey_id,
+            true,
+            None,
+            true,
+            Some(KeyFormatType::TransparentSymmetricKey),
+            None,
+            None,
+        )
+        .await?;
+
+        let key_block = second_wrapped_key.key_block_mut()?;
+        let aad = &[];
+        key_block.attributes_mut()?.add_aad(aad);
+
+        unwrap_key_block(key_block, &unwrapping_key)?;
+        let plaintext2 = second_wrapped_key.key_block()?.key_bytes()?;
+        let res2 = general_purpose::STANDARD.encode(plaintext2);
+
+        println!("RES 2 {res2:?}");
+
+        let mut third_wrapped_key = wrapped_private_key.clone();
+
+        let key_block = third_wrapped_key.key_block_mut()?;
+        let aad = &[];
+        key_block.attributes_mut()?.add_aad(aad);
+
+        // let third_wrapped_key_bytes = key_block.key_bytes()?;
+        // let res30 = general_purpose::STANDARD.encode(third_wrapped_key_bytes);
+
+        // println!("RES 3.0 {res30:?}");
+
+        // let flags = 0;
+        // let cryptographic_usage_mask = CryptographicUsageMask::from_bits(flags);
+
+        // let import_attributes = third_wrapped_key
+        //     .attributes()
+        //     .unwrap_or(&Attributes {
+        //         cryptographic_usage_mask,
+        //         ..Default::default()
+        //     })
+        //     .clone();
+
+        let unique_identifier = import_object(
+            kms_rest_client,
+            None,
+            third_wrapped_key,
+            None,
+            true,
+            false,
+            ["new"],
+        )
+        .await?;
+
+        let (imported_key, _attributes) = export_object(
+            kms_rest_client,
+            &unique_identifier,
+            true,
+            None,
+            true,
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        let imported_key_bytes = imported_key.key_block()?.key_bytes()?;
+
+        let imported_encoded_private_key = general_purpose::STANDARD.encode(imported_key_bytes);
+
+        println!("RES 3{imported_encoded_private_key:?}");
 
         // Sign created public key with issuer private key
         let attributes = Attributes {
@@ -231,7 +354,7 @@ impl CreateKeypairsAction {
             Self::post_keypair(
                 &gmail_client.await?,
                 certificate_value,
-                general_purpose::STANDARD.encode(&wrapped_private_key),
+                encoded_private_key,
                 kacls_url.await?.kacls_url,
             )
             .await?;

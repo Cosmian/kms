@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose, Engine};
+use base64::Engine;
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
@@ -116,8 +116,7 @@ pub struct ExportKeyAction {
     #[clap(
         long = "block-cipher-mode",
         short = 'm',
-        default_value = "NISTKeyWrap",
-        group = "wrapping"
+        default_value = "nist-key-wrap"
     )]
     block_cipher_mode: Option<ExportBlockCipherMode>,
 
@@ -126,7 +125,6 @@ pub struct ExportKeyAction {
         long = "authenticated-additional-data",
         short = 'd',
         default_value = None,
-        group = "wrapping"
     )]
     authenticated_additional_data: Option<String>,
 }
@@ -162,10 +160,7 @@ impl ExportKeyAction {
             }
             Some(ExportBlockCipherMode::Gcm) => {
                 if let Some(aad) = &self.authenticated_additional_data {
-                    (
-                        Some(BlockCipherMode::GCM),
-                        Some(general_purpose::STANDARD.decode(aad)?),
-                    )
+                    (Some(BlockCipherMode::GCM), Some(aad))
                 } else {
                     (Some(BlockCipherMode::GCM), None)
                 }
@@ -198,7 +193,7 @@ impl ExportKeyAction {
             self.allow_revoked,
             key_format_type,
             block_mode,
-            aad,
+            aad.cloned(),
         )
         .await?;
 

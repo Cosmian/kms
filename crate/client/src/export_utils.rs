@@ -23,7 +23,7 @@ fn export_request(
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
     block_cipher_mode: Option<BlockCipherMode>,
-    authenticated_encryption_additional_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Export {
     let key_wrapping_specification = key_wrapping_specification(
         unwrap,
@@ -45,7 +45,7 @@ fn get_request(
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
     block_cipher_mode: Option<BlockCipherMode>,
-    authenticated_encryption_additional_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Get {
     let key_wrapping_specification = key_wrapping_specification(
         unwrap,
@@ -66,7 +66,7 @@ fn key_wrapping_specification(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     block_cipher_mode: Option<BlockCipherMode>,
-    authenticated_encryption_additional_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Option<KeyWrappingSpecification> {
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
         None
@@ -80,8 +80,7 @@ fn key_wrapping_specification(
                     ..CryptographicParameters::default()
                 })),
             }),
-            attribute_name: authenticated_encryption_additional_data
-                .map(|data| vec![String::from_utf8(data).expect("Failing on string conversion")]),
+            attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
             encoding_option: Some(EncodingOption::NoEncoding),
             ..KeyWrappingSpecification::default()
         })
@@ -125,7 +124,7 @@ pub async fn export_object(
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
     block_cipher_mode: Option<BlockCipherMode>,
-    authenticated_encryption_additional_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Result<(Object, Option<Attributes>), ClientError> {
     let (object, object_type, attributes) = if allow_revoked {
         //use the KMIP export function to get revoked objects
@@ -177,6 +176,7 @@ pub async fn export_object(
 /// * `wrapping_key_id` - The wrapping key id to wrap the key, may be the PKCS#12 password
 /// * `allow_revoked` - Allow the export of a revoked object
 /// * `key_format_type` - The key format type
+#[allow(clippy::too_many_arguments)]
 pub async fn batch_export_objects(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
@@ -184,6 +184,8 @@ pub async fn batch_export_objects(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
     if allow_revoked {
         batch_export(
@@ -192,6 +194,8 @@ pub async fn batch_export_objects(
             unwrap,
             wrapping_key_id,
             key_format_type,
+            block_cipher_mode,
+            authenticated_encryption_additional_data,
         )
         .await
     } else {
@@ -201,6 +205,8 @@ pub async fn batch_export_objects(
             unwrap,
             wrapping_key_id,
             key_format_type,
+            block_cipher_mode,
+            authenticated_encryption_additional_data,
         )
         .await
     }
@@ -212,6 +218,8 @@ async fn batch_get(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
     let operations = object_ids_or_tags
         .into_iter()
@@ -223,8 +231,8 @@ async fn batch_get(
                     unwrap,
                     wrapping_key_id,
                     key_format_type,
-                    None,
-                    None,
+                    block_cipher_mode,
+                    authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
@@ -261,6 +269,8 @@ async fn batch_export(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
+    block_cipher_mode: Option<BlockCipherMode>,
+    authenticated_encryption_additional_data: Option<String>,
 ) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
     let operations = object_ids_or_tags
         .into_iter()
@@ -272,8 +282,8 @@ async fn batch_export(
                     unwrap,
                     wrapping_key_id,
                     key_format_type,
-                    None,
-                    None,
+                    block_cipher_mode,
+                    authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),

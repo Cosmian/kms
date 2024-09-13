@@ -108,6 +108,14 @@ pub struct ImportKeyAction {
     /// For what operations should the key be used.
     #[clap(long = "key-usage")]
     key_usage: Option<Vec<KeyUsage>>,
+
+    /// Optionnal authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+    #[clap(
+        long = "authenticated-additional-data",
+        short = 'd',
+        default_value = None,
+    )]
+    authenticated_additional_data: Option<String>,
 }
 
 impl ImportKeyAction {
@@ -192,6 +200,14 @@ impl ImportKeyAction {
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
         };
+
+        if self.unwrap {
+            if let Some(data) = &self.authenticated_additional_data {
+                // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
+                let aad = data.as_bytes();
+                object.attributes_mut()?.add_aad(aad);
+            }
+        }
 
         // import the key
         let unique_identifier = import_object(
