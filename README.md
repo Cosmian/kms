@@ -36,10 +36,11 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 - [Quick start](#quick-start)
 - [Repository content](#repository-content)
 - [Building the KMS](#building-the-kms)
-  * [Linux](#linux)
-  * [MacOS](#macos)
-  * [Windows](#windows)
-  * [Build the Docker container](#build-the-docker-container)
+    * [Linux](#linux)
+    * [MacOS](#macos)
+    * [Windows](#windows)
+    * [Build the Docker container](#build-the-docker-container)
+- [Running the unit and integration tests](#running-the-unit-and-integration-tests)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
@@ -155,6 +156,25 @@ docker build . --network=host \
                --build-arg FEATURES="--features=fips" \
                -t kms
 ```
+
+## Running the unit and integration tests
+
+By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite-enc`).
+This can be influenced by setting the `KMS_TEST_DB` environment variable to
+
+- `sqlite`, for plain SQLite
+- `mysql` (requires a running MySQL or MariaDB server connected using a
+  `"mysql://kms:kms@localhost:3306/kms"` URL)
+- `postgresql`  (requires a running PostgreSQL server connected using
+  a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
+- `redis-findex` (requires a running Redis server connected using a
+  `"redis://localhost:6379"` URL)
+
+Example: testing with a plain SQLite and some logging
+
+```sh
+RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
+````
 
 ## Setup as a `Supervisor` service
 
