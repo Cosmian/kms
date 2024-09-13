@@ -215,7 +215,9 @@ impl ImportCertificateAction {
                 debug!("CLI: import certificate as PKCS12 file");
                 let private_key_id = self.import_pkcs12(kms_rest_client).await?;
                 (
-                    "The private key in the PKCS12 file was successfully imported!".to_string(),
+                    "The certificate(s) and private key were successfully imported! The private \
+                     key has id:"
+                        .to_string(),
                     Some(private_key_id),
                 )
             }

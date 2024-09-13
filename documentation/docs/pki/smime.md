@@ -1,10 +1,26 @@
-<h1>Generating private keys and certificates to use in email encrypted with S/MIME</h1>
+<h1>Encrypting emails with S/MIME</h1>
 
 S/MIME is a [standard](https://en.wikipedia.org/wiki/S/MIME) for public key encryption and signing
 of MIME data.
 It is used to secure email messages and is supported by most email clients and servers.
 
-## Enabling S/MIME workflow
+Table of contents:
+
+- [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
+- [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
+    - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
+    - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
+        - [Import the intermediate certificate in the KMS](#import-the-intermediate-certificate-in-the-kms)
+        - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+    - [Creating a S/MIME certificate authority with a root and intermediate CA](#creating-a-smime-certificate-authority-with-a-root-and-intermediate-ca)
+        - [Create a Root CA](#create-a-root-ca)
+        - [Create an Intermediate CA](#create-an-intermediate-ca)
+        - [Generate a S/MIME certificate for a user](#generate-a-smime-certificate-for-a-user)
+- [Exporting and viewing](#exporting-and-viewing)
+    - [PEM format](#pem-format)
+    - [PKCS#12 format](#pkcs12-format)
+
+## Overview of the S/MIME workflow
 
 To enable S/MIME, a user will go through the following steps:
 
@@ -20,9 +36,6 @@ To enable S/MIME, a user will go through the following steps:
 - Receive a signed, encrypted or non encrypted, email from the recipient and import its certificate
 
 No further actions are required to exchange signed encrypted emails with this recipient.
-
-Google requirements:
-https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA
 
 ## Generating a key pair and a certificate
 
@@ -53,11 +66,90 @@ This file can directly be imported in your email client.
 If you wish to store it in the KMS, you can import it using the following command:
 
 ```sh
+ckms certificates import --format pkcs12 --pkcs12-password mysecret \
+  --replace john_doe.p12 john.doe@acme.com 
 ```
 
-## Creating a S/MIME certificate authority with a root and intermediate CA
+To re-export it as a PKCS#12 protected with password `mysecret`, use the following command:
 
-### Creating a Root CA
+```sh
+ckms certificates export  --format pkcs12 --pkcs12-password mysecret \
+--certificate-id john.doe@acme.com  john_doe.p12
+```
+
+To export it as a PEM file, use the following command:
+
+```sh
+ckms certificates export  --format pem --certificate-id john.doe@acme.com john_doe.pem
+```
+
+### Getting an intermediate signer certificate from a public certificate authority
+
+If you have many users, you will probably want top buy an intermediate certificate from a public
+certificate authority. This intermediate certificate will be used to sign the user certificates.
+
+#### Import the intermediate certificate in the KMS
+
+First import the intermediate certificate and its private key in the KMS:
+
+```sh
+ckms certificates import --format pkcs12 --pkcs12-password mysecret \
+  --replace intermediate.p12 acme_intermediate_ca
+```
+
+#### Generate a user certificate signed by the intermediate certificate
+
+Then, generate a user certificate signed by the intermediate certificate:
+
+To be used for S/MIME, the user certificates needs to have certain extensions which are set in a
+file containing a `[ v3_ca ]` section.
+
+Say we want to create a S/MIME certificate for user john.doe@acme.com, signed by the intermediate
+certificate, with the following details:
+
+- Common Name: john.doe@acme.com
+- Organization: ACME
+- Organizational Unit: IT
+- Locality: San Francisco
+- State: California
+- Country: US
+- Validity: 1 year (365 days)
+- Key Algorithm: NIST P-256
+- Extensions: a user.ext file with the following content:
+
+The `user.ext` file should contain the following content (which should meet Google CSE
+requirements):
+
+```text
+[ v3_ca ]
+keyUsage=digitalSignature,nonRepudiation,keyAgreement
+extendedKeyUsage=emailProtection
+subjectAltName=email:john.doe@acme.com
+crlDistributionPoints=URI:https://acme.com/crl.pem
+```
+
+Issue the following command to generate the certificate:
+
+```sh
+ckms certificates certify --certificate-id john.doe@acme.com \
+--issuer-certificate-id acme_intermediate_ca \
+--generate-key-pair --algorithm nist-p256  \
+--subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
+--certificate-extensions user.ext
+```
+
+Export the user certificate and private keys in PKCS#12 format:
+
+```sh
+ckms certificates export  --format pkcs12 --pkcs12-password mysecret \
+--certificate-id john.doe@acme.com  john_doe.p12
+```  
+
+### Creating a S/MIME certificate authority with a root and intermediate CA
+
+If you wish to be your own certificate authority, you can create a root and an intermediate CA.
+
+#### Create a Root CA
 
 Say, we are ACME Inc.
 Let us create a self-signed root certificate with the following details:
@@ -78,7 +170,7 @@ ckms certificates certify --certificate-id acme_root_ca \
 --days 3650
 ```
 
-### Creating an intermediate CA
+#### Create an Intermediate CA
 
 Let us create an intermediate CA signed by the Root CA. This intermediate will be used to issue
 end-users S/MIME certificates. It will be created with the following details:
@@ -104,55 +196,34 @@ crlDistributionPoints=URI:https://acme.com/crl.pem
 Note: these extensions make the intermediate CA compatible with Google CSE for GMail
 [S/MIME requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 
-```sh
+```shell
  ckms certificates certify --certificate-id acme_intermediate_ca \
  --issuer-certificate-id acme_root_ca \
  --generate-key-pair --algorithm nist-p256  \
  --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
  --days 1825 \
  --certificate-extensions intermediate.ext
- ```
-
-## Generate a S/MIME certificate for a user
-
-Let us create a S/MIME certificate for user john.doe@acme.com, signed by the intermediate
-certificate, with the following details:
-
-- Common Name: john.doe@acme.com
-- Organization: ACME
-- Organizational Unit: IT
-- Locality: San Francisco
-- State: California
-- Country: US
-- Validity: 1 year (365 days)
-- Key Algorithm: NIST P-256
-- Extensions: a user.ext file with the following content:
-
-```text
-[ v3_ca ]
-keyUsage=digitalSignature,nonRepudiation,keyAgreement
-extendedKeyUsage=emailProtection
-subjectAltName=email:john.doe@acme.com
-crlDistributionPoints=URI:https://acme.com/crl.pem
 ```
 
-```sh
-ckms certificates certify --certificate-id john_doe \
---issuer-certificate-id acme_intermediate_ca \
---generate-key-pair --algorithm nist-p256  \
---subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
---certificate-extensions user.ext
-```
+#### Generate a S/MIME certificate for a user
 
-## Export and view the certificate in PEM format
+Follow the steps in
+[Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+
+## Exporting and viewing
+
+Use the `ckms certificates export` command to export the certificate and the private key in the
+desired format.
+
+### PEM format
 
 To export the certificate in PEM format, use the following command:
 
 ```sh
- ckms certificates export --certificate-id john_doe --format pem john_doe.pem
- ```
+ ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
+```
 
-You can the view its content, using `openssl` for instance:
+You can then view its content, using `openssl` for instance:
 
 ```shell
 > openssl x509 -inform pem -text -in john_doe.pem
@@ -213,15 +284,18 @@ IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
 
 ```
 
-## Export the certificate and the private key in PKCS12 format
+### PKCS#12 format
 
-To export the certificate and the private key in PKCS12 format,
+To export the certificate and the private key in PKCS#12 format,
 
 ```sh
-ckms certificates export --certificate-id john_doe \
+ckms certificates export --certificate-id john.doe@acme.com \
  --format pkcs12 --pkcs12-password mysecret \
  john_doe.p12
- ```
+```
+
+OpenSSL can be used to view the content of the PKCS#12 file.
+You will need to provide the password you used to protect the file (`mysecret` above).
 
 ```shell
 > openssl pkcs12 -info -in john_doe.p12 -nodes
