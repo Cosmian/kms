@@ -338,7 +338,7 @@ async fn process_private_key(
 
     // PKCS12  have their own processing
     if object_key_block.key_format_type == KeyFormatType::PKCS12 {
-        //PKCS#12 contain more than just a private key, perform specific processing
+        //PKCS#12 contains more than just a private key, perform specific processing
         return process_pkcs12(
             request.unique_identifier.as_str().unwrap_or_default(),
             object,
@@ -368,11 +368,17 @@ async fn process_private_key(
     ))
 }
 
+/// Convert an openssl private key to a KMIP private key
+/// and return the uid, the object and the tags
+/// The user tags are optional and will be updated if present
+/// The request attributes will be updated with the imported links
+/// The sk_uid is the unique identifier of the private key
+/// If it is empty, a new one will be generated
 fn private_key_from_openssl(
     sk: &PKey<Private>,
     user_tags: Option<HashSet<String>>,
     request_attributes: &mut Attributes,
-    request_uid: &str,
+    sk_uid: &str,
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
     // convert the private key to PKCS#8
     let mut sk = openssl_private_key_to_kmip(
@@ -381,10 +387,10 @@ fn private_key_from_openssl(
         request_attributes.cryptographic_usage_mask,
     )?;
 
-    let sk_uid = if request_uid.is_empty() {
+    let sk_uid = if sk_uid.is_empty() {
         Uuid::new_v4().to_string()
     } else {
-        request_uid.to_owned()
+        sk_uid.to_owned()
     };
 
     let sk_key_block = sk.key_block_mut()?;
@@ -425,7 +431,7 @@ fn single_operation(
 }
 
 fn process_pkcs12(
-    private_key_id: &str,
+    certificate_id: &str,
     object: Object,
     request_attributes: Attributes,
     user_tags: &Option<HashSet<String>>,
@@ -466,7 +472,7 @@ fn process_pkcs12(
             &openssl_sk,
             user_tags.clone(),
             &mut request_attributes,
-            private_key_id,
+            "", //generate a new UID
         )?
     };
 
@@ -490,7 +496,7 @@ fn process_pkcs12(
         let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
         (
-            Uuid::new_v4().to_string(),
+            certificate_id.to_string(),
             leaf_certificate,
             leaf_certificate_tags,
             CertificateAttributes::from(&openssl_cert),
@@ -517,6 +523,13 @@ fn process_pkcs12(
             ));
         }
     }
+
+    debug!(
+        "Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}",
+        private_key_id,
+        leaf_certificate_uid,
+        chain.iter().map(|(id, _, _, _)| id).collect::<Vec<_>>()
+    );
 
     //
     // Stage 2 update the attributes and tags
@@ -605,7 +618,7 @@ fn process_pkcs12(
             // add parent link to certificate
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
             chain_certificate_attributes.set_link(
-                LinkType::ParentLink,
+                LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
             );
         }

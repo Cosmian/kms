@@ -1,7 +1,63 @@
+<h1>Generating private keys and certificates to use in email encrypted with S/MIME</h1>
+
+S/MIME is a [standard](https://en.wikipedia.org/wiki/S/MIME) for public key encryption and signing
+of MIME data.
+It is used to secure email messages and is supported by most email clients and servers.
+
+## Enabling S/MIME workflow
+
+To enable S/MIME, a user will go through the following steps:
+
+#### Setup (once)
+
+- Generate a key pair and a certificate holding the correct x509 extensions for S/MIME
+- Import this certificate and private key (usually in the form of a PKCS#12 file) in its email
+  client
+
+#### Handshake (once per recipient)
+
+- Send a signed, non encrypted, email to a recipient to share its certificate
+- Receive a signed, encrypted or non encrypted, email from the recipient and import its certificate
+
+No further actions are required to exchange signed encrypted emails with this recipient.
+
 Google requirements:
 https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA
 
-## Creating a Root CA
+## Generating a key pair and a certificate
+
+For interoperability, the user certificate should be ultimately signed by a public certificate
+authority commonly found on email clients. If you want to use your own certificate authority,
+for internal use or test purposes, please see the instructions below on how to [create a root CA and
+an intermediate CA](#creating-a-smime-certificate-authority-with-a-root-and-intermediate-ca).
+
+Please note that these certificates require certain x509 extensions to be compatible with Google
+CSE S/MIME and some other operators. Check the
+[Google requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
+for details.
+
+For a user, there are 3 main possibilities to generate a key pair and a S/MIME certificate:
+
+### Getting a user certificate from a public certificate authority
+
+Many public authorities can issue user S/MIME certificates. Some authorities even provide free
+certificates for personal use. This is the case of
+[Actalis](https://www.actalis.com/s-mime-certificates)
+for instance.
+
+Once generated, these authorities will provide you with a PKCS#12 file containing the certificate
+and the private key. The file is usually protected by a password.
+
+This file can directly be imported in your email client.
+
+If you wish to store it in the KMS, you can import it using the following command:
+
+```sh
+```
+
+## Creating a S/MIME certificate authority with a root and intermediate CA
+
+### Creating a Root CA
 
 Say, we are ACME Inc.
 Let us create a self-signed root certificate with the following details:
@@ -22,7 +78,7 @@ ckms certificates certify --certificate-id acme_root_ca \
 --days 3650
 ```
 
-## Creating an intermediate CA
+### Creating an intermediate CA
 
 Let us create an intermediate CA signed by the Root CA. This intermediate will be used to issue
 end-users S/MIME certificates. It will be created with the following details:
@@ -162,7 +218,7 @@ IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
 To export the certificate and the private key in PKCS12 format,
 
 ```sh
- ckms certificates export --certificate-id john_doe \
+ckms certificates export --certificate-id john_doe \
  --format pkcs12 --pkcs12-password mysecret \
  john_doe.p12
  ```

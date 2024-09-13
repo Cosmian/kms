@@ -9,14 +9,13 @@ of the server.
 
 Multiple operations can be sent in a single call using the [`Messages` API](./messages.md) .
 
-!!!info  "Building JSON TTLV messages"
+!!!info  "Easily building JSON TTLV messages"
 
-    Building JSON TTLV messages is a complex task and the easiest way to get started is to use the `ckms` CLI in
-    debug mode to print the corresponding request and response messages.
+    Building JSON TTLV messages is a complex task and the easiest way to get started is to use 
+    the `ckms` CLI in `JSON mode` mode to print the corresponding request and response messages.
 
-    The debug mode is activated by setting the`RUST_LOG` environment variable
-    to `cosmian_kms_client::kms_rest_client=debug`.
-    See the [Debug Mode Example](#debug-mode-example) below.
+    The `JSON mode` is activated by passing the `--json` flag to the `ckms` command.
+    See the [JSON mode example](#json-mode-example) below.
 
 To send multiple requests in a single call, se the [`Messages` API](./messages.md) .
 
@@ -24,19 +23,18 @@ To send multiple requests in a single call, se the [`Messages` API](./messages.m
 
 Please refer to the various [operations pages](./operations.md) for sample JSON TTLV messages.
 
-#### Debug Mode Example
+#### JSON mode example
 
 This creates a (default AES 256) symmetric key which will be tagged with the string `myKey`.
 
 ```bash
-RUST_LOG="cosmian_kms_client::kms_rest_client=debug" \
-ckms sym keys create --tag myKey
+ckms --json sym keys create --tag myKey
 ```
 
 The CLI will then show the JSON TTLV requests and response:
 
 ```
-2023-12-02T08:44:37.916528Z DEBUG ThreadId(01) cosmian_kms_client::kms_rest_client: crate/client/src/kms_rest_client.rs:663: ==>
+2024-09-13T13:39:20.001395Z  INFO ThreadId(01) cosmian_kms_client::kms_rest_client:  ==>
 {
   "tag": "Create",
   "type": "Structure",
@@ -105,8 +103,8 @@ The CLI will then show the JSON TTLV requests and response:
       ]
     }
   ]
-}
-2023-12-02T08:44:37.921325Z DEBUG ThreadId(01) cosmian_kms_client::kms_rest_client: crate/client/src/kms_rest_client.rs:675: <==
+}    
+2024-09-13T13:39:20.018203Z  INFO ThreadId(01) cosmian_kms_client::kms_rest_client <==
 {
   "tag": "CreateResponse",
   "type": "Structure",
@@ -119,8 +117,13 @@ The CLI will then show the JSON TTLV requests and response:
     {
       "tag": "UniqueIdentifier",
       "type": "TextString",
-      "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
+      "value": "925f2175-0676-4785-b9d9-61fff30771f3"
     }
   ]
-}
+}    
+The symmetric key was successfully generated.
+          Unique identifier: 925f2175-0676-4785-b9d9-61fff30771f3
+
+  Tags:
+    - myKey
 ```

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process};
+use std::{env::set_var, path::PathBuf, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
 #[cfg(not(feature = "fips"))]
@@ -21,6 +21,7 @@ use cosmian_kms_cli::{
     error::result::CliResult,
 };
 use cosmian_kms_client::ClientConf;
+use cosmian_logger::log_utils::log_init;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -39,12 +40,17 @@ struct Cli {
     #[arg(long, action)]
     pub(crate) url: Option<String>,
 
-    /// Allow to connect using a self signed cert or untrusted cert chain
+    /// Allow to connect using a self-signed cert or untrusted cert chain
     ///
     /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
     /// running an invalid or insecure SSL certificate
     #[arg(long)]
     pub(crate) accept_invalid_certs: Option<bool>,
+
+    /// Output the JSON KMIP request and response
+    /// This is useful to debug the KMIP protocol and programmtically call the KMS
+    #[arg(long, default_value = "false")]
+    pub(crate) json: bool,
 }
 
 #[derive(Subcommand)]
@@ -86,11 +92,14 @@ async fn main() {
 }
 
 async fn main_() -> CliResult<()> {
-    // Set up environment variables and logging options if RUST_LOG if defined
-    // Ex: `export RUST_LOG="info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info"``
-    cosmian_logger::log_utils::log_init(None);
-
     let opts = Cli::parse();
+
+    if opts.json {
+        unsafe {
+            set_var("RUST_LOG", "cosmian_kms_client::kms_rest_client=info");
+        }
+    }
+    log_init(None);
 
     if let CliCommands::Markdown(action) = opts.command {
         let command = <Cli as CommandFactory>::command();

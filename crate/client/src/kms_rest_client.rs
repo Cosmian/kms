@@ -20,7 +20,7 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use log::trace;
+use log::{info, trace};
 use reqwest::{
     header::{HeaderMap, HeaderValue},
     Client, ClientBuilder, Identity, Response, StatusCode,
@@ -616,8 +616,8 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
-
-        trace!(
+        // do not change this level ! it is expected to get the JSON output
+        info!(
             "==>\n{}",
             serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
         );
@@ -627,7 +627,8 @@ impl KmsClient {
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
-            trace!(
+            // do not change this level ! it is expected to get the JSON output
+            info!(
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
             );
