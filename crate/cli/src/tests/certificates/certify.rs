@@ -725,6 +725,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> CliResult<()> {
+    log_init(Some("info,cosmian_kms_server=trace"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

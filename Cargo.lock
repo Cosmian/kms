@@ -2296,7 +2296,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.7",
  "tokio",
  "tower-service",
  "tracing",
@@ -2528,6 +2528,7 @@ dependencies = [
  "cosmian_logger",
  "criterion",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]

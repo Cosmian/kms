@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::PathBuf;
-
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_logger::log_utils::log_init;
 use tempfile::TempDir;
@@ -44,17 +42,17 @@ fn get_redis_url() -> String {
 }
 
 fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
-    let dir = PathBuf::from("/tmp");
+    let dir = TempDir::new()?;
 
     // generate a database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
 
     // SQLCipher uses a directory
-    let dir_path = dir.join("test_sqlite_enc.db");
+    let dir_path = dir.path().join("test_sqlite_enc.db");
     if dir_path.exists() {
-        std::fs::remove_dir_all(&dir_path).unwrap();
+        std::fs::remove_dir_all(&dir_path)?;
     }
-    std::fs::create_dir_all(&dir_path).unwrap();
+    std::fs::create_dir_all(&dir_path)?;
 
     let db = CachedSqlCipher::instantiate(&dir_path, true)?;
     let params = ExtraDatabaseParams {
@@ -65,11 +63,11 @@ fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
 }
 
 async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
-    let dir = PathBuf::from("/tmp");
+    let dir = TempDir::new()?;
 
-    let file_path = dir.join("test_sqlite.db");
+    let file_path = dir.path().join("test_sqlite.db");
     if file_path.exists() {
-        std::fs::remove_file(&file_path).unwrap();
+        std::fs::remove_file(&file_path)?;
     }
     Ok((SqlitePool::instantiate(&file_path, true).await?, None))
 }
@@ -78,7 +76,7 @@ async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
 // docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432  -d postgres
 async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
     let postgres_url =
-        std::option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+        option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
     let pg = PgPool::instantiate(postgres_url, true).await?;
     Ok((pg, None))
 }
@@ -86,8 +84,7 @@ async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
 // To run local tests with a MariaDB in Docker, run
 // docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
 async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
-    let mysql_url =
-        std::option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+    let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
     Ok((my_sql, None))
 }
@@ -96,7 +93,7 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
     let redis_url = get_redis_url();
-    let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
+    let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new_random()?;
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
     Ok((redis_findex, None))
@@ -184,7 +181,7 @@ pub(crate) async fn test_migrate_sqlite() -> KResult<()> {
         "src/tests/migrate/kms_4.16.0.sqlite",
         "src/tests/migrate/kms_4.17.0.sqlite",
     ] {
-        let tmp_dir = TempDir::new().unwrap();
+        let tmp_dir = TempDir::new()?;
         let tmp_path = tmp_dir.path();
         let tmp_file_path = tmp_path.join("kms.db");
         if tmp_file_path.exists() {

@@ -614,8 +614,6 @@ pub(crate) async fn upsert_(
         .bind(attributes_json)
         .bind(state.to_string())
         .bind(owner)
-        .bind(owner)
-        .bind(owner)
         .execute(&mut **executor)
         .await?;
 
