@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_logger::log_utils::log_init;
@@ -44,7 +44,7 @@ fn get_redis_url() -> String {
 }
 
 fn get_sql_cipher(
-    dir: &PathBuf,
+    dir: &Path,
     db_key: &Secret<AES_256_GCM_KEY_LENGTH>,
 ) -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
     let db = CachedSqlCipher::instantiate(dir, true)?;
@@ -55,8 +55,8 @@ fn get_sql_cipher(
     Ok((db, Some(params)))
 }
 
-async fn get_sqlite(db_file: &PathBuf) -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
-    Ok((SqlitePool::instantiate(&db_file, true).await?, None))
+async fn get_sqlite(db_file: &Path) -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
+    Ok((SqlitePool::instantiate(db_file, true).await?, None))
 }
 
 // To run local tests with a Postgres in Docker, run

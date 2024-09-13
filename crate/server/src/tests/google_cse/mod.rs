@@ -23,6 +23,7 @@ use openssl::{
     sign::{Signer, Verifier},
     x509::X509,
 };
+use tracing::warn;
 
 use crate::{
     result::{KResult, KResultHelper},
@@ -97,8 +98,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
     // The RSA blue private key
     let blue_private_key = read_bytes_from_file(&PathBuf::from(
         "src/routes/google_cse/python/openssl/blue.key",
-    ))
-    .unwrap();
+    ))?;
 
     let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
     let private_key = PKey::from_rsa(rsa_private_key)?;
@@ -143,7 +143,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     let jwt = match generate_google_jwt().await {
         Ok(jwt) => jwt,
         Err(e) => {
-            println!("Ignoring test_cse_private_key_sign: {}", e);
+            warn!("Ignoring test_cse_private_key_sign: {}", e);
             return Ok(());
         }
     };
@@ -222,7 +222,7 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
     let jwt = match generate_google_jwt().await {
         Ok(jwt) => jwt,
         Err(e) => {
-            println!("Ignoring test_cse_private_key_decrypt: {}", e);
+            warn!("Ignoring test_cse_private_key_decrypt: {e}");
             return Ok(());
         }
     };

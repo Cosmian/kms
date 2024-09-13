@@ -256,7 +256,7 @@ mod tests {
         let jwt = match generate_google_jwt().await {
             Ok(jwt) => jwt,
             Err(e) => {
-                println!("Ignoring test_wrap_auth: {}", e);
+                info!("Ignoring test_wrap_auth: {e}");
                 return;
             }
         };

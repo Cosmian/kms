@@ -391,6 +391,15 @@ fn check_public_and_private_key_linked(
 
 #[tokio::test]
 async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
+    // unsafe {
+    //     set_var(
+    //         "RUST_LOG",
+    //         "error,cosmian_kms_server=debug,cosmian_kms_cli=info",
+    //     );
+    //     set_var("RUST_BACKTRACE", "1");
+    //     set_var("KMS_TEST_DB", "redis-findex");
+    // }
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -423,6 +432,7 @@ async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -460,6 +470,7 @@ async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -502,6 +513,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -550,6 +562,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_renew_a_certificate() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -604,6 +617,7 @@ async fn test_certify_renew_a_certificate() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -645,6 +659,7 @@ async fn test_certify_issue_with_subject_name() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -702,6 +717,7 @@ pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<Str
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // create a self signed certificate
@@ -725,7 +741,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> CliResult<()> {
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -766,7 +782,7 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
 
 #[tokio::test]
 async fn test_certify_twice() -> CliResult<()> {
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

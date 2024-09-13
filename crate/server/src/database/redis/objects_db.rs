@@ -57,6 +57,10 @@ pub(crate) struct RedisDbObject {
     pub(crate) state: StateEnumeration,
     #[serde(rename = "l")]
     pub(crate) tags: Option<HashSet<String>>,
+    // We use and Option and skip[ serializing for ascending compatibility
+    // but there should always be attributes
+    #[serde(rename = "a", skip_serializing_if = "Option::is_none")]
+    pub(crate) attributes: Option<Attributes>,
 }
 
 impl RedisDbObject {
@@ -65,6 +69,7 @@ impl RedisDbObject {
         owner: String,
         state: StateEnumeration,
         tags: Option<HashSet<String>>,
+        attributes: Attributes,
     ) -> Self {
         let object_type = object.object_type();
         Self {
@@ -73,6 +78,7 @@ impl RedisDbObject {
             owner,
             state,
             tags,
+            attributes: Some(attributes),
         }
     }
 

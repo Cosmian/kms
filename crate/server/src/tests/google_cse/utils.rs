@@ -22,14 +22,13 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
         pub id_token: String,
     }
 
-    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").map_err(|e| {
-        KmsError::ServerError(format!("Failed to get Google OAuth client ID: {}", e))
-    })?;
+    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID")
+        .map_err(|e| KmsError::ServerError(format!("Failed to get Google OAuth client ID: {e}")))?;
     let client_secret = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_SECRET").map_err(|e| {
-        KmsError::ServerError(format!("Failed to get Google OAuth client secret: {}", e))
+        KmsError::ServerError(format!("Failed to get Google OAuth client secret: {e}"))
     })?;
     let refresh_token = std::env::var("TEST_GOOGLE_OAUTH_REFRESH_TOKEN").map_err(|e| {
-        KmsError::ServerError(format!("Failed to get Google OAuth refresh token: {}", e))
+        KmsError::ServerError(format!("Failed to get Google OAuth refresh token: {e}"))
     })?;
 
     assert!(!client_id.is_empty());
