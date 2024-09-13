@@ -3,12 +3,14 @@ use std::{path::PathBuf, process::Command};
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
 use cosmian_kms_server::config::{DBConfig, DEFAULT_SQLITE_PATH};
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
     AuthenticationOptions,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;
+use tracing::info;
 
 use crate::{
     error::result::CliResult,
@@ -20,7 +22,13 @@ use crate::{
 
 #[tokio::test]
 pub(crate) async fn test_new_database() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
+
+    if ctx.owner_client_conf.kms_database_secret.is_none() {
+        info!("Skipping test_new_database as backend not sqlite-enc");
+        return Ok(());
+    }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
@@ -36,7 +44,13 @@ pub(crate) async fn test_new_database() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_secrets_bad() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
+
+    if ctx.owner_client_conf.kms_database_secret.is_none() {
+        info!("Skipping test_secrets_bad as backend not sqlite-enc");
+        return Ok(());
+    }
 
     let bad_conf_path = generate_invalid_conf(&ctx.owner_client_conf);
 
@@ -54,7 +68,13 @@ pub(crate) async fn test_secrets_bad() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_conf_does_not_exist() -> CliResult<()> {
-    start_default_test_kms_server().await;
+    log_init(option_env!("RUST_LOG"));
+    let ctx = start_default_test_kms_server().await;
+
+    if ctx.owner_client_conf.kms_database_secret.is_none() {
+        info!("Skipping test_conf_does_not_exist as backend not sqlite-enc");
+        return Ok(());
+    }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
@@ -67,7 +87,13 @@ pub(crate) async fn test_conf_does_not_exist() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_secrets_key_bad() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
+
+    if ctx.owner_client_conf.kms_database_secret.is_none() {
+        info!("Skipping test_secrets_key_bad as backend not sqlite-enc");
+        return Ok(());
+    }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);

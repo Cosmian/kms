@@ -431,7 +431,8 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
     Ok(user_conf_path)
 }
 
-/// Generate an invalid configuration by changing the database secret  and return the file path
+/// Generate an invalid configuration for sqlite-enc
+/// by changing the database secret  and return the file path
 #[must_use]
 pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     // Create a new database key
