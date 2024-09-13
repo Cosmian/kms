@@ -16,7 +16,9 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
+        symmetric::create_key::create_symmetric_key,
+        utils::{extract_uids::extract_locate_uids, recover_cmd_logs},
+        PROG_NAME,
     },
 };
 
@@ -53,12 +55,8 @@ pub(crate) fn locate(
     cmd.arg("locate").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        let mut lines = std::str::from_utf8(&output.stdout)?
-            .lines()
-            .map(std::borrow::ToOwned::to_owned)
-            .collect::<Vec<String>>();
-        lines.remove(0); // remove header line: `List of unique identifiers`
-        return Ok(lines)
+        let uids = extract_locate_uids(std::str::from_utf8(&output.stdout)?);
+        return Ok(uids.unwrap_or_default());
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
