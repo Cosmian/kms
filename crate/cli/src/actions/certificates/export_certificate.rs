@@ -16,6 +16,8 @@ pub enum CertificateExportFormat {
     JsonTtlv,
     Pem,
     Pkcs12,
+    #[cfg(not(feature = "fips"))]
+    Pkcs12Legacy,
 }
 
 /// Export a certificate from the KMS
@@ -23,9 +25,10 @@ pub enum CertificateExportFormat {
 /// The certificate is exported either:
 /// - in TTLV JSON KMIP format (json-ttlv)
 /// - in X509 PEM format (pem)
-/// - in PKCS12 format including private key and certificate file (pkcs12)
-///
-/// For PKCS#12, the `unique_id` should be that of the private key, not the certificate.
+/// - in PKCS12 format including private key, certificate and chain (pkcs12)
+/// - in legacy PKCS12 format (pkcs12-legacy) to support some keystores
+///    that do not support the new format (e.g. Java keystores, MacOS Keychain,...)
+///    This format is not available in FIPS mode.
 ///
 /// When using tags to retrieve rather than the unique id,
 /// an error is returned if multiple objects match the tags.
@@ -97,6 +100,10 @@ impl ExportCertificateAction {
             CertificateExportFormat::Pkcs12 => {
                 (KeyFormatType::PKCS12, self.pkcs12_password.as_deref())
             }
+            #[cfg(not(feature = "fips"))]
+            CertificateExportFormat::Pkcs12Legacy => {
+                (KeyFormatType::Pkcs12Legacy, self.pkcs12_password.as_deref())
+            }
         };
 
         // export the object
@@ -125,7 +132,17 @@ impl ExportCertificateAction {
                         write_bytes_to_file(pem.to_string().as_bytes(), &self.certificate_file)?;
                     }
                     CertificateExportFormat::Pkcs12 => {
-                        cli_bail!("PKCS12 format is not supported for certificates only");
+                        cli_bail!(
+                            "PKCS12: invalid object returned by the server. Should be a private \
+                             key"
+                        );
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    CertificateExportFormat::Pkcs12Legacy => {
+                        cli_bail!(
+                            "PKCS12: invalid object returned by the server. Should be a private \
+                             key"
+                        );
                     }
                 }
             }

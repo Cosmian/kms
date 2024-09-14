@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     error::KmsError,
@@ -25,9 +27,19 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // First operation to do is to load FIPS module if necessary.
+    // For an explaination of openssl providers, see
+    // see https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+
+    // In FIPS mode, we only load the fips provider
     #[cfg(feature = "fips")]
     openssl::provider::Provider::load(None, "fips")?;
+
+    // Not in FIPS mode: load the default provider and the legacy provider
+    // so that we can use the legacy algorithms
+    // particularly those used for old PKCS#12 formats
+    #[cfg(not(feature = "fips"))]
+    let _provider = openssl::provider::Provider::try_load(None, "legacy", true)
+        .context("export: unable to load the openssl legacy provider")?;
 
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {

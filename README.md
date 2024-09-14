@@ -41,6 +41,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
     * [Windows](#windows)
     * [Build the Docker container](#build-the-docker-container)
 - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+- [Development: running the server with cargo](#development-running-the-server-with-cargo)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
@@ -186,6 +187,18 @@ set_var("RUST_BACKTRACE", "1");
 set_var("KMS_TEST_DB", "redis-findex");
 }
 log_init(option_env!("RUST_LOG"));
+```
+
+## Development: running the server with cargo
+
+To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
+log level and select the correct backend (which defaults to `sqlite-enc`).
+
+```sh
+RUST_LOG="info,cosmian_kms_server=debug" \
+cargo run --bin cosmian_kms_server -- \
+--database-type redis-findex --database-url redis://localhost:6379 \
+--redis-master-password secret --redis-findex-label label
 ```
 
 ## Setup as a `Supervisor` service

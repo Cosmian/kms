@@ -197,7 +197,7 @@ Note: these extensions make the intermediate CA compatible with Google CSE for G
 [S/MIME requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 
 ```shell
- ckms certificates certify --certificate-id acme_intermediate_ca \
+ckms certificates certify --certificate-id acme_intermediate_ca \
  --issuer-certificate-id acme_root_ca \
  --generate-key-pair --algorithm nist-p256  \
  --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
@@ -220,7 +220,7 @@ desired format.
 To export the certificate in PEM format, use the following command:
 
 ```sh
- ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
+ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
 ```
 
 You can then view its content, using `openssl` for instance:

@@ -14,6 +14,8 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
+#[cfg(not(feature = "fips"))]
+use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{
     pkey::{Id, PKey, Private, Public},
     stack::Stack,
@@ -46,7 +48,7 @@ pub(crate) async fn export_get(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
-    trace!("Export: {}", serde_json::to_string(&request)?);
+    trace!("export-get: {}", serde_json::to_string(&request)?);
 
     let uid_or_tags = request
         .unique_identifier
@@ -116,7 +118,12 @@ pub(crate) async fn export_get(
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
-                if *key_format_type == KeyFormatType::PKCS12 {
+                #[cfg(feature = "fips")]
+                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12;
+                #[cfg(not(feature = "fips"))]
+                let is_pkcs12 = *key_format_type == KeyFormatType::PKCS12
+                    || *key_format_type == KeyFormatType::Pkcs12Legacy;
+                if is_pkcs12 {
                     // retrieve the private key
                     owm = retrieve_private_key_for_certificate(
                         uid_or_tags,
@@ -133,7 +140,7 @@ pub(crate) async fn export_get(
                         params,
                         &Export {
                             unique_identifier: Some(UniqueIdentifier::TextString(owm.id.clone())),
-                            key_format_type: Some(KeyFormatType::PKCS12),
+                            key_format_type: Some(*key_format_type),
                             key_wrap_type: Some(KeyWrapType::NotWrapped),
                             key_compression_type: request.key_compression_type,
                             key_wrapping_specification: request.key_wrapping_specification.clone(),
@@ -179,6 +186,10 @@ async fn export_get_private_key(
         operation_type
     );
     // determine if the user wants a PKCS#12
+    #[cfg(not(feature = "fips"))]
+    let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12)
+        || request.key_format_type == Some(KeyFormatType::Pkcs12Legacy);
+    #[cfg(feature = "fips")]
     let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     if (operation_type == ObjectOperationType::Export)
@@ -293,22 +304,36 @@ async fn process_private_key(
 
     //No wrapping requested: export the private key to the requested format
     match key_format_type {
-        Some(kft) => match kft {
-            KeyFormatType::PKCS1
-            | KeyFormatType::PKCS8
-            | KeyFormatType::TransparentECPrivateKey
-            | KeyFormatType::TransparentRSAPrivateKey
-            | KeyFormatType::ECPrivateKey
-            | KeyFormatType::PKCS12 => {
-                let object = openssl_private_key_to_kmip(
-                    &openssl_key,
-                    *kft,
-                    attributes.cryptographic_usage_mask,
-                )?;
-                object_with_metadata.object = object;
+        Some(kft) => {
+            #[cfg(not(feature = "fips"))]
+            let supported_formats = vec![
+                KeyFormatType::PKCS1,
+                KeyFormatType::PKCS8,
+                KeyFormatType::TransparentECPrivateKey,
+                KeyFormatType::TransparentRSAPrivateKey,
+                KeyFormatType::ECPrivateKey,
+                KeyFormatType::PKCS12,
+                KeyFormatType::Pkcs12Legacy,
+            ];
+            #[cfg(feature = "fips")]
+            let supported_formats = vec![
+                KeyFormatType::PKCS1,
+                KeyFormatType::PKCS8,
+                KeyFormatType::TransparentECPrivateKey,
+                KeyFormatType::TransparentRSAPrivateKey,
+                KeyFormatType::ECPrivateKey,
+                KeyFormatType::PKCS12,
+            ];
+            if !supported_formats.contains(kft) {
+                kms_bail!("export: unsupported Key Format Type: {:?}", kft)
             }
-            _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
-        },
+            let object = openssl_private_key_to_kmip(
+                &openssl_key,
+                *kft,
+                attributes.cryptographic_usage_mask,
+            )?;
+            object_with_metadata.object = object;
+        }
         None => {
             // No format type requested: export the private key to the default format
             let object = openssl_private_key_to_kmip_default_format(
@@ -625,7 +650,11 @@ async fn build_pkcs12_for_private_key(
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
-    trace!("build_pkcs12_for_private_key:  {}", private_key_owm.id);
+    trace!(
+        "build_pkcs12_for_private_key: {} with format: {:?}",
+        private_key_owm.id,
+        request.key_format_type
+    );
 
     let mut cert_owm =
         retrieve_certificate_for_private_key(private_key_owm, operation_type, kms, user, params)
@@ -669,12 +698,26 @@ async fn build_pkcs12_for_private_key(
     );
     let private_key = kmip_private_key_to_openssl(&private_key_owm.object)
         .context("export: unable to parse the private key to openssl")?;
+
     // Create the PKCS12
     trace!("building the PKCS12");
-    let pkcs12 = openssl::pkcs12::Pkcs12::builder()
+    let mut pkcs12_builder = openssl::pkcs12::Pkcs12::builder();
+    pkcs12_builder
         .pkey(&private_key)
         .cert(&certificate)
-        .ca(chain)
+        .ca(chain);
+
+    #[cfg(not(feature = "fips"))]
+    {
+        // support for OLD PKCS#12 formats
+        if request.key_format_type == Some(KeyFormatType::Pkcs12Legacy) {
+            pkcs12_builder
+                .cert_algorithm(Nid::PBE_WITHSHA1AND40BITRC2_CBC)
+                .key_algorithm(Nid::PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC)
+                .mac_md(MessageDigest::sha1());
+        }
+    }
+    let pkcs12 = pkcs12_builder
         .build2(&password)
         .context("export: unable to build the PKCS12")?;
 

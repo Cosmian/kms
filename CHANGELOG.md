@@ -12,9 +12,8 @@ All notable changes to this project will be documented in this file.
 - Build a generic database upgrade mechanism ([#299](https://github.com/Cosmian/kms/pull/299))
 - Export of certificates can now be performed using the certificate id (instead of just the private
   key id)
-- Made test DB backend selectable using env. var. `KMS_TEST_URL`
 - More intuitive PKCS#12 import
-
+- Support for export under legacy PKCS#12 format
 - Documentation (S/MIME)
 
 ### 🐛 Bug Fixes
@@ -59,6 +58,7 @@ All notable changes to this project will be documented in this file.
 - Do not delete tags if none are provided ([#276](https://github.com/Cosmian/kms/pull/276))
 - De-activated Google CSE tests when tokens are not supplied through env. var.
 - Cleaned-up and improved certificates import tests
+- Made test DB backend selectable using env. var. `KMS_TEST_URL`
 
 ## [4.17.0] - 2024-07-05
 
