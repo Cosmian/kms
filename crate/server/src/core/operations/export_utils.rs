@@ -306,7 +306,7 @@ async fn process_private_key(
     match key_format_type {
         Some(kft) => {
             #[cfg(not(feature = "fips"))]
-            let supported_formats = vec![
+            let supported_formats = [
                 KeyFormatType::PKCS1,
                 KeyFormatType::PKCS8,
                 KeyFormatType::TransparentECPrivateKey,
@@ -316,7 +316,7 @@ async fn process_private_key(
                 KeyFormatType::Pkcs12Legacy,
             ];
             #[cfg(feature = "fips")]
-            let supported_formats = vec![
+            let supported_formats = [
                 KeyFormatType::PKCS1,
                 KeyFormatType::PKCS8,
                 KeyFormatType::TransparentECPrivateKey,

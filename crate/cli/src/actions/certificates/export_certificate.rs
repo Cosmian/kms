@@ -27,7 +27,7 @@ pub enum CertificateExportFormat {
 /// - in X509 PEM format (pem)
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
 /// - in legacy PKCS12 format (pkcs12-legacy) to support some keystores
-///    that do not support the new format (e.g. Java keystores, MacOS Keychain,...)
+///    that do not support the new format (e.g. Java keystores, `MacOS` Keychain,...)
 ///    This format is not available in FIPS mode.
 ///
 /// When using tags to retrieve rather than the unique id,
