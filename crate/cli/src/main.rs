@@ -47,8 +47,9 @@ struct Cli {
     #[arg(long)]
     pub(crate) accept_invalid_certs: Option<bool>,
 
-    /// Output the JSON KMIP request and response
-    /// This is useful to debug the KMIP protocol and programmtically call the KMS
+    /// Output the JSON KMIP request and response.
+    /// This is useful to understand JSON POST requests and responses
+    /// required to programmatically call the KMS on the /kmip/2_1 endpoint
     #[arg(long, default_value = "false")]
     pub(crate) json: bool,
 }
@@ -79,6 +80,7 @@ enum CliCommands {
     /// Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
+
     #[command(subcommand)]
     Google(GoogleCommands),
 }
@@ -94,6 +96,8 @@ async fn main() {
 async fn main_() -> CliResult<()> {
     let opts = Cli::parse();
 
+    // We output the JSON request and response
+    // by setting the RUST_LOG environment variable to the correct value
     if opts.json {
         unsafe {
             set_var("RUST_LOG", "cosmian_kms_client::kms_rest_client=info");
