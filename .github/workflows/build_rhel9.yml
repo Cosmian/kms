@@ -162,7 +162,7 @@ jobs:
           # There are 2 subdirectories in the current path
           #   usr/local/openssl/
           #   __w/kms/kms/target/
-          KMS_PATH="__w/k/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          KMS_PATH="__w/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
