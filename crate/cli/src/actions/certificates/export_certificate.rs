@@ -26,8 +26,9 @@ pub enum CertificateExportFormat {
 /// - in TTLV JSON KMIP format (json-ttlv)
 /// - in X509 PEM format (pem)
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
-/// - in legacy PKCS12 format (pkcs12-legacy) to support some keystores
-///    that do not support the new format (e.g. Java keystores, `MacOS` Keychain,...)
+/// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
+///    for keystores that do not support the new format
+///    (e.g. Java keystores, `MacOS` Keychain,...)
 ///    This format is not available in FIPS mode.
 ///
 /// When using tags to retrieve rather than the unique id,
