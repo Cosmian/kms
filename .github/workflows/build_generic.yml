@@ -98,6 +98,10 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
+      # Install openssl@3 on MacOS
+      - run: brew install openssl@3
+        if: contains(runner.os, 'macos')
+
       - run: find .
         if: contains(runner.os, 'linux')
 
