@@ -61,6 +61,7 @@ jobs:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
       - name: Install OpenSSL 3
+        if: contains(runner.os, 'windows')
         run: |
           . .\.github\scripts\windows_install_openssl.ps1
           Install-Openssl
@@ -69,6 +70,5 @@ jobs:
         if: contains(runner.os, 'windows')
         run: |
           pwd
-          find . -type f
           ./ckms.exe -V
           ./cosmian_kms_server.exe --info
