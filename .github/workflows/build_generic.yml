@@ -101,15 +101,14 @@ jobs:
       - run: find .
         if: contains(runner.os, 'linux')
 
-      - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+      - name: Linux launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux')
         run: |
           set -ex
           pwd
           ls -lah 
-          -ls -lah home/runner/work/kms/kms/target/
           -ls -lah /home/runner/work/kms/kms/target/
-          KMS_PATH="./target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          KMS_PATH="/home/runner/work/kms/kms/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          if [ "${{ inputs.features }}" = "fips" ]; then
            #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          else
@@ -129,3 +128,31 @@ jobs:
             ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           fi
           ./$KMS_PATH/cosmian_kms_server --info
+
+      - name: MacOS launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'macos')
+        run: |
+          set -ex
+          pwd
+          ls -lah 
+          -ls -lah /Users/runner/work/kms/kms/target/
+          KMS_PATH="/Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+           #          if [ "${{ inputs.features }}" = "fips" ]; then
+           #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+           #          else
+           #            KMS_PATH="${{ inputs.debug_or_release }}"
+           #          fi
+          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian_kms_server
+          
+          ./$KMS_PATH/ckms -V
+          
+          # Copy openssl build for FIPS and Legacy mode
+          if [ -d "usr/local/openssl" ]; then
+            sudo mkdir /usr/local/openssl
+            sudo chown -R $USER /usr/local/openssl
+            rsync -ru usr/local/openssl/ /usr/local/openssl/
+          fi
+          ./$KMS_PATH/cosmian_kms_server --info
+
+
