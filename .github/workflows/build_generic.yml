@@ -104,11 +104,13 @@ jobs:
       - name: Linux launch ckms and cosmian_kms_server
         if: contains(runner.os, 'Linux')
         run: |
-          set -ex
           pwd
           ls -lah 
-          ls -lah /home/runner/work/kms/kms/target/
-          KMS_PATH="/home/runner/work/kms/kms/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          find . -type f
+          ls /
+          cd /
+          find . -type f
+          KMS_PATH="./home/runner/work/kms/kms/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          if [ "${{ inputs.features }}" = "fips" ]; then
            #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          else
@@ -135,8 +137,11 @@ jobs:
           set -ex
           pwd
           ls -lah 
-          ls -lah /Users/runner/work/kms/kms/target/
-          KMS_PATH="/Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          find . -type f
+          ls /
+          cd /
+          find . -type f
+          KMS_PATH="./Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          if [ "${{ inputs.features }}" = "fips" ]; then
            #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          else
