@@ -99,8 +99,20 @@ jobs:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
       # Install openssl@3 on MacOS
-      - run: brew install openssl@3
+      - name: Use OpenSSL 3 on MacOS
         if: contains(runner.os, 'macos')
+        run: |
+          brew install openssl@3
+          brew switch openssl@3
+
+      - name: Use OpenSSL 3 on Ubuntu
+        if: contains(runner.os, 'linux')
+        run: |
+          apt list --all-versions openssl
+          brew switch openssl@3
+          if [ -d "usr/local/openssl" ]; then
+            /usr/local/openssl/bin/openssl version
+          fi
 
       - run: find .
         if: contains(runner.os, 'linux')
@@ -122,7 +134,6 @@ jobs:
           
           which openssl
           openssl version
-          /usr/local/openssl/bin/openssl version
 
           # Copy openssl build for FIPS mode
           if [ -d "usr/local/openssl" ]; then
