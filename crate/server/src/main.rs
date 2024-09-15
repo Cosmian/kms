@@ -96,8 +96,17 @@ async fn main() -> KResult<()> {
     let _guard = span.enter();
 
     // print openssl version
+    #[cfg(feature = "fips")]
     info!(
-        "OpenSSL version: {}, in {}, number: {:x}",
+        "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
+        openssl::version::version(),
+        openssl::version::dir(),
+        openssl::version::number()
+    );
+
+    #[cfg(not(feature = "fips"))]
+    info!(
+        "OpenSSL default mode, version: {}, in {}, number: {:x}",
         openssl::version::version(),
         openssl::version::dir(),
         openssl::version::number()

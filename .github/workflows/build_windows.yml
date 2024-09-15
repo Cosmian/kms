@@ -63,5 +63,7 @@ jobs:
       - name: Launch ckms and cosmian_kms_server
         if: contains(runner.os, 'windows')
         run: |
+          pwd
+          find . -type f
           ./ckms.exe -V
           ./cosmian_kms_server.exe --info

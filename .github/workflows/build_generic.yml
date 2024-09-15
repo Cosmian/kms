@@ -117,13 +117,11 @@ jobs:
           ./$KMS_PATH/ckms -V
           
           # Copy openssl build for FIPS mode
-          if [ -d "usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru usr/local/openssl/ /usr/local/openssl/
-            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
-          fi
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+          ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           ./$KMS_PATH/cosmian_kms_server --info
 
       - name: MacOS launch ckms and cosmian_kms_server
@@ -144,11 +142,9 @@ jobs:
           ./$KMS_PATH/ckms -V
           
           # Copy openssl build for FIPS and Legacy mode
-          if [ -d "usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru usr/local/openssl/ /usr/local/openssl/
-          fi
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
           ./$KMS_PATH/cosmian_kms_server --info
 
 
