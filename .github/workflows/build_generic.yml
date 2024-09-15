@@ -105,7 +105,10 @@ jobs:
         if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
         run: |
           set -ex
-          
+          pwd
+          ls -lah 
+          -ls -lah home/runner/work/kms/kms/target/
+          -ls -lah /home/runner/work/kms/kms/target/
           KMS_PATH="./target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
            #          if [ "${{ inputs.features }}" = "fips" ]; then
            #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
