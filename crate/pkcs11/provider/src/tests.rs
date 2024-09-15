@@ -16,7 +16,9 @@ use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_object
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
+    let kms_client = ctx
+        .owner_client_conf
+        .initialize_kms_client(None, None, false)?;
     create_keys(&kms_client).await?;
 
     let keys = get_kms_objects_async(
@@ -43,7 +45,7 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
 
         let kms_client = ctx
             .owner_client_conf
-            .initialize_kms_client(None, None)
+            .initialize_kms_client(None, None, false)
             .unwrap();
         create_keys(&kms_client).await.unwrap();
         load_p12().await.unwrap();
@@ -51,7 +53,7 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
     });
 
     Ok(CkmsBackend::instantiate(
-        owner_client_conf.initialize_kms_client(None, None)?,
+        owner_client_conf.initialize_kms_client(None, None, false)?,
     ))
 }
 
@@ -86,7 +88,9 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
 async fn load_p12() -> Result<String, Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
+    let kms_client = ctx
+        .owner_client_conf
+        .initialize_kms_client(None, None, false)?;
     let p12_bytes = include_bytes!("../test_data/certificate.p12");
 
     let p12_sk = Object::PrivateKey {
