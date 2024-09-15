@@ -116,6 +116,7 @@ jobs:
 
           ./$KMS_PATH/ckms -V
           
+          which openssl
           openssl version
           /usr/local/openssl/bin/openssl version
 
