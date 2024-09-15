@@ -28,7 +28,7 @@ function Build-Project {
     # Set up environment for vcpkg
     $env:VCPKG_INSTALLATION_ROOT
     dir $env:VCPKG_INSTALLATION_ROOT
-    vcpkg install openssl[fips]
+    vcpkg install openssl[fips,weak-ssl-ciphers]
 
     vcpkg integrate install
     $env:VCPKGRS_DYNAMIC = 1
