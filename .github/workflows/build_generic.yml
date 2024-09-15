@@ -104,18 +104,13 @@ jobs:
       - name: Linux launch ckms and cosmian_kms_server
         if: contains(runner.os, 'Linux')
         run: |
+          # The current path should be /home/runner/work/kms/kms
           pwd
-          ls -lah 
           find . -type f
-          ls /
-          cd /
-          find . -type f
-          KMS_PATH="./home/runner/work/kms/kms/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-           #          if [ "${{ inputs.features }}" = "fips" ]; then
-           #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-           #          else
-           #            KMS_PATH="${{ inputs.debug_or_release }}"
-           #          fi
+          # There are 2 subdirectories in the current path
+          #   usr/local/openssl/
+          #   home/runner/work/kms/kms/target/
+          KMS_PATH="./home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
           
@@ -135,18 +130,14 @@ jobs:
         if: contains(runner.os, 'macos')
         run: |
           set -ex
+          # The current path should be /Users/runner/work/kms/kms
           pwd
           ls -lah 
           find . -type f
-          ls /
-          cd /
-          find . -type f
-          KMS_PATH="./Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-           #          if [ "${{ inputs.features }}" = "fips" ]; then
-           #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-           #          else
-           #            KMS_PATH="${{ inputs.debug_or_release }}"
-           #          fi
+          # There are 2 subdirectories in the current path
+          #   usr/local/openssl/
+          #   Users/runner/work/kms/kms/target/ 
+          KMS_PATH="Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
           
