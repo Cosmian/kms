@@ -103,13 +103,13 @@ jobs:
         if: contains(runner.os, 'macos')
         run: |
           brew install openssl@3
-          brew switch openssl@3
+          # in case it was already installed
+          brew link --overwrite openssl@3
 
       - name: Use OpenSSL 3 on Ubuntu
         if: contains(runner.os, 'linux')
         run: |
           apt list --all-versions openssl
-          brew switch openssl@3
           if [ -d "usr/local/openssl" ]; then
             /usr/local/openssl/bin/openssl version
           fi
