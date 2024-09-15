@@ -102,7 +102,7 @@ jobs:
       - name: Use OpenSSL 3 on MacOS
         if: contains(runner.os, 'macos')
         run: |
-          brew uninstall --ignore-dependencies openssl@1
+          brew uninstall --ignore-dependencies openssl@1.1
           brew install openssl@3
           # in case it was already installed
           brew link --overwrite openssl@3
