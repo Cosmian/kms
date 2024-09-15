@@ -110,6 +110,7 @@ jobs:
       - name: Use OpenSSL 3 on Ubuntu
         if: contains(runner.os, 'linux')
         run: |
+          apt upgrade
           apt list --all-versions openssl
           if [ -d "usr/local/openssl" ]; then
             /usr/local/openssl/bin/openssl version
