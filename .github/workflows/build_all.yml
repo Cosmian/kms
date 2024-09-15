@@ -37,25 +37,8 @@ jobs:
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
 
-  legacy-ubuntu-24:
-    uses: ./.github/workflows/build_generic.yml
-    secrets: inherit
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-24.04
-      archive-name: legacy_ubuntu_24_04
-      target: x86_64-unknown-linux-gnu
-      debug_or_release: ${{ inputs.debug_or_release }}
-      features: fips
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
-      artifacts: |
-        /usr/local/openssl/lib64/ossl-modules/fips.so
-        /usr/local/openssl/lib64/ossl-modules/legacy.so
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
 
-
-  generic-build:
+  generic-linux:
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +54,28 @@ jobs:
           - distribution: ubuntu-24.04
             archive-name: ubuntu_24_04
             target: x86_64-unknown-linux-gnu
-
+    name: ${{ matrix.distribution }}
+    uses: ./.github/workflows/build_generic.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ${{ matrix.distribution }}
+      archive-name: ${{ matrix.archive-name }}
+      target: ${{ matrix.target }}
+      debug_or_release: ${{ inputs.debug_or_release }}
+      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      artifacts: |
+        /usr/local/openssl/lib64/ossl-modules/fips.so
+        /usr/local/openssl/lib64/ossl-modules/legacy.so
+        /usr/local/openssl/ssl/openssl.cnf
+        /usr/local/openssl/ssl/fipsmodule.cnf
+  
+  
+  generic-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - distribution: macos-12
             archive-name: macos_intel
             target: x86_64-apple-darwin
@@ -89,6 +93,47 @@ jobs:
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      artifacts: |
+        /usr/local/openssl/lib/ossl-modules/fips.dylib
+        /usr/local/openssl/lib/ossl-modules/legacy.dylib
+        /usr/local/openssl/ssl/openssl.cnf
+        /usr/local/openssl/ssl/fipsmodule.cnf      
+  
+  
+  #  generic-build:
+  #    strategy:
+  #      fail-fast: false
+  #      matrix:
+  #        include:
+  #          - distribution: ubuntu-20.04
+  #            archive-name: ubuntu_20_04
+  #            target: x86_64-unknown-linux-gnu
+  #
+  #          - distribution: ubuntu-22.04
+  #            archive-name: ubuntu_22_04
+  #            target: x86_64-unknown-linux-gnu
+  #
+  #          - distribution: ubuntu-24.04
+  #            archive-name: ubuntu_24_04
+  #            target: x86_64-unknown-linux-gnu
+  #
+  #          - distribution: macos-12
+  #            archive-name: macos_intel
+  #            target: x86_64-apple-darwin
+  #
+  #          - distribution: macos-14
+  #            archive-name: macos_arm
+  #            target: aarch64-apple-darwin
+  #    name: ${{ matrix.distribution }}
+  #    uses: ./.github/workflows/build_generic.yml
+  #    secrets: inherit
+  #    with:
+  #      toolchain: ${{ inputs.toolchain }}
+  #      distribution: ${{ matrix.distribution }}
+  #      archive-name: ${{ matrix.archive-name }}
+  #      target: ${{ matrix.target }}
+  #      debug_or_release: ${{ inputs.debug_or_release }}
+  #      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
 
   windows-2022:
     uses: ./.github/workflows/build_windows.yml
@@ -96,13 +141,18 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
+      artifacts: |
+        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\fips.dll
+        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\legacy.dll
+        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\openssl.cnf
+        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\fipsmodule.cnf
 
   cleanup:
     needs:
       - rhel9
       - fips-ubuntu-20
-      - legacy-ubuntu-24
-      - generic-build
+      - generic-linux
+      - generic-macos
       - windows-2022
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit
