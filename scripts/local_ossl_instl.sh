@@ -61,4 +61,3 @@ rm -rf "${OPENSSL_DIR:?}/bin"
 rm -rf "${OPENSSL_DIR:?}/share"
 echo -e "\nOpenSSL successfully installed at ${OPENSSL_DIR}"
 echo -e "\nIf this program was not sourced, remember to export the absolute path of ${OPENSSL_DIR} as an environment variable."
-X
