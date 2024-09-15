@@ -60,6 +60,11 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
+      - name: Install OpenSSL 3
+        run: |
+          . .\.github\scripts\windows_install_openssl.ps1
+          Install-Openssl
+
       - name: Launch ckms and cosmian_kms_server
         if: contains(runner.os, 'windows')
         run: |

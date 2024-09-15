@@ -161,8 +161,8 @@ jobs:
           find . -type f
           # There are 2 subdirectories in the current path
           #   usr/local/openssl/
-          #   home/runner/work/kms/kms/target/
-          KMS_PATH="./home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          #   __w/kms/kms/target/
+          KMS_PATH="__w/k/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
