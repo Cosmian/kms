@@ -203,6 +203,7 @@ mod tests {
                 otlp: Some("http://localhost:4317".to_string()),
                 quiet: false,
             },
+            info: false,
         };
 
         let toml_string = r#"

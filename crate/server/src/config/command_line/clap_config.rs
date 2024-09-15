@@ -97,6 +97,7 @@ impl fmt::Debug for ClapConfig {
             &self.ms_dke_service_url,
         );
         let x = x.field("telemetry", &self.telemetry);
+        let x = x.field("info", &self.info);
         x.finish()
     }
 }

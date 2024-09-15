@@ -105,23 +105,24 @@ jobs:
         if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
         run: |
           set -ex
-
-          if [ "${{ inputs.features }}" = "fips" ]; then
-            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          else
-            KMS_PATH="${{ inputs.debug_or_release }}"
-          fi
+          
+          KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+           #          if [ "${{ inputs.features }}" = "fips" ]; then
+           #            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+           #          else
+           #            KMS_PATH="${{ inputs.debug_or_release }}"
+           #          fi
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
-
+          
           ./$KMS_PATH/ckms -V
-
+          
           # Copy openssl build for FIPS mode
           if [ -d "usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru usr/local/openssl/ /usr/local/openssl/
-            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+          ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           fi
           ./$KMS_PATH/cosmian_kms_server --info
