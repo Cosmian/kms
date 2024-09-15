@@ -272,6 +272,7 @@ impl ClientConf {
         &self,
         kms_server_url: Option<&str>,
         accept_invalid_certs: Option<bool>,
+        print_json: bool,
     ) -> Result<KmsClient, ClientError> {
         let kms_server_url = kms_server_url.unwrap_or(&self.kms_server_url);
         let accept_invalid_certs = accept_invalid_certs.unwrap_or(self.accept_invalid_certs);
@@ -291,6 +292,7 @@ impl ClientConf {
             } else {
                 None
             },
+            print_json,
         )
         .with_context(|| {
             format!("Unable to instantiate a KMS server REST client {kms_server_url}")

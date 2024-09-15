@@ -1,4 +1,4 @@
-use std::{env::set_var, path::PathBuf, process};
+use std::{path::PathBuf, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
 #[cfg(not(feature = "fips"))]
@@ -94,16 +94,8 @@ async fn main() {
 }
 
 async fn main_() -> CliResult<()> {
-    let opts = Cli::parse();
-
-    // We output the JSON request and response
-    // by setting the RUST_LOG environment variable to the correct value
-    if opts.json {
-        unsafe {
-            set_var("RUST_LOG", "cosmian_kms_client::kms_rest_client=info");
-        }
-    }
     log_init(None);
+    let opts = Cli::parse();
 
     if let CliCommands::Markdown(action) = opts.command {
         let command = <Cli as CommandFactory>::command();
@@ -119,8 +111,11 @@ async fn main_() -> CliResult<()> {
 
         command => {
             let conf = ClientConf::load(&conf_path)?;
-            let kms_rest_client =
-                conf.initialize_kms_client(opts.url.as_deref(), opts.accept_invalid_certs)?;
+            let kms_rest_client = conf.initialize_kms_client(
+                opts.url.as_deref(),
+                opts.accept_invalid_certs,
+                opts.json,
+            )?;
 
             match command {
                 CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
