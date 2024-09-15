@@ -27,19 +27,24 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // For an explaination of openssl providers, see
+    // For an explanation of openssl providers, see
     // see https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
     // In FIPS mode, we only load the fips provider
     #[cfg(feature = "fips")]
     openssl::provider::Provider::load(None, "fips")?;
 
-    // Not in FIPS mode: load the default provider and the legacy provider
+    // Not in FIPS mode adn version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
-    let _provider = openssl::provider::Provider::try_load(None, "legacy", true)
-        .context("export: unable to load the openssl legacy provider")?;
+    let _provider = if openssl::version::number() >= 0x30000000 {
+        openssl::provider::Provider::try_load(None, "legacy", true)
+            .context("export: unable to load the openssl legacy provider")?;
+    } else {
+        // In version < 3.0, we only load the default provider
+        openssl::provider::Provider::load(None, "default")?;
+    };
 
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
@@ -101,6 +106,14 @@ async fn main() -> KResult<()> {
     //TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::INFO, "start");
     let _guard = span.enter();
+
+    // print openssl version
+    info!(
+        "OpenSSL version: {}, in {}, number: {:x}",
+        openssl::version::version(),
+        openssl::version::dir(),
+        openssl::version::number()
+    );
 
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");

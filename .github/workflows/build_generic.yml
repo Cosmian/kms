@@ -98,24 +98,6 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
-      # Install openssl@3 on MacOS
-      - name: Use OpenSSL 3 on MacOS
-        if: contains(runner.os, 'macos')
-        run: |
-          brew uninstall --ignore-dependencies openssl@1.1
-          brew install openssl@3
-          # in case it was already installed
-          brew link --overwrite openssl@3
-
-      - name: Use OpenSSL 3 on Ubuntu
-        if: contains(runner.os, 'linux')
-        run: |
-          apt upgrade
-          apt list --all-versions openssl
-          if [ -d "usr/local/openssl" ]; then
-            /usr/local/openssl/bin/openssl version
-          fi
-
       - run: find .
         if: contains(runner.os, 'linux')
 
@@ -133,9 +115,6 @@ jobs:
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
           ./$KMS_PATH/ckms -V
-          
-          which openssl
-          openssl version
 
           # Copy openssl build for FIPS mode
           if [ -d "usr/local/openssl" ]; then

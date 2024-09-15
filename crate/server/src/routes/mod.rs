@@ -77,5 +77,9 @@ pub(crate) async fn get_version(
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req));
-    Ok(Json(crate_version!().to_owned()))
+    Ok(Json(format!(
+        "{} ({})",
+        crate_version!().to_owned(),
+        openssl::version::version()
+    )))
 }
