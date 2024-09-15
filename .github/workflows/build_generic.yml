@@ -115,6 +115,9 @@ jobs:
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
           ./$KMS_PATH/ckms -V
+          
+          openssl version
+          /usr/local/openssl/bin/openssl version
 
           # Copy openssl build for FIPS mode
           if [ -d "usr/local/openssl" ]; then
