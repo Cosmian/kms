@@ -81,6 +81,13 @@ async fn main() -> KResult<()> {
         ClapConfig::parse()
     };
 
+    let info_only = clap_config.info;
+    if info_only {
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
+    }
+
     // Start the telemetry
     initialize_telemetry(&clap_config)?;
 
@@ -120,6 +127,11 @@ async fn main() -> KResult<()> {
 
     // Parse the Server Config from the command line arguments
     let server_params = ServerParams::try_from(clap_config)?;
+
+    if info_only {
+        info!("Server started with --info. Exiting");
+        return Ok(());
+    }
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");

@@ -124,4 +124,4 @@ jobs:
             chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
             ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           fi
-          ./$KMS_PATH/cosmian_kms_server -V
+          ./$KMS_PATH/cosmian_kms_server --info

@@ -64,4 +64,4 @@ jobs:
         if: contains(runner.os, 'windows')
         run: |
           ./ckms.exe -V
-          ./cosmian_kms_server.exe -V
+          ./cosmian_kms_server.exe --info

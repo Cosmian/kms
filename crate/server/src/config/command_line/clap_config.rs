@@ -20,6 +20,7 @@ impl Default for ClapConfig {
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
             telemetry: TelemetryConfig::default(),
+            info: false,
         }
     }
 }
@@ -68,6 +69,10 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub telemetry: TelemetryConfig,
+
+    /// Print the server configuration information and exit
+    #[clap(long, default_value = "false")]
+    pub info: bool,
 }
 
 impl fmt::Debug for ClapConfig {
