@@ -325,7 +325,10 @@ async fn process_private_key(
                 KeyFormatType::PKCS12,
             ];
             if !supported_formats.contains(kft) {
-                kms_bail!("export: unsupported Key Format Type: {:?}", kft)
+                kms_bail!(
+                    "export: unsupported Key Format Type: {:?} for a private key",
+                    kft
+                )
             }
             let object = openssl_private_key_to_kmip(
                 &openssl_key,

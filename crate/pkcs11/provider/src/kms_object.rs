@@ -46,7 +46,7 @@ pub(crate) async fn locate_kms_objects_async(
 pub(crate) fn get_kms_objects(
     kms_client: &KmsClient,
     tags: &[String],
-    key_format_type: KeyFormatType,
+    key_format_type: Option<KeyFormatType>,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     tokio::runtime::Runtime::new()?.block_on(get_kms_objects_async(
         kms_client,
@@ -58,11 +58,11 @@ pub(crate) fn get_kms_objects(
 pub(crate) async fn get_kms_objects_async(
     kms_client: &KmsClient,
     tags: &[String],
-    key_format_type: KeyFormatType,
+    key_format_type: Option<KeyFormatType>,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     let key_ids = locate_objects(kms_client, tags).await?;
     let responses =
-        batch_export_objects(kms_client, key_ids, true, None, true, Some(key_format_type)).await?;
+        batch_export_objects(kms_client, key_ids, true, None, true, key_format_type).await?;
     trace!("Found objects: {:?}", responses);
     let mut results = vec![];
     for response in responses {

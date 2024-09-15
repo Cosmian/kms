@@ -21,8 +21,8 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 
     let keys = get_kms_objects_async(
         &kms_client,
-        &["disk-encryption".to_string()],
-        KeyFormatType::Raw,
+        &["disk-encryption".to_string(), "_kk".to_string()],
+        None, //default key format type is Raw
     )
     .await?;
     assert_eq!(keys.len(), 2);

@@ -297,6 +297,14 @@ pub(crate) fn export_certificate(
     .collect();
     if let Some(certificate_format) = certificate_format {
         args.push("--format".to_owned());
+        #[cfg(not(feature = "fips"))]
+        let arg_value = match certificate_format {
+            CertificateExportFormat::JsonTtlv => "json-ttlv",
+            CertificateExportFormat::Pem => "pem",
+            CertificateExportFormat::Pkcs12 => "pkcs12",
+            CertificateExportFormat::Pkcs12Legacy => "pkcs12-legacy",
+        };
+        #[cfg(feature = "fips")]
         let arg_value = match certificate_format {
             CertificateExportFormat::JsonTtlv => "json-ttlv",
             CertificateExportFormat::Pem => "pem",

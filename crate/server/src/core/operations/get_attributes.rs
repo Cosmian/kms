@@ -228,7 +228,12 @@ pub(crate) async fn get_attributes(
             },
         }
     }
-    debug!("Retrieved Attributes for object {}: {:?}", owm.id, res);
+    debug!(
+        "Retrieved Attributes for {} {}, tags {:?}",
+        owm.object.object_type(),
+        owm.id,
+        res.get_tags()
+    );
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         attributes: res,
