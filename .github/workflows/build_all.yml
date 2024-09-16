@@ -25,7 +25,7 @@ jobs:
         /usr/local/openssl/lib64/ossl-modules/legacy.so
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
-  
+
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
@@ -73,7 +73,7 @@ jobs:
         /usr/local/openssl/lib64/ossl-modules/legacy.so
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
-  
+
   generic-macos:
     strategy:
       fail-fast: false
@@ -100,19 +100,19 @@ jobs:
         /usr/local/openssl/lib/ossl-modules/fips.dylib
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
         /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf      
-  
+        /usr/local/openssl/ssl/fipsmodule.cnf
+
   windows-2022:
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
-  #      artifacts: |
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\fips.dll
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\legacy.dll
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\openssl.cnf
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\fipsmodule.cnf
+      artifacts: |
+        C:\Windows\System32\OpenSSL\lib\ossl-modules\fips.dll
+        C:\Windows\System32\OpenSSL\lib\ossl-modules\legacy.dll
+        C:\Windows\System32\OpenSSL\lib\ssl\openssl.cnf
+        C:\Windows\System32\OpenSSL\lib\ssl\fipsmodule.cnf
 
   cleanup:
     needs:
