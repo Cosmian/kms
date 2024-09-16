@@ -403,7 +403,7 @@ async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
         CertifyOp {
             csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
-            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            tags: Some(vec!["certify_a_csr_we_test".to_owned()]),
             ..Default::default()
         },
     )?;
