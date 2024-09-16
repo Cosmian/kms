@@ -113,10 +113,11 @@ jobs:
     name: ${{ inputs.prefix }} cloudproof_python tests
     needs:
       - build-and-push-image
-    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@split_fips_tests
     with:
       branch: v5.0.1
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
       findex-cloud-version: 0.3.1
+      fips: ${{ inputs.prefix == 'FIPS' }}
