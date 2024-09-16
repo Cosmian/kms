@@ -380,3 +380,28 @@ When handshaking with a new recipient, send a signed email to the recipient (not
 When receiving a signed email from the recipient, import the recipient's certificate in the
 your contacts.
 
+## Outlook, Windows
+
+### Setup
+
+In Outlook (classic) go to File -> Options -> Trust Center -> Trust Center Settings
+![outlook_0](./images/outlook_trust_center.png)
+
+Then go to Email Security and click on Import/Export to import the PKCS#12 file.
+
+![outlook_1](./images/outlook_trust_center_1.png)
+
+Finally, go to the Email Security and click the Settings... button of Default Setting.
+In the popup, select the certificate you just imported, adjust the hash algorithm to SHA256 for
+maximum compatibility and make sure you tick the box "Send these certificates with signed messages".
+
+![outlook_2](./images/outlook_trust_center_2.png)
+
+### Sending a message
+
+Click on New Email, then Options -> Encrypt and Sign.
+
+To perform a handshake with a new recipient, send a first email to the recipient that is signed
+only (not encrypted).
+
+![outlook_3](./images/outlook_trust_center_3.png)
