@@ -10,9 +10,6 @@ on:
       archive-name:
         required: true
         type: string
-      artifacts:
-        required: false
-        type: string
       debug_or_release:
         required: true
         type: string
@@ -51,7 +48,8 @@ jobs:
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
-            ${{ inputs.artifacts }}
+            fips.dll
+            legacy.dll
           retention-days: 1
           if-no-files-found: error
 

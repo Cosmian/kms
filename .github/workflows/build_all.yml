@@ -108,11 +108,6 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
-      artifacts: |
-        C:/vcpkg/packages/openssl_x64-windows/bin/fips.dll
-        C:/vcpkg/packages/openssl_x64-windows/bin/legacy.dll
-        # C:/vcpkg/packages/openssl_x64-windows/ssl/openssl.cnf
-        # C:/vcpkg/packages/openssl_x64-windows/ssl/fipsmodule.cnf
 
   cleanup:
     needs:
