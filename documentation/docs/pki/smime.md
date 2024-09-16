@@ -10,12 +10,10 @@ Table of contents:
 - [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
     - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
     - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
-        - [Import the intermediate certificate in the KMS](#import-the-intermediate-certificate-in-the-kms)
-        - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
-    - [Creating a S/MIME certificate authority with a root and intermediate CA](#creating-a-smime-certificate-authority-with-a-root-and-intermediate-ca)
+    - [Creating a S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
         - [Create a Root CA](#create-a-root-ca)
         - [Create an Intermediate CA](#create-an-intermediate-ca)
-        - [Generate a S/MIME certificate for a user](#generate-a-smime-certificate-for-a-user)
+    - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
 - [Exporting and viewing](#exporting-and-viewing)
     - [PEM format](#pem-format)
     - [PKCS#12 format](#pkcs12-format)
@@ -58,6 +56,10 @@ certificates for personal use. This is the case of
 [Actalis](https://www.actalis.com/s-mime-certificates)
 for instance.
 
+**Important** some email clients, such as Outlook, consider the email address to be case-sensitive.
+Make sure the email address in your request matches the email address you are using
+in your email client.
+
 Once generated, these authorities will provide you with a PKCS#12 file containing the certificate
 and the private key. The file is usually protected by a password.
 
@@ -68,13 +70,6 @@ If you wish to store it in the KMS, you can import it using the following comman
 ```sh
 ckms certificates import --format pkcs12 --pkcs12-password mysecret \
   --replace john_doe.p12 john.doe@acme.com 
-```
-
-To re-export it as a PKCS#12 protected with password `mysecret`, use the following command:
-
-```sh
-ckms certificates export  --format pkcs12 --pkcs12-password mysecret \
---certificate-id john.doe@acme.com  john_doe.p12
 ```
 
 To export it as a PEM file, use the following command:
@@ -88,8 +83,6 @@ ckms certificates export  --format pem --certificate-id john.doe@acme.com john_d
 If you have many users, you will probably want top buy an intermediate certificate from a public
 certificate authority. This intermediate certificate will be used to sign the user certificates.
 
-#### Import the intermediate certificate in the KMS
-
 First import the intermediate certificate and its private key in the KMS:
 
 ```sh
@@ -97,55 +90,9 @@ ckms certificates import --format pkcs12 --pkcs12-password mysecret \
   --replace intermediate.p12 acme_intermediate_ca
 ```
 
-#### Generate a user certificate signed by the intermediate certificate
+Then [generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate).
 
-Then, generate a user certificate signed by the intermediate certificate:
-
-To be used for S/MIME, the user certificates needs to have certain extensions which are set in a
-file containing a `[ v3_ca ]` section.
-
-Say we want to create a S/MIME certificate for user john.doe@acme.com, signed by the intermediate
-certificate, with the following details:
-
-- Common Name: john.doe@acme.com
-- Organization: ACME
-- Organizational Unit: IT
-- Locality: San Francisco
-- State: California
-- Country: US
-- Validity: 1 year (365 days)
-- Key Algorithm: NIST P-256
-- Extensions: a user.ext file with the following content:
-
-The `user.ext` file should contain the following content (which should meet Google CSE
-requirements):
-
-```text
-[ v3_ca ]
-keyUsage=digitalSignature,nonRepudiation,keyAgreement
-extendedKeyUsage=emailProtection
-subjectAltName=email:john.doe@acme.com
-crlDistributionPoints=URI:https://acme.com/crl.pem
-```
-
-Issue the following command to generate the certificate:
-
-```sh
-ckms certificates certify --certificate-id john.doe@acme.com \
---issuer-certificate-id acme_intermediate_ca \
---generate-key-pair --algorithm nist-p256  \
---subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
---certificate-extensions user.ext
-```
-
-Export the user certificate and private keys in PKCS#12 format:
-
-```sh
-ckms certificates export  --format pkcs12 --pkcs12-password mysecret \
---certificate-id john.doe@acme.com  john_doe.p12
-```  
-
-### Creating a S/MIME certificate authority with a root and intermediate CA
+### Creating an S/MIME certificate authority with a root and intermediate CA
 
 If you wish to be your own certificate authority, you can create a root and an intermediate CA.
 
@@ -205,97 +152,75 @@ ckms certificates certify --certificate-id acme_intermediate_ca \
  --certificate-extensions intermediate.ext
 ```
 
-#### Generate a S/MIME certificate for a user
+### Generate a user certificate signed by the intermediate certificate
 
-Follow the steps in
-[Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+Then, generate a user certificate signed by the intermediate certificate:
+
+**Important** some email clients, such as Outlook, consider the email address to be case-sensitive.
+Make sure the email address in the certificate Common Name matches the email address you are using
+in your email client.
+
+To be used for S/MIME, the user certificates needs to have certain extensions which are set in a
+file containing a `[ v3_ca ]` section.
+
+Say we want to create an S/MIME certificate for user john.doe@acme.com, signed by the intermediate
+certificate, with the following details:
+
+- Common Name: john.doe@acme.com
+- Organization: ACME
+- Organizational Unit: IT
+- Locality: San Francisco
+- State: California
+- Country: US
+- Validity: 1 year (365 days)
+- Key Algorithm: NIST P-256
+- Extensions: a user.ext file with the following content:
+
+The `user.ext` file should contain the following content (which should meet Google CSE
+requirements):
+
+```text
+[ v3_ca ]
+keyUsage=digitalSignature,nonRepudiation,keyAgreement
+extendedKeyUsage=emailProtection
+subjectAltName=email:john.doe@acme.com
+crlDistributionPoints=URI:https://acme.com/crl.pem
+```
+
+Issue the following command to generate the certificate:
+
+```sh
+ckms certificates certify --certificate-id john.doe@acme.com \
+--issuer-certificate-id acme_intermediate_ca \
+--generate-key-pair --algorithm nist-p256  \
+--subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
+--certificate-extensions user.ext
+```
 
 ## Exporting and viewing
 
 Use the `ckms certificates export` command to export the certificate and the private key in the
-desired format.
-
-### PEM format
-
-To export the certificate in PEM format, use the following command:
-
-```sh
-ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
-```
-
-You can then view its content, using `openssl` for instance:
-
-```shell
-> openssl x509 -inform pem -text -in john_doe.pem
-
-Certificate:
-    Data:
-        Version: 3 (0x2)
-        Serial Number: 0 (0x0)
-    Signature Algorithm: ecdsa-with-SHA256
-        Issuer: CN=ACME S/MIME intermediate, OU=IT, C=US, ST=New York, L=New York, O=ACME
-        Validity
-            Not Before: Sep 11 14:09:25 2024 GMT
-            Not After : Sep 11 14:09:25 2025 GMT
-        Subject: CN=john.doe@acme.com, OU=IT, C=US, ST=California, L=San Francisco, O=ACME
-        Subject Public Key Info:
-            Public Key Algorithm: id-ecPublicKey
-                Public-Key: (256 bit)
-                pub: 
-                    04:4b:0e:f2:7b:5b:93:91:1c:4a:a2:d1:91:24:ce:
-                    a4:6e:97:5c:41:9f:fd:92:74:70:83:05:64:69:58:
-                    41:46:c5:64:bc:5e:89:30:d6:83:c8:06:64:f6:e8:
-                    b9:a2:a9:2f:ad:e5:93:fd:49:45:4c:e5:c3:2b:29:
-                    e1:7e:a0:16:a9
-                ASN1 OID: prime256v1
-                NIST CURVE: P-256
-        X509v3 extensions:
-            X509v3 Key Usage: 
-                Digital Signature, Non Repudiation, Key Agreement
-            X509v3 Extended Key Usage: 
-                E-mail Protection
-            X509v3 Subject Alternative Name: 
-                <EMPTY>
-
-            X509v3 CRL Distribution Points: 
-
-                Full Name:
-                  URI:https://acme.com/crl.pem
-
-    Signature Algorithm: ecdsa-with-SHA256
-         30:45:02:21:00:cf:31:c9:f1:a7:d7:f5:cd:3a:b6:e3:4e:13:
-         20:ef:e1:6d:b9:21:55:66:27:c4:5d:b0:68:29:f2:07:7e:5b:
-         eb:02:20:1d:92:ff:52:1d:c2:f1:ab:34:f7:d7:f1:29:87:bc:
-         f5:33:3c:0b:6c:93:23:4c:4f:c7:69:c1:df:23:95:0e:78
------BEGIN CERTIFICATE-----
-MIICLTCCAdOgAwIBAgIBADAKBggqhkjOPQQDAjByMSEwHwYDVQQDDBhBQ01FIFMv
-TUlNRSBpbnRlcm1lZGlhdGUxCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzERMA8G
-A1UECAwITmV3IFlvcmsxETAPBgNVBAcMCE5ldyBZb3JrMQ0wCwYDVQQKDARBQ01F
-MB4XDTI0MDkxMTE0MDkyNVoXDTI1MDkxMTE0MDkyNVowcjEaMBgGA1UEAwwRam9o
-bi5kb2VAYWNtZS5jb20xCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzETMBEGA1UE
-CAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwE
-QUNNRTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABEsO8ntbk5EcSqLRkSTOpG6X
-XEGf/ZJ0cIMFZGlYQUbFZLxeiTDWg8gGZPbouaKpL63lk/1JRUzlwysp4X6gFqmj
-WjBYMAsGA1UdDwQEAwIDyDATBgNVHSUEDDAKBggrBgEFBQcDBDAJBgNVHREEAjAA
-MCkGA1UdHwQiMCAwHqAcoBqGGGh0dHBzOi8vYWNtZS5jb20vY3JsLnBlbTAKBggq
-hkjOPQQDAgNIADBFAiEAzzHJ8afX9c06tuNOEyDv4W25IVVmJ8RdsGgp8gd+W+sC
-IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
------END CERTIFICATE-----
-
-```
+desired format. Most email clients require the certificate and the private key to be in a PKCS#12
+file.
 
 ### PKCS#12 format
 
 To export the certificate and the private key in PKCS#12 format,
+use either the `pkcs12` or `pkcs12-legacy` format option.
+The `pkcs12-legacy` format is deprecated but is compatible with older versions of OpenSSL (1.1.x)
+and some keystores such as the Java keystore or the MacOS keychain.
 
 ```sh
 ckms certificates export --certificate-id john.doe@acme.com \
- --format pkcs12 --pkcs12-password mysecret \
+ --format pkcs12-legacy --pkcs12-password mysecret \
  john_doe.p12
 ```
 
 OpenSSL can be used to view the content of the PKCS#12 file.
 You will need to provide the password you used to protect the file (`mysecret` above).
+
+If you are using OpenSSL 3.0 and above and want to view a legacy PKCS#12 file,
+add the `-legacy` option:
 
 ```shell
 > openssl pkcs12 -info -in john_doe.p12 -nodes
@@ -368,3 +293,90 @@ KTNop1izftWr73dkLJTofZoYk9fLtiiZK4xvYSG1YfHMq+P3cbVi+hqI
 -----END PRIVATE KEY-----
 
 ```
+
+### PEM format
+
+To export the certificate only, in PEM format, use the following command:
+
+```sh
+ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
+```
+
+You can then view its content, using `openssl` for instance:
+
+```shell
+> openssl x509 -inform pem -text -in john_doe.pem
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 0 (0x0)
+    Signature Algorithm: ecdsa-with-SHA256
+        Issuer: CN=ACME S/MIME intermediate, OU=IT, C=US, ST=New York, L=New York, O=ACME
+        Validity
+            Not Before: Sep 11 14:09:25 2024 GMT
+            Not After : Sep 11 14:09:25 2025 GMT
+        Subject: CN=john.doe@acme.com, OU=IT, C=US, ST=California, L=San Francisco, O=ACME
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub: 
+                    04:4b:0e:f2:7b:5b:93:91:1c:4a:a2:d1:91:24:ce:
+                    a4:6e:97:5c:41:9f:fd:92:74:70:83:05:64:69:58:
+                    41:46:c5:64:bc:5e:89:30:d6:83:c8:06:64:f6:e8:
+                    b9:a2:a9:2f:ad:e5:93:fd:49:45:4c:e5:c3:2b:29:
+                    e1:7e:a0:16:a9
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Key Usage: 
+                Digital Signature, Non Repudiation, Key Agreement
+            X509v3 Extended Key Usage: 
+                E-mail Protection
+            X509v3 Subject Alternative Name: 
+                <EMPTY>
+
+            X509v3 CRL Distribution Points: 
+
+                Full Name:
+                  URI:https://acme.com/crl.pem
+
+    Signature Algorithm: ecdsa-with-SHA256
+         30:45:02:21:00:cf:31:c9:f1:a7:d7:f5:cd:3a:b6:e3:4e:13:
+         20:ef:e1:6d:b9:21:55:66:27:c4:5d:b0:68:29:f2:07:7e:5b:
+         eb:02:20:1d:92:ff:52:1d:c2:f1:ab:34:f7:d7:f1:29:87:bc:
+         f5:33:3c:0b:6c:93:23:4c:4f:c7:69:c1:df:23:95:0e:78
+-----BEGIN CERTIFICATE-----
+MIICLTCCAdOgAwIBAgIBADAKBggqhkjOPQQDAjByMSEwHwYDVQQDDBhBQ01FIFMv
+TUlNRSBpbnRlcm1lZGlhdGUxCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzERMA8G
+A1UECAwITmV3IFlvcmsxETAPBgNVBAcMCE5ldyBZb3JrMQ0wCwYDVQQKDARBQ01F
+MB4XDTI0MDkxMTE0MDkyNVoXDTI1MDkxMTE0MDkyNVowcjEaMBgGA1UEAwwRam9o
+bi5kb2VAYWNtZS5jb20xCzAJBgNVBAsMAklUMQswCQYDVQQGEwJVUzETMBEGA1UE
+CAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwE
+QUNNRTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABEsO8ntbk5EcSqLRkSTOpG6X
+XEGf/ZJ0cIMFZGlYQUbFZLxeiTDWg8gGZPbouaKpL63lk/1JRUzlwysp4X6gFqmj
+WjBYMAsGA1UdDwQEAwIDyDATBgNVHSUEDDAKBggrBgEFBQcDBDAJBgNVHREEAjAA
+MCkGA1UdHwQiMCAwHqAcoBqGGGh0dHBzOi8vYWNtZS5jb20vY3JsLnBlbTAKBggq
+hkjOPQQDAgNIADBFAiEAzzHJ8afX9c06tuNOEyDv4W25IVVmJ8RdsGgp8gd+W+sC
+IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
+-----END CERTIFICATE-----
+
+```
+
+## Loading the PKCS#12 file in an email client
+
+## Apple mail, MacOS
+
+To use you S/MIME certificate, load it in the login keychain:
+
+![keychain](./images/macos-keychain.png)
+
+Then, in the Mail application, create a new email and tick the "encrypt" and "sign" boxes:
+
+![mail](./images/mail-app-encrypt-sign.png)
+
+When handshaking with a new recipient, send a signed email to the recipient (not encrypted).
+
+When receiving a signed email from the recipient, import the recipient's certificate in the
+your contacts.
+
