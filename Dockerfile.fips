@@ -53,9 +53,9 @@ RUN apt-get update \
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
 COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
-COPY --from=builder $OPENSSL_DIR/lib64/ossl-modules/legacy.so $OPENSSL_DIR/lib64/ossl-modules/legacy.so
-COPY --from=builder $OPENSSL_DIR/ssl/openssl.cnf $OPENSSL_DIR/ssl/openssl.cnf
-COPY --from=builder $OPENSSL_DIR/ssl/fipsmodule.cnf $OPENSSL_DIR/ssl/fipsmodule.cnf
+COPY --from=builder $OPENSSL_DIR/lib64/ossl-modules/fips.so     $OPENSSL_DIR/lib64/ossl-modules/fips.so
+COPY --from=builder $OPENSSL_DIR/ssl/openssl.cnf                $OPENSSL_DIR/ssl/openssl.cnf
+COPY --from=builder $OPENSSL_DIR/ssl/fipsmodule.cnf             $OPENSSL_DIR/ssl/fipsmodule.cnf
 
 #
 # Create working directory

@@ -12,8 +12,8 @@ All notable changes to this project will be documented in this file.
 - Build a generic database upgrade mechanism ([#299](https://github.com/Cosmian/kms/pull/299))
 - Export of certificates can now be performed using the certificate id (instead of just the private
   key id)
-- More intuitive PKCS#12 import
-- Support for export under legacy PKCS#12 format
+- More intuitive PKCS#12 import ([#306](https://github.com/Cosmian/kms/pull/306))
+- Support for export under legacy PKCS#12 format ([#306](https://github.com/Cosmian/kms/pull/306))
 - Documentation (S/MIME)
 
 ### 🐛 Bug Fixes
@@ -43,8 +43,7 @@ All notable changes to this project will be documented in this file.
 - CLI doc fixes (certificates certify)
 - Fix PKCS#12 export of self-signed cert ([#305](https://github.com/Cosmian/kms/issues/305))
 - Fix serialization of `Attributes` in
-  `redis-findex` ([#307](https://github.com/Cosmian/kms/issues/307)
-  com/Cosmian/kms/issues/307)
+  `redis-findex`  ([#307](https://github.com/Cosmian/kms/pull/307))
 
 ### ⚙️ Miscellaneous Tasks
 
