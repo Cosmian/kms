@@ -91,13 +91,13 @@ jobs:
     with:
       branch: fix/split_fips_tests
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      fips: ${{ inputs.prefix }}
+      fips: inputs.prefix == 'FIPS'
 
   cloudproof_java:
     name: ${{ inputs.prefix }} Java tests
     needs:
       - build-and-push-image
-    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@split_fips_tests
     with:
       branch: develop
       target: x86_64-unknown-linux-gnu
@@ -107,6 +107,7 @@ jobs:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.3.1
       copy_fresh_build: false
+      fips: inputs.prefix == 'FIPS'
 
   cloudproof_python:
     name: ${{ inputs.prefix }} cloudproof_python tests
