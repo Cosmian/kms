@@ -12,7 +12,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::{
     config::{self, JwtAuthConfig, ServerParams},
