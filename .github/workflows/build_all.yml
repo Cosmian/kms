@@ -22,8 +22,6 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
 
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml

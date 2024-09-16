@@ -121,7 +121,7 @@ jobs:
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
-          find /usr/local/openssl/lib64/ossl-modules/
+          find /usr/local/openssl
           ./$KMS_PATH/cosmian_kms_server --info
 
       - name: MacOS launch ckms and cosmian_kms_server
@@ -145,5 +145,5 @@ jobs:
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
-          find /usr/local/openssl/lib64/ossl-modules/
+          find /usr/local/openssl
           ./$KMS_PATH/cosmian_kms_server --info
