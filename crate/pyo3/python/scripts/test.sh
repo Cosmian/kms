@@ -18,6 +18,8 @@ maturin build --release
 pip install --force-reinstall ../../target/wheels/*.whl
 
 # Test typing
+mypy python/scripts/test_kms_covercrypt.py
 mypy python/scripts/test_kms.py
 # Unit tests (requires python3.8 or newer)
+python3 python/scripts/test_kms_covercrypt.py
 python3 python/scripts/test_kms.py

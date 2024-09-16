@@ -117,12 +117,10 @@ jobs:
 
           ./$KMS_PATH/ckms -V
 
-          # Copy openssl build for FIPS mode
+          # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
-          chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-          ldd /usr/local/openssl/lib64/ossl-modules/fips.so
           find /usr/local/openssl/lib64/ossl-modules/
           ./$KMS_PATH/cosmian_kms_server --info
 
@@ -143,7 +141,7 @@ jobs:
 
           ./$KMS_PATH/ckms -V
 
-          # Copy openssl build for FIPS and Legacy mode
+          # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/

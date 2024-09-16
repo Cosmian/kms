@@ -69,8 +69,6 @@ jobs:
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
 
   generic-macos:
     strategy:
@@ -96,8 +94,6 @@ jobs:
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
 
   windows-2022:
     uses: ./.github/workflows/build_windows.yml

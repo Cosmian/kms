@@ -56,10 +56,11 @@ jobs:
       - name: Test KMS python client on KMS server
         run: |
           # Check python code
-          mypy crate/pyo3/python/scripts/test_kms.py
           if [ "${{ inputs.fips }}" = "FIPS" ]; then
+            mypy crate/pyo3/python/scripts/test_kms_covercrypt.py
             python3 crate/pyo3/python/scripts/test_kms_covercrypt.py
-          else
+          fi
+          mypy crate/pyo3/python/scripts/test_kms.py
           python3 crate/pyo3/python/scripts/test_kms.py
 
       - name: Check that the lib version is the same as the server
