@@ -104,6 +104,7 @@ jobs:
       - name: Linux launch ckms and cosmian_kms_server
         if: contains(runner.os, 'Linux')
         run: |
+          set -ex
           # The current path should be /home/runner/work/kms/kms
           pwd
           find . -type f
@@ -122,6 +123,7 @@ jobs:
           rsync -ru usr/local/openssl/ /usr/local/openssl/
           chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
           ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          find /usr/local/openssl/lib64/ossl-modules/
           ./$KMS_PATH/cosmian_kms_server --info
 
       - name: MacOS launch ckms and cosmian_kms_server
@@ -145,4 +147,5 @@ jobs:
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
+          find /usr/local/openssl/lib64/ossl-modules/
           ./$KMS_PATH/cosmian_kms_server --info

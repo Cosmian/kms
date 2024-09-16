@@ -21,7 +21,6 @@ jobs:
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
       artifacts: |
-        /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/lib64/ossl-modules/legacy.so
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
@@ -69,7 +68,6 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
-        /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/lib64/ossl-modules/legacy.so
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf
@@ -97,7 +95,6 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
-        /usr/local/openssl/lib/ossl-modules/fips.dylib
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
         /usr/local/openssl/ssl/openssl.cnf
         /usr/local/openssl/ssl/fipsmodule.cnf

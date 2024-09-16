@@ -10,6 +10,9 @@ on:
       branch:
         required: true
         type: string
+      fips:
+        required: true
+        type: string
 
 jobs:
   pyo3-test-linux:
@@ -54,6 +57,9 @@ jobs:
         run: |
           # Check python code
           mypy crate/pyo3/python/scripts/test_kms.py
+          if [ "${{ inputs.fips }}" = "FIPS" ]; then
+            python3 crate/pyo3/python/scripts/test_kms_covercrypt.py
+          else
           python3 crate/pyo3/python/scripts/test_kms.py
 
       - name: Check that the lib version is the same as the server

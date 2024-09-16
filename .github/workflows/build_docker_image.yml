@@ -81,6 +81,7 @@ jobs:
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       branch: v5.0.1
+      fips: ${{ inputs.prefix }}
 
   cloudproof_kms_js:
     name: ${{ inputs.prefix }} KMS JS tests
