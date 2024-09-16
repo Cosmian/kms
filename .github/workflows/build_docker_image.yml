@@ -91,7 +91,7 @@ jobs:
     with:
       branch: fix/split_fips_tests
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      fips: inputs.prefix == 'FIPS'
+      fips: ${{ inputs.prefix == 'FIPS' }}
 
   cloudproof_java:
     name: ${{ inputs.prefix }} Java tests
@@ -107,7 +107,7 @@ jobs:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.3.1
       copy_fresh_build: false
-      fips: inputs.prefix == 'FIPS'
+      fips: ${{ inputs.prefix == 'FIPS' }}
 
   cloudproof_python:
     name: ${{ inputs.prefix }} cloudproof_python tests
