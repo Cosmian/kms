@@ -148,6 +148,11 @@ assets = [
     "etc/cosmian_kms/",
     "400",
   ],
+  [
+    "/usr/local/openssl/lib64/ossl-modules/legacy.so",
+    "usr/local/openssl/lib64/ossl-modules/legacy.so",
+    "400",
+  ],
 ]
 systemd-units = [
   { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },

@@ -66,6 +66,12 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse
 
+      - name: Copy legacy.dll
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:/Windows/System32/OpenSSL
+          Copy-Item -Path legacy.dll -Destination C:/Windows/System32/OpenSSL/legacy.dll
+
       - name: Launch ckms and cosmian_kms_server
         run: |
           pwd
