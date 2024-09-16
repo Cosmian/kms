@@ -133,20 +133,17 @@ impl ExportCertificateAction {
                         write_bytes_to_file(pem.to_string().as_bytes(), &self.certificate_file)?;
                     }
                     CertificateExportFormat::Pkcs12 => {
-                        cli_bail!(
-                            "PKCS12: invalid object returned by the server. Should be a private \
-                             key"
-                        );
+                        // PKCS12 is exported as a private key object
+                        cli_bail!("PKCS12: invalid object returned by the server.");
                     }
                     #[cfg(not(feature = "fips"))]
                     CertificateExportFormat::Pkcs12Legacy => {
-                        cli_bail!(
-                            "PKCS12: invalid object returned by the server. Should be a private \
-                             key"
-                        );
+                        // PKCS12 is exported as a private key object
+                        cli_bail!("PKCS12: invalid object returned by the server.");
                     }
                 }
             }
+            // PKCS12 is exported as a private key object
             Object::PrivateKey { key_block } => {
                 let p12_bytes = key_block.key_bytes()?.to_vec();
                 // save it to a file
@@ -162,10 +159,8 @@ impl ExportCertificateAction {
         }
 
         let mut stdout = format!(
-            "The certificate {} of type {} was exported to {:?}",
-            &object_id,
-            object.object_type(),
-            &self.certificate_file
+            "The certificate {} was exported to {:?}",
+            &object_id, &self.certificate_file
         );
 
         // write attributes to a file
