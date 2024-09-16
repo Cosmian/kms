@@ -12,7 +12,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     config::{self, JwtAuthConfig, ServerParams},
@@ -49,6 +49,29 @@ pub async fn start_kms_server(
     server_params: ServerParams,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
+    // OpenSSL is loaded now, so that tests can use the correct provider(s)
+
+    // For an explanation of openssl providers, see
+    //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+
+    // In FIPS mode, we only load the fips provider
+    #[cfg(feature = "fips")]
+    let _provider = openssl::provider::Provider::load(None, "fips")?;
+
+    // Not in FIPS mode adn version > 3.0: load the default provider and the legacy provider
+    // so that we can use the legacy algorithms
+    // particularly those used for old PKCS#12 formats
+    #[cfg(not(feature = "fips"))]
+    let _provider = if openssl::version::number() >= 0x30000000 {
+        debug!("OpenSSL: loading the legacy provider");
+        openssl::provider::Provider::try_load(None, "legacy", true)
+            .context("OpenSSL: unable to load the openssl legacy provider")?
+    } else {
+        debug!("OpenSSL: loading the default provider");
+        // In version < 3.0, we only load the default provider
+        openssl::provider::Provider::load(None, "default")?
+    };
+
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
     match &server_params.http_params {

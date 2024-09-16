@@ -422,3 +422,48 @@ async fn test_export_root_and_intermediate_pkcs12() -> CliResult<()> {
 
     Ok(())
 }
+
+#[cfg(not(feature = "fips"))]
+#[tokio::test]
+async fn test_export_import_legacy_p12() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Generate a self-signed root CA
+    let cert_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // export the certificate to legacy PKCS#12
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert_legacy.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &cert_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12Legacy),
+        Some(String::from("secret")),
+        false,
+    )?;
+
+    // try re-importing the PKCS#12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
+
+    Ok(())
+}
