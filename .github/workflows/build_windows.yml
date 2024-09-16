@@ -69,8 +69,7 @@ jobs:
         run: Get-ChildItem -Recurse
 
       - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'windows')
         run: |
           pwd
-          ./ckms.exe -V
-          ./cosmian_kms_server.exe --info
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe -V
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe --info

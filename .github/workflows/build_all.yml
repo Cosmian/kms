@@ -109,6 +109,10 @@ jobs:
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
       artifacts: |
+        C:\vcpkg\packages\openssl_x64-windows\bin\fips.dll
+        C:\vcpkg\packages\openssl_x64-windows\bin\legacy.dll
+        C:\vcpkg\packages\openssl_x64-windows\ssl\openssl.cnf
+        C:\vcpkg\packages\openssl_x64-windows\ssl\fipsmodule.cnf
         C:\Windows\System32\OpenSSL\lib\ossl-modules\fips.dll
         C:\Windows\System32\OpenSSL\lib\ossl-modules\legacy.dll
         C:\Windows\System32\OpenSSL\lib\ssl\openssl.cnf

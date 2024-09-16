@@ -33,6 +33,13 @@ function Build-Project {
     vcpkg integrate install
     $env:VCPKGRS_DYNAMIC = 1
     $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows"
+    dir $env:OPENSSL_DIR
+
+    dir C:\Windows\System32
+    dir C:\Windows\System32\OpenSSL
+    dir C:\Windows\System32\OpenSSL\lib
+
+    Get-ChildItem -Recurse $env:OPENSSL_DIR
 
     # Build `server`
     cd crate/server
