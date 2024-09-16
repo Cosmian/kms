@@ -7,7 +7,7 @@ on:
       prefix:
         required: true
         type: string
-      features:
+      dockerfile:
         required: true
         type: string
       registry-image:
@@ -61,9 +61,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: Dockerfile
+          file: ${{ inputs.dockerfile }}
           network: host
-          build-args: ${{ inputs.features }}
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |

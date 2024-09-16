@@ -32,7 +32,7 @@ WORKDIR /root/kms
 RUN mkdir -p $OPENSSL_DIR \
     && bash /root/kms/scripts/local_ossl_instl.sh $OPENSSL_DIR
 
-RUN /root/.cargo/bin/cargo build --release --no-default-features
+RUN /root/.cargo/bin/cargo build --release --no-default-features --features="fips"
 
 #
 # KMS Server
@@ -54,6 +54,8 @@ RUN apt-get update \
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
 COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
 COPY --from=builder $OPENSSL_DIR/lib64/ossl-modules/legacy.so $OPENSSL_DIR/lib64/ossl-modules/legacy.so
+COPY --from=builder $OPENSSL_DIR/ssl/openssl.cnf $OPENSSL_DIR/ssl/openssl.cnf
+COPY --from=builder $OPENSSL_DIR/ssl/fipsmodule.cnf $OPENSSL_DIR/ssl/fipsmodule.cnf
 
 #
 # Create working directory
