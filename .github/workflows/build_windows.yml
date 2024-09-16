@@ -62,8 +62,7 @@ jobs:
 
       - name: Install OpenSSL 3
         shell: pwsh
-        run: |
-          .github\scripts\windows_install_openssl.ps1
+        run: '& $env:GITHUB_ACTION_PATH/.github/scripts/windows_install_openssl.ps1'
 
       - name: Launch ckms and cosmian_kms_server
         if: contains(runner.os, 'windows')
