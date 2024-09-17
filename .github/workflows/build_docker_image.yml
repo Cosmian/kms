@@ -87,9 +87,9 @@ jobs:
     name: ${{ inputs.prefix }} KMS JS tests
     needs:
       - build-and-push-image
-    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@split_fips_tests
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
     with:
-      branch: fix/split_fips_tests
+      branch: develop
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       fips: ${{ inputs.prefix == 'FIPS' }}
 
@@ -97,7 +97,7 @@ jobs:
     name: ${{ inputs.prefix }} Java tests
     needs:
       - build-and-push-image
-    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@split_fips_tests
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
       branch: develop
       target: x86_64-unknown-linux-gnu
@@ -113,7 +113,7 @@ jobs:
     name: ${{ inputs.prefix }} cloudproof_python tests
     needs:
       - build-and-push-image
-    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@split_fips_tests
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
       branch: v5.0.1
       target: x86_64-unknown-linux-gnu
