@@ -53,7 +53,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
         sub_command: "certificates",
         key_file: &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
         format: &CertificateInputFormat::Pem,
-        issuer_certificate_id: Some(root_certificate_id.clone()),
+        issuer_certificate_id: Some(root_certificate_id),
         tags: Some(tags),
         replace_existing: true,
         ..Default::default()

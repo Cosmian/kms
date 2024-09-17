@@ -230,21 +230,6 @@ async fn test_import_p12_rsa() {
         ..Default::default()
     })
     .unwrap();
-    // let imported_p12_sk = import_certificate(
-    //     &ctx.owner_client_conf_path,
-    //     "certificates",
-    //     "test_data/certificates/csr/intermediate.p12",
-    //     &CertificateInputFormat::Pkcs12,
-    //     Some("secret"),
-    //     None,
-    //     None,
-    //     None,
-    //     Some(&["import_pkcs12"]),
-    //     None,
-    //     false,
-    //     true,
-    // )
-    // .unwrap();
 
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
