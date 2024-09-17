@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.18.0] - 2024-09-XX
+## [4.18.0] - 2024-09-17
 
 ### 🚀 Features
 

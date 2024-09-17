@@ -52,7 +52,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.17.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.18.0/)
 for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -61,7 +61,7 @@ Using Docker, to quick-start a Cosmian KMS server on `http://localhost:9998` tha
 inside the container, simply run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.17.0
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
 ```
 
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.

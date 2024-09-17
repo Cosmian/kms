@@ -60,7 +60,7 @@ pub async fn start_kms_server(
     #[cfg(feature = "fips")]
     let _provider = openssl::provider::Provider::load(None, "fips")?;
 
-    // Not in FIPS mode adn version > 3.0: load the default provider and the legacy provider
+    // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
