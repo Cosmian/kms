@@ -103,10 +103,22 @@ jobs:
             cosmian@package.cosmian.com:$DESTINATION_DIR/
 
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa rhel9-release/generate-rpm/*.rpm cosmian@package.cosmian.com:$DESTINATION_DIR/rhel9
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_20_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-20.04
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_22_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-22.04
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ubuntu_24_04-release/debian/*.deb cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-24.04
+
+          # RedHat 9 package
+          scp -o 'StrictHostKeyChecking no' \
+            -i /root/.ssh/id_rsa rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
+            cosmian@package.cosmian.com:$DESTINATION_DIR/rhel9
+
+          # Ubuntu packages
+          scp -o 'StrictHostKeyChecking no' \
+            -i /root/.ssh/id_rsa ubuntu_20_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-20.04
+          scp -o 'StrictHostKeyChecking no' \
+            -i /root/.ssh/id_rsa ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-22.04
+          scp -o 'StrictHostKeyChecking no' \
+            -i /root/.ssh/id_rsa ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-24.04
 
       - name: Release on tags, attach asset on release
         if: startsWith(github.ref, 'refs/tags/')
@@ -114,10 +126,10 @@ jobs:
         with:
           files: |
             *.zip
-            rhel9-release/generate-rpm/*.rpm \
-            ubuntu_20_04-release/debian/*.deb \
-            ubuntu_22_04-release/debian/*.deb \
-            ubuntu_24_04-release/debian/*.deb
+            rhel9-release/__w/kms/kms/target/x86_64-unknown-linux-gnu/generate-rpm/*.rpm \
+            ubuntu_20_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            ubuntu_22_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
+            ubuntu_24_04-release/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb
 
   python_publish:
     name: python publish
