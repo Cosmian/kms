@@ -1,11 +1,8 @@
 ---
-name: Docker
+name: Docker main workflow
 
 on:
   workflow_call:
-
-env:
-  REGISTRY: ghcr.io
 
 jobs:
   pyo3:
@@ -18,7 +15,7 @@ jobs:
     uses: ./.github/workflows/build_docker_image.yml
     with:
       prefix: ''
-      features: ''
+      dockerfile: Dockerfile
       registry-image: ghcr.io/cosmian/kms
 
   fips-image:
@@ -26,5 +23,5 @@ jobs:
     uses: ./.github/workflows/build_docker_image.yml
     with:
       prefix: FIPS
-      features: --features=fips
+      dockerfile: Dockerfile.fips
       registry-image: ghcr.io/cosmian/kms-fips

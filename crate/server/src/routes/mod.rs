@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use actix_web::{
-    get, post,
+    get,
+    http::{header, StatusCode},
+    post,
     web::{Data, Json},
     HttpRequest, HttpResponse, HttpResponseBuilder,
 };
 use clap::crate_version;
-use http::{header, StatusCode};
 use tracing::{error, info, warn};
 
 use crate::{database::KMSServer, error::KmsError, result::KResult};
@@ -19,26 +20,27 @@ pub mod ms_dke;
 impl actix_web::error::ResponseError for KmsError {
     fn status_code(&self) -> StatusCode {
         match self {
-            KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
+            Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
 
-            KmsError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
 
-            KmsError::DatabaseError(_)
-            | KmsError::ConversionError(_)
-            | KmsError::CryptographicError(_)
-            | KmsError::Redis(_)
-            | KmsError::Findex(_)
-            | KmsError::Certificate(_)
-            | KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::DatabaseError(_)
+            | Self::ConversionError(_)
+            | Self::CryptographicError(_)
+            | Self::Redis(_)
+            | Self::Findex(_)
+            | Self::Certificate(_)
+            | Self::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            KmsError::KmipError(..)
-            | KmsError::NotSupported(_)
-            | KmsError::UnsupportedProtectionMasks
-            | KmsError::UnsupportedPlaceholder
-            | KmsError::InconsistentOperation(..)
-            | KmsError::InvalidRequest(_)
-            | KmsError::ItemNotFound(_)
-            | KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::KmipError(..)
+            | Self::NotSupported(_)
+            | Self::UnsupportedProtectionMasks
+            | Self::UnsupportedPlaceholder
+            | Self::InconsistentOperation(..)
+            | Self::InvalidRequest(_)
+            | Self::ItemNotFound(_)
+            | Self::ClientConnectionError(_)
+            | Self::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 
@@ -60,17 +62,24 @@ impl actix_web::error::ResponseError for KmsError {
 
 /// Add a new group to the KMS = add a new database
 #[post("/new_database")]
-pub async fn add_new_database(
+pub(crate) async fn add_new_database(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    info!("GET /new_database {}", kms.get_user(req)?);
+    info!("GET /new_database {}", kms.get_user(&req));
     Ok(Json(kms.add_new_database().await?))
 }
 
 /// Get the KMS version
 #[get("/version")]
-pub async fn get_version(req: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
-    info!("GET /version {}", kms.get_user(req)?);
-    Ok(Json(crate_version!().to_string()))
+pub(crate) async fn get_version(
+    req: HttpRequest,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<String>> {
+    info!("GET /version {}", kms.get_user(&req));
+    Ok(Json(format!(
+        "{} ({})",
+        crate_version!().to_owned(),
+        openssl::version::version()
+    )))
 }

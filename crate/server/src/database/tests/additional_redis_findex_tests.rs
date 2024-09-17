@@ -29,7 +29,7 @@ use crate::{
     result::KResult,
 };
 
-struct DummyDB {}
+struct DummyDB;
 #[async_trait]
 impl RemovedLocationsFinder for DummyDB {
     async fn find_removed_locations(
@@ -41,12 +41,12 @@ impl RemovedLocationsFinder for DummyDB {
 }
 
 async fn clear_all(mgr: &mut ConnectionManager) -> KResult<()> {
-    redis::cmd("FLUSHDB").query_async(mgr).await?;
+    redis::cmd("FLUSHDB").query_async::<_, ()>(mgr).await?;
     Ok(())
 }
 
-pub async fn test_objects_db() -> KResult<()> {
-    //log_init("test_objects_db=info");
+pub(crate) async fn test_objects_db() -> KResult<()> {
+    cosmian_logger::log_utils::log_init(Some("test_objects_db=info"));
     trace!("test_objects_db");
 
     let mut rng = CsRng::from_entropy();
@@ -54,7 +54,7 @@ pub async fn test_objects_db() -> KResult<()> {
     let mgr = ConnectionManager::new(client).await?;
 
     let db_key = SymmetricKey::new(&mut rng);
-    let o_db = ObjectsDB::new(mgr.clone(), db_key).await?;
+    let o_db = ObjectsDB::new(mgr.clone(), &db_key);
 
     // single upsert - get - delete
     let uid = "test_objects_db";
@@ -73,9 +73,10 @@ pub async fn test_objects_db() -> KResult<()> {
         uid,
         &RedisDbObject::new(
             object.clone(),
-            "owner".to_string(),
+            "owner".to_owned(),
             StateEnumeration::Active,
             Some(HashSet::new()),
+            object.attributes()?.clone(),
         ),
     )
     .await?;
@@ -93,7 +94,7 @@ pub async fn test_objects_db() -> KResult<()> {
     Ok(())
 }
 
-pub async fn test_permissions_db() -> KResult<()> {
+pub(crate) async fn test_permissions_db() -> KResult<()> {
     // generate the findex key
     let mut rng = CsRng::from_entropy();
     let findex_key = SymmetricKey::new(&mut rng);
@@ -108,7 +109,7 @@ pub async fn test_permissions_db() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label).await?;
+    let permissions_db = PermissionsDB::new(findex, label);
 
     // let us add the permission Encrypt on object O1 for user U1
     permissions_db
@@ -127,8 +128,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     //find the permission for the object O1
@@ -138,8 +139,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("U1"));
     assert_eq!(
-        permissions.get("U1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // add the permission Decrypt to user U1 for object O1
@@ -160,8 +161,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
     );
 
     //find the permission for the object O1
@@ -171,8 +172,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("U1"));
     assert_eq!(
-        permissions.get("U1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
+        permissions["U1"],
+        HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
     );
 
     // the situation now is that we have
@@ -194,8 +195,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     //find the permission for the object O1
@@ -205,13 +206,13 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains_key("U1"));
     assert_eq!(
-        permissions.get("U1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
+        permissions["U1"],
+        HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt])
     );
     assert!(permissions.contains_key("U2"));
     assert_eq!(
-        permissions.get("U2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // the situation now is that we have
@@ -234,13 +235,13 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
     assert!(permissions.contains_key("O2"));
     assert_eq!(
-        permissions.get("O2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     //find the permission for the object O2
@@ -250,8 +251,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("U2"));
     assert_eq!(
-        permissions.get("U2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // the situation now is that we have
@@ -275,8 +276,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     //find the permission for the object O1
@@ -286,13 +287,13 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains_key("U1"));
     assert_eq!(
-        permissions.get("U1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
     assert!(permissions.contains_key("U2"));
     assert_eq!(
-        permissions.get("U2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // let us remove the permission Encrypt on object O1 for user U1
@@ -316,8 +317,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("U2"));
     assert_eq!(
-        permissions.get("U2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // let us remove the permission Encrypt on object O1 for user U2
@@ -335,8 +336,8 @@ pub async fn test_permissions_db() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O2"));
     assert_eq!(
-        permissions.get("O2").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O2"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     //find the permission for the object O1
@@ -348,7 +349,7 @@ pub async fn test_permissions_db() -> KResult<()> {
     Ok(())
 }
 
-pub async fn test_corner_case() -> KResult<()> {
+pub(crate) async fn test_corner_case() -> KResult<()> {
     // generate the findex key
     let mut rng = CsRng::from_entropy();
     let findex_key = SymmetricKey::new(&mut rng);
@@ -363,7 +364,7 @@ pub async fn test_corner_case() -> KResult<()> {
     // create the findex
     let findex =
         Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-    let permissions_db = PermissionsDB::new(findex, label).await?;
+    let permissions_db = PermissionsDB::new(findex, label);
 
     // remove a permission that does not exist
     permissions_db
@@ -398,8 +399,8 @@ pub async fn test_corner_case() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("O1"));
     assert_eq!(
-        permissions.get("O1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["O1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // test there is one permission for object O1
@@ -409,8 +410,8 @@ pub async fn test_corner_case() -> KResult<()> {
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key("U1"));
     assert_eq!(
-        permissions.get("U1").unwrap(),
-        &HashSet::from([ObjectOperationType::Encrypt])
+        permissions["U1"],
+        HashSet::from([ObjectOperationType::Encrypt])
     );
 
     // remove the permission again

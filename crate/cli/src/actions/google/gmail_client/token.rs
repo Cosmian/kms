@@ -7,21 +7,21 @@ use serde::{Deserialize, Serialize};
 use super::{service_account::ServiceAccount, GoogleApiError};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GoogleAuthResponse {
+pub(crate) struct GoogleAuthResponse {
     pub access_token: String,
     pub expires_in: u32,
     pub token_type: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct GoogleAuthRequest {
+pub(crate) struct GoogleAuthRequest {
     grant_type: String,
     assertion: String,
 }
 
 const GRANT_TYPE_SERVICE_ACCOUNT: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 impl GoogleAuthRequest {
-    pub fn new(assertion: String) -> Self {
+    pub(crate) fn new(assertion: String) -> Self {
         Self {
             grant_type: GRANT_TYPE_SERVICE_ACCOUNT.to_string(),
             assertion,
@@ -29,8 +29,8 @@ impl GoogleAuthRequest {
     }
 }
 
-pub const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
-pub const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
+pub(crate) const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
+pub(crate) const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
 // Token expiration time in hours
 const TOKEN_EXPIRATION_TIME: u64 = 1;
 
@@ -42,7 +42,7 @@ struct JwtAuth {
     sub: String,
 }
 
-pub fn create_jwt(
+pub(crate) fn create_jwt(
     service_account: &ServiceAccount,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
@@ -51,7 +51,7 @@ pub fn create_jwt(
         aud: GOOGLE_AUD_VALUE.to_string(),
         iss: service_account.client_email.clone(),
         scope: GMAIL_SCOPE.to_string(),
-        sub: user_email.to_string().clone(),
+        sub: user_email.to_string(),
     };
 
     let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(TOKEN_EXPIRATION_TIME));
@@ -59,7 +59,7 @@ pub fn create_jwt(
     Ok(key_pair.sign(claims)?)
 }
 
-pub async fn retrieve_token(
+pub(crate) async fn retrieve_token(
     service_account: &ServiceAccount,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
@@ -67,14 +67,12 @@ pub async fn retrieve_token(
 
     let client = reqwest::Client::new();
 
-    // GoogleAuthResponse
-    let response_text = client
+    let response: GoogleAuthResponse = client
         .post(&service_account.token_uri)
         .form(&GoogleAuthRequest::new(jwt))
         .send()
         .await?
-        .text()
+        .json()
         .await?;
-    let response: GoogleAuthResponse = serde_json::from_str(&response_text)?;
     Ok(response.access_token)
 }

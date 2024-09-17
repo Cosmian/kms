@@ -30,12 +30,12 @@ use crate::tests::cover_crypt::{
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
     actions::shared::ExportKeyFormat,
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn export_key(
+pub(crate) fn export_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
@@ -44,7 +44,7 @@ pub fn export_key(
     unwrap: bool,
     wrap_key_id: Option<String>,
     allow_revoked: bool,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut args: Vec<String> = ["keys", "export", "--key-id", key_id, key_file]
         .iter()
         .map(std::string::ToString::to_string)
@@ -61,6 +61,7 @@ pub fn export_key(
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
             ExportKeyFormat::SpkiPem => "spki-pem",
             ExportKeyFormat::SpkiDer => "spki-der",
+            ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
         };
         args.push(arg_value.to_owned());
@@ -77,7 +78,7 @@ pub fn export_key(
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -89,7 +90,7 @@ pub fn export_key(
 }
 
 #[tokio::test]
-pub async fn test_export_sym() -> Result<(), CliError> {
+pub(crate) async fn test_export_sym() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -150,7 +151,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
+pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -176,53 +177,13 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_covercrypt() -> Result<(), CliError> {
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // init the test server
-    let ctx = start_default_test_kms_server().await;
-
-    // generate a new master key pair
-    let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "test_data/policy_specifications.json",
-        &[],
-    )?;
-
-    _export_cc_test(
-        KeyFormatType::CoverCryptSecretKey,
-        &master_private_key_id,
-        tmp_path,
-        ctx,
-    )?;
-    _export_cc_test(
-        KeyFormatType::CoverCryptPublicKey,
-        &_master_public_key_id,
-        tmp_path,
-        ctx,
-    )?;
-
-    let user_key_id = create_user_decryption_key(
-        &ctx.owner_client_conf_path,
-        &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        &[],
-    )?;
-    _export_cc_test(
-        KeyFormatType::CoverCryptSecretKey,
-        &user_key_id,
-        tmp_path,
-        ctx,
-    )?;
-
+pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     fn _export_cc_test(
         key_format_type: KeyFormatType,
         key_id: &str,
         tmp_path: &Path,
         ctx: &TestsContext,
-    ) -> Result<(), CliError> {
+    ) -> CliResult<()> {
         // Export the key
         export_key(
             &ctx.owner_client_conf_path,
@@ -257,12 +218,52 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         Ok(())
     }
 
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a new master key pair
+    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_client_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &[],
+    )?;
+
+    _export_cc_test(
+        KeyFormatType::CoverCryptSecretKey,
+        &master_private_key_id,
+        tmp_path,
+        ctx,
+    )?;
+    _export_cc_test(
+        KeyFormatType::CoverCryptPublicKey,
+        &master_public_key_id,
+        tmp_path,
+        ctx,
+    )?;
+
+    let user_key_id = create_user_decryption_key(
+        &ctx.owner_client_conf_path,
+        &master_private_key_id,
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
+    )?;
+    _export_cc_test(
+        KeyFormatType::CoverCryptSecretKey,
+        &user_key_id,
+        tmp_path,
+        ctx,
+    )?;
+
     Ok(())
 }
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
+pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -310,7 +311,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_export_x25519() -> Result<(), CliError> {
+pub(crate) async fn test_export_x25519() -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -347,12 +348,12 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         Some(CryptographicAlgorithm::ECDH)
     );
     let kv = &key_block.key_value;
-    let (d, recommended_curve) = match &kv.key_material {
-        KeyMaterial::TransparentECPrivateKey {
-            d,
-            recommended_curve,
-        } => (d, recommended_curve),
-        _ => panic!("Invalid key value type"),
+    let KeyMaterial::TransparentECPrivateKey {
+        d,
+        recommended_curve,
+    } = &kv.key_material
+    else {
+        panic!("Invalid key value type");
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
     let mut d_vec = d.to_bytes_be();
@@ -406,12 +407,12 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         Some(CryptographicAlgorithm::ECDH)
     );
     let kv = &key_block.key_value;
-    let (q_string, recommended_curve) = match &kv.key_material {
-        KeyMaterial::TransparentECPublicKey {
-            q_string,
-            recommended_curve,
-        } => (q_string, recommended_curve),
-        _ => panic!("Invalid key value type"),
+    let KeyMaterial::TransparentECPublicKey {
+        q_string,
+        recommended_curve,
+    } = &kv.key_material
+    else {
+        panic!("Invalid key value type")
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
     let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519).unwrap();

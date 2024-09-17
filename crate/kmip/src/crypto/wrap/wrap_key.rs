@@ -17,6 +17,7 @@ use crate::{
         },
         symmetric::rfc5649::rfc5649_wrap,
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     error::KmipError,
     kmip::{
@@ -35,9 +36,13 @@ use crate::{
 };
 
 /// Wrap a key using a password
-pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
+pub fn wrap_key_bytes(
+    key: &[u8],
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
+    wrapping_password: &str,
+) -> Result<Vec<u8>, KmipError> {
     let wrapping_secret =
-        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(wrapping_password.as_bytes())?;
+        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
     rfc5649_wrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
 }
 
@@ -129,7 +134,7 @@ pub(crate) fn wrap(
             let public_key = cert.public_key().map_err(|e| {
                 KmipError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
             })?;
-            wrap_with_public_key(public_key, key_wrapping_data, key_to_wrap)
+            wrap_with_public_key(&public_key, key_wrapping_data, key_to_wrap)
         }
         Object::PGPKey { key_block, .. }
         | Object::SecretData { key_block, .. }
@@ -165,13 +170,13 @@ pub(crate) fn wrap(
                     // convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
                     let p_key = kmip_public_key_to_openssl(wrapping_key)?;
-                    wrap_with_public_key(p_key, key_wrapping_data, key_to_wrap)
+                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
                 }
                 // this really is SPKI
                 #[cfg(feature = "openssl")]
                 KeyFormatType::PKCS8 => {
                     let p_key = PKey::public_key_from_der(&key_block.key_bytes()?)?;
-                    wrap_with_public_key(p_key, key_wrapping_data, key_to_wrap)
+                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
                 }
                 x => {
                     kmip_bail!(
@@ -190,14 +195,14 @@ pub(crate) fn wrap(
 }
 
 fn wrap_with_public_key(
-    public_key: PKey<Public>,
+    public_key: &PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipError> {
     match public_key.id() {
         Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(&public_key, key_to_wrap),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, key_to_wrap),
         other => Err(kmip_error!(
             "Unable to wrap key: wrapping public key type not supported: {other:?}"
         )),
@@ -205,7 +210,7 @@ fn wrap_with_public_key(
 }
 
 fn wrap_with_rsa(
-    pub_key: PKey<Public>,
+    pub_key: &PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipError> {
@@ -214,10 +219,8 @@ fn wrap_with_rsa(
         kmip_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
     }
     match algorithm {
-        CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(&pub_key, hashing_fn, key_to_wrap),
-        CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_wrap(&pub_key, hashing_fn, key_to_wrap)
-        }
+        CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(pub_key, hashing_fn, key_to_wrap),
+        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_wrap(pub_key, hashing_fn, key_to_wrap),
         x => Err(kmip_error!(
             "Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}"
         )),

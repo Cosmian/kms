@@ -16,7 +16,7 @@ use cosmian_kms_client::{
 };
 use strum::IntoEnumIterator;
 
-use crate::{actions::console, error::CliError};
+use crate::{actions::console, error::result::CliResult};
 
 /// Locate cryptographic objects inside the KMS
 ///
@@ -94,7 +94,11 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is a problem communicating with the KMS or if the requested key cannot be located.
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {
@@ -114,21 +118,21 @@ impl LocateObjectsAction {
         }
 
         if let Some(public_key_id) = &self.public_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.to_string()),
             );
         }
 
         if let Some(private_key_id) = &self.private_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.to_string()),
             );
         }
 
         if let Some(certificate_id) = &self.certificate_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(certificate_id.to_string()),
             );
@@ -148,12 +152,12 @@ impl LocateObjectsAction {
 
         let response = kms_rest_client.locate(locate).await?;
         if let Some(ids) = response.unique_identifiers {
-            if !ids.is_empty() {
-                let mut stdout = console::Stdout::new("List of unique identifiers:");
-                stdout.set_unique_identifiers(ids);
-                stdout.write()?;
-            } else {
+            if ids.is_empty() {
                 console::Stdout::new("No object found.").write()?;
+            } else {
+                let mut stdout = console::Stdout::new("List of unique identifiers:");
+                stdout.set_unique_identifiers(&ids);
+                stdout.write()?;
             }
         } else {
             console::Stdout::new("No object found.").write()?;

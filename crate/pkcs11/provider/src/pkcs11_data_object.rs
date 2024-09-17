@@ -8,7 +8,7 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
 /// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
 #[derive(Debug)]
-pub struct Pkcs11DataObject {
+pub(crate) struct Pkcs11DataObject {
     value: Zeroizing<Vec<u8>>,
     label: String,
 }
@@ -17,7 +17,7 @@ impl TryFrom<KmsObject> for Pkcs11DataObject {
     type Error = Pkcs11Error;
 
     fn try_from(kms_object: KmsObject) -> Result<Self, Self::Error> {
-        Ok(Pkcs11DataObject {
+        Ok(Self {
             value: kms_object.object.key_block()?.key_bytes()?,
             label: kms_object.other_tags.join(","),
         })

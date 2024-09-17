@@ -23,7 +23,7 @@ use crate::{
 ///
 /// # Returns
 /// * `KResult<()>`         - the result of the operation
-pub async fn unwrap_key(
+pub(crate) async fn unwrap_key(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
@@ -56,13 +56,8 @@ pub async fn unwrap_key(
         ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
         ObjectType::PublicKey | ObjectType::Certificate => {
             let attributes = match object_type {
-                ObjectType::PublicKey => unwrapping_key
-                    .object
-                    .attributes()
-                    .with_context(|| format!("no attributes found for the {object_type}"))?
-                    .clone(),
-                ObjectType::Certificate => unwrapping_key.attributes,
-                _ => unreachable!("unwrap_key: unsupported object type: {object_type}"),
+                ObjectType::PublicKey | ObjectType::Certificate => unwrapping_key.attributes,
+                _ => kms_bail!("unwrap_key: unsupported object type: {object_type}"),
             };
             let private_key_uid =
                 attributes

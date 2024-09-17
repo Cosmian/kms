@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: ${{ inputs.archive-name }}
     container:
-      image: alvistack/rhel-9
+      image: redhat/ubi9
 
     steps:
       - name: Display cpuinfo
@@ -77,12 +77,7 @@ jobs:
         run: |
           set -x
 
-          # Disable subscription manager
-          sed -i "s/enabled=1/enabled=0/g" /etc/yum/pluginconf.d/subscription-manager.conf
-          rm -rfv /var/cache/yum/*
-          yum clean all
-
-          yum -y install curl wget
+          yum -y install wget
           yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
 
       - uses: dtolnay/rust-toolchain@master
@@ -102,7 +97,6 @@ jobs:
       - name: Build and tests
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
-          RUST_LOG: cosmian_kms_server=trace
 
           POSTGRES_USER: kms
           PGUSER: kms
@@ -114,9 +108,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: kms
           KMS_MYSQL_URL: mysql://root:kms@mariadb/kms
 
-          KMS_ENCLAVE_DIR_PATH: data/public
           KMS_SQLITE_PATH: data/shared
-          KMS_CERTBOT_SSL_PATH: data/private
 
           REDIS_HOST: redis
 
@@ -164,24 +156,22 @@ jobs:
       - name: Launch ckms and cosmian_kms_server
         if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
         run: |
-          set -ex
-
-          if [ "${{ inputs.features }}" = "fips" ]; then
-            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          else
-            KMS_PATH="${{ inputs.debug_or_release }}"
-          fi
+          # The current path should be /home/runner/work/kms/kms
+          pwd
+          find . -type f
+          # There are 2 subdirectories in the current path
+          #   usr/local/openssl/
+          #   __w/kms/kms/target/
+          KMS_PATH="__w/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
           ./$KMS_PATH/ckms -V
 
           # Copy openssl build for FIPS mode
-          if [ -d "usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru usr/local/openssl/ /usr/local/openssl/
-            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
-          fi
-          ./$KMS_PATH/cosmian_kms_server -V
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
+          find /usr/local/openssl
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
+          ./$KMS_PATH/cosmian_kms_server --info

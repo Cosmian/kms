@@ -5,7 +5,10 @@ use std::{
     time::Duration,
 };
 
-use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
+use cosmian_kmip::kmip::{
+    kmip_messages::{Message, MessageResponse},
+    kmip_operations::{ReKey, ReKeyResponse},
+};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -17,11 +20,13 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use http::{HeaderMap, HeaderValue, StatusCode};
-use log::debug;
-use reqwest::{Client, ClientBuilder, Identity, Response};
+use log::trace;
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client, ClientBuilder, Identity, Response, StatusCode,
+};
 use rustls::{client::WebPkiVerifier, Certificate};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{
     access::{
@@ -38,6 +43,8 @@ use crate::{
 pub struct KmsClient {
     pub server_url: String,
     client: Client,
+    /// will output the JSON KMIP request and response
+    print_json: bool,
 }
 
 impl KmsClient {
@@ -361,6 +368,19 @@ impl KmsClient {
             .await
     }
 
+    /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
+    ///
+    /// As the replacement key takes over the name attribute of the existing key, Re-key SHOULD only be performed once on a given key.
+    ///
+    /// The server SHALL copy the Unique Identifier of the replacement key returned by this operation into the ID Placeholder variable.
+    ///
+    /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
+    ///
+    /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
+    pub async fn rekey(&self, request: ReKey) -> Result<ReKeyResponse, ClientError> {
+        self.post_ttlv::<ReKey, ReKeyResponse>(&request).await
+    }
+
     /// This operation requests the server to revoke a Managed Cryptographic
     /// Object or an Opaque Object. The request contains a reason for the
     /// revocation (e.g., "key compromise", "cessation of operation", etc.). The
@@ -454,11 +474,11 @@ impl KmsClient {
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
         allowed_tee_tls_cert: Option<Certificate>,
+        print_json: bool,
     ) -> Result<Self, ClientError> {
-        let server_url = match server_url.strip_suffix('/') {
-            Some(s) => s.to_string(),
-            None => server_url.to_string(),
-        };
+        let server_url = server_url
+            .strip_suffix('/')
+            .map_or_else(|| server_url.to_string(), std::string::ToString::to_string);
 
         let mut headers = HeaderMap::new();
         if let Some(bearer_token) = bearer_token {
@@ -481,7 +501,7 @@ impl KmsClient {
         //             Only the verified certificate is used here
         //    c) signed in a non-tee context: we want classic TLS verification based on the root ca
         let builder = if let Some(certificate) = allowed_tee_tls_cert {
-            build_tls_client_tee(certificate, accept_invalid_certs)?
+            build_tls_client_tee(certificate, accept_invalid_certs)
         } else {
             ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs)
         };
@@ -504,13 +524,11 @@ impl KmsClient {
         // Build the client
         Ok(Self {
             client: builder
-                .connect_timeout(Duration::from_secs(90))
-                .timeout(Duration::from_secs(90))
-                .tcp_keepalive(Duration::from_secs(90))
-                .pool_idle_timeout(Duration::from_secs(90))
                 .default_headers(headers)
+                .tcp_keepalive(Duration::from_secs(60))
                 .build()?,
             server_url,
+            print_json,
         })
     }
 
@@ -569,9 +587,9 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
             Some(d) => {
-                debug!(
+                trace!(
                     "==>\n{}",
-                    serde_json::to_string_pretty(&d).unwrap_or("[N/A]".to_string())
+                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_string())
                 );
                 self.client.post(server_url).json(d).send().await?
             }
@@ -581,9 +599,9 @@ impl KmsClient {
         let status_code = response.status();
         if status_code.is_success() {
             let response = response.json::<R>().await?;
-            debug!(
+            trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&response).unwrap_or("[N/A]".to_string())
+                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return Ok(response)
         }
@@ -602,21 +620,31 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
-
-        debug!(
+        if self.print_json {
+            println!(
+                "\nKMIP Request ==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+            );
+        }
+        trace!(
             "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
         );
         request = request.json(&ttlv);
 
         let response = request.send().await?;
-
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
-            debug!(
+            if self.print_json {
+                println!(
+                    "\nKMIP Response <==\n{}\n",
+                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                );
+            }
+            trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
         }
@@ -625,12 +653,6 @@ impl KmsClient {
         let p = handle_error(endpoint, response).await?;
         Err(ClientError::RequestFailed(p))
     }
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct ErrorPayload {
-    pub error: String,
-    pub messages: Option<Vec<String>>,
 }
 
 /// Some errors are returned by the Middleware without going through our own error manager.
@@ -642,14 +664,14 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
     Ok(format!(
         "{}: {}",
         endpoint,
-        if !text.is_empty() {
-            text
-        } else {
+        if text.is_empty() {
             match status {
                 StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
                 StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
                 _ => format!("{status} {text}"),
             }
+        } else {
+            text
         }
     ))
 }
@@ -657,10 +679,10 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
 /// Build a `TLSClient` to use with a KMS running inside a tee
 /// The TLS verification is the basic one but also include the verification of the leaf certificate
 /// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
-pub fn build_tls_client_tee(
+pub(crate) fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,
-) -> Result<ClientBuilder, ClientError> {
+) -> ClientBuilder {
     let mut root_cert_store = rustls::RootCertStore::empty();
 
     let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
@@ -672,13 +694,13 @@ pub fn build_tls_client_tee(
     });
     root_cert_store.add_trust_anchors(trust_anchors);
 
-    let verifier = if !accept_invalid_certs {
+    let verifier = if accept_invalid_certs {
+        LeafCertificateVerifier::new(leaf_cert, Arc::new(NoVerifier))
+    } else {
         LeafCertificateVerifier::new(
             leaf_cert,
             Arc::new(WebPkiVerifier::new(root_cert_store, None)),
         )
-    } else {
-        LeafCertificateVerifier::new(leaf_cert, Arc::new(NoVerifier))
     };
 
     let config = rustls::ClientConfig::builder()
@@ -687,5 +709,5 @@ pub fn build_tls_client_tee(
         .with_no_client_auth();
 
     // Create a client builder
-    Ok(Client::builder().use_preconfigured_tls(config))
+    Client::builder().use_preconfigured_tls(config)
 }

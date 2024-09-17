@@ -1,7 +1,12 @@
-use clap::Parser;
-use cosmian_kms_client::KmsClient;
+use std::path::PathBuf;
 
-use crate::{actions::shared::utils::validate, error::CliError};
+use clap::Parser;
+use cosmian_kms_client::{
+    cosmian_kmip::crypto::generic::kmip_requests::build_validate_certificate_request,
+    kmip::kmip_types::ValidityIndicator, KmsClient,
+};
+
+use crate::{actions::console, error::result::CliResult};
 
 /// Validate a certificate.
 ///
@@ -10,9 +15,9 @@ use crate::{actions::shared::utils::validate, error::CliError};
 /// complete, and no components has been flagged as removed.
 #[derive(Parser, Debug)]
 pub struct ValidateCertificatesAction {
-    /// One or more Certificates.
+    /// One or more Certificates filepath.
     #[clap(long = "certificate", short = 'v')]
-    certificate: Vec<String>,
+    certificate: Vec<PathBuf>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[clap(long = "unique-identifier", short = 'k')]
     unique_identifier: Vec<String>,
@@ -23,14 +28,19 @@ pub struct ValidateCertificatesAction {
 }
 
 impl ValidateCertificatesAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
-        validate(
-            client_connector,
-            self.certificate.clone(),
-            self.unique_identifier.clone(),
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
+        let request = build_validate_certificate_request(
+            &self.certificate,
+            &self.unique_identifier,
             self.validity_time.clone(),
-        )
-        .await?;
+        )?;
+        let validity_indicator = client_connector.validate(request).await?.validity_indicator;
+        console::Stdout::new(match validity_indicator {
+            ValidityIndicator::Valid => "Valid",
+            ValidityIndicator::Invalid => "Invalid",
+            ValidityIndicator::Unknown => "Unknown",
+        })
+        .write()?;
         Ok(())
     }
 }

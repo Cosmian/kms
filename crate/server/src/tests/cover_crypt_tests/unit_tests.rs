@@ -34,7 +34,7 @@ use crate::{
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -138,7 +138,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    assert!(kms.import(request, owner, None).await.is_err());
+    kms.import(request, owner, None).await.unwrap_err();
 
     // re-import public key - should succeed
     let request = Import {
@@ -221,7 +221,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 }
 
 #[test]
-pub fn access_policy_serialization() -> KResult<()> {
+pub(crate) fn access_policy_serialization() -> KResult<()> {
     let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
     let _json = serde_json::to_string(&access_policy)?;
     Ok(())
@@ -231,7 +231,7 @@ pub fn access_policy_serialization() -> KResult<()> {
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -312,7 +312,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(er.is_err());
+    er.unwrap_err();
 
     // encrypt a resource FIN + Secret
     let secret_authentication_data = b"cc the uid secret".to_vec();
@@ -355,7 +355,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(er.is_err());
+    er.unwrap_err();
 
     // Create a user decryption key MKG | FIN + secret
     let secret_mkg_fin_access_policy = "(Department::MKG || Department::FIN) && Level::secret";
@@ -416,7 +416,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(dr.is_err());
+    dr.unwrap_err();
 
     // decrypt resource FIN + Secret
     let dr = kms
@@ -459,7 +459,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    assert!(dr.is_err());
+    dr.unwrap_err();
 
     Ok(())
 }
@@ -468,7 +468,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new();
@@ -562,7 +562,7 @@ async fn test_abe_json_access() -> KResult<()> {
 async fn test_import_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new();

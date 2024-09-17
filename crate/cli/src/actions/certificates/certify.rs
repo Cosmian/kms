@@ -19,11 +19,14 @@ use cosmian_kms_client::{
     read_bytes_from_file, KmsClient,
 };
 
-use crate::{actions::console, error::CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResult, CliError},
+};
 
 /// The algorithm to use for the keypair generation
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-pub enum Algorithm {
+pub(crate) enum Algorithm {
     #[cfg(not(feature = "fips"))]
     NistP192,
     NistP224,
@@ -50,10 +53,10 @@ impl Display for Algorithm {
         match self {
             #[cfg(not(feature = "fips"))]
             Algorithm::NistP192 => write!(f, "nist-p192"),
-            Algorithm::NistP224 => write!(f, "nist-p224"),
-            Algorithm::NistP256 => write!(f, "nist-p256"),
-            Algorithm::NistP384 => write!(f, "nist-p384"),
-            Algorithm::NistP521 => write!(f, "nist-p521"),
+            Self::NistP224 => write!(f, "nist-p224"),
+            Self::NistP256 => write!(f, "nist-p256"),
+            Self::NistP384 => write!(f, "nist-p384"),
+            Self::NistP521 => write!(f, "nist-p521"),
             #[cfg(not(feature = "fips"))]
             Algorithm::X25519 => write!(f, "x25519"),
             #[cfg(not(feature = "fips"))]
@@ -64,9 +67,9 @@ impl Display for Algorithm {
             Algorithm::Ed448 => write!(f, "ed448"),
             #[cfg(not(feature = "fips"))]
             Algorithm::RSA1024 => write!(f, "rsa1024"),
-            Algorithm::RSA2048 => write!(f, "rsa2048"),
-            Algorithm::RSA3072 => write!(f, "rsa3072"),
-            Algorithm::RSA4096 => write!(f, "rsa4096"),
+            Self::RSA2048 => write!(f, "rsa2048"),
+            Self::RSA3072 => write!(f, "rsa3072"),
+            Self::RSA4096 => write!(f, "rsa4096"),
         }
     }
 }
@@ -78,15 +81,16 @@ impl Display for Algorithm {
 ///    using -certificate-signing-request
 /// 2. Provide a public key id to certify
 ///    using -public-key-id-to-certify as well as a subject name
-/// 3. Provide an existing certificate id to re-certify
+/// 3. Provide the id of an existing certificate to re-certify
 ///    using -certificate-id-to-re-certify
 /// 4. Generate a keypair then sign the public key to generate a certificate
 ///    using -generate-key-pair as well as a subject name and an algorithm
 ///
-/// The signer (issuer) is specified by providing an issuer private key id
-/// using -issuer-private-key-id and/or
-/// an issuer certificate id using -issuer-certificate-id. If only
-/// one of this parameter is specified, the other one will be inferred
+/// The signer (issuer) is specified by providing
+///  - an issuer private key id using -issuer-private-key-id
+///  - and/or an issuer certificate id using -issuer-certificate-id.
+///
+/// If only one of this parameter is specified, the other one will be inferred
 /// from the links of the cryptographic object behind the provided parameter.
 ///
 /// If no signer is provided, the certificate will be self-signed.
@@ -98,6 +102,38 @@ impl Display for Algorithm {
 /// will be generated.
 ///
 /// Tags can be later used to retrieve the certificate. Tags are optional.
+///
+/// Examples:
+///
+/// 1. Generate a self-signed certificate with 10 years validity using curve (NIST) P-256
+///```sh
+///ckms certificates certify --certificate-id acme_root_ca \
+///--generate-key-pair --algorithm nist-p256  \
+///--subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+///--days 3650
+///```
+///
+/// 2. Generate an intermediate CA certificate signed by the root CA and using
+///    some x509 extensions. The root CA certificate and private key are already in the KMS.
+///    The Root CA (issuer) private key id is 1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8
+///    and the x509 extensions are in the file intermediate.ext containing a `v3_ca` paragraph:
+///
+///```text
+///  [ v3_ca ]
+///  basicConstraints=CA:TRUE,pathlen:0
+///  keyUsage=keyCertSign,digitalSignature
+///  extendedKeyUsage=emailProtection
+///  crlDistributionPoints=URI:https://acme.com/crl.pem
+/// ```
+///
+/// ```sh
+/// ckms -- certificates certify --certificate-id acme_intermediate_ca \
+/// --issuer-private-key-id 1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8 \
+/// --generate-key-pair --algorithm nist-p256  \
+/// --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
+/// --days 1825 \
+/// --certificate-extensions intermediate.ext
+/// ```
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CertifyAction {
@@ -179,8 +215,17 @@ pub struct CertifyAction {
     #[clap(long = "days", short = 'd', default_value = "365")]
     number_of_days: usize,
 
-    /// The path to a X509 extension's file, containing a `v3_ca` parag
-    #[clap(long = "certificate-extensions", short = 'e')]
+    /// The path to a X509 extension's file, containing a `v3_ca` paragraph
+    /// with the x509 extensions to use. For instance:
+    ///
+    /// ```text
+    /// [ v3_ca ]
+    /// basicConstraints=CA:TRUE,pathlen:0
+    /// keyUsage=keyCertSign,digitalSignature
+    /// extendedKeyUsage=emailProtection
+    /// crlDistributionPoints=URI:https://acme.com/crl.pem
+    /// ```
+    #[clap(long = "certificate-extensions", short = 'e', verbatim_doc_comment)]
     certificate_extensions: Option<PathBuf>,
 
     /// The tag to associate to the certificate.
@@ -190,7 +235,7 @@ pub struct CertifyAction {
 }
 
 impl CertifyAction {
-    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         let mut attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
@@ -198,7 +243,7 @@ impl CertifyAction {
 
         // set the issuer certificate id
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
@@ -206,7 +251,7 @@ impl CertifyAction {
 
         // set the issuer private key id
         if let Some(issuer_private_key_id) = &self.issuer_private_key_id {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
             );

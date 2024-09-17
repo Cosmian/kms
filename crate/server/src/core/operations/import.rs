@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// Import a new object
-pub async fn import(
+pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -77,7 +77,7 @@ pub async fn import(
     })
 }
 
-async fn process_symmetric_key(
+pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
@@ -98,7 +98,7 @@ async fn process_symmetric_key(
         Attributes::check_user_tags(tags)?;
         // Insert the tag corresponding to the object type if tags should be
         // updated.
-        tags.insert("_kk".to_string());
+        tags.insert("_kk".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -139,7 +139,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         Attributes::check_user_tags(tags)?;
         // Insert the tag corresponding to the object type if tags should be
         // updated.
-        tags.insert("_cert".to_string());
+        tags.insert("_cert".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -213,7 +213,7 @@ async fn process_public_key(
     let mut tags = attributes.remove_tags();
     if let Some(tags) = tags.as_mut() {
         Attributes::check_user_tags(tags)?;
-        tags.insert("_pk".to_string());
+        tags.insert("_pk".to_owned());
     }
 
     // check if the object will be replaced if it already exists
@@ -247,7 +247,7 @@ async fn process_public_key(
     };
 
     // add imported links to attributes
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         object
             .key_block_mut()?
             .key_value
@@ -311,7 +311,7 @@ async fn process_private_key(
         || object_key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt)
     {
         // add imported links to attributes
-        add_imported_links_to_attributes(
+        upsert_imported_links_in_attributes(
             &mut attributes,
             object_key_block
                 .key_value
@@ -338,21 +338,20 @@ async fn process_private_key(
 
     // PKCS12  have their own processing
     if object_key_block.key_format_type == KeyFormatType::PKCS12 {
-        //PKCS#12 contain more than just a private key, perform specific processing
+        //PKCS#12 contains more than just a private key, perform specific processing
         return process_pkcs12(
             request.unique_identifier.as_str().unwrap_or_default(),
             object,
             attributes,
-            tags,
+            &tags,
             replace_existing,
         )
-        .await
     }
 
     // Process a "standard" private key
     // Check if the private key can be parsed as an openssl object.
     let (sk_uid, sk, sk_tags) = private_key_from_openssl(
-        kmip_private_key_to_openssl(&object)?,
+        &kmip_private_key_to_openssl(&object)?,
         tags,
         &mut attributes,
         request.unique_identifier.as_str().unwrap_or_default(),
@@ -369,29 +368,35 @@ async fn process_private_key(
     ))
 }
 
+/// Convert an openssl private key to a KMIP private key
+/// and return the uid, the object and the tags
+/// The user tags are optional and will be updated if present
+/// The request attributes will be updated with the imported links
+/// The `sk_uid` is the unique identifier of the private key
+/// If it is empty, a new one will be generated
 fn private_key_from_openssl(
-    sk: PKey<Private>,
+    sk: &PKey<Private>,
     user_tags: Option<HashSet<String>>,
     request_attributes: &mut Attributes,
-    request_uid: &str,
+    sk_uid: &str,
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
     // convert the private key to PKCS#8
     let mut sk = openssl_private_key_to_kmip(
-        &sk,
+        sk,
         KeyFormatType::PKCS8,
         request_attributes.cryptographic_usage_mask,
     )?;
 
-    let sk_uid = if request_uid.is_empty() {
+    let sk_uid = if sk_uid.is_empty() {
         Uuid::new_v4().to_string()
     } else {
-        request_uid.to_string()
+        sk_uid.to_owned()
     };
 
     let sk_key_block = sk.key_block_mut()?;
 
     // add imported links to attributes
-    add_imported_links_to_attributes(
+    upsert_imported_links_in_attributes(
         request_attributes,
         sk_key_block
             .key_value
@@ -400,7 +405,7 @@ fn private_key_from_openssl(
     );
 
     let sk_tags = user_tags.map(|mut tags| {
-        tags.insert("_sk".to_string());
+        tags.insert("_sk".to_owned());
         tags
     });
     Ok((sk_uid, sk, sk_tags))
@@ -413,29 +418,23 @@ fn single_operation(
     attributes: Attributes,
     uid: String,
 ) -> AtomicOperation {
+    // Sync the Object::Attributes with input Attributes
+    let mut object = object;
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.clone_from(&attributes);
+    }
     if replace_existing {
-        AtomicOperation::Upsert((
-            uid,
-            object,
-            attributes,
-            tags.clone(),
-            StateEnumeration::Active,
-        ))
+        AtomicOperation::Upsert((uid, object, attributes, tags, StateEnumeration::Active))
     } else {
-        AtomicOperation::Create((
-            uid.clone(),
-            object,
-            attributes,
-            tags.clone().unwrap_or_default(),
-        ))
+        AtomicOperation::Create((uid, object, attributes, tags.unwrap_or_default()))
     }
 }
 
-async fn process_pkcs12(
-    private_key_id: &str,
+fn process_pkcs12(
+    certificate_id: &str,
     object: Object,
     request_attributes: Attributes,
-    user_tags: Option<HashSet<String>>,
+    user_tags: &Option<HashSet<String>>,
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover the PKCS#12 bytes from the object
@@ -467,13 +466,13 @@ async fn process_pkcs12(
     // build the private key
     let (private_key_id, mut private_key, private_key_tags) = {
         let openssl_sk = pkcs12.pkey.ok_or_else(|| {
-            KmsError::InvalidRequest("Private key not found in PKCS12".to_string())
+            KmsError::InvalidRequest("Private key not found in PKCS12".to_owned())
         })?;
         private_key_from_openssl(
-            openssl_sk,
+            &openssl_sk,
             user_tags.clone(),
             &mut request_attributes,
-            private_key_id,
+            "", //generate a new UID
         )?
     };
 
@@ -486,18 +485,18 @@ async fn process_pkcs12(
     ) = {
         // Recover the PKCS12 X509 certificate
         let openssl_cert = pkcs12.cert.ok_or_else(|| {
-            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
+            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_owned())
         })?;
 
         // insert the tag corresponding to the object type if tags should be updated
         let mut leaf_certificate_tags = user_tags.clone().unwrap_or_default();
-        leaf_certificate_tags.insert("_cert".to_string());
+        leaf_certificate_tags.insert("_cert".to_owned());
 
         // convert to KMIP
         let leaf_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
 
         (
-            Uuid::new_v4().to_string(),
+            certificate_id.to_owned(),
             leaf_certificate,
             leaf_certificate_tags,
             CertificateAttributes::from(&openssl_cert),
@@ -511,7 +510,7 @@ async fn process_pkcs12(
         for openssl_cert in cas {
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone().unwrap_or_default();
-            chain_certificate_tags.insert("_cert".to_string());
+            chain_certificate_tags.insert("_cert".to_owned());
 
             // convert to KMIP
             let chain_certificate = openssl_certificate_to_kmip(&openssl_cert)?;
@@ -525,6 +524,13 @@ async fn process_pkcs12(
         }
     }
 
+    debug!(
+        "Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}",
+        private_key_id,
+        leaf_certificate_uid,
+        chain.iter().map(|(id, _, _, _)| id).collect::<Vec<_>>()
+    );
+
     //
     // Stage 2 update the attributes and tags
     // and create the corresponding operations
@@ -537,7 +543,7 @@ async fn process_pkcs12(
         .key_value
         .attributes
         .get_or_insert(Box::default())
-        .add_link(
+        .set_link(
             //Note: it is unclear what link type should be used here according to KMIP
             // CertificateLink seems to be for public key only and there is not description
             // for PKCS12CertificateLink
@@ -566,7 +572,7 @@ async fn process_pkcs12(
     // Add links to the leaf certificate
     // add private key link to certificate
     // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
-    leaf_certificate_attributes.add_link(
+    leaf_certificate_attributes.set_link(
         LinkType::PrivateKeyLink,
         LinkedObjectIdentifier::TextString(private_key_id.clone()),
     );
@@ -574,7 +580,7 @@ async fn process_pkcs12(
     // add parent link to certificate
     // (according to the KMIP spec, this would be LinkType::CertificateLink)
     if let Some((parent_id, _, _, _)) = chain.first() {
-        leaf_certificate_attributes.add_link(
+        leaf_certificate_attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(parent_id.clone()),
         );
@@ -585,7 +591,7 @@ async fn process_pkcs12(
         replace_existing,
         leaf_certificate,
         leaf_certificate_attributes,
-        leaf_certificate_uid.clone(),
+        leaf_certificate_uid,
     ));
 
     let mut parent_certificate_id: Option<String> = None;
@@ -611,8 +617,8 @@ async fn process_pkcs12(
         if let Some(parent_certificate_id) = parent_certificate_id {
             // add parent link to certificate
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
-            chain_certificate_attributes.add_link(
-                LinkType::ParentLink,
+            chain_certificate_attributes.set_link(
+                LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
             );
         }
@@ -630,22 +636,26 @@ async fn process_pkcs12(
     Ok((private_key_id, operations))
 }
 
-pub(crate) fn add_imported_links_to_attributes(
+pub(crate) fn upsert_imported_links_in_attributes(
     attributes: &mut Attributes,
     links_to_add: &Attributes,
 ) {
+    trace!(
+        "Upserting imported links in attributes: existing attributes links={:?}, links_to_add={:?}",
+        attributes.link,
+        links_to_add.link
+    );
     if let Some(new_links) = links_to_add.link.as_ref() {
-        match attributes.link.as_mut() {
-            Some(existing_links) => {
-                for new_link in new_links {
-                    if !existing_links.contains(new_link) {
-                        existing_links.push(new_link.clone());
-                    }
-                }
-            }
-            None => {
-                attributes.link = Some(new_links.clone());
-            }
+        for new_link in new_links {
+            // one can only have one link of a given type
+            attributes.set_link(
+                new_link.link_type,
+                new_link.linked_object_identifier.clone(),
+            );
         }
     }
+    trace!(
+        "Added imported links to attributes: attributes={:?}",
+        attributes
+    );
 }

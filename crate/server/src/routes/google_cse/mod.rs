@@ -26,10 +26,10 @@ struct CseErrorReply {
 }
 
 impl CseErrorReply {
-    fn from(e: KmsError) -> Self {
+    fn from(e: &KmsError) -> Self {
         Self {
             code: e.status_code().as_u16(),
-            message: "A CSE request to the Cosmian KMS failed".to_string(),
+            message: "A CSE request to the Cosmian KMS failed".to_owned(),
             details: e.to_string(),
         }
     }
@@ -52,11 +52,11 @@ impl From<CseErrorReply> for HttpResponse {
 
 /// Get the status for Google CSE
 #[get("/status")]
-pub async fn get_status(
+pub(crate) async fn get_status(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<operations::StatusResponse>> {
-    info!("GET /google_cse/status {}", kms.get_user(req)?);
+    info!("GET /google_cse/status {}", kms.get_user(&req));
     Ok(Json(operations::get_status()))
 }
 
@@ -67,7 +67,7 @@ pub struct DigestRequest {
     pub wrapped_key: String,
 }
 #[post("/digest")]
-pub async fn digest(
+pub(crate) async fn digest(
     _req_http: HttpRequest,
     _request: Json<DigestRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -89,7 +89,7 @@ pub struct PrivilegedPrivateKeyDecryptRequest {
     pub wrapped_private_key: String,
 }
 #[post("/privilegedprivatekeydecrypt")]
-pub async fn privilegedprivatekeydecrypt(
+pub(crate) async fn privilegedprivatekeydecrypt(
     _req_http: HttpRequest,
     _request: Json<PrivilegedPrivateKeyDecryptRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -107,7 +107,7 @@ pub struct PrivilegedUnwrapRequest {
     pub wrapped_key: String,
 }
 #[post("/privilegedunwrap")]
-pub async fn privilegedunwrap(
+pub(crate) async fn privilegedunwrap(
     _req_http: HttpRequest,
     _request: Json<PrivilegedUnwrapRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -126,7 +126,7 @@ pub struct PrivilegedWrapRequest {
     pub resource_name: String,
 }
 #[post("/privilegedwrap")]
-pub async fn privilegedwrap(
+pub(crate) async fn privilegedwrap(
     _req_http: HttpRequest,
     _request: Json<PrivilegedWrapRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -144,7 +144,7 @@ pub struct RewrapRequest {
     pub wrapped_key: String,
 }
 #[post("/rewrap")]
-pub async fn rewrap(
+pub(crate) async fn rewrap(
     _req_http: HttpRequest,
     _request: Json<RewrapRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -161,7 +161,7 @@ pub struct WrapPrivateKeyRequest {
     pub private_key: String,
 }
 #[post("/wrapprivatekey")]
-pub async fn wrapprivatekey(
+pub(crate) async fn wrapprivatekey(
     _req_http: HttpRequest,
     _request: Json<WrapPrivateKeyRequest>,
     _cse_config: Data<Option<GoogleCseConfig>>,
@@ -176,7 +176,7 @@ pub async fn wrapprivatekey(
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/wrap")]
-pub async fn wrap(
+pub(crate) async fn wrap(
     req_http: HttpRequest,
     wrap_request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -194,7 +194,7 @@ pub async fn wrap(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -203,7 +203,7 @@ pub async fn wrap(
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/unwrap")]
-pub async fn unwrap(
+pub(crate) async fn unwrap(
     req_http: HttpRequest,
     unwrap_request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -222,7 +222,7 @@ pub async fn unwrap(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -230,7 +230,7 @@ pub async fn unwrap(
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-sign)
 #[post("/privatekeysign")]
-pub async fn private_key_sign(
+pub(crate) async fn private_key_sign(
     req_http: HttpRequest,
     request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -249,7 +249,7 @@ pub async fn private_key_sign(
         .map(Json)
     {
         Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }
 
@@ -257,7 +257,7 @@ pub async fn private_key_sign(
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-decrypt)
 #[post("/privatekeydecrypt")]
-pub async fn private_key_decrypt(
+pub(crate) async fn private_key_decrypt(
     req_http: HttpRequest,
     request: Json<operations::PrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -276,6 +276,6 @@ pub async fn private_key_decrypt(
         .map(Json)
     {
         Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(e).into(),
+        Err(e) => CseErrorReply::from(&e).into(),
     }
 }

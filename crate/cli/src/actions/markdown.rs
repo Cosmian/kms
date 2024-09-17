@@ -2,7 +2,7 @@ use std::{fmt::Write, fs::File, io::Write as io_Write, path::PathBuf};
 
 use clap::{builder::StyledStr, Command, Parser};
 
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 /// Generate the CLI documentation as markdown
 #[derive(Parser, Debug)]
@@ -13,7 +13,12 @@ pub struct MarkdownAction {
 }
 
 impl MarkdownAction {
-    pub async fn process(&self, cmd: &Command) -> Result<(), CliError> {
+    /// Process the given command and generate the markdown documentation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is an issue creating or writing to the markdown file.
+    pub fn process(&self, cmd: &Command) -> CliResult<()> {
         let mut output = String::new();
         writeln!(
             output,
@@ -28,12 +33,7 @@ impl MarkdownAction {
     }
 }
 
-fn write_command(
-    out: &mut dyn Write,
-    index: &str,
-    parent: &str,
-    cmd: &Command,
-) -> Result<(), CliError> {
+fn write_command(out: &mut dyn Write, index: &str, parent: &str, cmd: &Command) -> CliResult<()> {
     if !parent.is_empty() {
         writeln!(out, "---")?;
         writeln!(out)?;
@@ -130,7 +130,7 @@ fn write_subcommands<'a>(
     parent_index: &str,
     parent_command: &str,
     cmd: &'a Command,
-) -> Result<Vec<&'a Command>, CliError> {
+) -> CliResult<Vec<&'a Command>> {
     let mut sc = Vec::new();
     for (i, sub_command) in cmd.get_subcommands().enumerate() {
         if i == 0 {
@@ -163,7 +163,7 @@ fn write_subcommands<'a>(
     Ok(sc)
 }
 
-fn to_md(out: &mut dyn Write, ss: &StyledStr) -> Result<(), CliError> {
+fn to_md(out: &mut dyn Write, ss: &StyledStr) -> CliResult<()> {
     let s = ss.to_string();
     let split = s.split('\n');
     let mut in_list = false;

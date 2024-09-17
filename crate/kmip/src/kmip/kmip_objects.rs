@@ -132,7 +132,7 @@ pub enum Object {
 impl Object {
     /// Returns the corresponding `ObjectType` for that object
     #[must_use]
-    pub fn object_type(&self) -> ObjectType {
+    pub const fn object_type(&self) -> ObjectType {
         match self {
             Self::Certificate { .. } => ObjectType::Certificate,
             Self::CertificateRequest { .. } => ObjectType::CertificateRequest,
@@ -223,7 +223,6 @@ impl Object {
                 }
                 _ => object,
             },
-            ObjectType::Certificate => object,
             _ => object,
         }
     }

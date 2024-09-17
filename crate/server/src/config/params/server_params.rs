@@ -1,4 +1,4 @@
-use std::{fmt, fs::File, io::Read, path::PathBuf};
+use std::{fmt, path::PathBuf};
 
 use openssl::x509::X509;
 
@@ -37,7 +37,10 @@ pub struct ServerParams {
 
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
-    pub client_cert: Option<X509>,
+    pub authority_cert_file: Option<X509>,
+
+    /// The API authentication token used both server and client side
+    pub api_token_id: Option<String>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
@@ -56,12 +59,26 @@ pub struct ServerParams {
     pub ms_dke_service_url: Option<String>,
 }
 
+/// Represents the server parameters.
 impl ServerParams {
-    pub async fn try_from(conf: ClapConfig) -> KResult<Self> {
+    /// Tries to create a `ServerParams` instance from the given `ClapConfig`.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf` - The `ClapConfig` object containing the configuration parameters.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `KResult` containing the `ServerParams` instance if successful, or an error if the conversion fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the conversion from `ClapConfig` to `ServerParams` fails.
+    pub fn try_from(conf: ClapConfig) -> KResult<Self> {
         let http_params = HttpParams::try_from(&conf.http)?;
 
         // Should we verify the client TLS certificates?
-        let verify_cert = conf
+        let authority_cert_file = conf
             .http
             .authority_cert_file
             .map(|cert_file| {
@@ -85,17 +102,29 @@ impl ServerParams {
             http_params,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
-            client_cert: verify_cert,
+            authority_cert_file,
+            api_token_id: conf.http.api_token_id,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
         })
     }
 
+    /// Loads the certificate from the given file path.
+    ///
+    /// # Arguments
+    ///
+    /// * `authority_cert_file` - The path to the authority certificate file.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `KResult` containing the loaded `X509` certificate if successful, or an error if the loading fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the certificate file cannot be read or if the parsing of the certificate fails.
     fn load_cert(authority_cert_file: &PathBuf) -> KResult<X509> {
         // Open and read the file into a byte vector
-        let mut file = File::open(authority_cert_file)?;
-        let mut pem_bytes = Vec::new();
-        file.read_to_end(&mut pem_bytes)?;
+        let pem_bytes = std::fs::read(authority_cert_file)?;
 
         // Parse the byte vector as a X509 object
         let x509 = X509::from_pem(pem_bytes.as_slice())?;
@@ -132,7 +161,7 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
-        let x = if let Some(verify_cert) = &self.client_cert {
+        let x = if let Some(verify_cert) = &self.authority_cert_file {
             x.field("verify_cert CN", verify_cert.subject_name())
         } else {
             x
@@ -147,6 +176,7 @@ impl fmt::Debug for ServerParams {
             x
         };
         let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
+        let x = x.field("api_token_id", &self.api_token_id);
         x.finish()
     }
 }
@@ -165,7 +195,8 @@ impl Clone for ServerParams {
             hostname: self.hostname.clone(),
             port: self.port,
             http_params: HttpParams::Http,
-            client_cert: self.client_cert.clone(),
+            authority_cert_file: self.authority_cert_file.clone(),
+            api_token_id: self.api_token_id.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
         }

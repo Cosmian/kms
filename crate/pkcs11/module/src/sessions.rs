@@ -51,7 +51,7 @@ static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 // pub static OBJECT_STORE: Lazy<sync::Mutex<ObjectStore>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
-pub struct FindContext {
+pub(crate) struct FindContext {
     /// The PKCS#11 objects manipulated by this context.
     pub objects: Vec<Object>,
     /// The indexes that have not yet been read by `C_FindObjects`
@@ -59,7 +59,7 @@ pub struct FindContext {
 }
 
 #[derive(Debug)]
-pub struct SignContext {
+pub(crate) struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
     /// Payload stored for multipart `C_SignUpdate` operations.
@@ -68,7 +68,7 @@ pub struct SignContext {
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct DecryptContext {
+pub(crate) struct DecryptContext {
     pub remote_object: Arc<dyn RemoteObjectId>,
     pub algorithm: EncryptionAlgorithm,
     /// Ciphertext stored for multipart `C_DecryptUpdate` operations.
@@ -77,15 +77,14 @@ pub struct DecryptContext {
 
 impl Session {
     /// Sign the provided data, or stored payload if data is not provided.
-    pub unsafe fn sign(
+    pub(crate) unsafe fn sign(
         &mut self,
         data: Option<&[u8]>,
         pSignature: CK_BYTE_PTR,
         pulSignatureLen: CK_ULONG_PTR,
     ) -> MResult<()> {
-        let sign_ctx = match self.sign_ctx.as_mut() {
-            Some(sign_ctx) => sign_ctx,
-            None => return Err(MError::OperationNotInitialized),
+        let Some(sign_ctx) = self.sign_ctx.as_mut() else {
+            return Err(MError::OperationNotInitialized)
         };
         let data = data
             .or(sign_ctx.payload.as_deref())
@@ -113,15 +112,14 @@ impl Session {
         Ok(())
     }
 
-    pub unsafe fn decrypt(
+    pub(crate) unsafe fn decrypt(
         &mut self,
         ciphertext: Vec<u8>,
         pData: CK_BYTE_PTR,
         pulDataLen: CK_ULONG_PTR,
     ) -> MResult<()> {
-        let decrypt_ctx = match self.decrypt_ctx.as_mut() {
-            Some(decrypt_ctx) => decrypt_ctx,
-            None => return Err(MError::OperationNotInitialized),
+        let Some(decrypt_ctx) = self.decrypt_ctx.as_mut() else {
+            return Err(MError::OperationNotInitialized)
         };
         let cleartext = backend().decrypt(
             decrypt_ctx.remote_object.clone(),
@@ -142,7 +140,7 @@ impl Session {
 }
 
 #[derive(Default, Debug)]
-pub struct Session {
+pub(crate) struct Session {
     flags: CK_FLAGS,
     pub find_ctx: Option<FindContext>,
     pub sign_ctx: Option<SignContext>,
@@ -150,7 +148,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn load_find_context(&mut self, template: Attributes) -> MResult<()> {
+    pub(crate) fn load_find_context(&mut self, template: Attributes) -> MResult<()> {
         if template.is_empty() {
             error!("load_find_context: empty template");
             return Err(MError::ArgumentsBad);
@@ -216,7 +214,7 @@ impl Session {
     }
 }
 
-pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
+pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
     SESSIONS.lock().unwrap().insert(
         handle,
@@ -228,15 +226,15 @@ pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     handle
 }
 
-pub fn exists(handle: CK_SESSION_HANDLE) -> bool {
+pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> bool {
     SESSIONS.lock().unwrap().contains_key(&handle)
 }
 
-pub fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
+pub(crate) fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
     SESSIONS.lock().unwrap().get(&handle).unwrap().flags
 }
 
-pub fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> MResult<()>
+pub(crate) fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> MResult<()>
 where
     F: FnOnce(&mut Session) -> MResult<()>,
 {
@@ -245,10 +243,10 @@ where
     callback(session)
 }
 
-pub fn close(handle: CK_SESSION_HANDLE) -> bool {
+pub(crate) fn close(handle: CK_SESSION_HANDLE) -> bool {
     SESSIONS.lock().unwrap().remove(&handle).is_some()
 }
 
-pub fn close_all() {
+pub(crate) fn close_all() {
     SESSIONS.lock().unwrap().clear();
 }

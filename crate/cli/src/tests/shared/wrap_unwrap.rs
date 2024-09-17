@@ -18,7 +18,7 @@ use kms_test_server::{start_default_test_kms_server, TestsContext};
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -39,10 +39,10 @@ pub fn wrap(
     wrap_key_b64: Option<String>,
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "wrap".to_owned(),
@@ -92,10 +92,10 @@ pub fn unwrap(
     unwrap_key_b64: Option<String>,
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "unwrap".to_owned(),
@@ -130,7 +130,7 @@ pub fn unwrap(
 }
 
 #[tokio::test]
-pub async fn test_password_wrap_import() -> Result<(), CliError> {
+pub async fn test_password_wrap_import() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // CC
@@ -158,7 +158,7 @@ pub fn password_wrap_import_test(
     ctx: &TestsContext,
     sub_command: &str,
     private_key_id: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let temp_dir = TempDir::new()?;
 
     // Export

@@ -2,23 +2,26 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use self::{
-    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
+    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, rekey::ReKeyAction,
+    revoke_key::RevokeKeyAction,
 };
 #[cfg(feature = "openssl")]
 use crate::actions::shared::{UnwrapKeyAction, WrapKeyAction};
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction},
-    error::CliError,
+    error::result::CliResult,
 };
 
 mod create_key;
 mod destroy_key;
+mod rekey;
 mod revoke_key;
 
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     Create(CreateKeyAction),
+    ReKey(ReKeyAction),
     Export(ExportKeyAction),
     Import(ImportKeyAction),
     #[cfg(feature = "openssl")]
@@ -30,9 +33,10 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Create(action) => action.run(kms_rest_client).await?,
+            Self::ReKey(action) => action.run(kms_rest_client).await?,
             Self::Export(action) => action.run(kms_rest_client).await?,
             Self::Import(action) => action.run(kms_rest_client).await?,
             #[cfg(feature = "openssl")]

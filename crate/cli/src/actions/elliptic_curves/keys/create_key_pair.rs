@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::console,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -31,14 +31,14 @@ pub enum Curve {
 }
 
 impl From<Curve> for RecommendedCurve {
-    fn from(curve: Curve) -> RecommendedCurve {
+    fn from(curve: Curve) -> Self {
         match curve {
             #[cfg(not(feature = "fips"))]
             Curve::NistP192 => RecommendedCurve::P192,
-            Curve::NistP224 => RecommendedCurve::P224,
-            Curve::NistP256 => RecommendedCurve::P256,
-            Curve::NistP384 => RecommendedCurve::P384,
-            Curve::NistP521 => RecommendedCurve::P521,
+            Curve::NistP224 => Self::P224,
+            Curve::NistP256 => Self::P256,
+            Curve::NistP384 => Self::P384,
+            Curve::NistP521 => Self::P521,
             #[cfg(not(feature = "fips"))]
             Curve::X25519 => RecommendedCurve::CURVE25519,
             #[cfg(not(feature = "fips"))]
@@ -76,7 +76,7 @@ pub struct CreateKeyPairAction {
 }
 
 impl CreateKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let create_key_pair_request = create_ec_key_pair_request(&self.tags, self.curve.into())?;
 
         // Query the KMS with your kmip data and get the key pair ids

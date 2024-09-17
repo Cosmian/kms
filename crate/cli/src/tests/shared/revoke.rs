@@ -10,26 +10,26 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair, shared::export::export_key,
         symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
     },
 };
 
-pub fn revoke(
+pub(crate) fn revoke(
     cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
     revocation_reason: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let args: Vec<String> = ["keys", "revoke", "--key-id", key_id, revocation_reason]
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -40,7 +40,7 @@ pub fn revoke(
     ))
 }
 
-fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
+fn assert_revoker(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -78,7 +78,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_revoke_symmetric_key() -> Result<(), CliError> {
+async fn test_revoke_symmetric_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -98,7 +98,7 @@ async fn test_revoke_symmetric_key() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_revoke_ec_key() -> Result<(), CliError> {
+async fn test_revoke_ec_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -145,7 +145,7 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-async fn test_revoke_cover_crypt() -> Result<(), CliError> {
+async fn test_revoke_cover_crypt() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 

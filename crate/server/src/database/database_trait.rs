@@ -14,9 +14,12 @@ use super::object_with_metadata::ObjectWithMetadata;
 use crate::{core::extra_database_params::ExtraDatabaseParams, result::KResult};
 
 #[async_trait(?Send)]
-pub trait Database {
+pub(crate) trait Database {
     /// Return the filename of the database or `None` if not supported
     fn filename(&self, group_id: u128) -> Option<PathBuf>;
+
+    /// Migrate the database to the latest version
+    async fn migrate(&self, params: Option<&ExtraDatabaseParams>) -> KResult<()>;
 
     /// Insert the given Object in the database.
     ///
@@ -184,7 +187,7 @@ pub trait Database {
 /// An atomic operation on the database
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum AtomicOperation {
+pub(crate) enum AtomicOperation {
     /// Create (uid, object, attributes, tags) - the state will be active
     Create((String, Object, Attributes, HashSet<String>)),
     /// Upsert (uid, object, attributes, tags, state) - the state be updated

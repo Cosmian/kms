@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::ErrorReason,
@@ -25,19 +26,36 @@ use super::{
 };
 use crate::{
     core::extra_database_params::ExtraDatabaseParams,
-    database::database_trait::AtomicOperation,
+    database::{
+        database_trait::AtomicOperation, migrate::do_migration,
+        KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    },
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
 
+#[macro_export]
+macro_rules! get_mysql_query {
+    ($name:literal) => {
+        MYSQL_QUERIES
+            .get($name)
+            .ok_or_else(|| kms_error!("{} SQL query can't be found", $name))?
+    };
+    ($name:expr) => {
+        MYSQL_QUERIES
+            .get($name)
+            .ok_or_else(|| kms_error!("{} SQL query can't be found", $name))?
+    };
+}
+
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
-pub struct MySqlPool {
+pub(crate) struct MySqlPool {
     pool: Pool<MySql>,
 }
 
 impl MySqlPool {
-    pub async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
+    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
         let options = MySqlConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -47,35 +65,29 @@ impl MySqlPool {
             .connect_with(options)
             .await?;
 
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("create-table-objects")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query(get_mysql_query!("create-table-context"))
+            .execute(&pool)
+            .await?;
 
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("create-table-read_access")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query(get_mysql_query!("create-table-objects"))
+            .execute(&pool)
+            .await?;
 
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("create-table-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query(get_mysql_query!("create-table-read_access"))
+            .execute(&pool)
+            .await?;
+
+        sqlx::query(get_mysql_query!("create-table-tags"))
+            .execute(&pool)
+            .await?;
 
         if clear_database {
             clear_database_(&pool).await?;
         }
 
-        Ok(Self { pool })
+        let mysql_pool = Self { pool };
+        mysql_pool.migrate(None).await?;
+        Ok(mysql_pool)
     }
 }
 
@@ -85,17 +97,59 @@ impl Database for MySqlPool {
         None
     }
 
+    async fn migrate(&self, _params: Option<&ExtraDatabaseParams>) -> KResult<()> {
+        trace!("Migrate database");
+        // Get the context rows
+        match sqlx::query(get_mysql_query!("select-context"))
+            .fetch_optional(&self.pool)
+            .await?
+        {
+            None => {
+                trace!("No context row found, migrating from scratch");
+                return migrate_(
+                    &self.pool,
+                    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+                    "insert-context",
+                )
+                .await;
+            }
+            Some(context_row) => {
+                let last_kms_version_run = context_row.get::<String, _>(0);
+                let state = context_row.get::<String, _>(1);
+                trace!(
+                    "Context row found, migrating from version {last_kms_version_run} (state: \
+                     {state})"
+                );
+                let current_kms_version = crate_version!();
+                debug!(
+                    "[state={state}] Last KMS version run: {last_kms_version_run}, Current KMS \
+                     version: {current_kms_version}"
+                );
+
+                if do_migration(&last_kms_version_run, current_kms_version, &state)? {
+                    return migrate_(&self.pool, current_kms_version, "update-context").await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     async fn create(
         &self,
         uid: Option<String>,
-        user: &str,
+        owner: &str,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<String> {
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
         let mut tx = self.pool.begin().await?;
-        let uid = match create_(uid, user, object, attributes, tags, &mut tx).await {
+        let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
@@ -110,10 +164,10 @@ impl Database for MySqlPool {
         &self,
         uid_or_tags: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        query_access_grant: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, ObjectWithMetadata>> {
-        retrieve_(uid_or_tags, user, operation_type, &self.pool).await
+        retrieve_(uid_or_tags, user, query_access_grant, &self.pool).await
     }
 
     async fn retrieve_tags(
@@ -151,6 +205,9 @@ impl Database for MySqlPool {
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
         let mut tx = self.pool.begin().await?;
         match update_state_(uid, state, &mut tx).await {
             Ok(()) => {
@@ -174,6 +231,10 @@ impl Database for MySqlPool {
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
         let mut tx = self.pool.begin().await?;
         match upsert_(uid, user, object, attributes, tags, state, &mut tx).await {
             Ok(()) => {
@@ -193,6 +254,10 @@ impl Database for MySqlPool {
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
         let mut tx = self.pool.begin().await?;
         match delete_(uid, user, &mut tx).await {
             Ok(()) => {
@@ -225,30 +290,38 @@ impl Database for MySqlPool {
     async fn grant_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        insert_access_(uid, userid, operation_types, &self.pool).await
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
+        insert_access_(uid, user, operation_types, &self.pool).await
     }
 
     async fn remove_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        remove_access_(uid, userid, operation_types, &self.pool).await
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
+        remove_access_(uid, user, operation_types, &self.pool).await
     }
 
     async fn is_object_owned_by(
         &self,
         uid: &str,
-        userid: &str,
+        owner: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
-        is_object_owned_by_(uid, userid, &self.pool).await
+        is_object_owned_by_(uid, owner, &self.pool).await
     }
 
     async fn find(
@@ -272,21 +345,25 @@ impl Database for MySqlPool {
     async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<ObjectOperationType>> {
-        list_user_access_rights_on_object_(uid, userid, no_inherited_access, &self.pool).await
+        list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await
     }
 
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
+        if is_migration_in_progress_(&self.pool).await? {
+            kms_bail!("Migration in progress. Please retry later");
+        }
+
         let mut tx = self.pool.begin().await?;
-        match atomic_(owner, operations, &mut tx).await {
+        match atomic_(user, operations, &mut tx).await {
             Ok(()) => {
                 tx.commit().await?;
                 Ok(())
@@ -321,30 +398,22 @@ pub(crate) async fn create_(
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("insert-objects")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid.clone())
-    .bind(object_json)
-    .bind(attributes_json)
-    .bind(StateEnumeration::Active.to_string())
-    .bind(owner)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("insert-objects"))
+        .bind(uid.clone())
+        .bind(object_json)
+        .bind(attributes_json)
+        .bind(StateEnumeration::Active.to_string())
+        .bind(owner)
+        .execute(&mut **executor)
+        .await?;
 
     // Insert the tags
     for tag in tags {
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("insert-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid.clone())
-        .bind(tag)
-        .execute(&mut **executor)
-        .await?;
+        sqlx::query(get_mysql_query!("insert-tags"))
+            .bind(uid.clone())
+            .bind(tag)
+            .execute(&mut **executor)
+            .await?;
     }
 
     trace!("Created in DB: {uid} / {owner}");
@@ -360,18 +429,7 @@ pub(crate) async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let rows: Vec<MySqlRow> = if !uid_or_tags.starts_with('[') {
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("select-object")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(user)
-        .bind(uid_or_tags)
-        .fetch_optional(executor)
-        .await?
-        .map_or(vec![], |row| vec![row])
-    } else {
+    let rows: Vec<MySqlRow> = if uid_or_tags.starts_with('[') {
         // deserialize the array to an HashSet
         let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
             .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
@@ -382,10 +440,7 @@ where
         let tags_params = tags.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 
         // Build the raw SQL query
-        let raw_sql = MYSQL_QUERIES
-            .get("select-from-tags")
-            .context("SQL query can't be found")?
-            .replace("@TAGS", &tags_params);
+        let raw_sql = get_mysql_query!("select-from-tags").replace("@TAGS", &tags_params);
 
         // Bind the tags params
         let mut query = sqlx::query::<MySql>(&raw_sql);
@@ -393,10 +448,17 @@ where
             query = query.bind(tag);
         }
         // Bind the tags len and the user
-        query = query.bind(tags.len() as i16).bind(user);
+        query = query.bind(i16::try_from(tags.len())?).bind(user);
 
         // Execute the query
         query.fetch_all(executor).await?
+    } else {
+        sqlx::query(get_mysql_query!("select-object"))
+            .bind(user)
+            .bind(uid_or_tags)
+            .fetch_optional(executor)
+            .await?
+            .map_or(vec![], |row| vec![row])
     };
 
     // process the rows and find the tags
@@ -434,14 +496,10 @@ async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let rows: Vec<MySqlRow> = sqlx::query(
-        MYSQL_QUERIES
-            .get("select-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .fetch_all(executor)
-    .await?;
+    let rows: Vec<MySqlRow> = sqlx::query(get_mysql_query!("select-tags"))
+        .bind(uid)
+        .fetch_all(executor)
+        .await?;
 
     let tags = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
 
@@ -466,39 +524,27 @@ pub(crate) async fn update_object_(
         .context("failed serializing the attributes to JSON")
         .reason(ErrorReason::Internal_Server_Error)?;
 
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("update-object-with-object")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(object_json)
-    .bind(attributes_json)
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
-    // delete the existing tags
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("update-object-with-object"))
+        .bind(object_json)
+        .bind(attributes_json)
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
 
     // Insert the new tags if any
     if let Some(tags) = tags {
-        for tag in tags {
-            sqlx::query(
-                MYSQL_QUERIES
-                    .get("insert-tags")
-                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-            )
+        // delete the existing tags
+        sqlx::query(get_mysql_query!("delete-tags"))
             .bind(uid)
-            .bind(tag)
             .execute(&mut **executor)
             .await?;
+
+        for tag in tags {
+            sqlx::query(get_mysql_query!("insert-tags"))
+                .bind(uid)
+                .bind(tag)
+                .execute(&mut **executor)
+                .await?;
         }
     }
 
@@ -511,15 +557,11 @@ pub(crate) async fn update_state_(
     state: StateEnumeration,
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("update-object-with-state")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(state.to_string())
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("update-object-with-state"))
+        .bind(state.to_string())
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
     trace!("Updated in DB: {uid}");
     Ok(())
 }
@@ -530,25 +572,17 @@ pub(crate) async fn delete_(
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
     // delete the object
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("delete-object")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(owner)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("delete-object"))
+        .bind(uid)
+        .bind(owner)
+        .execute(&mut **executor)
+        .await?;
 
     // delete the tags
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("delete-tags"))
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
 
     trace!("Deleted in DB: {uid}");
     Ok(())
@@ -574,43 +608,29 @@ pub(crate) async fn upsert_(
         .context("failed serializing the attributes to JSON")
         .reason(ErrorReason::Internal_Server_Error)?;
 
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("upsert-object")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(object_json)
-    .bind(attributes_json)
-    .bind(state.to_string())
-    .bind(owner)
-    .bind(owner)
-    .bind(owner)
-    .execute(&mut **executor)
-    .await?;
+    sqlx::query(get_mysql_query!("upsert-object"))
+        .bind(uid)
+        .bind(object_json)
+        .bind(attributes_json)
+        .bind(state.to_string())
+        .bind(owner)
+        .execute(&mut **executor)
+        .await?;
 
     // Insert the new tags if present
     if let Some(tags) = tags {
         // delete the existing tags
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("delete-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-        // insert the new ones
-        for tag in tags {
-            sqlx::query(
-                MYSQL_QUERIES
-                    .get("insert-tags")
-                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-            )
+        sqlx::query(get_mysql_query!("delete-tags"))
             .bind(uid)
-            .bind(tag)
             .execute(&mut **executor)
             .await?;
+        // insert the new ones
+        for tag in tags {
+            sqlx::query(get_mysql_query!("insert-tags"))
+                .bind(uid)
+                .bind(tag)
+                .execute(&mut **executor)
+                .await?;
         }
     }
 
@@ -627,14 +647,10 @@ where
 {
     debug!("Uid = {}", uid);
 
-    let list = sqlx::query(
-        MYSQL_QUERIES
-            .get("select-rows-read_access-with-object-id")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .fetch_all(executor)
-    .await?;
+    let list = sqlx::query(get_mysql_query!("select-rows-read_access-with-object-id"))
+        .bind(uid)
+        .fetch_all(executor)
+        .await?;
     let mut ids: HashMap<String, HashSet<ObjectOperationType>> = HashMap::with_capacity(list.len());
     for row in list {
         ids.insert(
@@ -656,14 +672,10 @@ where
     E: Executor<'e, Database = MySql> + Copy,
 {
     debug!("Owner = {}", user);
-    let list = sqlx::query(
-        MYSQL_QUERIES
-            .get("select-objects-access-obtained")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(user)
-    .fetch_all(executor)
-    .await?;
+    let list = sqlx::query(get_mysql_query!("select-objects-access-obtained"))
+        .bind(user)
+        .fetch_all(executor)
+        .await?;
     let mut ids: HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)> =
         HashMap::with_capacity(list.len());
     for row in list {
@@ -704,15 +716,11 @@ async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> KResult<HashSet<O
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let row: Option<MySqlRow> = sqlx::query(
-        MYSQL_QUERIES
-            .get("select-user-accesses-for-object")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(userid)
-    .fetch_optional(executor)
-    .await?;
+    let row: Option<MySqlRow> = sqlx::query(get_mysql_query!("select-user-accesses-for-object"))
+        .bind(uid)
+        .bind(userid)
+        .fetch_optional(executor)
+        .await?;
 
     row.map_or(Ok(HashSet::new()), |row| {
         let perms_raw = row.get::<Vec<u8>, _>(0);
@@ -745,16 +753,12 @@ where
         .reason(ErrorReason::Internal_Server_Error)?;
 
     // Upsert the DB
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("upsert-row-read_access")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(userid)
-    .bind(json)
-    .execute(executor)
-    .await?;
+    sqlx::query(get_mysql_query!("upsert-row-read_access"))
+        .bind(uid)
+        .bind(userid)
+        .bind(json)
+        .execute(executor)
+        .await?;
     trace!("Insert read access right in DB: {uid} / {userid}");
     Ok(())
 }
@@ -777,15 +781,11 @@ where
 
     // No remaining permissions, delete the row
     if perms.is_empty() {
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("delete-rows-read_access")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid)
-        .bind(userid)
-        .execute(executor)
-        .await?;
+        sqlx::query(get_mysql_query!("delete-rows-read_access"))
+            .bind(uid)
+            .bind(userid)
+            .execute(executor)
+            .await?;
         return Ok(())
     }
 
@@ -795,16 +795,12 @@ where
         .reason(ErrorReason::Internal_Server_Error)?;
 
     // Update the DB
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("update-rows-read_access-with-permission")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(json)
-    .bind(uid)
-    .bind(userid)
-    .execute(executor)
-    .await?;
+    sqlx::query(get_mysql_query!("update-rows-read_access-with-permission"))
+        .bind(json)
+        .bind(uid)
+        .bind(userid)
+        .execute(executor)
+        .await?;
     Ok(())
 }
 
@@ -812,15 +808,11 @@ pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor:
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let row: Option<MySqlRow> = sqlx::query(
-        MYSQL_QUERIES
-            .get("has-row-objects")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(owner)
-    .fetch_optional(executor)
-    .await?;
+    let row: Option<MySqlRow> = sqlx::query(get_mysql_query!("has-row-objects"))
+        .bind(uid)
+        .bind(owner)
+        .fetch_optional(executor)
+        .await?;
     Ok(row.is_some())
 }
 
@@ -839,7 +831,7 @@ where
         state,
         user,
         user_must_be_owner,
-    )?;
+    );
     trace!("find_: {query:?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
@@ -854,12 +846,12 @@ fn to_qualified_uids(
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        let attrs = if !raw.is_empty() {
+        let attrs = if raw.is_empty() {
+            Attributes::default()
+        } else {
             let attrs: Attributes =
                 serde_json::from_slice(&raw).context("failed deserializing attributes")?;
             attrs
-        } else {
-            Attributes::default()
         };
 
         uids.push((
@@ -876,30 +868,22 @@ async fn clear_database_<'e, E>(executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
+    // Erase `context` table
+    sqlx::query(get_mysql_query!("clean-table-context"))
+        .execute(executor)
+        .await?;
     // Erase `objects` table
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("clean-table-objects")
-            .expect("SQL query can't be found"),
-    )
-    .execute(executor)
-    .await?;
+    sqlx::query(get_mysql_query!("clean-table-objects"))
+        .execute(executor)
+        .await?;
     // Erase `read_access` table
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("clean-table-read_access")
-            .expect("SQL query can't be found"),
-    )
-    .execute(executor)
-    .await?;
+    sqlx::query(get_mysql_query!("clean-table-read_access"))
+        .execute(executor)
+        .await?;
     // Erase `tags` table
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("clean-table-tags")
-            .expect("SQL query can't be found"),
-    )
-    .execute(executor)
-    .await?;
+    sqlx::query(get_mysql_query!("clean-table-tags"))
+        .execute(executor)
+        .await?;
     Ok(())
 }
 
@@ -942,4 +926,141 @@ pub(crate) async fn atomic_(
         }
     }
     Ok(())
+}
+
+pub(crate) async fn is_migration_in_progress_<'e, E>(executor: E) -> KResult<bool>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
+    match sqlx::query(get_mysql_query!("select-context"))
+        .fetch_optional(executor)
+        .await?
+    {
+        Some(context_row) => {
+            let state = context_row.get::<String, _>(1);
+            Ok(state == "upgrading")
+        }
+        None => Ok(false),
+    }
+}
+
+pub(crate) async fn migrate_(
+    executor: &Pool<MySql>,
+    last_version_run: &str,
+    query_name: &str,
+) -> KResult<()> {
+    trace!("Set status to upgrading and last version run: {last_version_run}");
+    let upsert_context = get_mysql_query!(query_name);
+    trace!("{query_name}: {upsert_context}");
+    match query_name {
+        "insert-context" => {
+            sqlx::query(upsert_context)
+                .bind(last_version_run)
+                .bind("upgrading")
+                .execute(executor)
+                .await
+        }
+        "update-context" => {
+            sqlx::query(upsert_context)
+                .bind(last_version_run)
+                .bind("upgrading")
+                .bind("upgrading")
+                .execute(executor)
+                .await
+        }
+        _ => kms_bail!("Unknown query name: {query_name}"),
+    }?;
+
+    trace!("Migrate data from version {last_version_run}");
+
+    // Process migration for each KMS version
+    let current_kms_version = crate_version!();
+    if last_version_run == KMS_VERSION_BEFORE_MIGRATION_SUPPORT {
+        migrate_from_4_12_0_to_4_13_0(executor).await?;
+    } else {
+        trace!("No migration needed between {last_version_run} and {current_kms_version}");
+    }
+
+    // Set the current running version
+    trace!("Set status to ready and last version run: {current_kms_version}");
+    sqlx::query(get_mysql_query!("update-context"))
+        .bind(current_kms_version)
+        .bind("ready")
+        .bind("upgrading")
+        .execute(executor)
+        .await?;
+
+    Ok(())
+}
+
+/// Before the version 4.13.0, the KMIP attributes were stored in the objects table (via the objects themselves).
+/// The new column attributes allows to store the KMIP attributes in a dedicated column even for KMIP objects that do not have KMIP attributes (such as Certificates).
+pub(crate) async fn migrate_from_4_12_0_to_4_13_0(executor: &Pool<MySql>) -> KResult<()> {
+    trace!("Migrating from 4.12.0 to 4.13.0");
+
+    // Add the column attributes to the objects table
+    if (sqlx::query(get_mysql_query!("has-column-attributes"))
+        .execute(executor)
+        .await)
+        .is_ok()
+    {
+        trace!("Column attributes already exists, nothing to do");
+        return Ok(());
+    }
+
+    trace!("Column attributes does not exist, adding it");
+    sqlx::query(get_mysql_query!("add-column-attributes"))
+        .execute(executor)
+        .await?;
+
+    // Select all objects and extract the KMIP attributes to be stored in the new column
+    let rows = sqlx::query("SELECT * FROM objects")
+        .fetch_all(executor)
+        .await?;
+
+    let mut operations = Vec::with_capacity(rows.len());
+    for row in rows {
+        let uid = row.get::<String, _>(0);
+        let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+            .context("migrate: failed deserializing the object")
+            .reason(ErrorReason::Internal_Server_Error)?;
+        let object = Object::post_fix(db_object.object_type, db_object.object);
+        trace!(
+            "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
+            object.object_type(),
+            uid
+        );
+        let attributes = match object.clone().attributes() {
+            Ok(attrs) => attrs.clone(),
+            Err(_error) => {
+                // For example, Certificate object has no KMIP-attribute
+                Attributes::default()
+            }
+        };
+        let tags = retrieve_tags_(&uid, executor).await?;
+        operations.push(AtomicOperation::UpdateObject((
+            uid,
+            object,
+            attributes,
+            Some(tags),
+        )));
+    }
+
+    let mut tx = executor.begin().await?;
+    match atomic_(
+        "this user is not used to update objects",
+        &operations,
+        &mut tx,
+    )
+    .await
+    {
+        Ok(()) => {
+            tx.commit().await?;
+            Ok(())
+        }
+        Err(e) => {
+            tx.rollback().await.context("transaction failed")?;
+            Err(e)
+        }
+    }
 }

@@ -11,11 +11,11 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
-pub enum SymmetricAlgorithm {
+pub(crate) enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,
     Aes,
@@ -63,7 +63,7 @@ pub struct CreateKeyAction {
 }
 
 impl CreateKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
             let bytes = general_purpose::STANDARD

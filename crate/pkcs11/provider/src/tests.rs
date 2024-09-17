@@ -16,13 +16,15 @@ use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_object
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
+    let kms_client = ctx
+        .owner_client_conf
+        .initialize_kms_client(None, None, false)?;
     create_keys(&kms_client).await?;
 
     let keys = get_kms_objects_async(
         &kms_client,
-        &["disk-encryption".to_string()],
-        KeyFormatType::Raw,
+        &["disk-encryption".to_string(), "_kk".to_string()],
+        None, //default key format type is Raw
     )
     .await?;
     assert_eq!(keys.len(), 2);
@@ -36,21 +38,23 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    cosmian_logger::log_utils::log_init("fatal,cosmian_kms_client=debug");
+    cosmian_logger::log_utils::log_init(Some("fatal,cosmian_kms_client=debug"));
     let rt = tokio::runtime::Runtime::new().unwrap();
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
 
         let kms_client = ctx
             .owner_client_conf
-            .initialize_kms_client(None, None)
+            .initialize_kms_client(None, None, false)
             .unwrap();
         create_keys(&kms_client).await.unwrap();
         load_p12().await.unwrap();
         ctx.owner_client_conf.clone()
     });
 
-    CkmsBackend::instantiate(owner_client_conf.initialize_kms_client(None, None)?)
+    Ok(CkmsBackend::instantiate(
+        owner_client_conf.initialize_kms_client(None, None, false)?,
+    ))
 }
 
 async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
@@ -84,7 +88,9 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
 async fn load_p12() -> Result<String, Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
+    let kms_client = ctx
+        .owner_client_conf
+        .initialize_kms_client(None, None, false)?;
     let p12_bytes = include_bytes!("../test_data/certificate.p12");
 
     let p12_sk = Object::PrivateKey {
@@ -127,7 +133,7 @@ fn test_backend() -> Result<(), Pkcs11Error> {
     assert_eq!(data_objects.len(), 2);
     let mut labels = data_objects
         .iter()
-        .map(|dao| dao.label().clone())
+        .map(|dao| dao.label())
         .collect::<Vec<String>>();
     labels.sort();
     assert_eq!(labels, vec!["vol1".to_string(), "vol2".to_string()]);

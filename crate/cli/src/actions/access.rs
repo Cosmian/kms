@@ -7,7 +7,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::console,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Manage the users' access rights to the cryptographic objects
@@ -21,7 +21,16 @@ pub enum AccessAction {
 }
 
 impl AccessAction {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Processes the access action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client used for the action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there was a problem running the action.
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Grant(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,
@@ -58,7 +67,17 @@ pub struct GrantAccess {
 }
 
 impl GrantAccess {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Runs the `GrantAccess` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
@@ -104,7 +123,17 @@ pub struct RevokeAccess {
 }
 
 impl RevokeAccess {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Runs the `RevokeAccess` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
@@ -138,7 +167,17 @@ pub struct ListAccessesGranted {
 }
 
 impl ListAccessesGranted {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Runs the `ListAccessesGranted` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let accesses = kms_rest_client
             .list_access(&self.object_uid)
             .await
@@ -164,18 +203,28 @@ impl ListAccessesGranted {
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Runs the `ListOwnedObjects` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let objects = kms_rest_client
             .list_owned_objects()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        if !objects.is_empty() {
+        if objects.is_empty() {
+            console::Stdout::new("No object owned by this user.").write()?;
+        } else {
             let mut stdout = console::Stdout::new("The objects owned by this user are:");
             stdout.set_object_owned(objects);
             stdout.write()?;
-        } else {
-            console::Stdout::new("No object owned by this user.").write()?;
         }
 
         Ok(())
@@ -190,18 +239,28 @@ impl ListOwnedObjects {
 pub struct ListAccessRightsObtained;
 
 impl ListAccessRightsObtained {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Runs the `ListAccessRightsObtained` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query execution on the KMS server fails.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let objects = kms_rest_client
             .list_access_rights_obtained()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        if !objects.is_empty() {
+        if objects.is_empty() {
+            console::Stdout::new("No access right obtained.").write()?;
+        } else {
             let mut stdout = console::Stdout::new("The access rights obtained are: ");
             stdout.set_access_rights_obtained(objects);
             stdout.write()?;
-        } else {
-            console::Stdout::new("No access right obtained.").write()?;
         }
 
         Ok(())

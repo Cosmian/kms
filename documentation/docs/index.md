@@ -18,7 +18,7 @@ and an application-level encrypted database indexed with Findex.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.17.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
     ```
 
     Check the Cosmian KMS server version
@@ -27,7 +27,7 @@ and an application-level encrypted database indexed with Findex.
     curl http://localhost:9998/version
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.17.0/).
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.18.0/).
 
 <!-- toc -->
 
@@ -155,7 +155,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.17.0/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.18.0/)
 
 #### Integrated with OpenTelemetry
 
@@ -182,7 +182,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.17.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.18.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
@@ -208,7 +208,7 @@ Options:
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
       --database-url <DATABASE_URL>
-          The url of the database for postgresql, mysql or findex-redis
+          The url of the database for postgresql, mysql or redis-findex
 
           [env: KMS_DATABASE_URL=]
 

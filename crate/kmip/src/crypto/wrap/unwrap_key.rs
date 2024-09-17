@@ -14,6 +14,7 @@ use crate::{
         },
         symmetric::rfc5649::rfc5649_unwrap,
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     error::{result::KmipResultHelper, KmipError},
     kmip::{
@@ -31,11 +32,12 @@ use crate::{
 
 /// Unwrap a key using a password
 pub fn unwrap_key_bytes(
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
     key: &[u8],
     wrapping_password: &str,
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     let wrapping_secret =
-        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(wrapping_password.as_bytes())?;
+        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
     rfc5649_unwrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
 }
 
@@ -136,11 +138,11 @@ pub(crate) fn unwrap(
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
             // convert to an openssl private key
             let p_key = kmip_private_key_to_openssl(unwrapping_key)?;
-            unwrap_with_private_key(p_key, key_wrapping_data, ciphertext)
+            unwrap_with_private_key(&p_key, key_wrapping_data, ciphertext)
         }
         KeyFormatType::PKCS8 => {
             let p_key = PKey::private_key_from_der(&unwrapping_key_block.key_bytes()?)?;
-            unwrap_with_private_key(p_key, key_wrapping_data, ciphertext)
+            unwrap_with_private_key(&p_key, key_wrapping_data, ciphertext)
         }
         x => {
             kmip_bail!("Unable to unwrap key: format not supported for unwrapping: {x:?}")
@@ -150,14 +152,14 @@ pub(crate) fn unwrap(
 }
 
 fn unwrap_with_private_key(
-    private_key: PKey<Private>,
+    private_key: &PKey<Private>,
     key_wrapping_data: &KeyWrappingData,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     match private_key.id() {
         Id::RSA => unwrap_with_rsa(private_key, key_wrapping_data, ciphertext),
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext),
         other => {
             kmip_bail!(
                 "Unable to wrap key: wrapping public key type not supported: {:?}",
@@ -168,7 +170,7 @@ fn unwrap_with_private_key(
 }
 
 fn unwrap_with_rsa(
-    private_key: PKey<Private>,
+    private_key: &PKey<Private>,
     key_wrapping_data: &KeyWrappingData,
     wrapped_key: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
@@ -180,11 +182,9 @@ fn unwrap_with_rsa(
         )
     }
     match algorithm {
-        CryptographicAlgorithm::AES => {
-            ckm_rsa_aes_key_unwrap(&private_key, hashing_fn, wrapped_key)
-        }
+        CryptographicAlgorithm::AES => ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key),
         CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_unwrap(&private_key, hashing_fn, wrapped_key)
+            ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
         }
         x => {
             kmip_bail!(

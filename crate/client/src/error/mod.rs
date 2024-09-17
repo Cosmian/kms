@@ -4,7 +4,6 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
-use http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 pub(crate) mod result;
@@ -63,14 +62,14 @@ impl From<TtlvError> for ClientError {
     }
 }
 
-impl From<InvalidHeaderValue> for ClientError {
-    fn from(e: InvalidHeaderValue) -> Self {
-        Self::Default(e.to_string())
+impl From<reqwest::Error> for ClientError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 
-impl From<reqwest::Error> for ClientError {
-    fn from(e: reqwest::Error) -> Self {
+impl From<reqwest::header::InvalidHeaderValue> for ClientError {
+    fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }
@@ -93,15 +92,15 @@ impl From<KmipError> for ClientError {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
             KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(s) => Self::NotSupported(s),
-            KmipError::OpenSSL(s) => Self::NotSupported(s),
-            KmipError::InvalidSize(s) => Self::NotSupported(s),
-            KmipError::InvalidTag(s) => Self::NotSupported(s),
-            KmipError::Derivation(s) => Self::NotSupported(s),
-            KmipError::ConversionError(s) => Self::NotSupported(s),
-            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::NotSupported(s)
+            | KmipError::Default(s)
+            | KmipError::OpenSSL(s)
+            | KmipError::InvalidSize(s)
+            | KmipError::InvalidTag(s)
+            | KmipError::Derivation(s)
+            | KmipError::ConversionError(s)
+            | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }

@@ -18,7 +18,7 @@ use cosmian_kms_cli::{
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
-    error::CliError,
+    error::result::CliResult,
 };
 use cosmian_kms_client::ClientConf;
 use cosmian_logger::log_utils::log_init;
@@ -40,12 +40,18 @@ struct Cli {
     #[arg(long, action)]
     pub(crate) url: Option<String>,
 
-    /// Allow to connect using a self signed cert or untrusted cert chain
+    /// Allow to connect using a self-signed cert or untrusted cert chain
     ///
     /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
     /// running an invalid or insecure SSL certificate
     #[arg(long)]
     pub(crate) accept_invalid_certs: Option<bool>,
+
+    /// Output the JSON KMIP request and response.
+    /// This is useful to understand JSON POST requests and responses
+    /// required to programmatically call the KMS on the `/kmip/2_1` endpoint
+    #[arg(long, default_value = "false")]
+    pub(crate) json: bool,
 }
 
 #[derive(Subcommand)]
@@ -74,6 +80,7 @@ enum CliCommands {
     /// Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
+
     #[command(subcommand)]
     Google(GoogleCommands),
 }
@@ -86,15 +93,13 @@ async fn main() {
     }
 }
 
-async fn main_() -> Result<(), CliError> {
-    // Set up environment variables and logging options if RUST_LOG if defined
-    log_init("info,cosmian=info,cosmian_kms_cli=info,actix_web=info,sqlx::query=error,mysql=info");
-
+async fn main_() -> CliResult<()> {
+    log_init(None);
     let opts = Cli::parse();
 
     if let CliCommands::Markdown(action) = opts.command {
         let command = <Cli as CommandFactory>::command();
-        action.process(&command).await?;
+        action.process(&command)?;
         return Ok(())
     }
 
@@ -102,11 +107,15 @@ async fn main_() -> Result<(), CliError> {
 
     match opts.command {
         CliCommands::Login(action) => action.process(&conf_path).await?,
-        CliCommands::Logout(action) => action.process(&conf_path).await?,
+        CliCommands::Logout(action) => action.process(&conf_path)?,
+
         command => {
             let conf = ClientConf::load(&conf_path)?;
-            let kms_rest_client =
-                conf.initialize_kms_client(opts.url.as_deref(), opts.accept_invalid_certs)?;
+            let kms_rest_client = conf.initialize_kms_client(
+                opts.url.as_deref(),
+                opts.accept_invalid_certs,
+                opts.json,
+            )?;
 
             match command {
                 CliCommands::Locate(action) => action.process(&kms_rest_client).await?,

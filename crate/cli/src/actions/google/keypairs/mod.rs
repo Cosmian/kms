@@ -7,7 +7,7 @@ use self::{
     get_keypairs::GetKeypairsAction, insert_keypairs::InsertKeypairsAction,
     list_keypairs::ListKeypairsAction, obliterate_keypairs::ObliterateKeypairsAction,
 };
-use crate::error::CliError;
+use crate::error::result::CliResult;
 
 mod disable_keypairs;
 mod enable_keypairs;
@@ -16,7 +16,7 @@ mod insert_keypairs;
 mod list_keypairs;
 mod obliterate_keypairs;
 
-pub const KEYPAIRS_ENDPOINT: &str = "/settings/cse/keypairs/";
+pub(crate) const KEYPAIRS_ENDPOINT: &str = "/settings/cse/keypairs/";
 
 /// Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
 #[derive(Subcommand)]
@@ -30,7 +30,7 @@ pub enum KeypairsCommands {
 }
 
 impl KeypairsCommands {
-    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         match self {
             Self::Get(action) => action.run(conf_path).await,
             Self::List(action) => action.run(conf_path).await,

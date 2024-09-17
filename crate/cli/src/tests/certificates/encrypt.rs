@@ -13,9 +13,9 @@ use crate::{
         certificates::CertificateInputFormat,
         shared::{import_key::ImportKeyFormat, utils::KeyUsage, ExportKeyFormat},
     },
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
-        certificates::import::import_certificate,
+        certificates::import::{import_certificate, ImportCertificateInput},
         shared::{export_key, import_key},
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -23,16 +23,16 @@ use crate::{
 };
 
 /// Encrypts a file using the given public key and access policy.
-pub fn encrypt(
+pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_file: &str,
     certificate_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["encrypt", "--certificate-id", certificate_id, input_file];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -53,16 +53,16 @@ pub fn encrypt(
 }
 
 /// Decrypt a file using the given private key
-pub fn decrypt(
+pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["decrypt", "--key-id", private_key_id, input_file];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -82,71 +82,6 @@ pub fn decrypt(
     ))
 }
 
-// #[tokio::test]
-// async fn test_certificate_encrypt_decrypt_certify() -> Result<(), CliError> {
-//      let ctx = start_default_test_kms_server().await;
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//
-//     let input_file = PathBuf::from("test_data/plain.txt");
-//     let output_file = tmp_path.join("plain.enc");
-//     let recovered_file = tmp_path.join("plain.txt");
-//
-//     let tags = &["certificate_encryption"];
-//
-//     fs::remove_file(&output_file).ok();
-//     assert!(!output_file.exists());
-//
-//     let certificate_id = certify(
-//         &ctx.owner_client_conf_path,
-//         "CA",
-//         Some("My server".to_string()),
-//         None,
-//         None,
-//         tags,
-//     )?;
-//
-//     encrypt(
-//         &ctx.owner_client_conf_path,
-//         input_file.to_str().unwrap(),
-//         &certificate_id,
-//         Some(output_file.to_str().unwrap()),
-//         None,
-//     )?;
-//
-//     // locate the private key matching the certificate id
-//     let priv_key_tags = &[
-//         "certificate_encryption",
-//         &format!("_cert_uid={certificate_id}"),
-//     ];
-//     let ids = locate(
-//         &ctx.owner_client_conf_path,
-//         Some(priv_key_tags),
-//         Some("ECDH"),
-//         None,
-//         Some("TransparentECPrivateKey"),
-//     )?;
-//     assert_eq!(ids.len(), 1);
-//     let private_key_id = ids[0].clone();
-//
-//     // the user key should be able to decrypt the file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         output_file.to_str().unwrap(),
-//         &private_key_id,
-//         Some(recovered_file.to_str().unwrap()),
-//         None,
-//     )?;
-//     assert!(recovered_file.exists());
-//
-//     let original_content = read_bytes_from_file(&input_file)?;
-//     let recovered_content = read_bytes_from_file(&recovered_file)?;
-//     assert_eq!(original_content, recovered_content);
-//
-//     Ok(())
-// }
-
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_import_encrypt(
     ca_path: &str,
@@ -154,7 +89,7 @@ async fn test_certificate_import_encrypt(
     cert_path: &str,
     key_path: &str,
     tags: &[&str],
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -183,50 +118,37 @@ async fn test_certificate_import_encrypt(
         true,
     )?;
 
-    let root_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{ca_path}"),
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let root_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{ca_path}"),
+        format: &CertificateInputFormat::Pem,
+        tags: Some(tags),
+        ..Default::default()
+    })?;
 
-    let _subca_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{subca_path}"),
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id),
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let subca_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{subca_path}"),
+        format: &CertificateInputFormat::Pem,
+        issuer_certificate_id: Some(root_certificate_id),
+        tags: Some(tags),
+        ..Default::default()
+    })?;
 
-    let certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{cert_path}"),
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        Some(private_key_id.clone()),
-        Some(_subca_certificate_id),
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{cert_path}"),
+        format: &CertificateInputFormat::Pem,
+        private_key_id: Some(private_key_id.clone()),
+        issuer_certificate_id: Some(subca_certificate_id),
+        tags: Some(tags),
+        unwrap: false,
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     debug!("\n\nEncrypt With Certificate");
     encrypt(
@@ -257,7 +179,7 @@ async fn test_certificate_import_encrypt(
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
-async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
+async fn test_certificate_import_ca_and_encrypt_using_x25519() -> CliResult<()> {
     test_certificate_import_encrypt(
         "p12/root.pem",
         "p12/subca.pem",
@@ -268,8 +190,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     .await
 }
 
-async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
-    // log_init("cosmian_kms_cli=info,cosmian_kms_server=debug");
+async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
@@ -303,20 +224,20 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
     )?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{filename}-cert.pem"),
-        CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        Some(private_key_id.clone()),
-        None,
-        Some(tags),
-        Some(vec![KeyUsage::Encrypt]),
-        false,
-        true,
-    )?;
+    let certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/openssl/{filename}-cert.pem"),
+        format: &CertificateInputFormat::Pem,
+        pkcs12_password: None,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        private_key_id: Some(private_key_id.clone()),
+        issuer_certificate_id: None,
+        tags: Some(tags),
+        key_usage_vec: Some(vec![KeyUsage::Encrypt]),
+        unwrap: false,
+        replace_existing: true,
+    })?;
 
     debug!("\n\nEncrypt with certificate");
     encrypt(
@@ -409,13 +330,13 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
 // P-192 should not be used in FIPS mode. See NIST.SP.800-186 - Section 3.2.1.1.
-async fn test_certificate_encrypt_using_prime192() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_prime192() -> CliResult<()> {
     import_encrypt_decrypt("prime192v1").await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
-async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_prime224() -> CliResult<()> {
     import_encrypt_decrypt("secp224r1").await
 }
 
@@ -423,30 +344,30 @@ async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 // Edwards curve shall be used **for digital signature only**.
 // See NIST.SP.800-186 - Section 3.1.2 table 2 and NIST.FIPS.186-5.
-async fn test_certificate_encrypt_using_ed25519() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_ed25519() -> CliResult<()> {
     import_encrypt_decrypt("ED25519").await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
-async fn test_certificate_encrypt_using_prime256() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_prime256() -> CliResult<()> {
     import_encrypt_decrypt("prime256v1").await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
-async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_secp384r1() -> CliResult<()> {
     import_encrypt_decrypt("secp384r1").await
 }
 
 #[tokio::test]
 #[cfg(not(feature = "fips"))]
-async fn test_certificate_encrypt_using_secp521r1() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_secp521r1() -> CliResult<()> {
     import_encrypt_decrypt("secp521r1").await
 }
 
 #[tokio::test]
-async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
+async fn test_certificate_encrypt_using_rsa() -> CliResult<()> {
     import_encrypt_decrypt("rsa-2048").await?;
     import_encrypt_decrypt("rsa-3072").await?;
     import_encrypt_decrypt("rsa-4096").await

@@ -37,8 +37,8 @@ impl AeadCipher {
     /// Convert to the corresponding OpenSSL cipher.
     fn to_cipher(self) -> Cipher {
         match self {
-            AeadCipher::Aes128Gcm => Cipher::aes_128_gcm(),
-            AeadCipher::Aes256Gcm => Cipher::aes_256_gcm(),
+            Self::Aes128Gcm => Cipher::aes_128_gcm(),
+            Self::Aes256Gcm => Cipher::aes_256_gcm(),
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => Cipher::chacha20_poly1305(),
         }
@@ -46,10 +46,10 @@ impl AeadCipher {
 
     /// Get the tag size in bytes.
     #[must_use]
-    pub fn tag_size(&self) -> usize {
+    pub const fn tag_size(&self) -> usize {
         match self {
-            AeadCipher::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
-            AeadCipher::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
+            Self::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
+            Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
         }
@@ -57,10 +57,10 @@ impl AeadCipher {
 
     /// Get the nonce size in bytes.
     #[must_use]
-    pub fn nonce_size(&self) -> usize {
+    pub const fn nonce_size(&self) -> usize {
         match self {
-            AeadCipher::Aes128Gcm => AES_128_GCM_IV_LENGTH,
-            AeadCipher::Aes256Gcm => AES_256_GCM_IV_LENGTH,
+            Self::Aes128Gcm => AES_128_GCM_IV_LENGTH,
+            Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
         }
@@ -68,10 +68,10 @@ impl AeadCipher {
 
     /// Get the key size in bytes.
     #[must_use]
-    pub fn key_size(&self) -> usize {
+    pub const fn key_size(&self) -> usize {
         match self {
-            AeadCipher::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
-            AeadCipher::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
+            Self::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
+            Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
         }
@@ -93,8 +93,8 @@ impl AeadCipher {
                     ));
                 }
                 match key_size {
-                    AES_128_GCM_KEY_LENGTH => Ok(AeadCipher::Aes128Gcm),
-                    AES_256_GCM_KEY_LENGTH => Ok(AeadCipher::Aes256Gcm),
+                    AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
+                    AES_256_GCM_KEY_LENGTH => Ok(Self::Aes256Gcm),
                     _ => kmip_bail!(KmipError::NotSupported(
                         "AES key must be 16 or 32 bytes long".to_owned()
                     )),
@@ -104,7 +104,7 @@ impl AeadCipher {
             CryptographicAlgorithm::ChaCha20 => {
                 if block_cipher_mode.is_some() {
                     kmip_bail!(KmipError::NotSupported(
-                        "ChaCha20 is only supported with Pooly1305. Do not specify the Block \
+                        "ChaCha20 is only supported with Poly1305. Do not specify the Block \
                          Cipher Mode"
                             .to_owned()
                     ));

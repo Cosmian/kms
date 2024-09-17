@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use clap::crate_version;
 use cosmian_kmip::{
     crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
     kmip::{
@@ -16,9 +17,9 @@ use cosmian_kmip::{
 use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    ConnectOptions, Pool, Sqlite,
+    ConnectOptions, Pool, Row, Sqlite,
 };
-use tracing::trace;
+use tracing::{debug, trace};
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -33,14 +34,15 @@ use crate::{
     core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation,
-        sqlite::{atomic_, retrieve_tags_},
-        Database, SQLITE_QUERIES,
+        migrate::do_migration,
+        sqlite::{atomic_, is_migration_in_progress_, migrate_, retrieve_tags_},
+        Database, KMS_VERSION_BEFORE_MIGRATION_SUPPORT, SQLITE_QUERIES,
     },
-    kms_bail, kms_error,
+    get_sqlite_query, kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
 
-pub struct CachedSqlCipher {
+pub(crate) struct CachedSqlCipher {
     path: PathBuf,
     cache: KMSSqliteCache,
 }
@@ -51,7 +53,7 @@ const KMS_SQLITE_CACHE_SIZE: usize = 100;
 impl CachedSqlCipher {
     /// Instantiate a new `CachedSqlCipher`
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
+    pub(crate) fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
         if clear_database && path.exists() && path.is_dir() {
             remove_dir_content(path)?;
         }
@@ -88,29 +90,21 @@ impl CachedSqlCipher {
     }
 
     async fn create_tables(pool: &Pool<Sqlite>) -> KResult<()> {
-        sqlx::query(
-            SQLITE_QUERIES
-                .get("create-table-objects")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query(get_sqlite_query!("create-table-context"))
+            .execute(pool)
+            .await?;
 
-        sqlx::query(
-            SQLITE_QUERIES
-                .get("create-table-read_access")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query(get_sqlite_query!("create-table-objects"))
+            .execute(pool)
+            .await?;
 
-        sqlx::query(
-            SQLITE_QUERIES
-                .get("create-table-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query(get_sqlite_query!("create-table-read_access"))
+            .execute(pool)
+            .await?;
+
+        sqlx::query(get_sqlite_query!("create-table-tags"))
+            .execute(pool)
+            .await?;
 
         Ok(())
     }
@@ -124,11 +118,11 @@ impl CachedSqlCipher {
         group_id: u128,
         key: &Secret<AES_256_GCM_KEY_LENGTH>,
     ) -> KResult<Arc<Pool<Sqlite>>> {
-        if !self.cache.exists(group_id) {
+        if !self.cache.exists(group_id)? {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
             self.cache.save(group_id, key, pool).await?;
-        } else if !self.cache.opened(group_id) {
+        } else if !self.cache.opened(group_id)? {
             let pool = self.instantiate_group_database(group_id, key).await?;
             self.cache.save(group_id, key, pool).await?;
         }
@@ -143,6 +137,50 @@ impl Database for CachedSqlCipher {
         Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
+    async fn migrate(&self, params: Option<&ExtraDatabaseParams>) -> KResult<()> {
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+
+            trace!("Migrate database");
+            // Get the context rows
+            match sqlx::query(get_sqlite_query!("select-context"))
+                .fetch_optional(&*pool)
+                .await?
+            {
+                None => {
+                    trace!("No context row found, migrating from scratch");
+                    return migrate_(
+                        &pool,
+                        KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+                        "insert-context",
+                    )
+                    .await;
+                }
+                Some(context_row) => {
+                    let last_kms_version_run = context_row.get::<String, _>(0);
+                    let state = context_row.get::<String, _>(1);
+                    trace!(
+                        "Context row found, migrating from version {last_kms_version_run} (state: \
+                         {state})"
+                    );
+                    let current_kms_version = crate_version!();
+                    debug!(
+                        "[state={state}] Last KMS version run: {last_kms_version_run}, Current \
+                         KMS version: {current_kms_version}"
+                    );
+
+                    if do_migration(&last_kms_version_run, current_kms_version, &state)? {
+                        return migrate_(&pool, current_kms_version, "update-context").await;
+                    }
+                }
+            }
+
+            return Ok(());
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
     async fn create(
         &self,
         uid: Option<String>,
@@ -154,6 +192,10 @@ impl Database for CachedSqlCipher {
     ) -> KResult<String> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
+
             let mut tx = pool.begin().await?;
             match create_(uid, owner, object, attributes, tags, &mut tx).await {
                 Ok(uid) => {
@@ -174,14 +216,14 @@ impl Database for CachedSqlCipher {
 
     async fn retrieve(
         &self,
-        uid: &str,
+        uid_or_tags: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        query_access_grant: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = retrieve_(uid, user, operation_type, &*pool).await;
+            let ret = retrieve_(uid_or_tags, user, query_access_grant, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -214,6 +256,10 @@ impl Database for CachedSqlCipher {
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
+
             let mut tx = pool.begin().await?;
             match update_object_(uid, object, attributes, tags, &mut tx).await {
                 Ok(()) => {
@@ -240,6 +286,9 @@ impl Database for CachedSqlCipher {
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
             let mut tx = pool.begin().await?;
             match update_state_(uid, state, &mut tx).await {
                 Ok(()) => {
@@ -270,6 +319,9 @@ impl Database for CachedSqlCipher {
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
             let mut tx = pool.begin().await?;
             match upsert_(uid, user, object, attributes, tags, state, &mut tx).await {
                 Ok(()) => {
@@ -291,13 +343,16 @@ impl Database for CachedSqlCipher {
     async fn delete(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
             let mut tx = pool.begin().await?;
-            match delete_(uid, owner, &mut tx).await {
+            match delete_(uid, user, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;
@@ -316,12 +371,12 @@ impl Database for CachedSqlCipher {
 
     async fn list_user_granted_access_rights(
         &self,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = list_user_granted_access_rights_(owner, &*pool).await;
+            let ret = list_user_granted_access_rights_(user, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -347,13 +402,16 @@ impl Database for CachedSqlCipher {
     async fn grant_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = insert_access_(uid, userid, operation_types, &*pool).await;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
+            let ret = insert_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -364,13 +422,16 @@ impl Database for CachedSqlCipher {
     async fn remove_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = remove_access_(uid, userid, operation_types, &*pool).await;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
+            let ret = remove_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -381,12 +442,12 @@ impl Database for CachedSqlCipher {
     async fn is_object_owned_by(
         &self,
         uid: &str,
-        userid: &str,
+        owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = is_object_owned_by_(uid, userid, &*pool).await;
+            let ret = is_object_owned_by_(uid, owner, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -424,7 +485,7 @@ impl Database for CachedSqlCipher {
     async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<ObjectOperationType>> {
@@ -433,7 +494,7 @@ impl Database for CachedSqlCipher {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret =
-                list_user_access_rights_on_object_(uid, userid, no_inherited_access, &*pool).await;
+                list_user_access_rights_on_object_(uid, user, no_inherited_access, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -443,14 +504,17 @@ impl Database for CachedSqlCipher {
 
     async fn atomic(
         &self,
-        owner: &str,
+        user: &str,
         operations: &[AtomicOperation],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
+            if is_migration_in_progress_(&*pool).await? {
+                kms_bail!("Migration in progress. Please retry later");
+            }
             let mut tx = pool.begin().await?;
-            return match atomic_(owner, operations, &mut tx).await {
+            return match atomic_(user, operations, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;

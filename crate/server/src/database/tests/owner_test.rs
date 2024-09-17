@@ -18,8 +18,10 @@ use crate::{
     result::KResult,
 };
 
-pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
-    // log_init("debug");
+pub(crate) async fn owner<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
+) -> KResult<()> {
+    cosmian_logger::log_utils::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
@@ -142,8 +144,8 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
         .list_user_granted_access_rights(user_id_2, db_params)
         .await?;
     assert_eq!(
-        objects.get(&uid).unwrap(),
-        &(
+        objects[&uid],
+        (
             String::from(owner),
             StateEnumeration::Active,
             vec![ObjectOperationType::Get].into_iter().collect(),

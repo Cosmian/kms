@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use super::KEYPAIRS_ENDPOINT;
-use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
 
 /// Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 /// pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
@@ -22,7 +22,7 @@ pub struct DisableKeypairsAction {
 }
 
 impl DisableKeypairsAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
         let endpoint = [KEYPAIRS_ENDPOINT, &self.keypairs_id, ":disable"].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let response = gmail_client.await?.post(&endpoint, String::new()).await?;

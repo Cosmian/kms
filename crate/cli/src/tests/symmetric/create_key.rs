@@ -6,12 +6,12 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{kmip::extra::tagging::EMPTY_TAGS, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
@@ -19,16 +19,16 @@ use crate::{
 };
 
 /// Create a symmetric key via the CLI
-pub fn create_symmetric_key(
+pub(crate) fn create_symmetric_key(
     cli_conf_path: &str,
     number_of_bits: Option<usize>,
     wrap_key_b64: Option<&str>,
     algorithm: Option<&str>,
     tags: &[&str],
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["keys", "create"];
     let num_s;
     if let Some(number_of_bits) = number_of_bits {
@@ -63,7 +63,7 @@ pub fn create_symmetric_key(
 }
 
 #[tokio::test]
-pub async fn test_create_symmetric_key() -> Result<(), CliError> {
+pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0u8; 32];
@@ -78,7 +78,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             Some(128),
             None,
             None,
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  AES 256 bit key from a base64 encoded key
         rng.fill_bytes(&mut key);
@@ -88,7 +88,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             None,
             Some(&key_b64),
             None,
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
 
@@ -100,7 +100,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             None,
             None,
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         // ChaCha20 128 bit key
         create_symmetric_key(
@@ -108,7 +108,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             Some(128),
             None,
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  ChaCha20 256 bit key from a base64 encoded key
         let mut rng = CsRng::from_entropy();
@@ -120,7 +120,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             None,
             Some(&key_b64),
             Some("chacha20"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
 
@@ -132,7 +132,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             None,
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         // ChaCha20 salts
         create_symmetric_key(
@@ -140,28 +140,28 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             Some(224),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(256),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(384),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
             Some(512),
             None,
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
         //  ChaCha20 256 bit salt from a base64 encoded salt
         let mut rng = CsRng::from_entropy();
@@ -173,7 +173,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
             None,
             Some(&key_b64),
             Some("sha3"),
-            &[] as &[&str],
+            &EMPTY_TAGS,
         )?;
     }
     Ok(())

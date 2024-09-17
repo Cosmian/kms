@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},
@@ -21,11 +21,11 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_view_policy() -> Result<(), CliError> {
+async fn test_view_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -41,7 +41,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -60,11 +60,11 @@ async fn test_view_policy() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_create_policy() -> Result<(), CliError> {
+async fn test_create_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "create",
@@ -81,17 +81,17 @@ async fn test_create_policy() -> Result<(), CliError> {
     Ok(())
 }
 
-pub async fn rename(
+pub(crate) async fn rename(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
     new_name: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let args = vec![
         "policy",
         "rename-attribute",
@@ -110,16 +110,16 @@ pub async fn rename(
     ))
 }
 
-pub async fn add(
+pub(crate) async fn add(
     cli_conf_path: &str,
     master_private_key_id: &str,
     new_attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let args = vec![
         "policy",
         "add-attribute",
@@ -137,16 +137,16 @@ pub async fn add(
     ))
 }
 
-pub async fn disable(
+pub(crate) async fn disable(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let args = vec![
         "policy",
         "disable-attribute",
@@ -164,16 +164,16 @@ pub async fn disable(
     ))
 }
 
-pub async fn remove(
+pub(crate) async fn remove(
     cli_conf_path: &str,
     master_private_key_id: &str,
     attribute: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     start_default_test_kms_server().await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let args = vec![
         "policy",
         "remove-attribute",
@@ -192,7 +192,7 @@ pub async fn remove(
 }
 
 #[tokio::test]
-async fn test_edit_policy() -> Result<(), CliError> {
+async fn test_edit_policy() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

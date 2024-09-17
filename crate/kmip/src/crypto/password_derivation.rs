@@ -1,7 +1,6 @@
 // This file exists to standardize key-derivation across all KMS crates
 #[cfg(not(feature = "fips"))]
 use argon2::Argon2;
-use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
 
@@ -11,27 +10,28 @@ use crate::error::KmipError;
 use crate::kmip_bail;
 
 /// Minimum random salt size in bytes to use when deriving keys.
-const FIPS_MIN_SALT_SIZE: usize = 16;
+pub const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
 /// Output size in bits of the hash function used in PBKDF2.
-const FIPS_HLEN: usize = 512;
+pub const FIPS_HLEN: usize = 512;
 #[cfg(feature = "fips")]
 /// Minimum key length in bits to be derived in FIPS mode.
-const FIPS_MIN_KLEN: usize = 112;
+pub const FIPS_MIN_KLEN: usize = 112;
 #[cfg(feature = "fips")]
 /// Max key length in bits authorized is (2^32 - 1) x hLen.
 /// Source: NIST.FIPS.800-132 - Section 5.3.
-const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN;
+pub const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN;
 
 #[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
 /// recommendations.
-const FIPS_MIN_ITER: usize = 210_000;
+pub const FIPS_MIN_ITER: usize = 210_000;
 
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
 /// with SHA512 in FIPS mode.
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
     password: &[u8],
 ) -> Result<Secret<LENGTH>, KmipError> {
     // Check requested key length converted in bits is in the authorized bounds.
@@ -41,13 +41,9 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 
     let mut output_key_material = Secret::<LENGTH>::new();
 
-    // Generate 128 bits of random salt.
-    let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
-    rand_bytes(&mut salt)?;
-
     pbkdf2_hmac(
         password,
-        &salt,
+        salt,
         FIPS_MIN_ITER,
         MessageDigest::sha512(),
         output_key_material.as_mut(),
@@ -60,16 +56,13 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 #[cfg(not(feature = "fips"))]
 pub fn derive_key_from_password<const LENGTH: usize>(
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
     password: &[u8],
 ) -> Result<Secret<LENGTH>, KmipError> {
     let mut output_key_material = Secret::<LENGTH>::new();
 
-    // Generate 128 bits of random salt
-    let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
-    rand_bytes(&mut salt)?;
-
     Argon2::default()
-        .hash_password_into(password, &salt, output_key_material.as_mut())
+        .hash_password_into(password, salt, output_key_material.as_mut())
         .map_err(|e| KmipError::Derivation(e.to_string()))?;
 
     Ok(output_key_material)
@@ -81,8 +74,9 @@ fn test_password_derivation() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let my_weak_password = "doglover1234".as_bytes().to_vec();
-    let secure_mk = derive_key_from_password::<32>(&my_weak_password).unwrap();
+    let salt = b"rediswithfindex_";
+    let my_weak_password = b"doglover1234".to_vec();
+    let secure_mk = derive_key_from_password::<32>(salt, &my_weak_password).unwrap();
 
     assert_eq!(secure_mk.len(), 32);
 }
@@ -93,13 +87,14 @@ fn test_password_derivation_bad_size() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let my_weak_password = "123princ3ss".as_bytes().to_vec();
-    let secure_mk_res = derive_key_from_password::<13>(&my_weak_password);
+    let salt = b"rediswithfindex_";
+    let my_weak_password = b"123princ3ss".to_vec();
+    let secure_mk_res = derive_key_from_password::<13>(salt, &my_weak_password);
 
     assert!(secure_mk_res.is_err());
 
     const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
-    let secure_mk_res = derive_key_from_password::<BIG_KEY_LENGTH>(&my_weak_password);
+    let secure_mk_res = derive_key_from_password::<BIG_KEY_LENGTH>(salt, &my_weak_password);
 
     assert!(secure_mk_res.is_err());
 }

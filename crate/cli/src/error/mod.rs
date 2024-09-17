@@ -1,4 +1,4 @@
-use std::{array::TryFromSliceError, str::Utf8Error};
+use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
@@ -144,10 +144,15 @@ impl From<std::string::FromUtf8Error> for CliError {
     }
 }
 
-#[cfg(test)]
 impl From<reqwest::Error> for CliError {
     fn from(e: reqwest::Error) -> Self {
-        Self::Default(e.to_string())
+        Self::Default(format!("{e}: Details: {e:?}"))
+    }
+}
+
+impl From<TryFromIntError> for CliError {
+    fn from(e: TryFromIntError) -> Self {
+        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 
@@ -161,18 +166,18 @@ impl From<CargoError> for CliError {
 impl From<KmipError> for CliError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
-            KmipError::NotSupported(s) => Self::NotSupported(s),
-            KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(s) => Self::NotSupported(s),
-            KmipError::OpenSSL(s) => Self::NotSupported(s),
-            KmipError::InvalidSize(s) => Self::NotSupported(s),
-            KmipError::InvalidTag(s) => Self::NotSupported(s),
-            KmipError::Derivation(s) => Self::NotSupported(s),
-            KmipError::ConversionError(s) => Self::NotSupported(s),
-            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::InvalidKmipValue(r, s)
+            | KmipError::InvalidKmipObject(r, s)
+            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::KmipNotSupported(_, s)
+            | KmipError::NotSupported(s)
+            | KmipError::Default(s)
+            | KmipError::OpenSSL(s)
+            | KmipError::InvalidSize(s)
+            | KmipError::InvalidTag(s)
+            | KmipError::Derivation(s)
+            | KmipError::ConversionError(s)
+            | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }
@@ -263,7 +268,8 @@ macro_rules! cli_bail {
 
 #[cfg(test)]
 mod tests {
-    use super::CliError;
+
+    use crate::error::result::CliResult;
 
     #[test]
     fn test_cli_error_interpolation() {
@@ -278,7 +284,7 @@ mod tests {
         assert_eq!("interpolate 44", err.unwrap_err().to_string());
     }
 
-    fn bail() -> Result<(), CliError> {
+    fn bail() -> CliResult<()> {
         let var = 43;
         if true {
             cli_bail!("interpolate {var}");
@@ -286,7 +292,7 @@ mod tests {
         Ok(())
     }
 
-    fn ensure() -> Result<(), CliError> {
+    fn ensure() -> CliResult<()> {
         let var = 44;
         cli_ensure!(false, "interpolate {var}");
         Ok(())

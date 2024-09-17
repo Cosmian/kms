@@ -12,6 +12,8 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
+#[cfg(not(feature = "fips"))]
+use tracing::debug;
 use tracing::info;
 
 use crate::{
@@ -19,10 +21,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{
-        ssl_auth::{extract_peer_certificate, SslAuth},
-        JwksManager, JwtAuth, JwtConfig,
-    },
+    middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
         access, add_new_database, get_version,
@@ -52,6 +51,29 @@ pub async fn start_kms_server(
     server_params: ServerParams,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
+    // OpenSSL is loaded now, so that tests can use the correct provider(s)
+
+    // For an explanation of openssl providers, see
+    //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+
+    // In FIPS mode, we only load the fips provider
+    #[cfg(feature = "fips")]
+    let _provider = openssl::provider::Provider::load(None, "fips")?;
+
+    // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
+    // so that we can use the legacy algorithms
+    // particularly those used for old PKCS#12 formats
+    #[cfg(not(feature = "fips"))]
+    let _provider = if openssl::version::number() >= 0x30000000 {
+        debug!("OpenSSL: loading the legacy provider");
+        openssl::provider::Provider::try_load(None, "legacy", true)
+            .context("OpenSSL: unable to load the openssl legacy provider")?
+    } else {
+        debug!("OpenSSL: loading the default provider");
+        // In version < 3.0, we only load the default provider
+        openssl::provider::Provider::load(None, "default")?
+    };
+
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
     match &server_params.http_params {
@@ -118,9 +140,8 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let p12 = match &server_params.http_params {
-        config::HttpParams::Https(p12) => p12,
-        _ => kms_bail!("http/s: a PKCS#12 file must be provided"),
+    let config::HttpParams::Https(p12) = &server_params.http_params else {
+        kms_bail!("http/s: a PKCS#12 file must be provided")
     };
 
     // Create and configure an SSL acceptor with the certificate and key
@@ -137,7 +158,7 @@ async fn start_https_kms_server(
         }
     }
 
-    if let Some(verify_cert) = &server_params.client_cert {
+    if let Some(verify_cert) = &server_params.authority_cert_file {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -175,6 +196,10 @@ async fn start_https_kms_server(
  * Returns a `Result` type that contains a `Server` instance if successful, or an error if
  * something went wrong.
  *
+ * # Errors
+ *
+ * This function can return the following errors:
+ * - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
  */
 pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
@@ -183,8 +208,7 @@ pub async fn prepare_kms_server(
     // Check if this auth server is enabled for Google Client-Side Encryption
     let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
 
-    // Determine if JWT Auth should be used for authentication.
-    let use_jwt_auth = kms_server.params.identity_provider_configurations.is_some();
+    // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
         &kms_server.params.identity_provider_configurations
     {
@@ -217,7 +241,7 @@ pub async fn prepare_kms_server(
     };
 
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.client_cert.is_some();
+    let use_cert_auth = kms_server.params.authority_cert_file.is_some();
 
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
@@ -232,7 +256,7 @@ pub async fn prepare_kms_server(
     let google_cse_jwt_config = if enable_google_cse {
         let Some(jwks_manager) = jwks_manager else {
             return Err(KmsError::ServerError(
-                "No JWKS manager to handle Google CSE JWT authorization".to_string(),
+                "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
         Some(GoogleCseConfig {
@@ -240,7 +264,7 @@ pub async fn prepare_kms_server(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
-            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()),
+            authorization: google_cse::jwt_authorization_config(&jwks_manager),
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,
@@ -292,9 +316,9 @@ pub async fn prepare_kms_server(
 
         // The default scope serves from the root / the KMIP, permissions and tee endpoints
         let default_scope = web::scope("")
-            .wrap(Condition::new(
-                use_jwt_auth,
-                JwtAuth::new(jwt_configurations.clone()),
+            .wrap(AuthTransformer::new(
+                kms_server.clone(),
+                jwt_configurations.clone(),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
@@ -319,26 +343,23 @@ pub async fn prepare_kms_server(
 
         app.service(default_scope)
     })
-    .client_disconnect_timeout(std::time::Duration::from_secs(90))
-    .tls_handshake_timeout(std::time::Duration::from_secs(90))
-    .keep_alive(std::time::Duration::from_secs(90))
-    .max_connection_rate(2048)
-    .max_connections(100_000)
-    .workers(24)
-    .worker_max_blocking_threads(2048)
-    .client_request_timeout(std::time::Duration::from_secs(90));
+    .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
+    .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s
+    .keep_alive(std::time::Duration::from_secs(30)) // default: 5s
+    .shutdown_timeout(180) // default: 30s
+    .client_request_timeout(std::time::Duration::from_secs(30)); // default: 5s
 
     Ok(match builder {
-        Some(b) => {
+        Some(cert_auth_builder) => {
             if use_cert_auth {
                 // Start an HTTPS server with PKCS#12 with client cert auth
                 server
                     .on_connect(extract_peer_certificate)
-                    .bind_openssl(address, b)?
+                    .bind_openssl(address, cert_auth_builder)?
                     .run()
             } else {
                 // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(address, b)?.run()
+                server.bind_openssl(address, cert_auth_builder)?.run()
             }
         }
         _ => server.bind(address)?.run(),

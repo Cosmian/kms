@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
@@ -16,15 +16,15 @@ use crate::{
     },
 };
 
-pub fn create_cc_master_key_pair(
+pub(crate) fn create_cc_master_key_pair(
     cli_conf_path: &str,
     policy_option: &str,
     file: &str,
     tags: &[&str],
-) -> Result<(String, String), CliError> {
+) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["keys", "create-master-key-pair", policy_option, file];
     // add tags
     for tag in tags {
@@ -55,7 +55,7 @@ pub fn create_cc_master_key_pair(
 }
 
 #[tokio::test]
-pub async fn test_create_master_key_pair() -> Result<(), CliError> {
+pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // from specs
     create_cc_master_key_pair(
@@ -75,7 +75,7 @@ pub async fn test_create_master_key_pair() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
+pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let err = create_cc_master_key_pair(

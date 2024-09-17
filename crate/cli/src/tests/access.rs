@@ -2,11 +2,11 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use kms_test_server::start_default_test_kms_server;
+use kms_test_server::start_default_test_kms_server_with_cert_auth;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         shared::{destroy, export_key, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
@@ -14,10 +14,10 @@ use crate::{
     },
 };
 
-pub const SUB_COMMAND: &str = "access-rights";
+pub(crate) const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
-fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
+fn gen_key(cli_conf_path: &str) -> CliResult<String> {
     create_symmetric_key(cli_conf_path, None, None, None, &[])
 }
 
@@ -27,10 +27,10 @@ pub(crate) fn grant_access(
     object_id: &str,
     user: &str,
     operations: &[&str],
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec!["grant", user, object_id]);
     for operation in operations {
         cmd.arg(operation);
@@ -51,10 +51,10 @@ pub(crate) fn revoke_access(
     object_id: &str,
     user: &str,
     operations: &[&str],
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec!["revoke", user, object_id]);
     for operation in operations {
         cmd.arg(operation);
@@ -70,10 +70,10 @@ pub(crate) fn revoke_access(
 }
 
 /// List accesses granted on an object
-fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError> {
+fn list_access(cli_conf_path: &str, object_id: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -87,10 +87,10 @@ fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError>
 }
 
 /// List objects owned by the user
-fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_owned_objects(cli_conf_path: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -104,10 +104,10 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// List accesses granted
-fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_accesses_rights_obtained(cli_conf_path: &str) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(SUB_COMMAND).args(vec!["obtained"]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -121,9 +121,9 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError
 }
 
 #[tokio::test]
-pub async fn test_ownership_and_grant() -> Result<(), CliError> {
+pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     // the client conf will use the owner cert
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // the owner should have access
@@ -256,8 +256,8 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_grant_error() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_grant_error() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // bad operation
@@ -297,9 +297,9 @@ pub async fn test_grant_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_revoke_access() -> Result<(), CliError> {
+pub(crate) async fn test_revoke_access() -> CliResult<()> {
     // the client conf will use the owner cert
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     /*    // the user should not be able to export
@@ -391,8 +391,8 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_list_access_rights() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_list_access_rights() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // grant encrypt and decrypt access to user
@@ -415,15 +415,15 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_list_access_rights_error() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_list_access_rights_error() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     assert!(list_access(&ctx.user_client_conf_path, "BAD KEY").is_err());
     Ok(())
 }
 
 #[tokio::test]
-pub async fn test_list_owned_objects() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_list_owned_objects() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // grant encrypt and decrypt access to user
@@ -459,8 +459,8 @@ pub async fn test_list_owned_objects() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_access_right_obtained() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     let list = list_accesses_rights_obtained(&ctx.owner_client_conf_path)?;
@@ -492,9 +492,9 @@ pub async fn test_access_right_obtained() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
+pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // the client conf will use the owner cert
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // the owner should have access
@@ -602,9 +602,8 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
-    // std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // the owner should not have access rights (it owns it)
@@ -641,8 +640,8 @@ pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError>
 }
 
 #[tokio::test]
-pub async fn test_grant_multiple_operations() -> Result<(), CliError> {
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // grant multiple access to user

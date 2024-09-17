@@ -13,7 +13,7 @@ use cosmian_kms_client::{
 
 use crate::{
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Decrypt a file using Covercrypt
@@ -45,7 +45,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file(s) to decrypt
         let (cryptographic_algorithm, data) = if self.input_files.len() > 1 {
             (
@@ -107,13 +107,13 @@ impl DecryptAction {
                 &metadata_and_cleartext.plaintext,
                 &self.input_files,
                 self.output_file.as_ref(),
-            )?
+            )?;
         } else {
             write_single_decrypted_data(
                 &metadata_and_cleartext.plaintext,
                 &self.input_files[0],
                 self.output_file.as_ref(),
-            )?
+            )?;
         }
         Ok(())
     }

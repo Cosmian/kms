@@ -17,9 +17,9 @@ use crate::{
     result::KResult,
 };
 
-/// Generate KMIP generic key pair
+/// Generate KMIP JSON TTLV and send it to the KMIP server
 #[post("/kmip/2_1")]
-pub async fn kmip(
+pub(crate) async fn kmip(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMSServer>>,
@@ -30,7 +30,7 @@ pub async fn kmip(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
+    let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
@@ -44,7 +44,7 @@ pub async fn kmip(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation`s serialized in a single KMIP `Message`
-pub async fn handle_ttlv(
+async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,

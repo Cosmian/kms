@@ -11,9 +11,13 @@ CLI used to manage the Cosmian KMS.
 
 `--url <URL>` The URL of the KMS
 
-`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self signed cert or untrusted cert chain
+`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self-signed cert or untrusted cert chain
 
 Possible values:  `"true", "false"`
+
+`--json <JSON>` Output the JSON KMIP request and response. This is useful to understand JSON POST requests and responses required to programmatically call the KMS on the `/kmip/2_1` endpoint
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 ### Subcommands
@@ -32,7 +36,7 @@ Possible values:  `"true", "false"`
 
 **`new-database`** [[7]](#7-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys
+**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 **`server-version`** [[9]](#9-ckms-server-version)  Print the version of the server
 
@@ -252,7 +256,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -571,7 +575,7 @@ Encrypt a file using Covercrypt
 ### Arguments
 ` <FILE>` The files to encrypt
 
-` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "department::marketing && level::confidential"`
+` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "`department::marketing` && `level::confidential`"
 
 `--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
 
@@ -676,7 +680,8 @@ Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p52
 
 `--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
 
-`--certificate-extensions [-e] <CERTIFICATE_EXTENSIONS>` The path to a X509 extension's file, containing a `v3_ca` parag
+`--certificate-extensions [-e] <CERTIFICATE_EXTENSIONS>` The path to a X509 extension's file, containing a `v3_ca` paragraph
+with the x509 extensions to use. For instance:
 
 `--tag [-t] <TAG>` The tag to associate to the certificate. To specify multiple tags, use the option multiple times
 
@@ -746,7 +751,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
@@ -846,7 +851,7 @@ Validate a certificate
 ### Usage
 `ckms certificates validate [options]`
 ### Arguments
-`--certificate [-v] <CERTIFICATE>` One or more Certificates
+`--certificate [-v] <CERTIFICATE>` One or more Certificates filepath
 
 `--unique-identifier [-k] <UNIQUE_IDENTIFIER>` One or more Unique Identifiers of Certificate Objects
 
@@ -938,7 +943,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1139,7 +1144,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ## 8 ckms rsa
 
-Manage RSA keys
+Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Usage
 `ckms rsa <subcommand>`
@@ -1224,7 +1229,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1420,13 +1425,15 @@ Create, destroy, import, and export symmetric keys
 
 **`create`** [[10.1.1]](#1011-ckms-sym-keys-create)  Create a new symmetric key
 
-**`export`** [[10.1.2]](#1012-ckms-sym-keys-export)  Export a key from the KMS
+**`re-key`** [[10.1.2]](#1012-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`import`** [[10.1.3]](#1013-ckms-sym-keys-import)  Import a private or public key in the KMS.
+**`export`** [[10.1.3]](#1013-ckms-sym-keys-export)  Export a key from the KMS
 
-**`revoke`** [[10.1.4]](#1014-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`import`** [[10.1.4]](#1014-ckms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`destroy`** [[10.1.5]](#1015-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`revoke`** [[10.1.5]](#1015-ckms-sym-keys-revoke)  Revoke a symmetric key
+
+**`destroy`** [[10.1.6]](#1016-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
@@ -1451,7 +1458,20 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ---
 
-## 10.1.2 ckms sym keys export
+## 10.1.2 ckms sym keys re-key
+
+Refresh an existing symmetric key
+
+### Usage
+`ckms sym keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 10.1.3 ckms sym keys export
 
 Export a key from the KMS
 
@@ -1477,7 +1497,7 @@ Export a key from the KMS
       - Covercrypt keys
       - wrapped keys
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1495,7 +1515,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.1.3 ckms sym keys import
+## 10.1.4 ckms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -1536,7 +1556,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 10.1.4 ckms sym keys revoke
+## 10.1.5 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -1554,7 +1574,7 @@ Revoke a symmetric key
 
 ---
 
-## 10.1.5 ckms sym keys destroy
+## 10.1.6 ckms sym keys destroy
 
 Destroy a symmetric key
 

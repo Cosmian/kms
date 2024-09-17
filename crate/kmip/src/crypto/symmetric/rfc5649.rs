@@ -297,7 +297,7 @@ mod tests {
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
-    pub fn test_wrap1() {
+    pub(crate) fn test_wrap1() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -332,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_wrap_large_length() {
+    pub(crate) fn test_wrap_large_length() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -357,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_wrap_small_length() {
+    pub(crate) fn test_wrap_small_length() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -380,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_wrap_bad_key_size() {
+    pub(crate) fn test_wrap_bad_key_size() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -411,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_wrap_bad_input_size() {
+    pub(crate) fn test_wrap_bad_input_size() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_wrap_bad_input_content() {
+    pub(crate) fn test_wrap_bad_input_content() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();

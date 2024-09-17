@@ -24,7 +24,7 @@ use crate::{
             utils::{build_usage_mask_from_key_usage, KeyUsage},
         },
     },
-    error::CliError,
+    error::{result::CliResult, CliError},
 };
 
 const MOZILLA_CCADB: &str =
@@ -118,28 +118,28 @@ pub struct ImportCertificateAction {
 }
 
 impl ImportCertificateAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         debug!("CLI: entering import certificate");
 
         //generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         };
         if let Some(public_key_id) = &self.public_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
@@ -215,7 +215,9 @@ impl ImportCertificateAction {
                 debug!("CLI: import certificate as PKCS12 file");
                 let private_key_id = self.import_pkcs12(kms_rest_client).await?;
                 (
-                    "The private key in the PKCS12 file was successfully imported!".to_string(),
+                    "The certificate(s) and private key were successfully imported! The private \
+                     key has id:"
+                        .to_string(),
                     Some(private_key_id),
                 )
             }
@@ -271,7 +273,7 @@ impl ImportCertificateAction {
     }
 
     /// Import the certificate, the chain and the associated private key
-    async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> Result<String, CliError> {
+    async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> CliResult<String> {
         let cryptographic_usage_mask = self
             .key_usage
             .as_deref()
@@ -285,7 +287,7 @@ impl ImportCertificateAction {
         attributes.set_cryptographic_usage_mask(cryptographic_usage_mask);
 
         if let Some(password) = &self.pkcs12_password {
-            attributes.add_link(
+            attributes.set_link(
                 LinkType::PKCS12PasswordLink,
                 LinkedObjectIdentifier::TextString(password.clone()),
             );
@@ -304,13 +306,13 @@ impl ImportCertificateAction {
         Ok(private_key_id)
     }
 
-    fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
-        self.certificate_file
-            .as_ref()
-            .ok_or(CliError::InvalidRequest(format!(
+    fn get_certificate_file(&self) -> CliResult<&PathBuf> {
+        self.certificate_file.as_ref().ok_or_else(|| {
+            CliError::InvalidRequest(format!(
                 "Certificate file parameter is MANDATORY for {:?} format",
                 self.input_format
-            )))
+            ))
+        })
     }
 
     /// Import the certificates in reverse order (from root to leaf)
@@ -321,7 +323,7 @@ impl ImportCertificateAction {
         mut objects: Vec<Object>,
         replace_existing: bool,
         leaf_certificate_attributes: Option<Attributes>,
-    ) -> Result<String, CliError> {
+    ) -> CliResult<String> {
         let mut previous_identifier: Option<String> = None;
         while let Some(object) = objects.pop() {
             let mut import_attributes = if objects.is_empty() {
@@ -333,7 +335,7 @@ impl ImportCertificateAction {
             // add link to issuer/parent certificate if any
             if let Some(id) = previous_identifier {
                 let attributes = import_attributes.get_or_insert(Attributes::default());
-                attributes.add_link(
+                attributes.set_link(
                     LinkType::CertificateLink,
                     LinkedObjectIdentifier::TextString(id.clone()),
                 );
@@ -359,7 +361,7 @@ impl ImportCertificateAction {
 }
 
 /// Build a chain of certificates from a PEM stack
-fn build_chain_from_stack(pem_chain: &[u8]) -> Result<Vec<Object>, CliError> {
+fn build_chain_from_stack(pem_chain: &[u8]) -> CliResult<Vec<Object>> {
     let pem_s = pem::parse_many(pem_chain)
         .map_err(|e| CliError::Conversion(format!("Cannot parse PEM content. Error: {e:?}")))?; // check the PEM is valid (no error
     let mut objects = vec![];

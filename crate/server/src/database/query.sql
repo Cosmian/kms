@@ -1,3 +1,9 @@
+-- name: create-table-context
+CREATE TABLE IF NOT EXISTS context (
+        version VARCHAR(40) PRIMARY KEY,
+        state VARCHAR(40)
+);
+
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects (
         id VARCHAR(40) PRIMARY KEY,
@@ -6,6 +12,10 @@ CREATE TABLE IF NOT EXISTS objects (
         state VARCHAR(32),
         owner VARCHAR(255)
 );
+-- name: add-column-attributes
+ALTER TABLE objects ADD COLUMN attributes json;
+-- name: has-column-attributes
+SELECT attributes from objects;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
@@ -22,6 +32,9 @@ CREATE TABLE IF NOT EXISTS tags (
         UNIQUE (id, tag)
 );
 
+-- name: clean-table-context
+DELETE FROM context;
+
 -- name: clean-table-objects
 DELETE FROM objects;
 
@@ -30,6 +43,18 @@ DELETE FROM read_access;
 
 -- name: clean-table-tags
 DELETE FROM tags;
+
+-- name: select-context
+SELECT * FROM context ORDER BY version ASC LIMIT 1;
+
+-- name: insert-context
+INSERT INTO context (version, state) VALUES ($1, $2);
+
+-- name: update-context
+UPDATE context SET version=$1, state=$2 WHERE state=$3;
+
+-- name: delete-version
+DELETE FROM context WHERE version=$1;
 
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5);
@@ -53,7 +78,8 @@ DELETE FROM objects WHERE id=$1 AND owner=$2;
 -- name: upsert-object
 INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, state=$4
+        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5
+        WHERE objects.id=$1;
         WHERE objects.owner=$5;
 
 -- name: select-user-accesses-for-object

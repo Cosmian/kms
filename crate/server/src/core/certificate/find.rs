@@ -1,8 +1,6 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{LinkType, LinkedObjectIdentifier},
-};
+use cosmian_kmip::kmip::kmip_types::{LinkType, LinkedObjectIdentifier};
 use cosmian_kms_client::access::ObjectOperationType;
+use tracing::trace;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},
@@ -26,6 +24,11 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
+    trace!(
+        "Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}",
+        private_key_id,
+        certificate_id
+    );
     if let (Some(private_key_id), Some(certificate_id)) = (&private_key_id, &certificate_id) {
         // Retrieve the certificate
         let certificate = retrieve_object_for_operation(
@@ -57,7 +60,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
         )
         .await?;
         let certificate = retrieve_certificate_for_private_key(
-            &private_key.object,
+            &private_key,
             ObjectOperationType::Certify,
             kms,
             user,
@@ -90,37 +93,40 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
 
     kms_bail!(KmsError::InvalidRequest(
         "Either an issuer certificate id or an issuer private key id or both must be provided"
-            .to_string(),
+            .to_owned(),
     ))
 }
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_certificate_for_private_key(
-    private_key: &Object,
+    private_key: &ObjectWithMetadata,
     operation_type: ObjectOperationType,
     kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
+    trace!("Retrieving certificate for private key: {}", private_key.id);
     // recover the Certificate Link inside the Private Key
-    let attributes = private_key.attributes().map_err(|_| {
-        KmsError::InvalidRequest(
-            "PKCS#12 export: no attributes found in the Private Key".to_string(),
-        )
-    })?;
-    let certificate_id = attributes
+    let certificate_id = private_key
+        .attributes
         .get_link(LinkType::PKCS12CertificateLink)
-        .or_else(|| attributes.get_link(LinkType::CertificateLink));
+        .or_else(|| private_key.attributes.get_link(LinkType::CertificateLink));
 
     let certificate_id = if let Some(certificate_id) = certificate_id {
+        trace!("found link to certificate: {}", certificate_id);
         certificate_id
     } else {
         // check if there is a link to a public key
-        let public_key_id = attributes
+        let public_key_id = private_key
+            .attributes
             .get_link(LinkType::PublicKeyLink)
             .ok_or_else(|| {
-                KmsError::InvalidRequest("No public key link found for the private key".to_string())
+                KmsError::InvalidRequest("No public key link found for the private key".to_owned())
             })?;
+        trace!(
+            "found link to public key: {}. Will get certificate link from there",
+            public_key_id
+        );
         find_link_in_public_key(
             LinkType::CertificateLink,
             &public_key_id,
@@ -144,19 +150,28 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     .with_context(|| {
         format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
     })?;
+    trace!(
+        "Retrieved certificate: {} for private key: {}",
+        cert_owm.id,
+        private_key.id
+    );
     Ok(cert_owm)
 }
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_private_key_for_certificate(
-    certificate_id: &str,
+    certificate_uid_or_tags: &str,
     operation_type: ObjectOperationType,
     kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
+    trace!(
+        "Retrieving private key for certificate: certificate_uid_or_tags: {:?}",
+        certificate_uid_or_tags
+    );
     let owm = retrieve_object_for_operation(
-        certificate_id,
+        certificate_uid_or_tags,
         ObjectOperationType::GetAttributes,
         kms,
         user,
@@ -164,10 +179,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     )
     .await?;
 
-    let private_key_id = owm
-        .attributes
-        .get_link(LinkType::PKCS12CertificateLink)
-        .or_else(|| owm.attributes.get_link(LinkType::CertificateLink));
+    let private_key_id = owm.attributes.get_link(LinkType::PrivateKeyLink);
 
     let private_key_id = if let Some(private_key_id) = private_key_id {
         private_key_id
@@ -178,7 +190,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
             .get_link(LinkType::PublicKeyLink)
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
-                    "No private or public key link found for the certificate".to_string(),
+                    "No private or public key link found for the certificate".to_owned(),
                 )
             })?;
         find_link_in_public_key(
@@ -222,9 +234,7 @@ async fn find_link_in_public_key(
         params,
     )
     .await?;
-    let public_key_attributes = public_key_owm.object.attributes().with_context(|| {
-        format!("could not retrieve the public key attributes: {public_key_id}")
-    })?;
+    let public_key_attributes = public_key_owm.attributes;
     // retrieve the private key linked to the public key
     public_key_attributes.get_link(link_type).ok_or_else(|| {
         KmsError::InvalidRequest(format!("No {link_type:?} found in the public key"))

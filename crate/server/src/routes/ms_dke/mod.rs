@@ -85,20 +85,23 @@ pub struct KeyData {
 }
 
 #[get("/version")]
-pub async fn version(req_http: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
-    info!("GET /version {}", kms.get_user(req_http)?);
-    Ok(Json(crate_version!().to_string()))
+pub(crate) async fn version(
+    req_http: HttpRequest,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<String>> {
+    info!("GET /version {}", kms.get_user(&req_http));
+    Ok(Json(crate_version!().to_owned()))
 }
 
 #[get("/{key_name}")]
-pub async fn get_key(
+pub(crate) async fn get_key(
     req_http: HttpRequest,
     path: Path<String>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let mut key_name = path.into_inner();
     if key_name.is_empty() {
-        key_name = "dke_key".to_string();
+        "dke_key".clone_into(&mut key_name);
     }
     match _get_key(&key_name, req_http, &kms).await {
         Ok(key_data) => {
@@ -115,7 +118,7 @@ pub async fn get_key(
 
 async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
+    let user = kms.get_user(&req_http);
     let dke_service_url = kms
         .params
         .ms_dke_service_url
@@ -145,7 +148,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) ->
                          is not supported"
                     )
                 })?;
-                let mut existing_path = dke_service_url.path().to_string();
+                let mut existing_path = dke_service_url.path().to_owned();
                 // remove the trailing / if any
                 if existing_path.ends_with('/') {
                     existing_path.pop();
@@ -195,17 +198,14 @@ pub struct EncryptedData {
 }
 
 #[post("/{key_name}/{key_id}/decrypt")]
-pub async fn decrypt(
+pub(crate) async fn decrypt(
     req_http: HttpRequest,
     wrap_request: Json<EncryptedData>,
     path: Path<(String, String)>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
-    info!(
-        "Encrypted Data : {}",
-        serde_json::to_string(&encrypted_data).unwrap()
-    );
+    info!("Encrypted Data : {encrypted_data:?}",);
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
     trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
@@ -222,7 +222,7 @@ async fn _decrypt(
     kms: &Arc<KMSServer>,
 ) -> KResult<DecryptedData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
+    let user = kms.get_user(&req_http);
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
             serde_json::to_string(&vec![key_tag, "_sk"]).map_err(|e| kms_error!(e))?,
@@ -252,13 +252,14 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
     let bytes = bu.to_bytes_be();
     let len = bytes.len();
     let min = std::cmp::min(4, len);
-    let mut padded = [0u8; 4];
+    let mut padded = [0_u8; 4];
     padded[4 - min..].copy_from_slice(&bytes[len - min..]);
     u32::from_be_bytes(padded)
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
     use num_bigint_dig::BigUint;
 

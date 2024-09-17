@@ -10,7 +10,6 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    error::Pkcs11Error,
     kms_object::{get_kms_objects, kms_decrypt, locate_kms_objects},
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -19,14 +18,14 @@ use crate::{
 
 const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
-pub struct CkmsBackend {
+pub(crate) struct CkmsBackend {
     kms_client: KmsClient,
 }
 
 impl CkmsBackend {
     /// Instantiate a new `CkmsBackend` using the
-    pub fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
-        Ok(CkmsBackend { kms_client })
+    pub(crate) const fn instantiate(kms_client: KmsClient) -> Self {
+        Self { kms_client }
     }
 }
 
@@ -74,11 +73,11 @@ impl Backend for CkmsBackend {
     fn find_all_certificates(&self) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn Certificate>>> {
         trace!("find_all_certificates");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
+            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
             &self.kms_client,
             &[disk_encryption_tag, "_cert".to_string()],
-            KeyFormatType::X509,
+            Some(KeyFormatType::X509),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
@@ -109,7 +108,7 @@ impl Backend for CkmsBackend {
     ) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn RemoteObjectId>>> {
         trace!("find_all_private_keys");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
+            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         Ok(
             locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])?
                 .into_iter()
@@ -137,11 +136,11 @@ impl Backend for CkmsBackend {
     fn find_all_data_objects(&self) -> cosmian_pkcs11_module::MResult<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
+            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
             &self.kms_client,
             &[disk_encryption_tag, "_kk".to_string()],
-            KeyFormatType::Raw,
+            Some(KeyFormatType::Raw), // that is the default format type
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {

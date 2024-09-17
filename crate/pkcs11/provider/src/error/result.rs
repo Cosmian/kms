@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use super::Pkcs11Error;
 
-pub type Pkcs11Result<R> = Result<R, Pkcs11Error>;
+pub(crate) type Pkcs11Result<R> = Result<R, Pkcs11Error>;
 
 #[allow(dead_code)]
-pub trait Pkcs11ResultHelper<T> {
+pub(crate) trait Pkcs11ResultHelper<T> {
     fn context(self, context: &str) -> Pkcs11Result<T>;
     fn with_context<D, O>(self, op: O) -> Pkcs11Result<T>
     where

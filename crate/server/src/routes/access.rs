@@ -16,7 +16,7 @@ use crate::{database::KMSServer, result::KResult};
 /// List objects owned by the current user
 /// i.e. objects for which the user has full access
 #[get("/access/owned")]
-pub async fn list_owned_objects(
+pub(crate) async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
@@ -24,7 +24,7 @@ pub async fn list_owned_objects(
     let _enter = span.enter();
 
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /access/owned {user}");
 
     let list = kms
@@ -37,7 +37,7 @@ pub async fn list_owned_objects(
 /// List objects not owned by the user but for which an access
 /// has been obtained by the user
 #[get("/access/obtained")]
-pub async fn list_access_rights_obtained(
+pub(crate) async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
@@ -45,7 +45,7 @@ pub async fn list_access_rights_obtained(
     let _enter = span.enter();
 
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /access/granted {user}");
 
     let list = kms
@@ -57,7 +57,7 @@ pub async fn list_access_rights_obtained(
 
 /// List access rights for an object
 #[get("/access/list/{object_id}")]
-pub async fn list_accesses(
+pub(crate) async fn list_accesses(
     req: HttpRequest,
     object_id: Path<(String,)>,
     kms: Data<Arc<KMSServer>>,
@@ -67,7 +67,7 @@ pub async fn list_accesses(
 
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(req)?;
+    let user = kms.get_user(&req);
     info!(user = user, "GET /accesses/{object_id} {user}");
 
     let list = kms
@@ -79,7 +79,7 @@ pub async fn list_accesses(
 
 /// Grant an access right for an object, given a `userid`
 #[post("/access/grant")]
-pub async fn grant_access(
+pub(crate) async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
@@ -89,7 +89,7 @@ pub async fn grant_access(
 
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(req)?;
+    let user = kms.get_user(&req);
     info!(
         user = user,
         access = access.to_string(),
@@ -110,7 +110,7 @@ pub async fn grant_access(
 
 /// Revoke an access authorization for an object, given a `userid`
 #[post("/access/revoke")]
-pub async fn revoke_access(
+pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
@@ -120,7 +120,7 @@ pub async fn revoke_access(
 
     let access = access.into_inner();
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
-    let user = kms.get_user(req)?;
+    let user = kms.get_user(&req);
     info!(
         user = user,
         access = access.to_string(),

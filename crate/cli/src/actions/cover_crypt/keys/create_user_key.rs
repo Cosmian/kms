@@ -7,7 +7,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::console,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Create a new user decryption key given an access policy expressed as a boolean expression.
@@ -54,7 +54,7 @@ pub struct CreateUserKeyAction {
 
     /// The access policy as a boolean expression combining policy attributes.
     ///
-    /// Example: "(Department::HR || Department::MKG) && Security Level::Confidential"
+    /// Example: "(`Department::HR` || `Department::MKG`) && Security `Level::Confidential`"
     #[clap(required = true)]
     access_policy: String,
 
@@ -65,7 +65,7 @@ pub struct CreateUserKeyAction {
 }
 
 impl CreateUserKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Verify boolean expression in self.access_policy
         AccessPolicy::from_boolean_expression(&self.access_policy)
             .with_context(|| "bad access policy syntax")?;

@@ -15,10 +15,13 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use super::utils::{build_usage_mask_from_key_usage, KeyUsage};
-use crate::{actions::console, error::CliError};
+use crate::{
+    actions::console,
+    error::{result::CliResult, CliError},
+};
 
 #[derive(clap::ValueEnum, Debug, Clone)]
-pub enum ImportKeyFormat {
+pub(crate) enum ImportKeyFormat {
     JsonTtlv,
     Pem,
     Sec1,
@@ -108,7 +111,24 @@ pub struct ImportKeyAction {
 }
 
 impl ImportKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Run the import key action.
+    ///
+    /// # Errors
+    ///
+    /// This function can return a [`CliError`] if an error occurs during the import process.
+    ///
+    /// Possible error cases include:
+    ///
+    /// - Failed to read the key file.
+    /// - Failed to parse the key file in the specified format.
+    /// - Invalid key format specified.
+    /// - Failed to assign cryptographic usage mask.
+    /// - Failed to generate import attributes.
+    /// - Failed to import the key.
+    /// - Failed to write the response to stdout.
+    ///
+    /// [`CliError`]: ../error/result/enum.CliError.html
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let cryptographic_usage_mask = self
             .key_usage
             .as_deref()
@@ -130,10 +150,10 @@ impl ImportKeyAction {
             ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
             ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
             ImportKeyFormat::Aes => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)
+                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)?
             }
             ImportKeyFormat::Chacha20 => {
-                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)
+                build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
             }
         };
         // Assign CryptographicUsageMask from command line arguments.
@@ -154,20 +174,20 @@ impl ImportKeyAction {
 
         if let Some(issuer_certificate_id) = &self.certificate_id {
             //let attributes = import_attributes.get_or_insert(Attributes::default());
-            import_attributes.add_link(
+            import_attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
             //let attributes = import_attributes.get_or_insert(Attributes::default());
-            import_attributes.add_link(
+            import_attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
         };
         if let Some(public_key_id) = &self.public_key_id {
-            import_attributes.add_link(
+            import_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
@@ -200,7 +220,7 @@ impl ImportKeyAction {
 }
 
 /// Read a key from a PEM file
-fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
+fn read_key_from_pem(bytes: &[u8]) -> CliResult<Object> {
     let mut objects = objects_from_pem(bytes)?;
     let object = objects
         .pop()
@@ -276,9 +296,9 @@ fn build_public_key_from_der_bytes(
 fn build_symmetric_key_from_bytes(
     cryptographic_algorithm: CryptographicAlgorithm,
     bytes: Zeroizing<Vec<u8>>,
-) -> Object {
-    let len = bytes.len() as i32 * 8;
-    Object::SymmetricKey {
+) -> CliResult<Object> {
+    let len = i32::try_from(bytes.len())? * 8;
+    Ok(Object::SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
@@ -290,5 +310,5 @@ fn build_symmetric_key_from_bytes(
             cryptographic_length: Some(len),
             key_wrapping_data: None,
         },
-    }
+    })
 }

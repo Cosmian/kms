@@ -1,11 +1,13 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout)]
+
 use base64::{engine::general_purpose::STANDARD, Engine};
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
     kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-        PaddingMethod, UniqueIdentifier,
+        Attributes, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
+        KeyFormatType, PaddingMethod, UniqueIdentifier,
     },
 };
 
@@ -50,7 +52,7 @@ const ENCRYPTED_DATA: &str = r#"{
 #[ignore]
 #[tokio::test]
 async fn decrypt_data_test() -> KResult<()> {
-    // log_init("cosmian_kms_server=info");
+    cosmian_logger::log_utils::log_init(None);
 
     let app = test_utils::test_app(None).await;
 
@@ -62,7 +64,7 @@ async fn decrypt_data_test() -> KResult<()> {
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Default::default(),
+        attributes: Attributes::default(),
         object: Object::PublicKey {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,

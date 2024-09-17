@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{error::KmipError, kmip::kmip_operations::ErrorReason};
 
-pub type KmipResult<R> = Result<R, KmipError>;
+pub(crate) type KmipResult<R> = Result<R, KmipError>;
 
 pub trait KmipResultHelper<T> {
     fn reason(self, reason: ErrorReason) -> KmipResult<T>;

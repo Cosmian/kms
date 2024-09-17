@@ -46,8 +46,9 @@ fn jwt_authorization_config_application(
         "gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
     ));
 
-    let jwt_audience =
-        Some(std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()));
+    let jwt_audience = Some(
+        std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
+    );
 
     Arc::new(JwtConfig {
         jwt_issuer_uri,
@@ -57,12 +58,14 @@ fn jwt_authorization_config_application(
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' and 'meet'
-pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<String, Arc<JwtConfig>> {
+pub fn jwt_authorization_config(
+    jwks_manager: &Arc<JwksManager>,
+) -> HashMap<String, Arc<JwtConfig>> {
     APPLICATIONS
         .iter()
         .map(|app| {
             (
-                (*app).to_string(),
+                (*app).to_owned(),
                 jwt_authorization_config_application(app, jwks_manager.clone()),
             )
         })
@@ -70,7 +73,7 @@ pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<Strin
 }
 
 /// Decode a json web token (JWT) used for Google CSE
-pub async fn decode_jwt_authorization_token(
+pub(crate) fn decode_jwt_authorization_token(
     jwt_config: &Arc<JwtConfig>,
     token: &str,
 ) -> KResult<(UserClaim, JwtTokenHeaders)> {
@@ -93,24 +96,26 @@ pub async fn decode_jwt_authorization_token(
                     KmsError::ServerError(
                         "JWT audience should be configured with Google Workspace client-side \
                          encryption"
-                            .to_string(),
+                            .to_owned(),
                     )
                 })?
                 .to_string(),
         ),
-        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
+        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.clone()),
     ];
 
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.
     let kid = token_kid(token)
-        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
-        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
+        .map_err(|e| {
+            KmsError::Unauthorized(format!("Failed to decode token headers. Error: {e:?}"))
+        })?
+        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
     tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
-    let jwk = &jwt_config.jwks.find(&kid).ok_or_else(|| {
-        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_string())
+    let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
+        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
     tracing::trace!("JWK has been found:\n{jwk:?}");
 
@@ -141,7 +146,7 @@ pub struct GoogleCseConfig {
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-pub async fn validate_tokens(
+pub(crate) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
@@ -151,7 +156,7 @@ pub async fn validate_tokens(
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
-                .to_string(),
+                .to_owned(),
         )
     })?;
 
@@ -178,32 +183,32 @@ pub async fn validate_tokens(
         ))
     })?;
     let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(jwt_config, authorization_token).await?;
+        decode_jwt_authorization_token(jwt_config, authorization_token)?;
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
     // The emails should match (case insensitive)
     let authentication_email = authentication_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authentication token should contain an email".to_string())
+        KmsError::Unauthorized("Authentication token should contain an email".to_owned())
     })?;
     let authorization_email = authorization_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain an email".to_string())
+        KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
     kms_ensure!(
         authorization_email == authentication_email,
         KmsError::Unauthorized(
-            "Authentication and authorization emails in tokens do not match".to_string()
+            "Authentication and authorization emails in tokens do not match".to_owned()
         )
     );
 
     if let Some(roles) = roles {
         let role = authorization_token.role.ok_or_else(|| {
-            KmsError::Unauthorized("Authorization token should contain a role".to_string())
+            KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
         kms_ensure!(
             roles.contains(&role.as_str()),
             KmsError::Unauthorized(
-                "Authorization token should contain a role of writer or owner".to_string()
+                "Authorization token should contain a role of writer or owner".to_owned()
             )
         );
     }
@@ -225,8 +230,10 @@ pub async fn validate_tokens(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use std::sync::Arc;
 
+    use cosmian_logger::log_utils::log_init;
     use tracing::info;
 
     use crate::{
@@ -244,9 +251,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_wrap_auth() {
-        // log_init("cosmian_kms_server=info");
+        log_init(option_env!("RUST_LOG"));
 
-        let jwt = generate_google_jwt().await;
+        let jwt = match generate_google_jwt().await {
+            Ok(jwt) => jwt,
+            Err(e) => {
+                info!("Ignoring test_wrap_auth: {e}");
+                return;
+            }
+        };
 
         let wrap_request = format!(
             r#"
@@ -272,8 +285,8 @@ mod tests {
         let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").unwrap();
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_string()]),
-            jwks_uri: Some(vec![JWKS_URI.to_string()]),
+            jwt_issuer_uri: Some(vec![JWT_ISSUER_URI.to_owned()]),
+            jwks_uri: Some(vec![JWKS_URI.to_owned()]),
             jwt_audience: Some(vec![client_id]),
         };
         let jwt_authentication_config = JwtConfig {
@@ -288,47 +301,48 @@ mod tests {
         info!("AUTHENTICATION token: {:?}", authentication_token);
         assert_eq!(
             authentication_token.iss,
-            Some("https://accounts.google.com".to_string())
+            Some("https://accounts.google.com".to_owned())
         );
         assert_eq!(
             authentication_token.email,
-            Some("blue@cosmian.com".to_string())
+            Some("blue@cosmian.com".to_owned())
         );
         assert_eq!(
             authentication_token.aud,
             Some(
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
-                    .to_string()
+                    .to_owned()
             )
         );
 
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
-        let jwt_authorization_config = jwt_authorization_config(jwks_manager);
+        unsafe {
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+            std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        }
+        let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
-            jwt_authorization_config.get("drive").unwrap(),
+            &jwt_authorization_config["drive"],
             &wrap_request.authorization,
         )
-        .await
         .unwrap();
         info!("AUTHORIZATION token: {:?}", authorization_token);
         info!("AUTHORIZATION token headers: {:?}", jwt_headers);
 
         assert_eq!(
             authorization_token.email,
-            Some("blue@cosmian.com".to_string())
+            Some("blue@cosmian.com".to_owned())
         );
-        // prev: Some("cse-authorization".to_string())
+        // prev: Some("cse-authorization".to_owned())
         assert_eq!(
             authorization_token.aud,
             Some(
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
-                    .to_string()
+                    .to_owned()
             )
         );
     }

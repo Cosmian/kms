@@ -54,13 +54,13 @@ pub enum DigestType {
 
 impl DigestType {
     #[must_use]
-    pub fn digest_len(&self) -> usize {
+    pub const fn digest_len(&self) -> usize {
         match self {
-            DigestType::Sha1 => 20,
-            DigestType::Sha224 => 28,
-            DigestType::Sha256 => 32,
-            DigestType::Sha384 => 48,
-            DigestType::Sha512 => 64,
+            Self::Sha1 => 20,
+            Self::Sha224 => 28,
+            Self::Sha256 => 32,
+            Self::Sha384 => 48,
+            Self::Sha512 => 64,
         }
     }
 }
@@ -102,15 +102,15 @@ impl TryFrom<&Attributes> for SearchOptions {
 
     fn try_from(attributes: &Attributes) -> std::result::Result<Self, Self::Error> {
         if attributes.is_empty() {
-            return Ok(SearchOptions::All);
+            return Ok(Self::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
             // let id = compoundid::decode(id)?;
-            Ok(SearchOptions::Id(id.clone()))
+            Ok(Self::Id(id.clone()))
         } else if let Some(Attribute::Label(label)) = attributes.get(AttributeType::Label) {
-            Ok(SearchOptions::Label(label.into()))
+            Ok(Self::Label(label.into()))
         } else {
-            Ok(SearchOptions::All)
+            Ok(Self::All)
         }
     }
 }

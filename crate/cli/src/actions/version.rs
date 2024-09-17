@@ -2,7 +2,7 @@ use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
 use super::console;
-use crate::error::{result::CliResultHelper, CliError};
+use crate::error::result::{CliResult, CliResultHelper};
 
 /// Print the version of the server
 #[derive(Parser, Debug)]
@@ -10,7 +10,16 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct ServerVersionAction;
 
 impl ServerVersionAction {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Process the server version action.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - The KMS client instance used to communicate with the KMS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the version query fails or if there is an issue writing to the console.
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let version = kms_rest_client
             .version()
             .await

@@ -30,6 +30,10 @@ pub struct HttpConfig {
     /// The server must run in TLS mode for this to be used.
     #[clap(long, env = "KMS_AUTHORITY_CERT_FILE")]
     pub authority_cert_file: Option<PathBuf>,
+
+    /// The API token to use for authentication
+    #[clap(long, env = "KMS_API_TOKEN")]
+    pub api_token_id: Option<String>,
 }
 
 impl Display for HttpConfig {
@@ -61,10 +65,11 @@ impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             port: DEFAULT_PORT,
-            hostname: DEFAULT_HOSTNAME.to_string(),
+            hostname: DEFAULT_HOSTNAME.to_owned(),
             https_p12_file: None,
             https_p12_password: None,
             authority_cert_file: None,
+            api_token_id: None,
         }
     }
 }

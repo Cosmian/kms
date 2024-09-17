@@ -40,7 +40,7 @@ impl From<KeyUsage> for String {
     }
 }
 
-pub fn build_usage_mask_from_key_usage(
+pub(crate) fn build_usage_mask_from_key_usage(
     key_usage_vec: &[KeyUsage],
 ) -> Option<CryptographicUsageMask> {
     let mut flags = 0;

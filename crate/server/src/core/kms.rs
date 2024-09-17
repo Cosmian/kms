@@ -16,8 +16,8 @@ use cosmian_kmip::{
             Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
             Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
             ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-            ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-            RevokeResponse, Validate, ValidateResponse,
+            ImportResponse, Locate, LocateResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
+            ReKeyResponse, Revoke, RevokeResponse, Validate, ValidateResponse,
         },
         kmip_types::{StateEnumeration, UniqueIdentifier},
     },
@@ -34,7 +34,7 @@ use crate::{
     database::Database,
     error::KmsError,
     kms_bail, kms_error,
-    middlewares::{ssl_auth::PeerCommonName, JwtAuthClaim},
+    middlewares::{JwtAuthClaim, PeerCommonName},
     result::{KResult, KResultHelper},
 };
 
@@ -48,29 +48,6 @@ pub struct KMS {
 /// Implement the KMIP Server operations and dispatches the actual actions
 /// to the implementation module or ciphers for encryption/decryption
 impl KMS {
-    /// Get the server X509 certificate
-    ///
-    /// # Errors
-    /// Returns a `KResult` with a `Error` if
-    ///  - the server is not running TLS
-    ///  - the server server certificate cannot be read
-    pub fn get_server_x509_certificate(&self) -> KResult<Option<Vec<u8>>> {
-        match &self.params.http_params {
-            crate::config::HttpParams::Https(p12) => {
-                let pem = p12
-                    .cert
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
-                    })?
-                    .to_pem()?;
-
-                Ok(Some(pem))
-            }
-            crate::config::HttpParams::Http => Ok(None),
-        }
-    }
-
     /// Adds a new encrypted `SQLite` database to the KMS server.
     ///
     /// # Returns
@@ -81,7 +58,7 @@ impl KMS {
     ///
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
-    pub async fn add_new_database(&self) -> KResult<String> {
+    pub(crate) async fn add_new_database(&self) -> KResult<String> {
         if let DbParams::SqliteEnc(_) = self.params.db_params.as_ref().ok_or_else(|| {
             kms_error!("Unexpected fatal error: no database configured on the KMS server")
         })? {
@@ -133,7 +110,7 @@ impl KMS {
     /// for queries on tags. See tagging.
     /// For instance, a request for unique identifier `[tag1]` will
     /// attempt to find a valid single object tagged with `tag1`
-    pub async fn import(
+    pub(crate) async fn import(
         &self,
         request: Import,
         user: &str,
@@ -165,7 +142,7 @@ impl KMS {
     /// If the information in the Certificate Request conflicts with the
     /// attributes specified in the Attributes, then the information in the
     /// Certificate Request takes precedence.
-    pub async fn certify(
+    pub(crate) async fn certify(
         &self,
         request: Certify,
         user: &str,
@@ -182,7 +159,7 @@ impl KMS {
     /// contains the Unique Identifier of the created object. The server SHALL
     /// copy the Unique Identifier returned by this operation into the ID
     /// Placeholder variable.
-    pub async fn create(
+    pub(crate) async fn create(
         &self,
         request: Create,
         user: &str,
@@ -206,7 +183,7 @@ impl KMS {
     /// to the Private Key. The response contains the Unique Identifiers of
     /// both created objects. The ID Placeholder value SHALL be set to the
     /// Unique Identifier of the Private Key
-    pub async fn create_key_pair(
+    pub(crate) async fn create_key_pair(
         &self,
         request: CreateKeyPair,
         user: &str,
@@ -233,7 +210,7 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub async fn decrypt(
+    pub(crate) async fn decrypt(
         &self,
         request: Decrypt,
         user: &str,
@@ -247,7 +224,7 @@ impl KMS {
     /// inaccessible. The meta-data for the key material SHALL be retained by
     /// the server.  Objects SHALL only be destroyed if they are in either
     /// Pre-Active or Deactivated state.
-    pub async fn destroy(
+    pub(crate) async fn destroy(
         &self,
         request: Destroy,
         user: &str,
@@ -284,7 +261,7 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub async fn encrypt(
+    pub(crate) async fn encrypt(
         &self,
         request: Encrypt,
         user: &str,
@@ -301,7 +278,7 @@ impl KMS {
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations
     /// into the ID Placeholder variable.
-    pub async fn export(
+    pub(crate) async fn export(
         &self,
         request: Export,
         user: &str,
@@ -331,7 +308,7 @@ impl KMS {
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
     /// then using each certificate's Ce
-    pub async fn get(
+    pub(crate) async fn get(
         &self,
         request: Get,
         user: &str,
@@ -350,7 +327,7 @@ impl KMS {
     /// Identifier. The same Attribute Reference SHALL NOT be present more
     /// than once in a request. If no Attribute Reference is provided, the
     /// server SHALL return all attributes.
-    pub async fn get_attributes(
+    pub(crate) async fn get_attributes(
         &self,
         request: GetAttributes,
         user: &str,
@@ -449,7 +426,7 @@ impl KMS {
     /// server SHALL NOT return unique identifiers for objects that are archived
     /// unless the Storage Status Mask field includes the Archived Storage
     /// indicator.
-    pub async fn locate(
+    pub(crate) async fn locate(
         &self,
         request: Locate,
         user: &str,
@@ -483,13 +460,49 @@ impl KMS {
     // key pair. If Offset is set and dates exist for the existing key pair, then
     // the dates of the replacement key pair SHALL be set based on the dates of the
     // existing key pair as follows
-    pub async fn rekey_keypair(
+    pub(crate) async fn rekey_keypair(
         &self,
         request: ReKeyKeyPair,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
         operations::rekey_keypair(self, request, user, params).await
+    }
+
+    /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
+    ///
+    /// As the replacement key takes over the name attribute of the existing key, Re-key SHOULD only be performed once on a given key.
+    ///
+    /// The server SHALL copy the Unique Identifier of the replacement key returned by this operation into the ID Placeholder variable.
+    ///
+    /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
+    ///
+    /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
+    pub(crate) async fn rekey(
+        &self,
+        request: ReKey,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<ReKeyResponse> {
+        operations::rekey(self, request, user, params).await
+    }
+
+    pub(crate) async fn message(
+        &self,
+        request: Message,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<MessageResponse> {
+        operations::message(self, request, user, params).await
+    }
+
+    pub(crate) async fn validate(
+        &self,
+        request: Validate,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<ValidateResponse> {
+        operations::validate_operation(self, request, user, params).await
     }
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -504,7 +517,7 @@ impl KMS {
     /// object. If the revocation reason is neither "key compromise" nor "CA
     /// compromise", the object is placed into the "deactivated" state, and the
     /// Deactivation Date is set to the current date and time.
-    pub async fn revoke(
+    pub(crate) async fn revoke(
         &self,
         request: Revoke,
         user: &str,
@@ -516,7 +529,7 @@ impl KMS {
     /// Grant an access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn grant_access(
+    pub(crate) async fn grant_access(
         &self,
         access: &Access,
         owner: &str,
@@ -540,7 +553,7 @@ impl KMS {
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't grant yourself, you have already all rights on your own objects"
-                    .to_string()
+                    .to_owned()
             ))
         }
 
@@ -558,7 +571,7 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn revoke_access(
+    pub(crate) async fn revoke_access(
         &self,
         access: &Access,
         owner: &str,
@@ -582,7 +595,7 @@ impl KMS {
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't revoke yourself, you should keep all rights on your own objects"
-                    .to_string()
+                    .to_owned()
             ))
         }
 
@@ -599,7 +612,7 @@ impl KMS {
 
     /// Get all the access granted for a given object
     /// per user
-    pub async fn list_accesses(
+    pub(crate) async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
@@ -632,7 +645,7 @@ impl KMS {
     }
 
     /// Get all the objects owned by a given user (the owner)
-    pub async fn list_owned_objects(
+    pub(crate) async fn list_owned_objects(
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -643,7 +656,7 @@ impl KMS {
     }
 
     /// Get all the access rights granted to a given user
-    pub async fn list_access_rights_obtained(
+    pub(crate) async fn list_access_rights_obtained(
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -663,7 +676,7 @@ impl KMS {
     /// The user is encoded in the JWT `Authorization` header
     /// If the header is not present, the user is extracted from the client certificate
     /// If the client certificate is not present, the user is extracted from the configuration file
-    pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
+    pub(crate) fn get_user(&self, req_http: &HttpRequest) -> String {
         let default_username = self.params.default_username.clone();
 
         if self.params.force_default_username {
@@ -671,7 +684,7 @@ impl KMS {
                 "Authenticated using forced default user: {}",
                 default_username
             );
-            return Ok(default_username)
+            return default_username
         }
         // if there is a JWT token, use it in priority
         let user = match req_http.extensions().get::<JwtAuthClaim>() {
@@ -686,12 +699,12 @@ impl KMS {
             }
         };
         debug!("Authenticated user: {}", user);
-        Ok(user)
+        user
     }
 
     /// Get the `SqliteEnc` database secrets from the request
     /// The secrets are encoded in the `KmsDatabaseSecret` header
-    pub fn get_sqlite_enc_secrets(
+    pub(crate) fn get_sqlite_enc_secrets(
         &self,
         req_http: &HttpRequest,
     ) -> KResult<Option<ExtraDatabaseParams>> {
@@ -727,23 +740,5 @@ impl KMS {
                 _ => None,
             },
         )
-    }
-
-    pub async fn message(
-        &self,
-        request: Message,
-        user: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<MessageResponse> {
-        operations::message(self, request, user, params).await
-    }
-
-    pub async fn validate(
-        &self,
-        request: Validate,
-        user: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<ValidateResponse> {
-        operations::validate_operation(self, request, user, params).await
     }
 }

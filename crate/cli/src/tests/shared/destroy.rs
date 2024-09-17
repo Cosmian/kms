@@ -11,7 +11,7 @@ use crate::tests::cover_crypt::{
 };
 use crate::{
     cli_bail,
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export_key, revoke::revoke},
@@ -21,14 +21,14 @@ use crate::{
     },
 };
 
-pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(), CliError> {
+pub(crate) fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> CliResult<()> {
     let args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -39,7 +39,7 @@ pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(
     ))
 }
 
-fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
+fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -86,7 +86,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_destroy_symmetric_key() -> Result<(), CliError> {
+async fn test_destroy_symmetric_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -110,7 +110,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_destroy_ec_key() -> Result<(), CliError> {
+async fn test_destroy_ec_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
@@ -172,7 +172,7 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-async fn test_destroy_cover_crypt() -> Result<(), CliError> {
+async fn test_destroy_cover_crypt() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 

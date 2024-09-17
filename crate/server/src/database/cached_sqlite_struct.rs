@@ -11,9 +11,9 @@ use std::{
 use cloudproof::reexport::crypto_core::reexport::tiny_keccak;
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use sqlx::{Pool, Sqlite};
-use tracing::info;
+use tracing::{debug, info, trace};
 
-use crate::{kms_bail, kms_error, result::KResult};
+use crate::{error::KmsError, kms_bail, kms_error, result::KResult};
 
 macro_rules! mac {
     ($res: expr, $key:expr, $($bytes: expr),+) => {
@@ -29,7 +29,7 @@ macro_rules! mac {
 }
 
 /// The item of the KMS sqlite cache
-pub struct KMSSqliteCacheItem {
+pub(crate) struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// The MAC of the inserted item computed using the DB secret key
@@ -59,31 +59,36 @@ impl fmt::Debug for KMSSqliteCacheItem {
             .field("closed", &self.closed)
             .field("closed_at", &self.closed_at)
             .field("freeable_cache_index", &self.freeable_cache_index)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
 /// Give the time since EPOCH in secs
-pub fn _now() -> u64 {
-    SystemTime::now()
+pub(crate) fn _now() -> KResult<u64> {
+    Ok(SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("Unable to get duration since epoch")
-        .as_secs()
+        .map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to get duration since epoch. Error: {e:?}"))
+        })?
+        .as_secs())
 }
 
 impl KMSSqliteCacheItem {
-    #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, mac: Vec<u8>, freeable_cache_index: usize) -> Self {
-        Self {
+    pub(crate) fn new(
+        sqlite: Pool<Sqlite>,
+        mac: Vec<u8>,
+        freeable_cache_index: usize,
+    ) -> KResult<Self> {
+        Ok(Self {
             sqlite: Arc::new(sqlite),
             mac,
-            inserted_at: _now(),
+            inserted_at: _now()?,
             in_used: 0,
             last_used_at: 0,
             closed: false,
             closed_at: 0,
             freeable_cache_index,
-        }
+        })
     }
 }
 
@@ -99,7 +104,7 @@ impl KMSSqliteCacheItem {
 /// - An handler is considered as used after each `get` and won't be closed until it is not explicitly `release`-ed by the caller. Several `get` are allowed. The `release` will take effect when the last one got is explicitly `release`-ed.
 ///
 /// The cache saves already decrypted sqlite handler. To verify that a user can `get` the handler, the key is checked at each access.
-pub struct KMSSqliteCache {
+pub(crate) struct KMSSqliteCache {
     /// The item of the cache
     sqlites: RwLock<HashMap<u128, KMSSqliteCacheItem>>,
     /// The list of unused sqlite that could be closed if needed
@@ -112,7 +117,7 @@ pub struct KMSSqliteCache {
 
 impl KMSSqliteCache {
     #[must_use]
-    pub fn new(size: usize) -> Self {
+    pub(crate) fn new(size: usize) -> Self {
         Self {
             sqlites: RwLock::new(HashMap::with_capacity(size)),
             freeable_sqlites: RwLock::new(FreeableSqliteCache::new(size)),
@@ -122,32 +127,37 @@ impl KMSSqliteCache {
     }
 
     /// Test if a sqlite connection is opened for a given id
-    pub fn opened(&self, id: u128) -> bool {
-        let sqlites = self.sqlites.read().expect("Unable to lock for read");
+    pub(crate) fn opened(&self, id: u128) -> KResult<bool> {
+        let sqlites = self.sqlites.read().map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to lock for read. Error: {e:?}"))
+        })?;
         if !sqlites.contains_key(&id) {
-            return false
+            return Ok(false);
         }
 
-        !sqlites[&id].closed
+        Ok(!sqlites[&id].closed)
     }
 
     /// Test if a sqlite connection exist in the cache
-    pub fn exists(&self, id: u128) -> bool {
-        self.sqlites
+    pub(crate) fn exists(&self, id: u128) -> KResult<bool> {
+        Ok(self
+            .sqlites
             .read()
-            .expect("Unable to lock for read")
-            .contains_key(&id)
+            .map_err(|e| KmsError::DatabaseError(format!("Unable to lock for read. Error: {e:?}")))?
+            .contains_key(&id))
     }
 
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(
+    pub(crate) fn get(
         &self,
         id: u128,
         key: &Secret<AES_256_GCM_KEY_LENGTH>,
     ) -> KResult<Arc<Pool<Sqlite>>> {
-        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
+        let mut sqlites = self.sqlites.write().map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+        })?;
 
         let item = sqlites
             .get_mut(&id)
@@ -160,7 +170,7 @@ impl KMSSqliteCache {
         // We need to check if the key provided by the user is the same that was used to open the database
         // If we do not, we can just send any password: the database is already opened anyway.
         // Do this by checking the macs
-        let mut mac = vec![0u8; 32];
+        let mut mac = vec![0_u8; 32];
         mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
         if mac != item.mac {
             kms_bail!("Database secret is wrong");
@@ -170,12 +180,14 @@ impl KMSSqliteCache {
         if item.in_used == 0 {
             self.freeable_sqlites
                 .write()
-                .expect("Unable to lock for write")
+                .map_err(|e| {
+                    KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+                })?
                 .uncache(item.freeable_cache_index)?;
         }
 
         item.in_used += 1;
-        item.last_used_at = _now();
+        item.last_used_at = _now()?;
 
         Ok(Arc::clone(&item.sqlite))
     }
@@ -184,8 +196,10 @@ impl KMSSqliteCache {
     /// The cache will let it opened until it needs that slot
     ///
     /// The function will return an error if the database is not in the cache or already released
-    pub fn release(&self, id: u128) -> KResult<()> {
-        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
+    pub(crate) fn release(&self, id: u128) -> KResult<()> {
+        let mut sqlites = self.sqlites.write().map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+        })?;
 
         let item = sqlites
             .get_mut(&id)
@@ -201,7 +215,9 @@ impl KMSSqliteCache {
         if item.in_used == 0 {
             self.freeable_sqlites
                 .write()
-                .expect("Unable to lock for write")
+                .map_err(|e| {
+                    KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+                })?
                 .recache(item.freeable_cache_index)?;
         }
 
@@ -210,7 +226,7 @@ impl KMSSqliteCache {
 
     /// Remove oldest sqlite handlers until reaching down the max cache size allowed
     async fn flush(&self) -> KResult<()> {
-        info!(
+        trace!(
             "CachedSQLCipher: cache size = {}",
             self.current_size.load(Ordering::Relaxed)
         );
@@ -219,23 +235,24 @@ impl KMSSqliteCache {
             let id = self
                 .freeable_sqlites
                 .write()
-                .expect("Unable to lock for write")
+                .map_err(|e| {
+                    KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+                })?
                 .pop();
 
-            let id = match id {
-                Ok(id) => id,
-                Err(_) => break, // nothing in the cache, just leave
-            };
+            let Ok(id) = id else { break }; // nothing in the cache, just leave
 
             let sq = {
-                let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
+                let mut sqlites = self.sqlites.write().map_err(|e| {
+                    KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+                })?;
 
                 let item = sqlites
                     .get_mut(&id)
                     .ok_or_else(|| kms_error!("Key is not in the cache"))?;
 
                 item.closed = true;
-                item.closed_at = _now();
+                item.closed_at = _now()?;
 
                 info!("CachedSQLCipher: freeing = {item:?}");
 
@@ -247,7 +264,7 @@ impl KMSSqliteCache {
             self.current_size.fetch_sub(1, Ordering::Relaxed);
         }
 
-        info!(
+        debug!(
             "CachedSQLCipher: cache size after flush = {}",
             self.current_size.load(Ordering::Relaxed)
         );
@@ -259,7 +276,7 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(
+    pub(crate) async fn save(
         &self,
         id: u128,
         key: &Secret<AES_256_GCM_KEY_LENGTH>,
@@ -269,12 +286,13 @@ impl KMSSqliteCache {
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
 
-        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
+        let mut sqlites = self.sqlites.write().map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+        })?;
 
-        let mut freeable_sqlites = self
-            .freeable_sqlites
-            .write()
-            .expect("Unable to lock for write");
+        let mut freeable_sqlites = self.freeable_sqlites.write().map_err(|e| {
+            KmsError::DatabaseError(format!("Unable to lock for write. Error: {e:?}"))
+        })?;
 
         let item = sqlites.get_mut(&id);
         if let Some(item) = item {
@@ -283,29 +301,29 @@ impl KMSSqliteCache {
                 return Ok(())
             }
 
-            info!("CachedSQLCipher: reopen group_id={id}");
+            trace!("CachedSQLCipher: reopen group_id={id}");
 
             item.sqlite = Arc::new(pool);
             item.closed = false;
             item.in_used = 1;
-            item.last_used_at = _now();
+            item.last_used_at = _now()?;
         } else {
-            info!("CachedSQLCipher: new group_id={id}");
+            trace!("CachedSQLCipher: new group_id={id}");
 
             // Book a slot for it
-            let freeable_cache_id = freeable_sqlites.push(id)?;
+            let freeable_cache_id = freeable_sqlites.push(id);
 
             // Add it to the SqliteCache
             // compute the mac
-            let mut mac = vec![0u8; 32];
+            let mut mac = vec![0_u8; 32];
             mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
-            let mut item = KMSSqliteCacheItem::new(pool, mac, freeable_cache_id);
+            let mut item = KMSSqliteCacheItem::new(pool, mac, freeable_cache_id)?;
 
             freeable_sqlites.uncache(freeable_cache_id)?;
 
             // Make it usable (to avoid direct free after alloc in case of cache overflow)
             item.in_used = 1;
-            item.last_used_at = _now();
+            item.last_used_at = _now()?;
 
             sqlites.insert(id, item);
         };
@@ -317,14 +335,14 @@ impl KMSSqliteCache {
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
-pub enum FSCNeighborEntry {
+pub(crate) enum FSCNeighborEntry {
     /// Start/End of chain
     Nil,
     //// The index of the previous/next item
     Chained(usize),
 }
 
-pub struct FSCEntry {
+pub(crate) struct FSCEntry {
     /// The value to store
     val: u128,
     /// The previous item
@@ -337,7 +355,7 @@ pub struct FSCEntry {
 
 impl FSCEntry {
     /// Create an entry as a last item of a chain
-    pub fn last(value: u128, last_index: usize) -> Self {
+    pub(crate) const fn last(value: u128, last_index: usize) -> Self {
         Self {
             val: value,
             prev: FSCNeighborEntry::Chained(last_index),
@@ -347,7 +365,7 @@ impl FSCEntry {
     }
 
     /// Create an entry as the first item of a new chain
-    pub fn singleton(value: u128) -> Self {
+    pub(crate) const fn singleton(value: u128) -> Self {
         Self {
             val: value,
             prev: FSCNeighborEntry::Nil,
@@ -358,7 +376,7 @@ impl FSCEntry {
 }
 
 /// The cache contained chained items. The first item of the chain is the next one to free.
-pub struct FreeableSqliteCache {
+pub(crate) struct FreeableSqliteCache {
     /// The entries of the cache (order by insertion)
     entries: Vec<FSCEntry>,
     /// The first item of the chain (next one to free)
@@ -372,7 +390,7 @@ pub struct FreeableSqliteCache {
 }
 
 impl FreeableSqliteCache {
-    pub fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
             entries: Vec::with_capacity(capacity),
             head: 0,
@@ -383,7 +401,7 @@ impl FreeableSqliteCache {
     }
 
     // Add an element at the end of the cache
-    pub fn push(&mut self, value: u128) -> KResult<usize> {
+    pub(crate) fn push(&mut self, value: u128) -> usize {
         if self.length == 0 {
             self.head = self.size;
             self.entries.push(FSCEntry::singleton(value));
@@ -395,11 +413,11 @@ impl FreeableSqliteCache {
         self.size += 1;
         self.length += 1;
 
-        Ok(self.tail)
+        self.tail
     }
 
     // Remove the first element from the cache and return its value
-    pub fn pop(&mut self) -> KResult<u128> {
+    pub(crate) fn pop(&mut self) -> KResult<u128> {
         if self.length == 0 {
             kms_bail!("Cache is empty")
         }
@@ -423,7 +441,7 @@ impl FreeableSqliteCache {
     }
 
     // Remove the given index from the cache
-    pub fn uncache(&mut self, index: usize) -> KResult<()> {
+    pub(crate) fn uncache(&mut self, index: usize) -> KResult<()> {
         if index >= self.size {
             kms_bail!("Index is too large")
         }
@@ -458,7 +476,7 @@ impl FreeableSqliteCache {
     }
 
     // Recache the index at the last position of the cache
-    pub fn recache(&mut self, index: usize) -> KResult<()> {
+    pub(crate) fn recache(&mut self, index: usize) -> KResult<()> {
         if index >= self.size {
             kms_bail!("Index is too large")
         }
@@ -487,6 +505,7 @@ impl FreeableSqliteCache {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
     use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
@@ -498,7 +517,7 @@ mod tests {
     use super::{FSCNeighborEntry, FreeableSqliteCache, KMSSqliteCache};
 
     #[test]
-    pub fn test_fsc_new() {
+    pub(crate) fn test_fsc_new() {
         let fsc = FreeableSqliteCache::new(10);
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 0);
@@ -507,11 +526,11 @@ mod tests {
     }
 
     #[test]
-    pub fn test_fsc_push() {
+    pub(crate) fn test_fsc_push() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 2);
@@ -532,11 +551,11 @@ mod tests {
     }
 
     #[test]
-    pub fn test_fsc_pop() {
+    pub(crate) fn test_fsc_pop() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
 
         assert_eq!(fsc.pop().unwrap(), 1);
 
@@ -550,7 +569,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(4), 3);
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -569,9 +588,9 @@ mod tests {
         assert_eq!(fsc.length, 0);
         assert_eq!(fsc.size, 4);
 
-        assert!(fsc.pop().is_err());
+        fsc.pop().unwrap_err();
 
-        assert_eq!(fsc.push(5).unwrap(), 4);
+        assert_eq!(fsc.push(5), 4);
 
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
@@ -585,16 +604,16 @@ mod tests {
     }
 
     #[test]
-    pub fn test_fsc_uncache() {
+    pub(crate) fn test_fsc_uncache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
 
         assert!(fsc.uncache(4).is_err());
 
-        assert!(fsc.uncache(2).is_ok());
+        fsc.uncache(2).unwrap();
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 3);
@@ -607,7 +626,7 @@ mod tests {
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
 
-        assert!(fsc.uncache(0).is_ok());
+        fsc.uncache(0).unwrap();
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -618,7 +637,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert!(fsc.uncache(3).is_ok());
+        fsc.uncache(3).unwrap();
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 1);
@@ -629,7 +648,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert!(fsc.uncache(1).is_ok());
+        fsc.uncache(1).unwrap();
 
         assert_eq!(fsc.length, 0);
         assert_eq!(fsc.size, 4);
@@ -637,9 +656,9 @@ mod tests {
         assert!(!fsc.entries[1].chained);
 
         assert!(fsc.uncache(1).is_err());
-        assert!(fsc.pop().is_err());
+        fsc.pop().unwrap_err();
 
-        assert_eq!(fsc.push(5).unwrap(), 4);
+        assert_eq!(fsc.push(5), 4);
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
         assert_eq!(fsc.length, 1);
@@ -651,17 +670,17 @@ mod tests {
     }
 
     #[test]
-    pub fn test_fsc_recache() {
+    pub(crate) fn test_fsc_recache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1).unwrap(), 0);
-        assert_eq!(fsc.push(2).unwrap(), 1);
-        assert_eq!(fsc.push(3).unwrap(), 2);
-        assert_eq!(fsc.push(4).unwrap(), 3);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
 
         assert!(fsc.recache(4).is_err());
         assert!(fsc.recache(3).is_err());
 
-        assert!(fsc.uncache(2).is_ok());
+        fsc.uncache(2).unwrap();
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 3);
@@ -674,7 +693,7 @@ mod tests {
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
 
-        assert!(fsc.recache(2).is_ok());
+        fsc.recache(2).unwrap();
         assert!(fsc.recache(2).is_err());
 
         assert_eq!(fsc.head, 0);
@@ -688,11 +707,11 @@ mod tests {
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Chained(2));
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
 
-        assert!(fsc.uncache(0).is_ok());
-        assert!(fsc.uncache(1).is_ok());
-        assert!(fsc.uncache(2).is_ok());
-        assert!(fsc.uncache(3).is_ok());
-        assert!(fsc.recache(3).is_ok());
+        fsc.uncache(0).unwrap();
+        fsc.uncache(1).unwrap();
+        fsc.uncache(2).unwrap();
+        fsc.uncache(3).unwrap();
+        fsc.recache(3).unwrap();
 
         assert_eq!(fsc.head, 3);
         assert_eq!(fsc.tail, 3);
@@ -717,66 +736,64 @@ mod tests {
         let sqlite2 = connect().await.expect("Can't create database");
         let sqlite3 = connect().await.expect("Can't create database");
 
-        assert!(cache.save(1, &password, sqlite).await.is_ok());
+        cache.save(1, &password, sqlite).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
-        assert!(cache.save(2, &password, sqlite2).await.is_ok());
+        cache.save(2, &password, sqlite2).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
-        assert!(cache.opened(1));
-        assert!(cache.opened(2));
+        assert!(cache.opened(1).unwrap());
+        assert!(cache.opened(2).unwrap());
 
-        assert!(cache.exists(1));
+        assert!(cache.exists(1).unwrap());
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, &password, sqlite2).await.is_ok()); // double saved = ok
+        cache.save(2, &password, sqlite2).await.unwrap(); // double saved = ok
 
-        assert!(cache.release(2).is_ok());
+        cache.release(2).unwrap();
         assert!(cache.release(2).is_err()); // not twice
 
-        assert!(cache.exists(2));
-        assert!(cache.opened(2)); // still opened
+        assert!(cache.exists(2).unwrap());
+        assert!(cache.opened(2).unwrap()); // still opened
 
-        assert!(!cache.exists(3));
-        assert!(cache.save(3, &password, sqlite3).await.is_ok());
+        assert!(!cache.exists(3).unwrap());
+        cache.save(3, &password, sqlite3).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
-        assert!(cache.opened(3)); // still opened
-        assert!(!cache.opened(2)); // not opened anymore
-        assert!(cache.exists(2));
+        assert!(cache.opened(3).unwrap()); // still opened
+        assert!(!cache.opened(2).unwrap()); // not opened anymore
+        assert!(cache.exists(2).unwrap());
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, &password, sqlite2).await.is_ok());
+        cache.save(2, &password, sqlite2).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
-        assert!(cache.opened(2));
+        assert!(cache.opened(2).unwrap());
 
-        assert!(cache.get(4, &password).is_err());
-        assert!(
-            cache
-                .get(1, &Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap())
-                .is_err()
-        ); // bad &password
-        assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
+        cache.get(4, &password).unwrap_err();
+        cache
+            .get(1, &Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap())
+            .unwrap_err(); // bad &password
+        cache.get(1, &password).unwrap(); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");
-        assert!(cache.save(4, &password, sqlite4).await.is_ok());
+        cache.save(4, &password, sqlite4).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
-        assert!(cache.opened(1));
+        assert!(cache.opened(1).unwrap());
 
-        assert!(cache.release(1).is_ok()); // 1 uses of sqlite1
+        cache.release(1).unwrap(); // 1 uses of sqlite1
 
         let sqlite5 = connect().await.expect("Can't create database");
-        assert!(cache.save(5, &password, sqlite5).await.is_ok());
+        cache.save(5, &password, sqlite5).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
-        assert!(cache.opened(1));
+        assert!(cache.opened(1).unwrap());
 
-        assert!(cache.release(1).is_ok()); // 0 uses of sqlite1
-        assert!(cache.opened(1));
+        cache.release(1).unwrap(); // 0 uses of sqlite1
+        assert!(cache.opened(1).unwrap());
 
         let sqlite6 = connect().await.expect("Can't create database");
-        assert!(cache.save(6, &password, sqlite6).await.is_ok());
+        cache.save(6, &password, sqlite6).await.unwrap();
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
-        assert!(!cache.opened(1));
-        assert!(cache.exists(1));
+        assert!(!cache.opened(1).unwrap());
+        assert!(cache.exists(1).unwrap());
 
-        assert!(cache.get(1, &password).is_err()); // get after close
+        cache.get(1, &password).unwrap_err(); // get after close
     }
 
     async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {

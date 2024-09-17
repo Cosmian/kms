@@ -27,13 +27,13 @@ use crate::{
     },
 };
 
-pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
+pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
         key: Zeroizing::from(key_value.to_vec()),
     }
 }
 
-pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
+pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Box::new(Attributes {
@@ -47,7 +47,7 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     }
 }
 
-pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
+pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
@@ -58,13 +58,13 @@ pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     }
 }
 
-pub fn aes_key(key_value: &[u8]) -> Object {
+pub(crate) fn aes_key(key_value: &[u8]) -> Object {
     Object::SymmetricKey {
         key_block: aes_key_block(key_value),
     }
 }
 
-pub fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![TTLV {
@@ -74,7 +74,7 @@ pub fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyValue".to_string(),
         value: TTLValue::Structure(vec![
@@ -112,7 +112,7 @@ pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyBlock".to_string(),
         value: TTLValue::Structure(vec![
@@ -135,7 +135,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
+pub(crate) fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "SymmetricKey".to_string(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
@@ -226,7 +226,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -246,7 +246,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -264,7 +264,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    // log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -298,7 +298,7 @@ fn test_ser_big_int() {
 
 #[test]
 fn test_ser_aes_key() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -307,7 +307,7 @@ fn test_ser_aes_key() {
 
 #[test]
 fn test_des_int() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -342,7 +342,7 @@ fn test_des_int() {
 
 #[test]
 fn test_des_array() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -373,7 +373,7 @@ fn test_des_array() {
 
 #[test]
 fn test_des_enum() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -400,7 +400,7 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ]);
@@ -418,7 +418,7 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let ttlv = TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![
@@ -473,7 +473,7 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
@@ -492,7 +492,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_aes_key_block() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
@@ -506,7 +506,7 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
@@ -520,7 +520,7 @@ fn test_aes_key_value() {
 
 #[test]
 fn test_aes_key_material() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
@@ -529,7 +529,7 @@ fn test_aes_key_material() {
 
 #[test]
 fn test_some_attributes() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
     #[serde(untagged)]
     enum Wrapper {
@@ -557,7 +557,7 @@ fn test_some_attributes() {
 
 #[test]
 fn test_java_import_request() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
     let ir_java = r#"
 {
   "tag" : "Import",
@@ -624,7 +624,7 @@ fn test_java_import_request() {
 
 #[test]
 fn test_java_import_response() {
-    //log_init("info");
+    cosmian_logger::log_utils::log_init(None);
     let ir = ImportResponse {
         unique_identifier: UniqueIdentifier::TextString("blah".to_string()),
     };
@@ -635,7 +635,7 @@ fn test_java_import_response() {
 
 #[test]
 fn test_byte_string_key_material() {
-    //log_init("info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
@@ -651,7 +651,7 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    //log_init("info");
+    cosmian_logger::log_utils::log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -663,16 +663,16 @@ fn test_aes_key_full() {
 }
 
 #[test]
-pub fn test_attributes_with_links() {
-    //log_init("info");
+pub(crate) fn test_attributes_with_links() {
+    cosmian_logger::log_utils::log_init(None);
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let _attributes: Attributes = from_ttlv(&ttlv).unwrap();
 }
 
 #[test]
-pub fn test_import_correct_object() {
-    //log_init("info,hyper=info,reqwest=info");
+pub(crate) fn test_import_correct_object() {
+    cosmian_logger::log_utils::log_init(None);
 
     // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
     // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.
@@ -694,7 +694,7 @@ pub fn test_import_correct_object() {
 }
 
 #[test]
-pub fn test_create() {
+pub(crate) fn test_create() {
     let attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -726,7 +726,7 @@ pub fn test_create() {
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
-    //log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init(None);
 
     // this works
     let _: KeyBlock = serialize_deserialize(get_key_block()).unwrap();
@@ -782,8 +782,8 @@ fn get_key_block() -> KeyBlock {
 }
 
 #[test]
-pub fn test_message_request() {
-    //log_init("info,hyper=info,reqwest=info");
+pub(crate) fn test_message_request() {
+    cosmian_logger::log_utils::log_init(None);
 
     let req = Message {
         header: MessageHeader {
@@ -840,8 +840,8 @@ pub fn test_message_request() {
 }
 
 #[test]
-pub fn test_message_response() {
-    //log_init("info,hyper=info,reqwest=info");
+pub(crate) fn test_message_response() {
+    cosmian_logger::log_utils::log_init(None);
 
     let res = MessageResponse {
         header: MessageResponseHeader {
@@ -929,8 +929,8 @@ pub fn test_message_response() {
 }
 
 #[test]
-pub fn test_message_enforce_enum() {
-    //log_init("info,hyper=info,reqwest=info");
+pub(crate) fn test_message_enforce_enum() {
+    cosmian_logger::log_utils::log_init(None);
 
     // check Message request serializer reinforcement
     let req = Message {

@@ -49,7 +49,7 @@ pub struct JwtAuthConfig {
 
 impl JwtAuthConfig {
     /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.
-    pub fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
+    pub(crate) fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
         jwks_uri.as_ref().map_or(
             format!(
                 "{}/.well-known/jwks.json",
@@ -62,7 +62,7 @@ impl JwtAuthConfig {
     /// Parse this configuration into one identity provider configuration per JWT issuer URI.
     ///
     /// Assert that when provided, JWKS URI and JWT audience are provided once per JWT issuer URI;
-    pub fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
+    pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfig>>, KmsError> {
         self.jwt_issuer_uri
             .map(|issuer_uris| {
                 let option_vec_to_vec_option = |option_vec: Option<Vec<_>>| {

@@ -9,14 +9,14 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
-pub async fn revoke(
+pub(crate) async fn revoke(
     kms_rest_client: &KmsClient,
     key_id: &str,
     revocation_reason: &str,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     // Create the kmip query
     let revoke_query = build_revoke_key_request(
         key_id,

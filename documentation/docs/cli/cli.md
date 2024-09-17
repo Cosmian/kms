@@ -4,7 +4,7 @@ client `ckms_gui`.
 !!! info "Download ckms and ckms_gui"
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.17.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.18.0/)
 
 ## Configuring the clients
 
@@ -34,7 +34,8 @@ configuration of the KMS.
   to a KMS server using a certificate.
 - `ssl_client_pkcs12_password`: is OPTIONAL and is the password to open the
   PKCS12 file when authenticating to the KMS server using a certificate.
-- `oauth2_conf`: is OPTIONAL and is the OAuth2 configuration (see [below](#oauth2oidc-configuration))
+- `oauth2_conf`: is OPTIONAL and is the OAuth2 configuration (
+  see [below](#oauth2oidc-configuration))
   to use when authenticating to the KMS server using OAuth2 or Open ID Connect.
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
   when connecting to a KMS using an encrypted database
@@ -77,7 +78,7 @@ The `oauth2_conf` field is a JSON object with the following fields:
 - `token_url`: the URL to use when requesting an access token
 - `scopes`: the optional list of scopes to request when authenticating to the KMS server
 
-Example:
+Example Google Identity Provider configuration:
 
 ```json
 {
@@ -87,7 +88,10 @@ Example:
     "client_secret": "G0ABCD-aAbBcDeFgHiJkLmNoPqRsTuVwXyZ",
     "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token",
-    "scopes": []
+    "scopes": [
+      "openid",
+      "email"
+    ]
   }
 }
 ```
@@ -95,7 +99,8 @@ Example:
 ## S/MIME Gmail service account configuration
 
 When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide
-the necessary information about the configured service account to interact with Gmail API, and handle
+the necessary information about the configured service account to interact with Gmail API, and
+handle
 identities and keypairs easily from the ckms.
 
 This configuration is mandatory for `ckms google` subcommands.
@@ -113,7 +118,6 @@ The `gmail_api_conf` field is a JSON object with the following fields:
 - `auth_provider_x509_cert_url`
 - `client_x509_cert_url`
 - `universe_domain`
-
 
 I can be retrieved directly from a JSON file downloaded from Google interface when creating
 and configuring the service account (following Google documentation).

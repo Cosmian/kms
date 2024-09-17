@@ -27,24 +27,24 @@ pub(crate) struct Triple {
 }
 
 impl Triple {
-    pub fn new(obj_uid: &str, user_id: &str, permission: ObjectOperationType) -> Self {
+    pub(crate) fn new(obj_uid: &str, user_id: &str, permission: ObjectOperationType) -> Self {
         Self {
-            obj_uid: obj_uid.to_string(),
-            user_id: user_id.to_string(),
+            obj_uid: obj_uid.to_owned(),
+            user_id: user_id.to_owned(),
             permission,
         }
     }
 
-    pub fn key(&self) -> String {
+    pub(crate) fn key(&self) -> String {
         Self::build_key(&self.obj_uid, &self.user_id)
     }
 
-    pub fn build_key(obj_uid: &str, user_id: &str) -> String {
+    pub(crate) fn build_key(obj_uid: &str, user_id: &str) -> String {
         format!("{obj_uid}::{user_id}")
     }
 
-    pub fn permissions_per_user(
-        list: HashSet<Triple>,
+    pub(crate) fn permissions_per_user(
+        list: HashSet<Self>,
     ) -> HashMap<String, HashSet<ObjectOperationType>> {
         let mut map = HashMap::new();
         for triple in list {
@@ -54,8 +54,8 @@ impl Triple {
         map
     }
 
-    pub fn permissions_per_object(
-        list: HashSet<Triple>,
+    pub(crate) fn permissions_per_object(
+        list: HashSet<Self>,
     ) -> HashMap<String, HashSet<ObjectOperationType>> {
         let mut map = HashMap::new();
         for triple in list {
@@ -82,8 +82,8 @@ impl TryFrom<&Location> for Triple {
             KmsError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         Ok(Self {
-            obj_uid: uid.to_string(),
-            user_id: user_id.to_string(),
+            obj_uid: uid.to_owned(),
+            user_id: user_id.to_owned(),
             permission: serde_json::from_str(permission)?,
         })
     }
@@ -93,7 +93,7 @@ impl TryFrom<&Triple> for Location {
     type Error = KmsError;
 
     fn try_from(value: &Triple) -> Result<Self, Self::Error> {
-        Ok(Location::from(
+        Ok(Self::from(
             format!(
                 "{}::{}::{}",
                 value.obj_uid,
@@ -120,11 +120,11 @@ pub(crate) struct PermissionsDB {
 }
 
 impl PermissionsDB {
-    pub async fn new(findex: Arc<FindexRedis>, label: &[u8]) -> KResult<Self> {
-        Ok(Self {
+    pub(crate) fn new(findex: Arc<FindexRedis>, label: &[u8]) -> Self {
+        Self {
             findex,
             label: label.to_vec(),
-        })
+        }
     }
 
     /// Search for a keyword
@@ -152,7 +152,7 @@ impl PermissionsDB {
 
     /// List all the permissions granted to the user
     /// per object uid
-    pub async fn list_user_permissions(
+    pub(crate) async fn list_user_permissions(
         &self,
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         user_id: &str,
@@ -164,7 +164,7 @@ impl PermissionsDB {
 
     /// List all the permissions granted on an object
     /// per user id
-    pub async fn list_object_permissions(
+    pub(crate) async fn list_object_permissions(
         &self,
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
@@ -175,7 +175,7 @@ impl PermissionsDB {
     }
 
     /// List all the permissions granted to the user on an object
-    pub async fn get(
+    pub(crate) async fn get(
         &self,
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
@@ -202,7 +202,7 @@ impl PermissionsDB {
     }
 
     /// Add a permission to the user on an object
-    pub async fn add(
+    pub(crate) async fn add(
         &self,
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
@@ -262,7 +262,7 @@ impl PermissionsDB {
     }
 
     /// Remove a permission to the user on an object
-    pub async fn remove(
+    pub(crate) async fn remove(
         &self,
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,

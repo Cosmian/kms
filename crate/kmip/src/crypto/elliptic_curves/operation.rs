@@ -77,7 +77,7 @@ fn check_ecc_mask_algorithm_compliance(
     private_key_mask: Option<CryptographicUsageMask>,
     public_key_mask: Option<CryptographicUsageMask>,
     algorithm: Option<CryptographicAlgorithm>,
-    allowed_algorithms: Vec<CryptographicAlgorithm>,
+    allowed_algorithms: &[CryptographicAlgorithm],
 ) -> Result<(), KmipError> {
     let Some(algorithm) = algorithm else {
         // Algorithm is None but FIPS mode is restrictive so it's considered too permissive.
@@ -323,7 +323,7 @@ pub fn create_ed25519_key_pair(
         private_key_mask,
         public_key_mask,
         algorithm,
-        vec![CryptographicAlgorithm::Ed25519],
+        &[CryptographicAlgorithm::Ed25519],
     )?;
 
     let private_key = PKey::generate_ed25519()?;
@@ -372,7 +372,7 @@ pub fn create_ed448_key_pair(
         private_key_mask,
         public_key_mask,
         algorithm,
-        vec![CryptographicAlgorithm::Ed448],
+        &[CryptographicAlgorithm::Ed448],
     )?;
 
     let private_key = PKey::generate_ed448()?;
@@ -416,7 +416,7 @@ pub fn create_approved_ecc_key_pair(
         private_key_mask,
         public_key_mask,
         algorithm,
-        vec![
+        &[
             CryptographicAlgorithm::EC,
             CryptographicAlgorithm::ECDSA,
             CryptographicAlgorithm::ECDH,
@@ -926,7 +926,7 @@ mod tests {
         let private_key_mask = CryptographicUsageMask::Sign;
         let public_key_mask = CryptographicUsageMask::Verify;
 
-        let allowed = vec![CryptographicAlgorithm::Ed25519];
+        let allowed = &[CryptographicAlgorithm::Ed25519];
         let res = check_ecc_mask_algorithm_compliance(
             Some(private_key_mask),
             Some(public_key_mask),
@@ -947,7 +947,7 @@ mod tests {
         let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
         let algorithm = CryptographicAlgorithm::ECDH;
-        let allowed = vec![
+        let allowed = &[
             CryptographicAlgorithm::ECDH,
             CryptographicAlgorithm::ECDSA,
             CryptographicAlgorithm::EC,
@@ -972,7 +972,7 @@ mod tests {
         let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
         let algorithm = CryptographicAlgorithm::ECDH;
-        let allowed = vec![CryptographicAlgorithm::ECDSA, CryptographicAlgorithm::EC];
+        let allowed = &[CryptographicAlgorithm::ECDSA, CryptographicAlgorithm::EC];
         let res = check_ecc_mask_algorithm_compliance(
             Some(private_key_mask),
             Some(public_key_mask),

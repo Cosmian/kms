@@ -6,9 +6,27 @@ use super::CliError;
 
 pub type CliResult<R> = Result<R, CliError>;
 
+/// Trait for providing helper methods for `CliResult`.
 pub trait CliResultHelper<T> {
+    /// Sets the reason for the error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `CliResult` with the specified `ErrorReason`.
     fn reason(self, reason: ErrorReason) -> CliResult<T>;
+
+    /// Sets the context for the error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `CliResult` with the specified context.
     fn context(self, context: &str) -> CliResult<T>;
+
+    /// Sets the context for the error using a closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `CliResult` with the context returned by the closure.
     fn with_context<D, O>(self, op: O) -> CliResult<T>
     where
         D: Display + Send + Sync + 'static,

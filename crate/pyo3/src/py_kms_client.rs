@@ -128,6 +128,7 @@ impl KmsClient {
             database_secret,
             insecure_mode,
             tee_cert,
+            false,
         )
         .map_err(|_| {
             PyException::new_err(format!(

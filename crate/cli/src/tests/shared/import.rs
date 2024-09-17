@@ -16,7 +16,7 @@ use crate::tests::{
 };
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         shared::export::export_key,
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
@@ -25,7 +25,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn import_key(
+pub(crate) fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
@@ -35,10 +35,10 @@ pub fn import_key(
     key_usage_vec: Option<Vec<KeyUsage>>,
     unwrap: bool,
     replace_existing: bool,
-) -> Result<String, CliError> {
+) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
@@ -90,7 +90,7 @@ pub fn import_key(
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_import_cover_crypt() -> Result<(), CliError> {
+pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     let uid: String = import_key(
@@ -141,8 +141,8 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-pub async fn test_generate_export_import() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
+pub(crate) async fn test_generate_export_import() -> CliResult<()> {
+    cosmian_logger::log_utils::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test
@@ -182,12 +182,12 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
 }
 
 #[allow(dead_code)]
-pub fn export_import_test(
+pub(crate) fn export_import_test(
     cli_conf_path: &str,
     sub_command: &str,
     private_key_id: &str,
     algorithm: CryptographicAlgorithm,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     // Export
     export_key(
         cli_conf_path,

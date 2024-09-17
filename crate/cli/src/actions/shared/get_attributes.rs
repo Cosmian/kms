@@ -9,9 +9,9 @@ use cosmian_kms_client::{
     write_bytes_to_file, KmsClient,
 };
 use serde_json::Value;
-use tracing::debug;
+use tracing::{debug, trace};
 
-use crate::{actions::console, cli_bail, error::CliError};
+use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AttributeTag {
@@ -78,7 +78,23 @@ pub struct GetAttributesAction {
 }
 
 impl GetAttributesAction {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Get the KMIP object attributes and tags.
+    ///
+    /// When using tags to retrieve the object, rather than the object id,
+    /// an error is returned if multiple objects matching the tags are found.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if:
+    ///
+    /// - The `--id` or one or more `--tag` options is not specified.
+    /// - There is an error serializing the tags to a string.
+    /// - There is an error performing the Get Attributes request.
+    /// - There is an error serializing the attributes to JSON.
+    /// - There is an error writing the attributes to the output file.
+    /// - There is an error writing to the console.
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+        trace!("GetAttributesAction: {:?}", self);
         let id = if let Some(key_id) = &self.id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -117,10 +133,7 @@ impl GetAttributesAction {
                 AttributeTag::LinkedPublicKeyId => {
                     references.push(AttributeReference::Standard(Tag::PublicKey));
                 }
-                AttributeTag::LinkedIssuerCertificateId => {
-                    references.push(AttributeReference::Standard(Tag::Certificate));
-                }
-                AttributeTag::LinkedCertificateId => {
+                AttributeTag::LinkedIssuerCertificateId | AttributeTag::LinkedCertificateId => {
                     references.push(AttributeReference::Standard(Tag::Certificate));
                 }
                 AttributeTag::Tags => {
@@ -139,6 +152,8 @@ impl GetAttributesAction {
                 attribute_references: Some(references),
             })
             .await?;
+
+        trace!("GetAttributes response for {unique_identifier}: {attributes:?}",);
 
         // if no tag asked -> return values for all possible tags
         let tags = if self.attribute_tags.is_empty() {

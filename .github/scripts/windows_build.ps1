@@ -28,11 +28,15 @@ function Build-Project {
     # Set up environment for vcpkg
     $env:VCPKG_INSTALLATION_ROOT
     dir $env:VCPKG_INSTALLATION_ROOT
-    vcpkg install openssl[fips]
+    vcpkg install openssl[fips,weak-ssl-ciphers]
 
     vcpkg integrate install
     $env:VCPKGRS_DYNAMIC = 1
     $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows"
+    Get-ChildItem -Recurse $env:OPENSSL_DIR
+
+    # Copy fips.dll to the specified directory
+    Copy-Item -Path "C:/vcpkg/packages/openssl_x64-windows/bin/*.dll" -Destination "D:/a/kms/kms"
 
     # Build `server`
     cd crate/server

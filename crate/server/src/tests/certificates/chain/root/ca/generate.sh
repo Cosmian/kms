@@ -1,22 +1,20 @@
 #!/bin/sh
 
-set -e
-
 echo "removing old configurations"
 rm -rf certs crl newcerts private intermediate
 rm index.*
 rm serial*
-rm test1
-rm test2
 rm chain_t0.pem
 rm chain_t1.pem
+
+set -ex
 
 ## making CA Environment
 
 mkdir certs crl newcerts private intermediate
 
 touch index.txt
-echo 1000 > serial
+echo 1000 >serial
 
 ## Generating CA
 echo "Generating ca key"
@@ -34,8 +32,8 @@ openssl x509 -noout -text -in certs/ca.cert.pem
 echo "Making intermediate environment"
 mkdir intermediate/certs intermediate/crl intermediate/csr intermediate/newcerts intermediate/private
 touch ./intermediate/index.txt
-echo 1000 > intermediate/serial
-echo 1000 > intermediate/crlnumber
+echo 1000 >intermediate/serial
+echo 1000 >intermediate/crlnumber
 
 ## Generating Intermediate
 echo "Generating intermediate key"
@@ -44,7 +42,7 @@ openssl genrsa -aes256 -out intermediate/private/intermediate.key.pem -passout p
 echo "Generating intermediate csr"
 openssl req -batch -config openssl_int.cnf -new -sha256 \
       -key intermediate/private/intermediate.key.pem \
-      -out intermediate/csr/intermediate.csr.pem  \
+      -out intermediate/csr/intermediate.csr.pem \
       -subj "/C=FR/ST=France/L=IDF/O=Cosmian/CN=Intermediate/emailAddress=intermediate@cosmian.fr" \
       -passin pass:intermediate123
 
@@ -54,17 +52,30 @@ openssl ca -batch -config openssl.cnf -extensions v3_intermediate_ca \
       -in intermediate/csr/intermediate.csr.pem \
       -out intermediate/certs/intermediate.cert.pem -passin pass:root123
 
-echo "printintg intermediate cert"
+echo "Removing password protection from intermediate key"
+openssl rsa -in intermediate/private/intermediate.key.pem -out intermediate/private/intermediate.key -passin pass:intermediate123
+echo "Generating intermediate pkcs12"
+
+openssl pkcs12 -export -in intermediate/certs/intermediate.cert.pem \
+      -inkey intermediate/private/intermediate.key \
+      -out intermediate/private/intermediate.p12 \
+      -passout pass:secret \
+      -certfile certs/ca.cert.pem
+
+echo "Extracting certificate from intermediate.p12"
+openssl pkcs12 -in intermediate/private/intermediate.p12 -clcerts -nokeys -out intermediate/certs/intermediate_from_p12.cert.pem -passin pass:secret
+
+echo "printing intermediate cert"
 openssl x509 -noout -text \
       -in intermediate/certs/intermediate.cert.pem
 
-echo "cerifying intermediate cert"
+echo "verifying intermediate cert"
 openssl verify -CAfile certs/ca.cert.pem \
       intermediate/certs/intermediate.cert.pem
 
 echo "Building certificate chain"
 cat intermediate/certs/intermediate.cert.pem \
-      certs/ca.cert.pem > intermediate/certs/ca-chain.cert.pem
+      certs/ca.cert.pem >intermediate/certs/ca-chain.cert.pem
 
 ## Leaf1
 
@@ -86,7 +97,7 @@ openssl ca -batch -config openssl_int.cnf \
 ## Leaf2
 
 openssl genrsa -aes256 \
-      -out intermediate/private/leaf2.key.pem -passout pass:leaf2123  2048
+      -out intermediate/private/leaf2.key.pem -passout pass:leaf2123 2048
 
 openssl req -batch -config openssl_int.cnf \
       -key intermediate/private/leaf2.key.pem \
@@ -102,7 +113,7 @@ openssl ca -batch -config openssl_int.cnf \
 openssl ca -batch -config openssl_int.cnf \
       -gencrl -out intermediate/crl/intermediate.crl.pem -passin pass:intermediate123
 
-cat intermediate/certs/ca-chain.cert.pem intermediate/crl/intermediate.crl.pem > chain_t0.pem
+cat intermediate/certs/ca-chain.cert.pem intermediate/crl/intermediate.crl.pem >chain_t0.pem
 
 openssl verify -crl_check -CAfile chain_t0.pem \
       intermediate/certs/leaf1.cert.pem
@@ -119,11 +130,10 @@ rm intermediate/crl/intermediate.crl.pem
 openssl ca -config openssl_int.cnf \
       -gencrl -out intermediate/crl/intermediate.crl.pem -passin pass:intermediate123
 
-
-cat intermediate/certs/ca-chain.cert.pem intermediate/crl/intermediate.crl.pem > chain_t1.pem
+cat intermediate/certs/ca-chain.cert.pem intermediate/crl/intermediate.crl.pem >chain_t1.pem
 
 openssl verify -crl_check -CAfile chain_t1.pem \
-      intermediate/certs/leaf1.cert.pem
+      intermediate/certs/leaf1.cert.pem || true
 
 openssl verify -crl_check -CAfile chain_t1.pem \
       intermediate/certs/leaf2.cert.pem
@@ -132,7 +142,6 @@ cp certs/ca.cert.pem ../../
 cp intermediate/certs/intermediate.cert.pem ../../
 cp intermediate/certs/leaf1.cert.pem ../../
 cp intermediate/certs/leaf2.cert.pem ../../
-
 
 openssl x509 -outform der -in ../../ca.cert.pem -out ../../ca.cert.der
 openssl x509 -outform der -in ../../intermediate.cert.pem -out ../../intermediate.cert.der

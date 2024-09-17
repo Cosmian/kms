@@ -4,7 +4,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::IDENTITIES_ENDPOINT;
-use crate::{actions::google::gmail_client::GmailClient, error::CliError};
+use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
 
 #[derive(Serialize, Deserialize)]
 #[allow(non_snake_case)]
@@ -30,7 +30,7 @@ pub struct PatchIdentitiesAction {
 }
 
 impl PatchIdentitiesAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let endpoint = [IDENTITIES_ENDPOINT, &self.user_id].concat();
 

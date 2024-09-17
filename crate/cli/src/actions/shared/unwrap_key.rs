@@ -13,7 +13,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Locally unwrap a key in KMIP JSON TTLV format.
@@ -68,7 +68,19 @@ pub struct UnwrapKeyAction {
 
 impl UnwrapKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if:
+    ///
+    /// - The key file cannot be read.
+    /// - The unwrap key fails to decode from base64.
+    /// - The unwrapping key fails to be created.
+    /// - The unwrapping key fails to unwrap the key.
+    /// - The output file fails to be written.
+    /// - The console output fails to be written.
+    ///
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 

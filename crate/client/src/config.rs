@@ -55,7 +55,7 @@ fn get_default_conf_path() -> Result<PathBuf, ClientError> {
 }
 
 /// used for serialization
-fn not(b: &bool) -> bool {
+const fn not(b: &bool) -> bool {
     !*b
 }
 
@@ -157,6 +157,8 @@ impl Default for ClientConf {
 ///
 /// This function returns a KMS client configured according to the settings specified in the configuration file.
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
+#[cfg(target_os = "linux")]
+pub(crate) const KMS_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/kms.json";
 
 impl ClientConf {
     pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, ClientError> {
@@ -191,29 +193,35 @@ impl ClientConf {
         match user_conf_path {
             Err(_) => {
                 // no user home, this may be the system attempting a load
-                let p = PathBuf::from("/etc/cosmian/kms.json");
-                if p.exists() {
-                    info!("No active user, using configuration at {p:?}");
-                    return Ok(p)
+                let default_system_path = PathBuf::from(KMS_CLI_CONF_DEFAULT_SYSTEM_PATH);
+                if default_system_path.exists() {
+                    info!(
+                        "No active user, using configuration at {KMS_CLI_CONF_DEFAULT_SYSTEM_PATH}"
+                    );
+                    return Ok(default_system_path)
                 }
-                client_bail!("no configuration found at {p:?}, and no current user, bailing out");
+                client_bail!(
+                    "no configuration found at {KMS_CLI_CONF_DEFAULT_SYSTEM_PATH}, and no current \
+                     user, bailing out"
+                );
             }
-            Ok(p) => {
+            Ok(user_conf) => {
                 // the user home exists, if there is no conf file, check /etc/cosmian/kms.json
-                if !p.exists() {
-                    let sp = PathBuf::from("/etc/cosmian/kms.json");
-                    if sp.exists() {
+                if !user_conf.exists() {
+                    let default_system_path = PathBuf::from(KMS_CLI_CONF_DEFAULT_SYSTEM_PATH);
+                    if default_system_path.exists() {
                         info!(
-                            "Linux user conf path is at: {p:?} but is empty, using {sp:?} instead"
+                            "Linux user conf path is at: {user_conf:?} but is empty, using \
+                             {KMS_CLI_CONF_DEFAULT_SYSTEM_PATH} instead"
                         );
-                        return Ok(sp)
+                        return Ok(default_system_path)
                     }
                     info!(
-                        "Linux user conf path is at: {p:?} and will be initialized with a default \
-                         value"
+                        "Linux user conf path is at: {user_conf:?} and will be initialized with a \
+                         default value"
                     );
                 }
-                Ok(p)
+                Ok(user_conf)
             }
         }
     }
@@ -264,6 +272,7 @@ impl ClientConf {
         &self,
         kms_server_url: Option<&str>,
         accept_invalid_certs: Option<bool>,
+        print_json: bool,
     ) -> Result<KmsClient, ClientError> {
         let kms_server_url = kms_server_url.unwrap_or(&self.kms_server_url);
         let accept_invalid_certs = accept_invalid_certs.unwrap_or(self.accept_invalid_certs);
@@ -283,6 +292,7 @@ impl ClientConf {
             } else {
                 None
             },
+            print_json,
         )
         .with_context(|| {
             format!("Unable to instantiate a KMS server REST client {kms_server_url}")
@@ -299,32 +309,42 @@ mod tests {
     use super::{get_default_conf_path, ClientConf, KMS_CLI_CONF_ENV};
 
     #[test]
-    pub fn test_load() {
+    pub(crate) fn test_load() {
         // valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
 
         // another valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
 
         // Default conf file
-        env::remove_var(KMS_CLI_CONF_ENV);
+        unsafe {
+            env::remove_var(KMS_CLI_CONF_ENV);
+        }
         let _ = fs::remove_file(get_default_conf_path().unwrap());
         let conf_path = ClientConf::location(None).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());
         assert!(get_default_conf_path().unwrap().exists());
 
         // invalid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
+        unsafe {
+            env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
+        }
         let conf_path = ClientConf::location(None).unwrap();
         let e = ClientConf::load(&conf_path).err().unwrap().to_string();
         assert!(e.contains("missing field `kms_server_url`"));
 
         // with a file
-        env::remove_var(KMS_CLI_CONF_ENV);
+        unsafe {
+            env::remove_var(KMS_CLI_CONF_ENV);
+        }
         let conf_path =
             ClientConf::location(Some(PathBuf::from("test_data/configs/kms.json"))).unwrap();
         assert!(ClientConf::load(&conf_path).is_ok());

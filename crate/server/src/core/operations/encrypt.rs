@@ -41,7 +41,7 @@ use crate::{
 
 const EMPTY_SLICE: &[u8] = &[];
 
-pub async fn encrypt(
+pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
     user: &str,
@@ -78,7 +78,7 @@ async fn get_key(
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Encrypt: the unique identifier or tags must be a string")?
-        .to_string();
+        .to_owned();
     trace!("operations::encrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
@@ -152,12 +152,12 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
-                .unwrap_or(
+                .unwrap_or_else(|| {
                     key_block
                         .cryptographic_algorithm()
                         .copied()
-                        .unwrap_or(CryptographicAlgorithm::AES),
-                );
+                        .unwrap_or(CryptographicAlgorithm::AES)
+                });
             let block_cipher_mode = request
                 .cryptographic_parameters
                 .as_ref()
@@ -178,7 +178,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .unwrap_or(EMPTY_SLICE);
             let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
             Ok(EncryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
+                unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
                 data: Some(ciphertext),
                 iv_counter_nonce: Some(nonce),
                 correlation_value: request.correlation_value.clone(),
@@ -254,7 +254,7 @@ fn encrypt_with_pkey(
         }
     };
     Ok(EncryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(key_id.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
         data: Some(ciphertext),
         iv_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),

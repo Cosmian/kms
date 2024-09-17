@@ -59,6 +59,10 @@ pub enum KmsError {
     ServerError(String),
 
     // Any actions of the user which is not allowed
+    #[error("REST client connection error: {0}")]
+    ClientConnectionError(String),
+
+    // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
 
@@ -82,7 +86,7 @@ pub enum KmsError {
 
 impl KmsError {
     #[must_use]
-    pub fn reason(&self, reason: ErrorReason) -> Self {
+    pub(crate) fn reason(&self, reason: ErrorReason) -> Self {
         match self {
             Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
             e => Self::KmipError(reason, e.to_string()),
@@ -158,7 +162,7 @@ impl From<std::io::Error> for KmsError {
 
 impl From<openssl::error::ErrorStack> for KmsError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::ServerError(e.to_string())
+        Self::ServerError(format!("{e}. Details: {e:?}"))
     }
 }
 
@@ -186,21 +190,27 @@ impl From<TryFromSliceError> for KmsError {
     }
 }
 
+impl From<reqwest::Error> for KmsError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::ClientConnectionError(format!("{e}: details: {e:?}"))
+    }
+}
+
 impl From<KmipError> for KmsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
-            KmipError::NotSupported(s) => Self::NotSupported(s),
-            KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(s) => Self::NotSupported(s),
-            KmipError::OpenSSL(s) => Self::NotSupported(s),
-            KmipError::InvalidSize(s) => Self::NotSupported(s),
-            KmipError::InvalidTag(s) => Self::NotSupported(s),
-            KmipError::Derivation(s) => Self::NotSupported(s),
-            KmipError::ConversionError(s) => Self::NotSupported(s),
-            KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::InvalidKmipValue(r, s)
+            | KmipError::InvalidKmipObject(r, s)
+            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::KmipNotSupported(_, s)
+            | KmipError::NotSupported(s)
+            | KmipError::Default(s)
+            | KmipError::OpenSSL(s)
+            | KmipError::InvalidSize(s)
+            | KmipError::InvalidTag(s)
+            | KmipError::Derivation(s)
+            | KmipError::ConversionError(s)
+            | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }
 }
@@ -213,13 +223,13 @@ impl From<SendError<ServerHandle>> for KmsError {
 
 impl From<redis::RedisError> for KmsError {
     fn from(err: redis::RedisError) -> Self {
-        KmsError::Redis(err.to_string())
+        Self::Redis(err.to_string())
     }
 }
 
 impl From<KmsError> for redis::RedisError {
     fn from(val: KmsError) -> Self {
-        redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
+        Self::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 
@@ -291,6 +301,7 @@ macro_rules! kms_bail {
     };
 }
 
+#[allow(clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::KmsError;
@@ -302,16 +313,10 @@ mod tests {
         assert_eq!("Unexpected server error: interpolate 42", err.to_string());
 
         let err = bail();
-        assert_eq!(
-            "Unexpected server error: interpolate 43",
-            err.unwrap_err().to_string()
-        );
+        err.expect_err("Unexpected server error: interpolate 43");
 
         let err = ensure();
-        assert_eq!(
-            "Unexpected server error: interpolate 44",
-            err.unwrap_err().to_string()
-        );
+        err.expect_err("Unexpected server error: interpolate 44");
     }
 
     fn bail() -> Result<(), KmsError> {

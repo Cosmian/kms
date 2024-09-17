@@ -22,10 +22,10 @@ use cosmian_kms_client::{
 use crate::{
     actions::console,
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
-pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
+pub(crate) fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> CliResult<Policy> {
     let policy_buffer = read_bytes_from_file(bin_filename)?;
     Policy::parse_and_convert(policy_buffer.as_slice()).with_context(|| {
         format!(
@@ -35,7 +35,7 @@ pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy
     })
 }
 
-pub fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
+pub(crate) fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> CliResult<Policy> {
     let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
     policy_specs.try_into().with_context(|| {
         format!(
@@ -59,12 +59,12 @@ pub enum PolicyCommands {
 }
 
 impl PolicyCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::View(action) => action.run(kms_rest_client).await?,
             Self::Specs(action) => action.run(kms_rest_client).await?,
             Self::Binary(action) => action.run(kms_rest_client).await?,
-            Self::Create(action) => action.run().await?,
+            Self::Create(action) => action.run()?,
             Self::AddAttribute(action) => action.run(kms_rest_client).await?,
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
@@ -125,7 +125,7 @@ pub struct CreateAction {
 }
 
 impl CreateAction {
-    pub async fn run(&self) -> Result<(), CliError> {
+    pub fn run(&self) -> CliResult<()> {
         // Parse the json policy file
         let policy = policy_from_json_file(&self.policy_specifications_file)?;
 
@@ -149,7 +149,7 @@ async fn recover_policy(
     key_file: Option<&PathBuf>,
     unwrap: bool,
     kms_rest_client: &KmsClient,
-) -> Result<Policy, CliError> {
+) -> CliResult<Policy> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
         export_object(kms_rest_client, key_id, unwrap, None, false, None)
@@ -191,7 +191,7 @@ pub struct SpecsAction {
     policy_specs_file: PathBuf,
 }
 impl SpecsAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -231,7 +231,7 @@ pub struct BinaryAction {
     policy_binary_file: PathBuf,
 }
 impl BinaryAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -273,7 +273,7 @@ pub struct ViewAction {
     detailed: bool,
 }
 impl ViewAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
@@ -318,7 +318,7 @@ pub struct AddAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl AddAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -380,7 +380,7 @@ pub struct RenameAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RenameAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -434,7 +434,7 @@ pub struct DisableAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl DisableAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -489,7 +489,7 @@ pub struct RemoveAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RemoveAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -524,13 +524,14 @@ impl RemoveAttributeAction {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_statements)]
 mod tests {
     use std::path::PathBuf;
 
     use super::policy_from_binary_file;
 
     #[test]
-    pub fn test_policy_bin_from_file() {
+    pub(crate) fn test_policy_bin_from_file() {
         //correct
         const CORRECT_FILE: &str = "test_data/policy.bin";
         let result = policy_from_binary_file(&PathBuf::from(CORRECT_FILE));

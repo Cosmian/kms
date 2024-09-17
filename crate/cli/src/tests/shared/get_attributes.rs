@@ -6,15 +6,18 @@ use serde_json::Value;
 
 use crate::{
     actions::shared::AttributeTag,
-    error::{result::CliResultHelper, CliError},
+    error::{
+        result::{CliResult, CliResultHelper},
+        CliError,
+    },
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
-pub fn get_attributes(
+pub(crate) fn get_attributes(
     cli_conf_path: &str,
     uid: &str,
     attribute_tags: &[AttributeTag],
-) -> Result<HashMap<AttributeTag, Value>, CliError> {
+) -> CliResult<HashMap<AttributeTag, Value>> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [
         "--id",
@@ -50,7 +53,7 @@ pub fn get_attributes(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info,cosmian_kms_server=trace");
+
     cmd.arg("get-attributes").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {

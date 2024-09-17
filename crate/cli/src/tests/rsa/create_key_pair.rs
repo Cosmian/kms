@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
@@ -16,13 +16,13 @@ use crate::{
     },
 };
 
-pub fn create_rsa_4096_bits_key_pair(
+pub(crate) fn create_rsa_4096_bits_key_pair(
     cli_conf_path: &str,
     tags: &[&str],
-) -> Result<(String, String), CliError> {
+) -> CliResult<(String, String)> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["keys", "create"];
     // add tags
     for tag in tags {
@@ -51,9 +51,7 @@ pub fn create_rsa_4096_bits_key_pair(
 }
 
 #[tokio::test]
-pub async fn test_rsa_create_key_pair() -> Result<(), CliError> {
-    // log_init("trace");
-
+pub(crate) async fn test_rsa_create_key_pair() -> CliResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
     create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag1", "tag2"])?;

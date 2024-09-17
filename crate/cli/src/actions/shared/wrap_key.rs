@@ -18,7 +18,7 @@ use cosmian_kms_client::{
 use crate::{
     actions::{console, shared::SYMMETRIC_WRAPPING_KEY_SIZE},
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Locally wrap a key in KMIP JSON TTLV format.
@@ -62,7 +62,22 @@ pub struct WrapKeyAction {
 }
 
 impl WrapKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    /// Run the wrap key action.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an error if:
+    ///
+    /// - The key file cannot be read.
+    /// - The key is already wrapped and cannot be wrapped again.
+    /// - The wrap key cannot be decoded from base64.
+    /// - The wrap password cannot be derived into a symmetric key.
+    /// - The wrap key cannot be exported from the KMS.
+    /// - The wrap key file cannot be read.
+    /// - The key block cannot be wrapped with the wrapping key.
+    /// - The wrapped key object cannot be written to the output file.
+    /// - The console output cannot be written.
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 
@@ -81,8 +96,10 @@ impl WrapKeyAction {
                 .with_context(|| "failed decoding the wrap key")?;
             create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
-            let key_bytes =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
+            let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
+                &[0_u8; 16],
+                password.as_bytes(),
+            )?;
 
             let symmetric_key_object =
                 create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);

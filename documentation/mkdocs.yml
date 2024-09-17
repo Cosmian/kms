@@ -52,6 +52,7 @@ nav:
   - Cryptographic algorithms: algorithms.md
   - Enabling TLS: tls.md
   - Logging and telemetry: logging.md
+  - Configuring database: database.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
   - Running in the cloud or any zero-trust environment: zero_trust.md
@@ -81,8 +82,10 @@ nav:
       - Get Attributes: kmip_2_1/_get_attributes.md
       - Import: kmip_2_1/_import.md
       - Locate: kmip_2_1/_locate.md
+      - Re-Key: kmip_2_1/_re-key.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
+  - Encrypting email with S/MIME: pki/smime.md
   - Google workspace Client-Side Encryption (CSE):
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md

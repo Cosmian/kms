@@ -9,7 +9,7 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
 /// A PKCS11 Certificate is a Certificate that wraps data from a KMS object
 #[derive(Debug)]
-pub struct Pkcs11Certificate {
+pub(crate) struct Pkcs11Certificate {
     pub certificate: X509Certificate,
     pub label: String,
 }
@@ -32,7 +32,7 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
                     })?,
                     label: kms_object.other_tags.join(","),
                 }),
-                _ => Err(Pkcs11Error::ServerError(format!(
+                CertificateType::PGP => Err(Pkcs11Error::ServerError(format!(
                     "Invalid Certificate Type: {certificate_type:?}"
                 ))),
             },

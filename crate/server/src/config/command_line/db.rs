@@ -11,7 +11,7 @@ use crate::{
     result::KResult,
 };
 
-const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
+pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
 /// Configuration for the database
 #[derive(Args, Clone, Deserialize, Serialize)]
@@ -148,7 +148,7 @@ impl DBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
     /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
-    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
+    pub(crate) fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
         Ok(if let Some(database_type) = &self.database_type {
             Some(match database_type.as_str() {
                 "postgresql" => {
@@ -201,7 +201,7 @@ impl DBConfig {
 
 fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
     let url = if let Some(url) = database_url {
-        Ok(url.to_string())
+        Ok(url.to_owned())
     } else {
         std::env::var(alternate_env_variable).map_err(|_e| {
             kms_error!(
@@ -220,7 +220,7 @@ fn ensure_value(
     env_variable_name: &str,
 ) -> KResult<String> {
     if let Some(value) = value {
-        Ok(value.to_string())
+        Ok(value.to_owned())
     } else {
         std::env::var(env_variable_name).map_err(|_e| {
             kms_error!(

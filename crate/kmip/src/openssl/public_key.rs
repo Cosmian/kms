@@ -189,7 +189,7 @@ pub fn openssl_public_key_to_kmip(
                     )),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        cryptographic_length: Some(rsa_public_key.size() as i32),
+                        cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PublicKey),
                         cryptographic_usage_mask,
@@ -197,7 +197,7 @@ pub fn openssl_public_key_to_kmip(
                     })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(rsa_public_key.size() as i32),
+                cryptographic_length: Some((rsa_public_key.size() * 8) as i32),
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -206,10 +206,8 @@ pub fn openssl_public_key_to_kmip(
             let spki_der = Zeroizing::from(public_key.public_key_to_der()?);
             let cryptographic_algorithm = match public_key.id() {
                 Id::RSA => Some(CryptographicAlgorithm::RSA),
-                Id::EC => Some(CryptographicAlgorithm::ECDH),
-                Id::X25519 => Some(CryptographicAlgorithm::ECDH),
+                Id::EC | Id::X25519 | Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED25519 => Some(CryptographicAlgorithm::Ed25519),
-                Id::X448 => Some(CryptographicAlgorithm::ECDH),
                 Id::ED448 => Some(CryptographicAlgorithm::Ed448),
                 _ => None,
             };
@@ -488,20 +486,19 @@ mod tests {
         // SPKI (== KMIP PKCS#8)
         let object = openssl_public_key_to_kmip(public_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PublicKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PublicKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material: KeyMaterial::ByteString(key_value),
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         let public_key_ = if kft == KeyFormatType::PKCS8 {
             PKey::public_key_from_der(&key_value).unwrap()
@@ -553,24 +550,23 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentRSAPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PublicKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PublicKey { key_block } = object else {
+            panic!("Invalid key block")
         };
-        let (modulus, public_exponent) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentRSAPublicKey {
-                                modulus,
-                                public_exponent,
-                            },
-                        ..
-                    },
-                ..
-            } => (modulus, public_exponent),
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material:
+                        KeyMaterial::TransparentRSAPublicKey {
+                            modulus,
+                            public_exponent,
+                        },
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         let public_key_ = PKey::from_rsa(
             Rsa::from_public_components(
@@ -611,25 +607,24 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentECPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let key_block = match object {
-            Object::PublicKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
+        let Object::PublicKey { key_block } = object else {
+            panic!("Invalid key block")
         };
 
-        let (q_string, recommended_curve) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentECPublicKey {
-                                q_string,
-                                recommended_curve,
-                            },
-                        ..
-                    },
-                ..
-            } => (q_string, recommended_curve),
-            _ => panic!("Invalid key block"),
+        let KeyBlock {
+            key_value:
+                KeyValue {
+                    key_material:
+                        KeyMaterial::TransparentECPublicKey {
+                            q_string,
+                            recommended_curve,
+                        },
+                    ..
+                },
+            ..
+        } = key_block
+        else {
+            panic!("Invalid key block")
         };
         assert_eq!(recommended_curve, curve);
 

@@ -32,7 +32,7 @@ use openssl::{
     hash::MessageDigest,
     x509::{X509Req, X509},
 };
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{
@@ -63,7 +63,7 @@ const X509_VERSION3: i32 = 2;
 /// Certify a certificate
 /// This operation is used to issue a certificate based on a public key, a CSR or a key pair
 /// The certificate can be self-signed or signed by another certificate
-pub async fn certify(
+pub(crate) async fn certify(
     kms: &KMS,
     request: Certify,
     user: &str,
@@ -83,22 +83,7 @@ pub async fn certify(
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
     let (operations, unique_identifier) = match subject {
-        Subject::X509Req(unique_identifier, _) => {
-            (
-                vec![
-                    // upsert the certificate
-                    AtomicOperation::Upsert((
-                        unique_identifier.to_string(),
-                        certificate,
-                        attributes,
-                        Some(tags),
-                        StateEnumeration::Active,
-                    )),
-                ],
-                unique_identifier,
-            )
-        }
-        Subject::Certificate(unique_identifier, _, _) => {
+        Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
             (
                 vec![
                     // upsert the certificate
@@ -116,16 +101,20 @@ pub async fn certify(
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes;
-            public_key_attributes.add_link(
+            public_key_attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
             let mut certificate_attributes = attributes.clone();
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
             );
+            // update the link to the private for the certificate
+            if let Some(private_key_id) = public_key_attributes.get_link(LinkType::PrivateKeyLink) {
+                certificate_attributes.set_link(LinkType::PrivateKeyLink, private_key_id);
+            }
             (
                 vec![
                     // upsert the certificate
@@ -147,55 +136,61 @@ pub async fn certify(
                 unique_identifier,
             )
         }
-        Subject::KeypairAndSubjectName(unique_identifier, keypair_data, _) => {
+        Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
+            trace!(
+                "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: \
+                 {keypair_data:?}"
+            );
             // update the private key attributes with the public key identifier
-            let mut private_key_attributes = keypair_data.private_key_object.attributes()?.clone();
-            private_key_attributes.add_link(
+            keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
             );
             // update the private key attributes with a link to the certificate
-            private_key_attributes.add_link(
+            keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the public key attributes with a link to the private key
-            let mut public_key_attributes = keypair_data.public_key_object.attributes()?.clone();
-            public_key_attributes.add_link(
+            keypair_data.public_key_object.attributes_mut()?.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
             );
             // update the public key attributes with a link to the certificate
-            public_key_attributes.add_link(
+            keypair_data.public_key_object.attributes_mut()?.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
             );
             // update the certificate attributes with a link to the public key
             let mut certificate_attributes = attributes.clone();
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.public_key_id.clone()),
             );
             // update the certificate attributes with a link to the private key
-            certificate_attributes.add_link(
+            certificate_attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::from(keypair_data.private_key_id.clone()),
+            );
+            trace!(
+                "Certificate attributes links: {:?}",
+                certificate_attributes.link
             );
             (
                 vec![
                     // upsert the private key
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
-                        keypair_data.private_key_object,
-                        private_key_attributes,
+                        keypair_data.private_key_object.clone(),
+                        keypair_data.private_key_object.attributes()?.clone(),
                         Some(keypair_data.private_key_tags),
                         StateEnumeration::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
                         keypair_data.public_key_id.to_string(),
-                        keypair_data.public_key_object,
-                        public_key_attributes,
+                        keypair_data.public_key_object.clone(),
+                        keypair_data.public_key_object.attributes()?.clone(),
                         Some(keypair_data.public_key_tags),
                         StateEnumeration::Active,
                     )),
@@ -275,7 +270,7 @@ async fn get_subject(
             CertificateRequestType::PEM => X509Req::from_pem(pkcs10_bytes),
             CertificateRequestType::PKCS10 => X509Req::from_der(pkcs10_bytes),
             CertificateRequestType::CRMF => kms_bail!(KmsError::InvalidRequest(
-                "Certificate Request Type CRMF not supported".to_string()
+                "Certificate Request Type CRMF not supported".to_owned()
             )),
         }?;
         let certificate_id = request
@@ -306,7 +301,7 @@ async fn get_subject(
                         .attributes
                         .as_ref()
                         .and_then(|attributes| attributes.unique_identifier.clone())
-                        .unwrap_or(request_id.clone()); //overwrite the current certificate
+                        .unwrap_or_else(|| request_id.clone());
                     return Ok(Subject::Certificate(
                         certificate_id,
                         kmip_certificate_to_openssl(&owm.object)?,
@@ -329,7 +324,7 @@ async fn get_subject(
     let attributes = request.attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Certify from Subject: the attributes specifying the the subject name are missing"
-                .to_string(),
+                .to_owned(),
         )
     })?;
     let subject_name = attributes
@@ -337,7 +332,7 @@ async fn get_subject(
         .as_ref()
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Certify from Subject: the subject name is not found in the attributes".to_string(),
+                "Certify from Subject: the subject name is not found in the attributes".to_owned(),
             )
         })?
         .subject_name()?;
@@ -359,7 +354,7 @@ async fn get_subject(
     let (private_attributes, public_attributes) = {
         let cryptographic_algorithm = attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Keypair creation: the cryptographic algorithm is missing".to_string(),
+                "Keypair creation: the cryptographic algorithm is missing".to_owned(),
             )
         })?;
         let private_attributes = Attributes {
@@ -386,7 +381,7 @@ async fn get_subject(
         public_protection_storage_masks: None,
         public_key_attributes: public_attributes,
     };
-    info!("Creating key pair for certification");
+    info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
         create_key_pair_request,
         &sk_uid.to_string(),
@@ -427,7 +422,10 @@ async fn get_issuer<'a>(
         }
         None => (None, None),
     };
-
+    trace!(
+        "Issuer certificate id: {issuer_certificate_id:?}, issuer private key id: \
+         {issuer_private_key_id:?}"
+    );
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
         return issuer_for_self_signed_certificate(subject, kms, user, params).await;
@@ -496,7 +494,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
                     "No private key linked to the certificate found to renew it as self-signed"
-                        .to_string(),
+                        .to_owned(),
                 )
             })?;
             Ok(Issuer::PrivateKeyAndCertificate(
@@ -520,7 +518,7 @@ async fn issuer_for_self_signed_certificate<'a>(
                 KmsError::InvalidRequest(
                     "No private key link found to create a self-signed certificate from a public \
                      key"
-                    .to_string(),
+                    .to_owned(),
                 )
             })?;
             // see if we can find an existing certificate to link to the public key
@@ -560,9 +558,10 @@ fn build_and_sign_certificate(
     issuer: &Issuer,
     subject: &Subject,
     request: Certify,
-) -> Result<(Object, HashSet<String>, Attributes), KmsError> {
+) -> KResult<(Object, HashSet<String>, Attributes)> {
+    debug!("Building and signing certificate");
     // recover the attributes
-    let mut attributes = request.attributes.clone().unwrap_or_default();
+    let mut attributes = request.attributes.unwrap_or_default();
 
     // remove any link that helped identify the issuer
     // these will be properly re-added later
@@ -571,7 +570,7 @@ fn build_and_sign_certificate(
     attributes.remove_link(LinkType::PublicKeyLink);
 
     // Create an X509 struct with the desired certificate information.
-    let mut x509_builder = X509::builder().unwrap();
+    let mut x509_builder = X509::builder()?;
 
     // Handle the subject name and public key
     x509_builder.set_version(X509_VERSION3)?;
@@ -582,10 +581,15 @@ fn build_and_sign_certificate(
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
     // retrieve the number of days for the validity of the certificate
-    let mut number_of_days = attributes.extract_requested_validity_days()?.unwrap_or(365) as u32;
+    let mut number_of_days =
+        u32::try_from(attributes.extract_requested_validity_days()?.unwrap_or(365))?;
+    trace!("Number of days: {}", number_of_days);
+
     // the number of days cannot exceed that of the issuer certificate
     if let Some(issuer_not_after) = issuer.not_after() {
-        number_of_days = min(issuer_not_after.diff(&now)?.days as u32, number_of_days);
+        trace!("Issuer certificate not after: {issuer_not_after}");
+        let days = u32::try_from(now.diff(issuer_not_after)?.days)?;
+        number_of_days = min(days, number_of_days);
     }
     x509_builder.set_not_before(now.as_ref())?;
     x509_builder.set_not_after(
@@ -593,10 +597,6 @@ fn build_and_sign_certificate(
             .context("could not get a date in ASN.1")?
             .as_ref(),
     )?;
-
-    // Set the issuer name and private key
-    x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
 
     // add subject extensions
     subject
@@ -610,11 +610,16 @@ fn build_and_sign_certificate(
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
     {
         let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+        debug!("OpenSSL Extensions: {}", extensions_as_str);
         let context = x509_builder.x509v3_context(issuer.certificate(), None);
         x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
             .into_iter()
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
+
+    // Set the issuer name and private key
+    x509_builder.set_issuer_name(issuer.subject_name())?;
+    x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
 
     let x509 = x509_builder.build();
 
@@ -626,10 +631,10 @@ fn build_and_sign_certificate(
     // add subject tags if any
     tags.extend(subject.tags().iter().cloned());
     // add the certificate "system" tag
-    tags.insert("_cert".to_string());
+    tags.insert("_cert".to_owned());
 
     // link the certificate to the issuer certificate
-    attributes.add_link(
+    attributes.set_link(
         LinkType::CertificateLink,
         issuer.unique_identifier().clone().into(),
     );

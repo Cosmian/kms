@@ -27,7 +27,7 @@ use crate::{
 /// * `params` - the extra database parameters
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub async fn wrap_key(
+pub(crate) async fn wrap_key(
     object_key_block: &mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
@@ -58,7 +58,7 @@ pub async fn wrap_key(
     let wrapping_key = match object_type {
         ObjectType::PublicKey | ObjectType::Certificate | ObjectType::SymmetricKey => wrapping_key,
         ObjectType::PrivateKey => {
-            let attributes = wrapping_key.object.attributes()?;
+            let attributes = wrapping_key.attributes;
             let public_key_uid = attributes
                 .get_link(LinkType::PublicKeyLink)
                 .or_else(|| attributes.get_link(LinkType::CertificateLink))

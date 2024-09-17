@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,
@@ -18,17 +18,16 @@ use crate::{
 };
 
 /// Encrypts a file using the given public key and access policy.
-pub fn encrypt(
+pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
     public_key_id: &str,
     access_policy: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["encrypt", "--key-id", public_key_id];
     args.append(&mut input_files.to_vec());
@@ -53,16 +52,15 @@ pub fn encrypt(
 }
 
 /// Decrypt a file using the given private key
-pub fn decrypt(
+pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_files: &[&str],
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["decrypt", "--key-id", private_key_id];
     args.append(&mut input_files.to_vec());
@@ -86,7 +84,7 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_object_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -159,7 +157,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_bulk_using_object_ids() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -290,7 +288,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -393,7 +391,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_bulk_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

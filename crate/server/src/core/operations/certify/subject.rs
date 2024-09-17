@@ -15,7 +15,8 @@ use openssl::{
 use crate::{database::object_with_metadata::ObjectWithMetadata, kms_error, result::KResult};
 
 /// This holds `KeyPair` information when one is created for the subject
-pub struct KeyPairData {
+#[derive(Debug)]
+pub(crate) struct KeyPairData {
     pub(crate) private_key_id: UniqueIdentifier,
     pub(crate) private_key_object: Object,
     pub(crate) private_key_tags: HashSet<String>,
@@ -25,7 +26,7 @@ pub struct KeyPairData {
 }
 
 /// The party that gets signed by the issuer and gets the certificate
-pub enum Subject {
+pub(crate) enum Subject {
     X509Req(
         /// Unique identifier of the certificate to create
         UniqueIdentifier,
@@ -59,48 +60,48 @@ pub enum Subject {
 }
 
 impl Subject {
-    pub fn subject_name(&self) -> &X509NameRef {
+    pub(crate) fn subject_name(&self) -> &X509NameRef {
         match self {
-            Subject::X509Req(_, req) => req.subject_name(),
-            Subject::Certificate(_, x509, _) => x509.subject_name(),
-            Subject::PublicKeyAndSubjectName(_, _owm, sn) => sn.as_ref(),
-            Subject::KeypairAndSubjectName(_, _keypair, sn) => sn.as_ref(),
+            Self::X509Req(_, req) => req.subject_name(),
+            Self::Certificate(_, x509, _) => x509.subject_name(),
+            Self::PublicKeyAndSubjectName(_, _owm, sn) => sn.as_ref(),
+            Self::KeypairAndSubjectName(_, _keypair, sn) => sn.as_ref(),
         }
     }
 
-    pub fn public_key(&self) -> KResult<PKey<Public>> {
+    pub(crate) fn public_key(&self) -> KResult<PKey<Public>> {
         match self {
-            Subject::X509Req(_, req) => req
+            Self::X509Req(_, req) => req
                 .public_key()
                 .map_err(|e| kms_error!("No public key: {e}")),
-            Subject::Certificate(_, x509, _) => x509
+            Self::Certificate(_, x509, _) => x509
                 .public_key()
                 .map_err(|e| kms_error!("No public key: {e}")),
-            Subject::PublicKeyAndSubjectName(_, owm, _sn) => {
+            Self::PublicKeyAndSubjectName(_, owm, _sn) => {
                 kmip_public_key_to_openssl(&owm.object).map_err(Into::into)
             }
-            Subject::KeypairAndSubjectName(_, keypair, _sn) => {
+            Self::KeypairAndSubjectName(_, keypair, _sn) => {
                 kmip_public_key_to_openssl(&keypair.public_key_object).map_err(Into::into)
             }
         }
     }
 
-    pub fn extensions(&self) -> KResult<Vec<X509Extension>> {
+    pub(crate) fn extensions(&self) -> KResult<Vec<X509Extension>> {
         match self {
-            Subject::X509Req(_, req) => req
+            Self::X509Req(_, req) => req
                 .extensions()
                 .map(|stack| stack.into_iter().collect::<Vec<_>>())
                 .map_err(|e| kms_error!("No extensions: {e}")),
-            Subject::Certificate(_, x509, _) => {
+            Self::Certificate(_, x509, _) => {
                 openssl_certificate_extensions(x509).map_err(Into::into)
             }
             _ => Ok(vec![]),
         }
     }
 
-    pub fn tags(&self) -> HashSet<String> {
+    pub(crate) fn tags(&self) -> HashSet<String> {
         match self {
-            Subject::Certificate(_, _, attributes) => attributes.get_tags(),
+            Self::Certificate(_, _, attributes) => attributes.get_tags(),
             // It is an open question whether the tags from an existing public key should be
             // added to those of the certificate. For now, we return an empty set.
             _ => HashSet::new(),

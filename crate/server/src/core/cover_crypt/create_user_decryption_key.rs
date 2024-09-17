@@ -25,7 +25,7 @@ use crate::{
 ///
 /// The attributes of the `Create` request must contain the
 /// `Access Policy`
-pub async fn create_user_decryption_key(
+pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_request: &Create,
@@ -58,7 +58,7 @@ async fn create_user_decryption_key_(
         .ok_or_else(|| {
             KmsError::InvalidRequest(
                 "there should be a reference to the master private key in the creation attributes"
-                    .to_string(),
+                    .to_owned(),
             )
         })?
         .to_string();
@@ -77,9 +77,7 @@ async fn create_user_decryption_key_(
                 return false
             }
 
-            let attributes = if let Ok(attributes) = owm.object.attributes() {
-                attributes
-            } else {
+            let Ok(attributes) = owm.object.attributes() else {
                 return false
             };
 
@@ -118,7 +116,7 @@ async fn create_user_decryption_key_(
 #[allow(unused)]
 //TODO: there is noway to distinguish between the creation of a user decryption key pair and a master key pair
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
-pub async fn create_user_decryption_key_pair(
+pub(crate) async fn create_user_decryption_key_pair(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_key_pair_request: &CreateKeyPair,
@@ -132,7 +130,7 @@ pub async fn create_user_decryption_key_pair(
         .or(create_key_pair_request.common_attributes.as_ref())
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Missing private attributes in CoverCrypt Create Keypair request".to_string(),
+                "Missing private attributes in CoverCrypt Create Keypair request".to_owned(),
             )
         })?;
     let private_key = create_user_decryption_key_(
@@ -151,13 +149,13 @@ pub async fn create_user_decryption_key_pair(
         .or(create_key_pair_request.common_attributes.as_ref())
         .ok_or_else(|| {
             KmsError::InvalidRequest(
-                "Missing public attributes in CoverCrypt Create Keypair request".to_string(),
+                "Missing public attributes in CoverCrypt Create Keypair request".to_owned(),
             )
         })?;
     let master_public_key_uid = public_key_attributes.get_parent_id().ok_or_else(|| {
         KmsError::InvalidRequest(
             "the master public key id should be available in the public creation attributes"
-                .to_string(),
+                .to_owned(),
         )
     })?;
     let gr_public_key = kmip_server

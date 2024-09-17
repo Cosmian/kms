@@ -2,13 +2,11 @@ use cosmian_kmip::kmip::kmip_types::{
     Attributes, LinkedObjectIdentifier::TextString, StateEnumeration,
 };
 
-use crate::result::KResult;
-
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
 /// This trait contains default naming which are overridden
 /// by implementation if needed
-pub trait PlaceholderTrait {
+pub(crate) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -62,11 +60,11 @@ pub trait PlaceholderTrait {
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     #[must_use]
     fn extract_text_from_object_type_path() -> String {
-        "object ->> 'object_type'".to_string()
+        "object ->> 'object_type'".to_owned()
     }
 }
 
-pub enum MySqlPlaceholder {}
+pub(crate) enum MySqlPlaceholder {}
 impl PlaceholderTrait for MySqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
@@ -75,7 +73,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
     const TYPE_INTEGER: &'static str = "SIGNED";
 
     fn binder(_param_number: usize) -> String {
-        "?".to_string()
+        "?".to_owned()
     }
 
     fn additional_rq_from() -> Option<String> {
@@ -112,7 +110,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         format!("{}(object, '$.object_type')", Self::JSON_FN_EXTRACT_TEXT)
     }
 }
-pub enum PgSqlPlaceholder {}
+pub(crate) enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
@@ -123,7 +121,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
 }
-pub enum SqlitePlaceholder {}
+pub(crate) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
 
 /// Builds a SQL query depending on `attributes` and `state` constraints,
@@ -132,12 +130,12 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// The different placeholder for variable binding is handled by trait specification.
 // TODO  although this is a select query, it is complex and the occurrence is unlikely,
 // TODO  protection against SQL Injection is not covered here
-pub fn query_from_attributes<P: PlaceholderTrait>(
+pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     user: &str,
     user_must_be_owner: bool,
-) -> KResult<String> {
+) -> String {
     let mut query = format!(
         "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
          {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
@@ -146,15 +144,6 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
     );
 
     if let Some(attributes) = attributes {
-        // Links
-        if let Some(links) = &attributes.link {
-            if !links.is_empty() {
-                if let Some(additional_rq_from) = P::additional_rq_from() {
-                    query = format!("{query}, {additional_rq_from}");
-                }
-            }
-        }
-
         // tags
         let tags = attributes.get_tags();
         let tags_len = tags.len();
@@ -177,15 +166,29 @@ ON objects.id = matched_tags.id"
         }
     }
 
-    if user_must_be_owner {
-        // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = '{user}'",);
-    } else {
+    if !user_must_be_owner {
         // select objects for which the user is the owner or has been granted an access right
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
              read_access.userid = '{user}'"
         );
+    }
+
+    if let Some(attributes) = attributes {
+        // Links
+        if let Some(links) = &attributes.link {
+            if !links.is_empty() {
+                if let Some(additional_rq_from) = P::additional_rq_from() {
+                    query = format!("{query}, {additional_rq_from}");
+                }
+            }
+        }
+    }
+
+    if user_must_be_owner {
+        // only select objects for which the user is the owner
+        query = format!("{query} WHERE objects.owner = '{user}'",);
+    } else {
         query =
             format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
     }
@@ -247,5 +250,5 @@ ON objects.id = matched_tags.id"
             }
         }
     }
-    Ok(query)
+    query
 }

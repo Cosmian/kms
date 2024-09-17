@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
 
-pub mod result;
+pub(crate) mod result;
 
 #[derive(Error, Debug)]
 pub enum KmipError {
@@ -106,7 +106,7 @@ impl From<KmipError> for pyo3::PyErr {
 #[cfg(feature = "openssl")]
 impl From<openssl::error::ErrorStack> for KmipError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::OpenSSL(e.to_string())
+        Self::OpenSSL(format!("Error: {e}. Details: {e:?}"))
     }
 }
 

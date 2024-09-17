@@ -1,5 +1,5 @@
 ---
-name: KMS Python
+name: KMS Python tests
 
 on:
   workflow_call:
@@ -8,6 +8,9 @@ on:
         required: true
         type: string
       branch:
+        required: true
+        type: string
+      fips:
         required: true
         type: string
 
@@ -55,6 +58,10 @@ jobs:
           # Check python code
           mypy crate/pyo3/python/scripts/test_kms.py
           python3 crate/pyo3/python/scripts/test_kms.py
+          if [ ! "${{ inputs.fips }}" = "FIPS" ]; then
+            mypy crate/pyo3/python/scripts/test_kms_covercrypt.py
+            python3 crate/pyo3/python/scripts/test_kms_covercrypt.py
+          fi
 
       - name: Check that the lib version is the same as the server
         run: |

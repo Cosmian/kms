@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Destroy a KMIP Object
-pub async fn destroy_operation(
+pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
     user: &str,
@@ -181,7 +181,7 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    debug!("destroy: object: {object:?}");
+    trace!("destroy: object: {object:?}");
     let attributes = if let Object::Certificate { .. } = object {
         trace!("Certificate destroying");
         Attributes::default()

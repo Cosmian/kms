@@ -20,7 +20,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub async fn rekey_keypair(
+pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,
@@ -71,7 +71,7 @@ pub async fn rekey_keypair(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_owned()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
@@ -90,7 +90,7 @@ pub async fn rekey_keypair(
         kms_bail!(KmsError::InvalidRequest(
             "The cryptographic algorithm must be specified in the private key attributes for key \
              pair creation"
-                .to_string()
+                .to_owned()
         ))
     }
 }

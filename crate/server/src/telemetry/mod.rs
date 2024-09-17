@@ -20,6 +20,14 @@ pub struct TelemetryConfig {
 }
 
 /// Initialize the telemetry system
+///
+/// # Arguments
+///
+/// * `clap_config` - The `ClapConfig` object containing the telemetry configuration
+///
+/// # Errors
+///
+/// Returns an error if there is an issue initializing the telemetry system.
 pub fn initialize_telemetry(clap_config: &ClapConfig) -> KResult<()> {
     let config = &clap_config.telemetry;
     let (filter, _reload_handle) =

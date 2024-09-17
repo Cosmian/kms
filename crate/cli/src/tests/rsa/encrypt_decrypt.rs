@@ -9,14 +9,14 @@ use tempfile::TempDir;
 use super::SUB_COMMAND;
 use crate::{
     actions::rsa::{EncryptionAlgorithm, HashFn},
-    error::CliError,
+    error::{result::CliResult, CliError},
     tests::{
         rsa::create_key_pair::create_rsa_4096_bits_key_pair, utils::recover_cmd_logs, PROG_NAME,
     },
 };
 
 /// Encrypts a file using the given public key
-pub fn encrypt(
+pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
     public_key_id: &str,
@@ -24,10 +24,9 @@ pub fn encrypt(
     hash_fn: Option<HashFn>,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["encrypt"];
     args.append(&mut input_files.to_vec());
@@ -58,7 +57,7 @@ pub fn encrypt(
 }
 
 /// Decrypt a file using the given private key
-pub fn decrypt(
+pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,
@@ -66,10 +65,10 @@ pub fn decrypt(
     hash_fn: Option<HashFn>,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> Result<(), CliError> {
+) -> CliResult<()> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+
     let mut args = vec!["decrypt", input_file, "--key-id", private_key_id];
     args.push("--encryption-algorithm");
     let encryption_algorithm = encryption_algorithm.to_string();
@@ -99,7 +98,7 @@ pub fn decrypt(
 
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
-async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> Result<(), CliError> {
+async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
     // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
@@ -171,7 +170,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliError> {
+async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
     // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
@@ -257,7 +256,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
 }
 
 #[tokio::test]
-async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> Result<(), CliError> {
+async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
@@ -337,7 +336,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> Result<(), CliErro
 }
 
 #[tokio::test]
-async fn test_rsa_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

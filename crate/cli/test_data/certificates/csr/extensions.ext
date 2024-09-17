@@ -2,4 +2,4 @@
 basicConstraints=CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
-crlDistributionPoints=URI:http://cse.example.com/crl.pem
+crlDistributionPoints=URI:https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem

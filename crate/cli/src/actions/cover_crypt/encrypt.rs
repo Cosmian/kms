@@ -13,7 +13,7 @@ use cosmian_kms_client::{
 
 use crate::{
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Encrypt a file using Covercrypt
@@ -26,7 +26,7 @@ pub struct EncryptAction {
     input_files: Vec<PathBuf>,
 
     /// The encryption policy to encrypt the file with
-    /// Example: "department::marketing && level::confidential"`
+    /// Example: "`department::marketing` && `level::confidential`"
     #[clap(required = true)]
     encryption_policy: String,
 
@@ -51,7 +51,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file(s) to encrypt
         let (cryptographic_algorithm, mut data) = if self.input_files.len() > 1 {
             (
@@ -105,9 +105,9 @@ impl EncryptAction {
 
         // Write the encrypted data
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?
+            write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?;
         } else {
-            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?
+            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())?;
         }
         Ok(())
     }

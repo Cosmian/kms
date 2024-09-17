@@ -207,7 +207,7 @@ pub fn parse_v3_ca(
                         match value {
                             "critical" => eku.critical(),
                             "serverAuth" => eku.server_auth(),
-                            "clientAuth" => eku.server_auth(),
+                            "clientAuth" => eku.client_auth(),
                             "codeSigning" => eku.code_signing(),
                             "emailProtection" => eku.email_protection(),
                             "timeStamping" => eku.time_stamping(),

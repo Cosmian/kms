@@ -13,7 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/demo_timeout.rs"));
 /// # Panics
 ///
 /// Will panic if automatically generated datetime cannot be stringified back
-pub async fn demo_timeout() {
+pub(crate) async fn demo_timeout() {
     loop {
         {
             let now = OffsetDateTime::now_utc();

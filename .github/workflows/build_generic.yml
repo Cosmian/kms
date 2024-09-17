@@ -101,27 +101,51 @@ jobs:
       - run: find .
         if: contains(runner.os, 'linux')
 
-      - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+      - name: Linux launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux')
         run: |
           set -ex
-
-          if [ "${{ inputs.features }}" = "fips" ]; then
-            KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          else
-            KMS_PATH="${{ inputs.debug_or_release }}"
-          fi
+          # The current path should be /home/runner/work/kms/kms
+          pwd
+          find . -type f
+          # There are 2 subdirectories in the current path
+          #   usr/local/openssl/
+          #   home/runner/work/kms/kms/target/
+          KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
 
           ./$KMS_PATH/ckms -V
 
-          # Copy openssl build for FIPS mode
-          if [ -d "usr/local/openssl" ]; then
-            sudo mkdir /usr/local/openssl
-            sudo chown -R $USER /usr/local/openssl
-            rsync -ru usr/local/openssl/ /usr/local/openssl/
-            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
-          fi
-          ./$KMS_PATH/cosmian_kms_server -V
+          # Copy openssl build for Legacy mode
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
+          find /usr/local/openssl
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
+          ./$KMS_PATH/cosmian_kms_server --info
+
+      - name: MacOS launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'macos')
+        run: |
+          set -ex
+          # The current path should be /Users/runner/work/kms/kms
+          pwd
+          ls -lah
+          find . -type f
+          # There are 2 subdirectories in the current path
+          #   usr/local/openssl/
+          #   Users/runner/work/kms/kms/target/
+          KMS_PATH="Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian_kms_server
+
+          ./$KMS_PATH/ckms -V
+
+          # Copy openssl build for Legacy mode
+          sudo mkdir /usr/local/openssl
+          sudo chown -R $USER /usr/local/openssl
+          rsync -ru usr/local/openssl/ /usr/local/openssl/
+          find /usr/local/openssl
+          chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
+          ./$KMS_PATH/cosmian_kms_server --info

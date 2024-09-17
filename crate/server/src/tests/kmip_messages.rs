@@ -3,6 +3,7 @@ use std::sync::Arc;
 use cosmian_kmip::{
     crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
     kmip::{
+        extra::tagging::EMPTY_TAGS,
         kmip_messages::{Message, MessageBatchItem, MessageHeader},
         kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
         kmip_types::{
@@ -22,19 +23,18 @@ async fn test_kmip_messages() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let ec_create_request =
-        create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let ec_create_request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
 
     // prepare and send the single message
     let items = vec![
         MessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
         MessageBatchItem::new(Operation::Locate(Locate::default())),
         MessageBatchItem::new(Operation::Decrypt(Decrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_string())),
+            unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
             data: Some(b"decrypted_data".to_vec()),
             ..Default::default()
         })),
@@ -110,9 +110,9 @@ async fn test_kmip_messages() -> KResult<()> {
     assert_eq!(
         response.items[2].result_message,
         Some(
-            "Decrypt: no available key found (must be an active symmetric key or private key) for \
+            "Get Key: no available key found (must be an active symmetric key or private key) for \
              object identifier id_12345"
-                .to_string()
+                .to_owned()
         )
     );
     assert!(response.items[2].response_payload.is_none());

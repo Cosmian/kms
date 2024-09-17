@@ -39,7 +39,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
-    // log_init("cosmian_kms_server=debug");
+    cosmian_logger::log_utils::log_init(None);
     let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
@@ -47,7 +47,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // Re_key all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_string()),
+        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -65,7 +65,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let encryption_policy = "Level::Confidential && Department::MKG";
     let request = build_encryption_request(
         &mkp_json_tag,
-        Some(encryption_policy.to_string()),
+        Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
@@ -103,7 +103,7 @@ fn policy() -> Result<Policy, KmsError> {
 
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
-    // log_init("cosmian_kms_server=debug");
+    cosmian_logger::log_utils::log_init(None);
 
     let app = test_utils::test_app(None).await;
 
@@ -127,7 +127,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
 
     let request = build_encryption_request(
         &mkp_json_tag,
-        Some(encryption_policy.to_string()),
+        Some(encryption_policy.to_owned()),
         data.to_vec(),
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
@@ -178,7 +178,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
 
     let request = build_encryption_request(
         &mkp_json_tag,
-        Some(encryption_policy.to_string()),
+        Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
@@ -253,7 +253,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let _revoke_response: RevokeResponse = test_utils::post(
         &app,
         &Revoke {
-            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.to_string())),
+            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
             revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
             compromise_occurrence_date: None,
         },
@@ -264,7 +264,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // Rekey all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_string()),
+        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -282,7 +282,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let encryption_policy = "Level::Confidential && Department::MKG";
     let request = build_encryption_request(
         &mkp_json_tag,
-        Some(encryption_policy.to_string()),
+        Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
@@ -303,7 +303,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
-    assert!(post_ttlv_decrypt.is_err());
+    post_ttlv_decrypt.unwrap_err();
 
     // decrypt
     let request = build_decryption_request(
