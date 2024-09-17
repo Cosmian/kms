@@ -59,7 +59,7 @@ done
 # find .
 
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
-./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server -h
+./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server --info
 
 if [ "$(uname)" = "Linux" ]; then
   ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
@@ -98,11 +98,22 @@ if [ -f /etc/redhat-release ]; then
   cargo install --version 0.14.1 cargo-generate-rpm --force
   cd "$ROOT_FOLDER"
   cargo generate-rpm --target "$TARGET" -p crate/cli
+  sudo dnf install -y "./target/$TARGET/generate-rpm/cosmian_kms_cli-*"
+
   cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
+  sudo dnf install -y "./target/$TARGET/generate-rpm/cosmian_kms_server-*"
 elif [ -f /etc/lsb-release ]; then
   cargo install --version 2.4.0 cargo-deb --force
+
   cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
+  sudo apt install -y "./target/$TARGET/debian/cosmian-kms-cli-fips*.deb"
+
   cargo deb --target "$TARGET" -p cosmian_kms_cli
+  sudo apt install -y "./target/$TARGET/debian/cosmian-kms-cli_*.deb"
+
   cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+  sudo apt install -y "./target/$TARGET/debian/cosmian-kms-server-fips*.deb"
+
   cargo deb --target "$TARGET" -p cosmian_kms_server
+  sudo apt install -y "./target/$TARGET/debian/cosmian-kms-server_*.deb"
 fi

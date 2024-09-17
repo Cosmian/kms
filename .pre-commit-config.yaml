@@ -68,7 +68,7 @@ repos:
     rev: v1.21.0
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/client/test_data/configs/kms.bad|crate/test_server/certificates/|crate/client/test_data/configs/|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -115,7 +115,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private
+        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private|documentation/docs/pki/smime.md
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs

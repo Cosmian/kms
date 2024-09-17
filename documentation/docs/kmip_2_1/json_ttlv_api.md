@@ -11,7 +11,7 @@ Multiple operations can be sent in a single call using the [`Messages` API](./me
 
 !!!info  "Easily building JSON TTLV messages"
 
-    Building JSON TTLV messages is a complex task and the easiest way to get started is to use 
+    Building JSON TTLV messages is a complex task and the easiest way to get started is to use
     the `ckms` CLI in `JSON mode` mode to print the corresponding request and response messages.
 
     The `JSON mode` is activated by passing the `--json` flag to the `ckms` command.
@@ -103,7 +103,7 @@ The CLI will then show the JSON TTLV requests and response:
       ]
     }
   ]
-}    
+}
 2024-09-13T13:39:20.018203Z  INFO ThreadId(01) cosmian_kms_client::kms_rest_client <==
 {
   "tag": "CreateResponse",
@@ -120,7 +120,7 @@ The CLI will then show the JSON TTLV requests and response:
       "value": "925f2175-0676-4785-b9d9-61fff30771f3"
     }
   ]
-}    
+}
 The symmetric key was successfully generated.
           Unique identifier: 925f2175-0676-4785-b9d9-61fff30771f3
 
