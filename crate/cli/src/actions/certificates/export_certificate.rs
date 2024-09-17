@@ -8,7 +8,6 @@ use cosmian_kms_client::{
 };
 use tracing::log::trace;
 
-// use tracing::trace;
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]

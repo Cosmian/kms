@@ -48,6 +48,8 @@ jobs:
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
+            fips.dll
+            legacy.dll
           retention-days: 1
           if-no-files-found: error
 
@@ -60,13 +62,19 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 
-      - name: Install OpenSSL 3
+      - name: List files recursively
         shell: pwsh
-        run: '& $env:GITHUB_ACTION_PATH/../scripts/windows_install_openssl.ps1'
+        run: Get-ChildItem -Recurse
+
+      - name: Copy legacy.dll
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:/Windows/System32/OpenSSL/lib/ossl-modules
+          Copy-Item -Path legacy.dll -Destination C:/Windows/System32/OpenSSL/lib/ossl-modules/legacy.dll
+          Get-ChildItem -Recurse C:/Windows/System32/OpenSSL
 
       - name: Launch ckms and cosmian_kms_server
-        if: contains(runner.os, 'windows')
         run: |
           pwd
-          ./ckms.exe -V
-          ./cosmian_kms_server.exe --info
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe -V
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe --info

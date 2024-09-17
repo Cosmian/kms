@@ -148,6 +148,11 @@ assets = [
     "etc/cosmian_kms/",
     "400",
   ],
+  [
+    "/usr/local/openssl/lib64/ossl-modules/legacy.so",
+    "usr/local/openssl/lib64/ossl-modules/legacy.so",
+    "400",
+  ],
 ]
 systemd-units = [
   { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
@@ -197,6 +202,7 @@ assets = [
 license = "BUSL-1.1"
 assets = [
   { source = "target/release/cosmian_kms_server", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian_kms/README", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian_kms/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },

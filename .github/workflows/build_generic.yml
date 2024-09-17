@@ -104,24 +104,25 @@ jobs:
       - name: Linux launch ckms and cosmian_kms_server
         if: contains(runner.os, 'Linux')
         run: |
+          set -ex
           # The current path should be /home/runner/work/kms/kms
           pwd
           find . -type f
           # There are 2 subdirectories in the current path
           #   usr/local/openssl/
           #   home/runner/work/kms/kms/target/
-          KMS_PATH="./home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
+          KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
-          
+
           ./$KMS_PATH/ckms -V
-          
-          # Copy openssl build for FIPS mode
+
+          # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
-          chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
-          ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          find /usr/local/openssl
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
           ./$KMS_PATH/cosmian_kms_server --info
 
       - name: MacOS launch ckms and cosmian_kms_server
@@ -130,21 +131,21 @@ jobs:
           set -ex
           # The current path should be /Users/runner/work/kms/kms
           pwd
-          ls -lah 
+          ls -lah
           find . -type f
           # There are 2 subdirectories in the current path
           #   usr/local/openssl/
-          #   Users/runner/work/kms/kms/target/ 
+          #   Users/runner/work/kms/kms/target/
           KMS_PATH="Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
           chmod u+x ./$KMS_PATH/cosmian_kms_server
-          
+
           ./$KMS_PATH/ckms -V
-          
-          # Copy openssl build for FIPS and Legacy mode
+
+          # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
+          find /usr/local/openssl
+          chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
           ./$KMS_PATH/cosmian_kms_server --info
-
-

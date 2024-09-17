@@ -100,7 +100,7 @@ fn redis_findex_db_config() -> DBConfig {
     DBConfig {
         database_type: Some("redis-findex".to_string()),
         clear_database: true,
-        database_url: Some(url.to_string()),
+        database_url: Some(url),
         sqlite_path: Default::default(),
         redis_master_password: Some("password".to_string()),
         redis_findex_label: Some("label".to_string()),

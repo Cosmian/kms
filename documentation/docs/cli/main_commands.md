@@ -11,9 +11,13 @@ CLI used to manage the Cosmian KMS.
 
 `--url <URL>` The URL of the KMS
 
-`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self signed cert or untrusted cert chain
+`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self-signed cert or untrusted cert chain
 
 Possible values:  `"true", "false"`
+
+`--json <JSON>` Output the JSON KMIP request and response. This is useful to understand JSON POST requests and responses required to programmatically call the KMS on the `/kmip/2_1` endpoint
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 ### Subcommands
@@ -676,7 +680,8 @@ Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p52
 
 `--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
 
-`--certificate-extensions [-e] <CERTIFICATE_EXTENSIONS>` The path to a X509 extension's file, containing a `v3_ca` parag
+`--certificate-extensions [-e] <CERTIFICATE_EXTENSIONS>` The path to a X509 extension's file, containing a `v3_ca` paragraph
+with the x509 extensions to use. For instance:
 
 `--tag [-t] <TAG>` The tag to associate to the certificate. To specify multiple tags, use the option multiple times
 
@@ -746,7 +751,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 

@@ -49,7 +49,7 @@ struct Cli {
 
     /// Output the JSON KMIP request and response.
     /// This is useful to understand JSON POST requests and responses
-    /// required to programmatically call the KMS on the /kmip/2_1 endpoint
+    /// required to programmatically call the KMS on the `/kmip/2_1` endpoint
     #[arg(long, default_value = "false")]
     pub(crate) json: bool,
 }

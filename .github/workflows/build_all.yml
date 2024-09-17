@@ -21,11 +21,8 @@ jobs:
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
       artifacts: |
-        /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/lib64/ossl-modules/legacy.so
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
-  
+
   fips-ubuntu-20:
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
@@ -69,11 +66,8 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
-        /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/lib64/ossl-modules/legacy.so
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf
-  
+
   generic-macos:
     strategy:
       fail-fast: false
@@ -97,22 +91,14 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
       skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
       artifacts: |
-        /usr/local/openssl/lib/ossl-modules/fips.dylib
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
-        /usr/local/openssl/ssl/openssl.cnf
-        /usr/local/openssl/ssl/fipsmodule.cnf      
-  
+
   windows-2022:
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
       debug_or_release: ${{ inputs.debug_or_release }}
-  #      artifacts: |
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\fips.dll
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ossl-modules\\legacy.dll
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\openssl.cnf
-  #        C:\\Windows\\System32\\OpenSSL\\lib\\ssl\\fipsmodule.cnf
 
   cleanup:
     needs:

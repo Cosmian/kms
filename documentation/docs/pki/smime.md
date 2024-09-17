@@ -4,19 +4,28 @@ S/MIME is a [standard](https://en.wikipedia.org/wiki/S/MIME) for public key encr
 of MIME data.
 It is used to secure email messages and is supported by most email clients and servers.
 
-Table of contents:
+<!-- toc -->
 
 - [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
+    + [Setup (once)](#setup-once)
+    + [Handshake (once per recipient)](#handshake-once-per-recipient)
 - [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
-    - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
-    - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
-    - [Creating a S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
-        - [Create a Root CA](#create-a-root-ca)
-        - [Create an Intermediate CA](#create-an-intermediate-ca)
-    - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+  * [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
+  * [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
+  * [Creating an S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
+    + [Create a Root CA](#create-a-root-ca)
+    + [Create an Intermediate CA](#create-an-intermediate-ca)
+  * [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
 - [Exporting and viewing](#exporting-and-viewing)
-    - [PEM format](#pem-format)
-    - [PKCS#12 format](#pkcs12-format)
+  * [PKCS#12 format](#pkcs%2312-format)
+  * [PEM format](#pem-format)
+- [Loading the PKCS#12 file in an email client](#loading-the-pkcs%2312-file-in-an-email-client)
+- [Apple mail, MacOS](#apple-mail-macos)
+- [Outlook, Windows](#outlook-windows)
+  * [Setup](#setup)
+  * [Sending a message](#sending-a-message)
+
+<!-- tocstop -->
 
 ## Overview of the S/MIME workflow
 
@@ -69,7 +78,7 @@ If you wish to store it in the KMS, you can import it using the following comman
 
 ```sh
 ckms certificates import --format pkcs12 --pkcs12-password mysecret \
-  --replace john_doe.p12 john.doe@acme.com 
+  --replace john_doe.p12 john.doe@acme.com
 ```
 
 To export it as a PEM file, use the following command:
@@ -230,7 +239,7 @@ MAC Iteration 2048
 MAC verified OK
 PKCS7 Encrypted data: Certificate bag
 Bag Attributes
-    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58 
+    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58
 subject=/CN=john.doe@acme.com/OU=IT/C=US/ST=California/L=San Francisco/O=ACME
 issuer=/CN=ACME S/MIME intermediate/OU=IT/C=US/ST=New York/L=New York/O=ACME
 -----BEGIN CERTIFICATE-----
@@ -284,7 +293,7 @@ Nk/pqUsPr8eR1sHQWgg=
 -----END CERTIFICATE-----
 PKCS7 Data
 Shrouded Keybag: Bag Attributes
-    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58 
+    localKeyID: 82 C3 F3 83 32 68 ED B4 71 15 96 12 0B 01 4C 34 8D 58 DC 58
 Key Attributes: <No Attributes>
 -----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQge5si3Le85K18XOLc
@@ -320,7 +329,7 @@ Certificate:
         Subject Public Key Info:
             Public Key Algorithm: id-ecPublicKey
                 Public-Key: (256 bit)
-                pub: 
+                pub:
                     04:4b:0e:f2:7b:5b:93:91:1c:4a:a2:d1:91:24:ce:
                     a4:6e:97:5c:41:9f:fd:92:74:70:83:05:64:69:58:
                     41:46:c5:64:bc:5e:89:30:d6:83:c8:06:64:f6:e8:
@@ -329,14 +338,14 @@ Certificate:
                 ASN1 OID: prime256v1
                 NIST CURVE: P-256
         X509v3 extensions:
-            X509v3 Key Usage: 
+            X509v3 Key Usage:
                 Digital Signature, Non Repudiation, Key Agreement
-            X509v3 Extended Key Usage: 
+            X509v3 Extended Key Usage:
                 E-mail Protection
-            X509v3 Subject Alternative Name: 
+            X509v3 Subject Alternative Name:
                 <EMPTY>
 
-            X509v3 CRL Distribution Points: 
+            X509v3 CRL Distribution Points:
 
                 Full Name:
                   URI:https://acme.com/crl.pem
