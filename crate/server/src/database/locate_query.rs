@@ -144,15 +144,6 @@ pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     );
 
     if let Some(attributes) = attributes {
-        // Links
-        if let Some(links) = &attributes.link {
-            if !links.is_empty() {
-                if let Some(additional_rq_from) = P::additional_rq_from() {
-                    query = format!("{query}, {additional_rq_from}");
-                }
-            }
-        }
-
         // tags
         let tags = attributes.get_tags();
         let tags_len = tags.len();
@@ -175,15 +166,29 @@ ON objects.id = matched_tags.id"
         }
     }
 
-    if user_must_be_owner {
-        // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = '{user}'",);
-    } else {
+    if !user_must_be_owner {
         // select objects for which the user is the owner or has been granted an access right
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
              read_access.userid = '{user}'"
         );
+    }
+
+    if let Some(attributes) = attributes {
+        // Links
+        if let Some(links) = &attributes.link {
+            if !links.is_empty() {
+                if let Some(additional_rq_from) = P::additional_rq_from() {
+                    query = format!("{query}, {additional_rq_from}");
+                }
+            }
+        }
+    }
+
+    if user_must_be_owner {
+        // only select objects for which the user is the owner
+        query = format!("{query} WHERE objects.owner = '{user}'",);
+    } else {
         query =
             format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
     }

@@ -121,6 +121,15 @@ pub enum KeyFormatType {
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
     PKCS10 = 0x17,
+    #[cfg(not(feature = "fips"))]
+    /// This mode is to support legacy, but common, PKCS#12 formats that use
+    /// PBE_WITHSHA1AND40BITRC2_CBC for the encryption algorithm of certificate,
+    /// PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC for the encryption algorithm of the key
+    /// and SHA-1 for the MAC.
+    /// This is not a standard PKCS#12 format but is used by some software
+    /// such as Java KeyStores, Mac OS X Keychains, and some versions of OpenSSL (1x).
+    /// Use PKCS12 instead for standard (newer) PKCS#12 format.
+    Pkcs12Legacy = 0x8880_0001,
     // Available slot 0x8880_0001,
     // Available slot 0x8880_0002,
     // Available slot 0x8880_0003,
@@ -1093,12 +1102,15 @@ impl Attributes {
         self.get_link(LinkType::ParentLink)
     }
 
-    /// Add a link to the object.
-    pub fn add_link(
+    /// Set a link to an object.
+    /// If a link of the same type already exists, it is removed.
+    /// There can only be one link of a given type.
+    pub fn set_link(
         &mut self,
         link_type: LinkType,
         linked_object_identifier: LinkedObjectIdentifier,
     ) {
+        self.remove_link(link_type);
         let links = self.link.get_or_insert_with(Vec::new);
         links.push(Link {
             link_type,

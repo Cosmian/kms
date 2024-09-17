@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     error::KmsError,
@@ -25,10 +27,6 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[tokio::main]
 async fn main() -> KResult<()> {
-    // First operation to do is to load FIPS module if necessary.
-    #[cfg(feature = "fips")]
-    openssl::provider::Provider::load(None, "fips")?;
-
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
         unsafe {
@@ -83,6 +81,13 @@ async fn main() -> KResult<()> {
         ClapConfig::parse()
     };
 
+    let info_only = clap_config.info;
+    if info_only {
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
+    }
+
     // Start the telemetry
     initialize_telemetry(&clap_config)?;
 
@@ -90,11 +95,52 @@ async fn main() -> KResult<()> {
     let span = span!(tracing::Level::INFO, "start");
     let _guard = span.enter();
 
+    // print openssl version
+    #[cfg(feature = "fips")]
+    info!(
+        "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
+        openssl::version::version(),
+        openssl::version::dir(),
+        openssl::version::number()
+    );
+
+    #[cfg(not(feature = "fips"))]
+    info!(
+        "OpenSSL default mode, version: {}, in {}, number: {:x}",
+        openssl::version::version(),
+        openssl::version::dir(),
+        openssl::version::number()
+    );
+
+    // For an explanation of openssl providers, see
+    // see https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
+
+    // In FIPS mode, we only load the fips provider
+    #[cfg(feature = "fips")]
+    openssl::provider::Provider::load(None, "fips")?;
+
+    // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
+    // so that we can use the legacy algorithms
+    // particularly those used for old PKCS#12 formats
+    #[cfg(not(feature = "fips"))]
+    let _provider = if openssl::version::number() >= 0x30000000 {
+        openssl::provider::Provider::try_load(None, "legacy", true)
+            .context("export: unable to load the openssl legacy provider")?;
+    } else {
+        // In version < 3.0, we only load the default provider
+        openssl::provider::Provider::load(None, "default")?;
+    };
+
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
     let server_params = ServerParams::try_from(clap_config)?;
+
+    if info_only {
+        info!("Server started with --info. Exiting");
+        return Ok(());
+    }
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
@@ -166,6 +212,7 @@ mod tests {
                 otlp: Some("http://localhost:4317".to_string()),
                 quiet: false,
             },
+            info: false,
         };
 
         let toml_string = r#"

@@ -77,7 +77,7 @@ impl Backend for CkmsBackend {
         let kms_objects = get_kms_objects(
             &self.kms_client,
             &[disk_encryption_tag, "_cert".to_string()],
-            KeyFormatType::X509,
+            Some(KeyFormatType::X509),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
@@ -140,7 +140,7 @@ impl Backend for CkmsBackend {
         let kms_objects = get_kms_objects(
             &self.kms_client,
             &[disk_encryption_tag, "_kk".to_string()],
-            KeyFormatType::Raw,
+            Some(KeyFormatType::Raw), // that is the default format type
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {

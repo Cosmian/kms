@@ -29,5 +29,6 @@ pub mod aead;
 #[cfg(feature = "openssl")]
 pub mod rfc5649;
 
+#[cfg(feature = "openssl")]
 #[cfg(test)]
 mod tests;

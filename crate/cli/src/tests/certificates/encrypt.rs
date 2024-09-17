@@ -15,7 +15,7 @@ use crate::{
     },
     error::{result::CliResult, CliError},
     tests::{
-        certificates::import::import_certificate,
+        certificates::import::{import_certificate, ImportCertificateInput},
         shared::{export_key, import_key},
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -82,71 +82,6 @@ pub(crate) fn decrypt(
     ))
 }
 
-// #[tokio::test]
-// async fn test_certificate_encrypt_decrypt_certify() -> CliResult<()> {
-//      let ctx = start_default_test_kms_server().await;
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//
-//     let input_file = PathBuf::from("test_data/plain.txt");
-//     let output_file = tmp_path.join("plain.enc");
-//     let recovered_file = tmp_path.join("plain.txt");
-//
-//     let tags = &["certificate_encryption"];
-//
-//     fs::remove_file(&output_file).ok();
-//     assert!(!output_file.exists());
-//
-//     let certificate_id = certify(
-//         &ctx.owner_client_conf_path,
-//         "CA",
-//         Some("My server".to_string()),
-//         None,
-//         None,
-//         tags,
-//     )?;
-//
-//     encrypt(
-//         &ctx.owner_client_conf_path,
-//         input_file.to_str().unwrap(),
-//         &certificate_id,
-//         Some(output_file.to_str().unwrap()),
-//         None,
-//     )?;
-//
-//     // locate the private key matching the certificate id
-//     let priv_key_tags = &[
-//         "certificate_encryption",
-//         &format!("_cert_uid={certificate_id}"),
-//     ];
-//     let ids = locate(
-//         &ctx.owner_client_conf_path,
-//         Some(priv_key_tags),
-//         Some("ECDH"),
-//         None,
-//         Some("TransparentECPrivateKey"),
-//     )?;
-//     assert_eq!(ids.len(), 1);
-//     let private_key_id = ids[0].clone();
-//
-//     // the user key should be able to decrypt the file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         output_file.to_str().unwrap(),
-//         &private_key_id,
-//         Some(recovered_file.to_str().unwrap()),
-//         None,
-//     )?;
-//     assert!(recovered_file.exists());
-//
-//     let original_content = read_bytes_from_file(&input_file)?;
-//     let recovered_content = read_bytes_from_file(&recovered_file)?;
-//     assert_eq!(original_content, recovered_content);
-//
-//     Ok(())
-// }
-
 #[cfg(not(feature = "fips"))]
 async fn test_certificate_import_encrypt(
     ca_path: &str,
@@ -183,50 +118,37 @@ async fn test_certificate_import_encrypt(
         true,
     )?;
 
-    let root_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{ca_path}"),
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let root_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{ca_path}"),
+        format: &CertificateInputFormat::Pem,
+        tags: Some(tags),
+        ..Default::default()
+    })?;
 
-    let subca_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{subca_path}"),
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id),
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let subca_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{subca_path}"),
+        format: &CertificateInputFormat::Pem,
+        issuer_certificate_id: Some(root_certificate_id),
+        tags: Some(tags),
+        ..Default::default()
+    })?;
 
-    let certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/{cert_path}"),
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        Some(private_key_id.clone()),
-        Some(subca_certificate_id),
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/{cert_path}"),
+        format: &CertificateInputFormat::Pem,
+        private_key_id: Some(private_key_id.clone()),
+        issuer_certificate_id: Some(subca_certificate_id),
+        tags: Some(tags),
+        unwrap: false,
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     debug!("\n\nEncrypt With Certificate");
     encrypt(
@@ -302,20 +224,20 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
     )?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{filename}-cert.pem"),
-        &CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        Some(private_key_id.clone()),
-        None,
-        Some(tags),
-        Some(vec![KeyUsage::Encrypt]),
-        false,
-        true,
-    )?;
+    let certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/openssl/{filename}-cert.pem"),
+        format: &CertificateInputFormat::Pem,
+        pkcs12_password: None,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        private_key_id: Some(private_key_id.clone()),
+        issuer_certificate_id: None,
+        tags: Some(tags),
+        key_usage_vec: Some(vec![KeyUsage::Encrypt]),
+        unwrap: false,
+        replace_existing: true,
+    })?;
 
     debug!("\n\nEncrypt with certificate");
     encrypt(

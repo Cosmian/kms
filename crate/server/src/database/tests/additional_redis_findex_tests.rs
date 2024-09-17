@@ -76,6 +76,7 @@ pub(crate) async fn test_objects_db() -> KResult<()> {
             "owner".to_owned(),
             StateEnumeration::Active,
             Some(HashSet::new()),
+            object.attributes()?.clone(),
         ),
     )
     .await?;

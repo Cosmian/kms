@@ -16,12 +16,17 @@ use uuid::Uuid;
 
 use crate::{
     actions::{
-        certificates::{CertificateExportFormat, CertificateInputFormat},
+        certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
         shared::ExportKeyFormat::JsonTtlv,
     },
     error::{result::CliResult, CliError},
     tests::{
-        certificates::import::import_certificate, shared::export_key, utils::recover_cmd_logs,
+        certificates::{
+            certify::{certify, create_self_signed_cert, CertifyOp},
+            import::{import_certificate, ImportCertificateInput},
+        },
+        shared::export_key,
+        utils::recover_cmd_logs,
         PROG_NAME,
     },
 };
@@ -37,20 +42,17 @@ async fn test_import_export_p12_25519() {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/another_p12/server.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["import_pkcs12"]),
-        None,
-        false,
-        true,
-    )
+    let imported_p12_sk = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/another_p12/server.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        replace_existing: true,
+        tags: Some(&["import_pkcs12"]),
+        ..Default::default()
+    })
     .unwrap();
 
     //
@@ -217,20 +219,16 @@ async fn test_import_p12_rsa() {
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
-    let imported_p12_sk = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        None,
-        None,
-        None,
-        Some(&["import_pkcs12"]),
-        None,
-        false,
-        true,
-    )
+    let imported_p12_sk = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        replace_existing: true,
+        tags: Some(&["import_pkcs12"]),
+        ..Default::default()
+    })
     .unwrap();
 
     // export the private key
@@ -284,6 +282,14 @@ pub(crate) fn export_certificate(
     .collect();
     if let Some(certificate_format) = certificate_format {
         args.push("--format".to_owned());
+        #[cfg(not(feature = "fips"))]
+        let arg_value = match certificate_format {
+            CertificateExportFormat::JsonTtlv => "json-ttlv",
+            CertificateExportFormat::Pem => "pem",
+            CertificateExportFormat::Pkcs12 => "pkcs12",
+            CertificateExportFormat::Pkcs12Legacy => "pkcs12-legacy",
+        };
+        #[cfg(feature = "fips")]
         let arg_value = match certificate_format {
             CertificateExportFormat::JsonTtlv => "json-ttlv",
             CertificateExportFormat::Pem => "pem",
@@ -309,4 +315,140 @@ pub(crate) fn export_certificate(
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
+}
+
+#[tokio::test]
+async fn test_self_signed_export_loop() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+    // Create a self-signed certificate - the certificate link points to the certificate itself
+    let certificate_id = create_self_signed_cert(ctx).await?;
+
+    // export
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &certificate_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12),
+        Some(String::from("secret")),
+        false, //to get attributes
+    )?;
+
+    // try re-importing the PKCS#12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_export_root_and_intermediate_pkcs12() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Generate a self-signed root CA
+    let ca_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // Certify an intermediate CA with the root CA
+    let intermediate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            issuer_certificate_id: Some(ca_id),
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // export the intermediate CA to PKCS#12
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &intermediate_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12),
+        Some(String::from("secret")),
+        false,
+    )?;
+
+    // try re-importing the PKCS#12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
+
+    Ok(())
+}
+
+#[cfg(not(feature = "fips"))]
+#[tokio::test]
+async fn test_export_import_legacy_p12() -> CliResult<()> {
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Generate a self-signed root CA
+    let cert_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    // export the certificate to legacy PKCS#12
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported_cert = tmp_dir.path().join("cert_legacy.p12");
+    export_certificate(
+        &ctx.owner_client_conf_path,
+        &cert_id,
+        tmp_exported_cert.to_str().unwrap(),
+        Some(CertificateExportFormat::Pkcs12Legacy),
+        Some(String::from("secret")),
+        false,
+    )?;
+
+    // try re-importing the PKCS#12
+    import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: tmp_exported_cert.to_str().unwrap(),
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+    })?;
+
+    Ok(())
 }

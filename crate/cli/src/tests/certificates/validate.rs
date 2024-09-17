@@ -10,7 +10,10 @@ use crate::{
     actions::certificates::CertificateInputFormat,
     error::{result::CliResult, CliError},
     tests::{
-        certificates::{encrypt::encrypt, import::import_certificate},
+        certificates::{
+            encrypt::encrypt,
+            import::{import_certificate, ImportCertificateInput},
+        },
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -34,36 +37,27 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
     // assert!(!output_file.exists());
 
     debug!("\n\nImport Certificate");
-    let root_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let root_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
+        format: &CertificateInputFormat::Pem,
+        tags: Some(tags),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id),
-        Some(tags),
-        None,
-        false,
-        true,
-    )?;
+    let certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
+        format: &CertificateInputFormat::Pem,
+        issuer_certificate_id: Some(root_certificate_id),
+        tags: Some(tags),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     debug!("\n\nEncrypt with certificate");
     assert!(
@@ -124,51 +118,35 @@ async fn test_validate_cli() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     info!("importing root cert");
-    let root_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/ca.cert.pem",
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-        true,
-    )?;
+    let root_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/chain/ca.cert.pem",
+        format: &CertificateInputFormat::Pem,
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     info!("importing intermediate cert");
-    let intermediate_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/intermediate.cert.pem",
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
+    let intermediate_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/chain/intermediate.cert.pem",
+        format: &CertificateInputFormat::Pem,
+        issuer_certificate_id: Some(root_certificate_id.clone()),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
-    let leaf1_certificate_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/chain/leaf1.cert.pem",
-        &CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(intermediate_certificate_id.clone()),
-        None,
-        None,
-        false,
-        true,
-    )?;
+    let leaf1_certificate_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/chain/leaf1.cert.pem",
+        format: &CertificateInputFormat::Pem,
+        issuer_certificate_id: Some(intermediate_certificate_id.clone()),
+        replace_existing: true,
+        ..Default::default()
+    })?;
     info!("leaf1 cert imported: {leaf1_certificate_id}");
 
     let test1_res = validate_certificate(

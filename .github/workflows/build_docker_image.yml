@@ -7,7 +7,7 @@ on:
       prefix:
         required: true
         type: string
-      features:
+      dockerfile:
         required: true
         type: string
       registry-image:
@@ -61,9 +61,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: Dockerfile
+          file: ${{ inputs.dockerfile }}
           network: host
-          build-args: ${{ inputs.features }}
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
@@ -82,6 +81,7 @@ jobs:
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       branch: v5.0.1
+      fips: ${{ inputs.prefix }}
 
   cloudproof_kms_js:
     name: ${{ inputs.prefix }} KMS JS tests
@@ -91,6 +91,7 @@ jobs:
     with:
       branch: develop
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+      fips: ${{ inputs.prefix == 'FIPS' }}
 
   cloudproof_java:
     name: ${{ inputs.prefix }} Java tests
@@ -106,6 +107,7 @@ jobs:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.3.1
       copy_fresh_build: false
+      fips: ${{ inputs.prefix == 'FIPS' }}
 
   cloudproof_python:
     name: ${{ inputs.prefix }} cloudproof_python tests
@@ -118,3 +120,4 @@ jobs:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
       findex-cloud-version: 0.3.1
+      fips: ${{ inputs.prefix == 'FIPS' }}

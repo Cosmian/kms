@@ -78,7 +78,8 @@ DELETE FROM objects WHERE id=$1 AND owner=$2;
 -- name: upsert-object
 INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, state=$4
+        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5
+        WHERE objects.id=$1;
         WHERE objects.owner=$5;
 
 -- name: select-user-accesses-for-object

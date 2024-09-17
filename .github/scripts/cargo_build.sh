@@ -10,6 +10,26 @@ set -ex
 
 ROOT_FOLDER=$(pwd)
 
+# First build the Debian and RPM packages. It must come at first since
+# after this step `ckms` and `cosmian_kms_server` are built with custom features flags (fips for example).
+rm -rf target/"$TARGET"/debian
+rm -rf target/"$TARGET"/generate-rpm
+
+if [ -f /etc/redhat-release ]; then
+  cd crate/cli && cargo build --target "$TARGET" --release && cd -
+  cd crate/server && cargo build --target "$TARGET" --release && cd -
+  cargo install --version 0.14.1 cargo-generate-rpm --force
+  cd "$ROOT_FOLDER"
+  cargo generate-rpm --target "$TARGET" -p crate/cli
+  cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
+elif [ -f /etc/lsb-release ]; then
+  cargo install --version 2.4.0 cargo-deb --force
+  cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
+  cargo deb --target "$TARGET" -p cosmian_kms_cli
+  cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
+  cargo deb --target "$TARGET" -p cosmian_kms_server
+fi
+
 if [ -z "$TARGET" ]; then
   echo "Error: TARGET is not set."
   exit 1
@@ -59,7 +79,7 @@ done
 # find .
 
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
-./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server -h
+./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server --info
 
 if [ "$(uname)" = "Linux" ]; then
   ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
@@ -88,21 +108,3 @@ cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_
 #   echo "counter: $counter"
 #   sleep 3
 # done
-
-rm -rf target/"$TARGET"/debian
-rm -rf target/"$TARGET"/generate-rpm
-
-if [ -f /etc/redhat-release ]; then
-  cd crate/cli && cargo build --target "$TARGET" --release && cd -
-  cd crate/server && cargo build --target "$TARGET" --release && cd -
-  cargo install --version 0.14.1 cargo-generate-rpm --force
-  cd "$ROOT_FOLDER"
-  cargo generate-rpm --target "$TARGET" -p crate/cli
-  cargo generate-rpm --target "$TARGET" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
-elif [ -f /etc/lsb-release ]; then
-  cargo install --version 2.4.0 cargo-deb --force
-  cargo deb --target "$TARGET" -p cosmian_kms_cli --variant fips
-  cargo deb --target "$TARGET" -p cosmian_kms_cli
-  cargo deb --target "$TARGET" -p cosmian_kms_server --variant fips
-  cargo deb --target "$TARGET" -p cosmian_kms_server
-fi

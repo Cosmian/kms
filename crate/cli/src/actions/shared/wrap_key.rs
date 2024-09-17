@@ -96,8 +96,10 @@ impl WrapKeyAction {
                 .with_context(|| "failed decoding the wrap key")?;
             create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
-            let key_bytes =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
+            let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
+                &[0_u8; 16],
+                password.as_bytes(),
+            )?;
 
             let symmetric_key_object =
                 create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);

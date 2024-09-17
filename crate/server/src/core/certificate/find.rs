@@ -105,14 +105,15 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
+    trace!("Retrieving certificate for private key: {}", private_key.id);
     // recover the Certificate Link inside the Private Key
-    trace!("Private Key attributes: {:?}", private_key.attributes);
     let certificate_id = private_key
         .attributes
         .get_link(LinkType::PKCS12CertificateLink)
         .or_else(|| private_key.attributes.get_link(LinkType::CertificateLink));
 
     let certificate_id = if let Some(certificate_id) = certificate_id {
+        trace!("found link to certificate: {}", certificate_id);
         certificate_id
     } else {
         // check if there is a link to a public key
@@ -122,6 +123,10 @@ pub(crate) async fn retrieve_certificate_for_private_key(
             .ok_or_else(|| {
                 KmsError::InvalidRequest("No public key link found for the private key".to_owned())
             })?;
+        trace!(
+            "found link to public key: {}. Will get certificate link from there",
+            public_key_id
+        );
         find_link_in_public_key(
             LinkType::CertificateLink,
             &public_key_id,
@@ -145,19 +150,28 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     .with_context(|| {
         format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
     })?;
+    trace!(
+        "Retrieved certificate: {} for private key: {}",
+        cert_owm.id,
+        private_key.id
+    );
     Ok(cert_owm)
 }
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_private_key_for_certificate(
-    certificate_id: &str,
+    certificate_uid_or_tags: &str,
     operation_type: ObjectOperationType,
     kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
+    trace!(
+        "Retrieving private key for certificate: certificate_uid_or_tags: {:?}",
+        certificate_uid_or_tags
+    );
     let owm = retrieve_object_for_operation(
-        certificate_id,
+        certificate_uid_or_tags,
         ObjectOperationType::GetAttributes,
         kms,
         user,
@@ -165,10 +179,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     )
     .await?;
 
-    let private_key_id = owm
-        .attributes
-        .get_link(LinkType::PKCS12CertificateLink)
-        .or_else(|| owm.attributes.get_link(LinkType::CertificateLink));
+    let private_key_id = owm.attributes.get_link(LinkType::PrivateKeyLink);
 
     let private_key_id = if let Some(private_key_id) = private_key_id {
         private_key_id
@@ -223,7 +234,6 @@ async fn find_link_in_public_key(
         params,
     )
     .await?;
-    trace!("Public Key attributes: {:?}", public_key_owm.attributes);
     let public_key_attributes = public_key_owm.attributes;
     // retrieve the private key linked to the public key
     public_key_attributes.get_link(link_type).ok_or_else(|| {

@@ -7,34 +7,57 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Add ReKey KMIP operation ([#294](https://github.com/Cosmian/kms/pull/294))
-- Add API token authentication between server and clients ([#290](https://github.com/Cosmian/kms/pull/290))
+- Add API token authentication between server and
+  clients ([#290](https://github.com/Cosmian/kms/pull/290))
 - Build a generic database upgrade mechanism ([#299](https://github.com/Cosmian/kms/pull/299))
+- Export of certificates can now be performed using the certificate id (instead of just the private
+  key id)
+- More intuitive PKCS#12 import ([#306](https://github.com/Cosmian/kms/pull/306))
+- Support for export under legacy PKCS#12 format ([#306](https://github.com/Cosmian/kms/pull/306))
+- Documentation (S/MIME)
 
 ### 🐛 Bug Fixes
 
 - KMIP Attributes:
-  * In get_attributes, use attributes from ObjectWithMetadata instead of Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
-  * When inserting in db, force Object::Attributes to be synced with Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
+  * In get_attributes, use attributes from ObjectWithMetadata instead of
+      Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
+  * When inserting in db, force Object::Attributes to be synced with
+      Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
 - Certificates handling/tasks:
   * **Validate** KMIP operation:
-    - Simplify getting CRLs and get returned errors ([#268](https://github.com/Cosmian/kms/pull/268))
+    - Simplify getting CRLs and get returned
+          errors ([#268](https://github.com/Cosmian/kms/pull/268))
     - Validate certificate generation ([#283](https://github.com/Cosmian/kms/pull/283))
-    - Use certificate file path in ckms arguments ([#292](https://github.com/Cosmian/kms/pull/292))
-  * **Certify** KMIP operation: Server must sign x509 after adding X509 extensions ([#282](https://github.com/Cosmian/kms/pull/282))
+    - Use certificate file path in ckms
+          arguments ([#292](https://github.com/Cosmian/kms/pull/292))
+  * **Certify** KMIP operation: Server must sign x509 after adding X509
+      extensions ([#282](https://github.com/Cosmian/kms/pull/282))
 - Merge decrypt match in same function ([#295](https://github.com/Cosmian/kms/pull/295))
 - Fix Public RSA Key size in get attributes ([#275](https://github.com/Cosmian/kms/pull/275))
 - RUSTSEC:
-  * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
-  * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291) and [#297](https://github.com/Cosmian/kms/pull/297))
+  * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade
+      crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
+  * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing
+      Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291)
+      and [#297](https://github.com/Cosmian/kms/pull/297))
+- CLI doc fixes (certificates certify)
+- Fix PKCS#12 export of self-signed cert ([#305](https://github.com/Cosmian/kms/issues/305))
+- Fix serialization of `Attributes` in
+  `redis-findex`  ([#307](https://github.com/Cosmian/kms/pull/307))
 
 ### ⚙️ Miscellaneous Tasks
 
 - **clippy** tasks:
-  * Only expose pub functions that need to be public ([#277](https://github.com/Cosmian/kms/pull/277))
+  * Only expose pub functions that need to be
+      public ([#277](https://github.com/Cosmian/kms/pull/277))
   * Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
 - Rename MacOS artifacts giving CPU architecture
-- Configure `ckms` to build reqwest with minimal idle connections reuse ([#272](https://github.com/Cosmian/kms/pull/272))
+- Configure `ckms` to build reqwest with minimal idle connections
+  reuse ([#272](https://github.com/Cosmian/kms/pull/272))
 - Do not delete tags if none are provided ([#276](https://github.com/Cosmian/kms/pull/276))
+- De-activated Google CSE tests when tokens are not supplied through env. var.
+- Cleaned-up and improved certificates import tests
+- Made test DB backend selectable using env. var. `KMS_TEST_URL`
 
 ## [4.17.0] - 2024-07-05
 
@@ -42,20 +65,25 @@ All notable changes to this project will be documented in this file.
 
 - Add KMIP operation `Validate` for certificates ([#247](https://github.com/Cosmian/kms/pull/247))
 - Added RSA benchmarks ([#251](https://github.com/Cosmian/kms/pull/251))
-- Add OpenTelemetry OTLP protocol support to KMS server ([#253](https://github.com/Cosmian/kms/pull/253))
-- Support for multiple certification scenarios and self-signing ([#248](https://github.com/Cosmian/kms/pull/248))
+- Add OpenTelemetry OTLP protocol support to KMS
+  server ([#253](https://github.com/Cosmian/kms/pull/253))
+- Support for multiple certification scenarios and
+  self-signing ([#248](https://github.com/Cosmian/kms/pull/248))
 
 ### 🐛 Bug Fixes
 
 - Fix vulnerability RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
-- Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254)) and ([#255](https://github.com/Cosmian/kms/pull/255))
+- Fix vulnerability RUSTSEC-2024-0344 ([#254](https://github.com/Cosmian/kms/pull/254))
+  and ([#255](https://github.com/Cosmian/kms/pull/255))
 
 ### ⚙️ Miscellaneous Tasks
 
-- Create Debian/RPM packages for Ubuntu 2x.04 and RHEL 9 ([#264](https://github.com/Cosmian/kms/pull/264))
+- Create Debian/RPM packages for Ubuntu 2x.04 and RHEL
+  9 ([#264](https://github.com/Cosmian/kms/pull/264))
 - Drop Centos 7 support ([#265](https://github.com/Cosmian/kms/pull/265))
 - Replace `cargo audit` with `cargo deny` ([#245](https://github.com/Cosmian/kms/pull/245))
-- Replace Linux cross-compiling for Windows with compiling on Windows Github runner ([#249](https://github.com/Cosmian/kms/pull/249))
+- Replace Linux cross-compiling for Windows with compiling on Windows Github
+  runner ([#249](https://github.com/Cosmian/kms/pull/249))
 - Add support for build on MacOS ARM
 
 ## [4.16.0] - 2024-05-06
@@ -73,7 +101,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Create Gmail key pairs and identities with `ckms` via Gmail API ([#243](https://github.com/Cosmian/kms/pull/243))
+- Create Gmail key pairs and identities with `ckms` via Gmail
+  API ([#243](https://github.com/Cosmian/kms/pull/243))
 
 ### 🐛 Bug Fixes
 
@@ -83,7 +112,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add Google Workspace CSE endpoints for **encrypted Gmail** ([#192](https://github.com/Cosmian/kms/pull/192))
+- Add Google Workspace CSE endpoints for **encrypted Gmail
+  ** ([#192](https://github.com/Cosmian/kms/pull/192))
 
 ### 🐛 Bug Fixes
 

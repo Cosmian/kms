@@ -9,6 +9,7 @@ use cosmian_kms_client::{
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
@@ -21,7 +22,10 @@ use crate::{
     actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
     error::{result::CliResult, CliError},
     tests::{
-        certificates::{export::export_certificate, import::import_certificate},
+        certificates::{
+            export::export_certificate,
+            import::{import_certificate, ImportCertificateInput},
+        },
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
         shared::export_key,
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
@@ -31,18 +35,18 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(crate) struct CertifyOp {
-    issuer_certificate_key_id: Option<String>,
-    issuer_private_key_id: Option<String>,
-    csr_file: Option<String>,
-    public_key_id_to_certify: Option<String>,
-    certificate_id_to_re_certify: Option<String>,
-    generate_keypair: bool,
-    subject_name: Option<String>,
-    algorithm: Option<Algorithm>,
-    certificate_id: Option<String>,
-    days: Option<u32>,
-    certificate_extensions: Option<PathBuf>,
-    tags: Option<Vec<String>>,
+    pub(crate) issuer_certificate_id: Option<String>,
+    pub(crate) issuer_private_key_id: Option<String>,
+    pub(crate) csr_file: Option<String>,
+    pub(crate) public_key_id_to_certify: Option<String>,
+    pub(crate) certificate_id_to_re_certify: Option<String>,
+    pub(crate) generate_keypair: bool,
+    pub(crate) subject_name: Option<String>,
+    pub(crate) algorithm: Option<Algorithm>,
+    pub(crate) certificate_id: Option<String>,
+    pub(crate) days: Option<u32>,
+    pub(crate) certificate_extensions: Option<PathBuf>,
+    pub(crate) tags: Option<Vec<String>>,
 }
 
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<String> {
@@ -50,7 +54,7 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec!["certify".to_owned()];
-    if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_key_id {
+    if let Some(issuer_certificate_key_id) = certify_op.issuer_certificate_id {
         args.push("--issuer-certificate-id".to_owned());
         args.push(issuer_certificate_key_id);
     }
@@ -115,51 +119,40 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
 
 fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
     // import Root CA
-    let root_ca_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/ca.crt",
-        &CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    let root_ca_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/ca.crt",
+        format: &CertificateInputFormat::Pem,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
-    let intermediate_ca_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.crt",
-        &CertificateInputFormat::Pem,
-        None,
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["root_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    // import Intermediate CA
+    let intermediate_ca_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.crt",
+        format: &CertificateInputFormat::Pem,
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        tags: Some(&["root_ca"]),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     // import Intermediate p12
-    let intermediate_ca_private_key_id = import_certificate(
-        &ctx.owner_client_conf_path,
-        "certificates",
-        "test_data/certificates/csr/intermediate.p12",
-        &CertificateInputFormat::Pkcs12,
-        Some("secret"),
-        Some(Uuid::new_v4().to_string()),
-        None,
-        None,
-        Some(&["intermediate_ca"]),
-        None,
-        false,
-        true,
-    )?;
+    let intermediate_ca_private_key_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &ctx.owner_client_conf_path,
+        sub_command: "certificates",
+        key_file: "test_data/certificates/csr/intermediate.p12",
+        format: &CertificateInputFormat::Pkcs12,
+        pkcs12_password: Some("secret"),
+        certificate_id: Some(Uuid::new_v4().to_string()),
+        tags: Some(&["intermediate_ca"]),
+        replace_existing: true,
+        ..Default::default()
+    })?;
 
     Ok((
         root_ca_id,
@@ -168,6 +161,7 @@ fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String
     ))
 }
 
+/// Fetch a certificate and return its Object, attributes and DER bytes
 fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attributes, Vec<u8>) {
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
@@ -397,6 +391,7 @@ fn check_public_and_private_key_linked(
 
 #[tokio::test]
 async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -408,7 +403,7 @@ async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
         CertifyOp {
             csr_file: Some("test_data/certificates/csr/leaf.csr".to_owned()),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
-            tags: Some(vec!["certify_a_csr_test".to_owned()]),
+            tags: Some(vec!["certify_a_csr_we_test".to_owned()]),
             ..Default::default()
         },
     )?;
@@ -429,6 +424,7 @@ async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -466,6 +462,7 @@ async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -508,6 +505,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -556,6 +554,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_renew_a_certificate() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -610,6 +609,7 @@ async fn test_certify_renew_a_certificate() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers
@@ -651,6 +651,7 @@ async fn test_certify_issue_with_subject_name() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -686,24 +687,33 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -> CliResult<()> {
-    // Create a test server
-    let ctx = start_default_test_kms_server().await;
+pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<String> {
+    // create an RSA key pair
+    let (_private_key_id, public_key_id) =
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
-    // Certify the CSR without issuer i.e. self signed
+    // Certify the public key with the intermediate CA
     let certificate_id = certify(
         &ctx.owner_client_conf_path,
         CertifyOp {
-            generate_keypair: true,
-            algorithm: Some(Algorithm::NistP256),
+            public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
             ),
-            tags: Some(vec!["certify_a_csr_test".to_owned()]),
             ..Default::default()
         },
     )?;
+
+    Ok(certificate_id)
+}
+
+#[tokio::test]
+async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+    // create a self signed certificate
+    let certificate_id = create_self_signed_cert(ctx).await?;
 
     let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
     // since the certificate is self signed, the Certificate Link should point back to itself
@@ -723,6 +733,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
 
 #[tokio::test]
 async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -757,6 +768,54 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
         None,
     )?;
     assert!(validation.contains("Valid"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_certify_twice() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // Create a test server
+    let ctx = start_default_test_kms_server().await;
+
+    // Certify the CSR without issuer i.e. self signed
+    let certificate_id = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
+    let private_key_id = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+    let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
+
+    // Certify again with the same certificate id
+    let certificate_id2 = certify(
+        &ctx.owner_client_conf_path,
+        CertifyOp {
+            certificate_id: Some(certificate_id.clone()),
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some(
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+            ),
+            ..Default::default()
+        },
+    )?;
+
+    let (_, attributes2, _) = fetch_certificate(ctx, &certificate_id2);
+    let private_key_id2 = attributes2.get_link(LinkType::PrivateKeyLink).unwrap();
+    let public_key_id2 = attributes2.get_link(LinkType::PublicKeyLink).unwrap();
+
+    assert_eq!(certificate_id, certificate_id2);
+    assert_ne!(private_key_id, private_key_id2);
+    assert_ne!(public_key_id, public_key_id2);
 
     Ok(())
 }

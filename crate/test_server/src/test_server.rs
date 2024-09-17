@@ -1,4 +1,5 @@
 use std::{
+    env,
     path::PathBuf,
     sync::mpsc,
     thread::{self, JoinHandle},
@@ -13,13 +14,11 @@ use cosmian_kms_client::{
     write_json_object_to_file, ClientConf, ClientError, KmsClient,
 };
 use cosmian_kms_server::{
-    config::{
-        ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams,
-        DEFAULT_SQLITE_PATH,
-    },
+    config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
     core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
+use tempfile::TempDir;
 use tokio::sync::OnceCell;
 use tracing::{info, trace};
 
@@ -28,25 +27,101 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// In order to run most tests in parallel,
 /// we use that to avoid to try to start N KMS servers (one per test)
 /// with a default configuration.
-/// Otherwise we get: "Address already in use (os error 98)"
+/// Otherwise, we get: "Address already in use (os error 98)"
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
-fn generate_sqlite_db_config() -> DBConfig {
+fn sqlite_db_config() -> DBConfig {
+    trace!("TESTS: using sqlite");
+    let tmp_dir = TempDir::new().unwrap();
+    let file_path = tmp_dir.path().join("test_sqlite.db");
+    if file_path.exists() {
+        std::fs::remove_file(&file_path).unwrap();
+    }
     DBConfig {
-        database_type: Some("sqlite-enc".to_string()),
+        database_type: Some("sqlite".to_string()),
         clear_database: true,
-        sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
+        sqlite_path: file_path,
         ..DBConfig::default()
     }
 }
+
+fn sqlite_enc_db_config() -> DBConfig {
+    trace!("TESTS: using sqlite-enc");
+    let tmp_dir = TempDir::new().unwrap();
+    // SQLCipher uses a directory
+    let dir_path = tmp_dir.path().join("test_sqlite_enc.db");
+    if dir_path.exists() {
+        std::fs::remove_dir_all(&dir_path).unwrap();
+    }
+    std::fs::create_dir_all(&dir_path).unwrap();
+    DBConfig {
+        database_type: Some("sqlite-enc".to_string()),
+        clear_database: true,
+        sqlite_path: dir_path,
+        ..DBConfig::default()
+    }
+}
+
+fn mysql_db_config() -> DBConfig {
+    trace!("TESTS: using mysql");
+    let mysql_url = option_env!("KMS_MYSQL_URL")
+        .unwrap_or("mysql://kms:kms@localhost:3306/kms")
+        .to_string();
+    DBConfig {
+        database_type: Some("mysql".to_string()),
+        clear_database: true,
+        database_url: Some(mysql_url),
+        ..DBConfig::default()
+    }
+}
+
+fn postgres_db_config() -> DBConfig {
+    trace!("TESTS: using postgres");
+    let postgresql_url = option_env!("KMS_POSTGRES_URL")
+        .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+        .to_string();
+    DBConfig {
+        database_type: Some("postgresql".to_string()),
+        clear_database: true,
+        database_url: Some(postgresql_url),
+        ..DBConfig::default()
+    }
+}
+
+fn redis_findex_db_config() -> DBConfig {
+    trace!("TESTS: using redis-findex");
+    let url = if let Ok(var_env) = env::var("REDIS_HOST") {
+        format!("redis://{var_env}:6379")
+    } else {
+        "redis://localhost:6379".to_owned()
+    };
+    DBConfig {
+        database_type: Some("redis-findex".to_string()),
+        clear_database: true,
+        database_url: Some(url),
+        sqlite_path: Default::default(),
+        redis_master_password: Some("password".to_string()),
+        redis_findex_label: Some("label".to_string()),
+    }
+}
+
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
+    let db_config = env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
+        match v.to_str().unwrap_or("") {
+            "redis-findex" => redis_findex_db_config(),
+            "mysql" => mysql_db_config(),
+            "sqlite" => sqlite_db_config(),
+            "postgresql" => postgres_db_config(),
+            _ => sqlite_enc_db_config(),
+        }
+    });
     ONCE.get_or_try_init(|| {
         start_test_server_with_options(
-            generate_sqlite_db_config(),
+            db_config,
             9990,
             AuthenticationOptions {
                 use_jwt_token: false,
@@ -65,7 +140,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
             start_test_server_with_options(
-                generate_sqlite_db_config(),
+                sqlite_enc_db_config(),
                 9991,
                 AuthenticationOptions {
                     use_jwt_token: false,
@@ -117,7 +192,7 @@ pub async fn start_test_server_with_options(
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) =
         generate_owner_conf(&server_params, authentication_options.api_token.clone())?;
-    let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
+    let kms_client = owner_client_conf.initialize_kms_client(None, None, false)?;
 
     info!(
         "Starting KMS test server at URL: {} with server params {:?}",
@@ -184,14 +259,14 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
     let mut timeout = 5;
     let mut waiting = 1;
     while retry {
-        print!("...checking if the server is up...");
+        info!("...checking if the server is up...");
         let result = kms_client.version().await;
         if result.is_err() {
             timeout -= 1;
             retry = timeout >= 0;
             if retry {
                 info!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
-                thread::sleep(std::time::Duration::from_secs(waiting));
+                thread::sleep(Duration::from_secs(waiting));
                 waiting *= 2;
             } else {
                 info!("The server is still not up, stop trying");
@@ -356,7 +431,8 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
     Ok(user_conf_path)
 }
 
-/// Generate an invalid configuration by changing the database secret  and return the file path
+/// Generate an invalid configuration for sqlite-enc
+/// by changing the database secret  and return the file path
 #[must_use]
 pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     // Create a new database key
@@ -390,7 +466,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 #[tokio::test]
 async fn test_start_server() -> Result<(), ClientError> {
     let context = start_test_server_with_options(
-        generate_sqlite_db_config(),
+        sqlite_enc_db_config(),
         9990,
         AuthenticationOptions {
             use_jwt_token: false,

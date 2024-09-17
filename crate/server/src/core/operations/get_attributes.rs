@@ -207,20 +207,20 @@ pub(crate) async fn get_attributes(
                 }
                 Tag::PrivateKey => {
                     if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
-                        res.add_link(LinkType::PrivateKeyLink, link);
+                        res.set_link(LinkType::PrivateKeyLink, link);
                     }
                 }
                 Tag::PublicKey => {
                     if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
-                        res.add_link(LinkType::PublicKeyLink, link);
+                        res.set_link(LinkType::PublicKeyLink, link);
                     }
                 }
                 Tag::Certificate => {
                     if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
-                        res.add_link(LinkType::PKCS12CertificateLink, link);
+                        res.set_link(LinkType::PKCS12CertificateLink, link);
                     }
                     if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
-                        res.add_link(LinkType::CertificateLink, link);
+                        res.set_link(LinkType::CertificateLink, link);
                     }
                 }
 
@@ -228,7 +228,12 @@ pub(crate) async fn get_attributes(
             },
         }
     }
-    debug!("Retrieved Attributes for object {}: {:?}", owm.id, res);
+    debug!(
+        "Retrieved Attributes for {} {}, tags {:?}",
+        owm.object.object_type(),
+        owm.id,
+        res.get_tags()
+    );
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         attributes: res,

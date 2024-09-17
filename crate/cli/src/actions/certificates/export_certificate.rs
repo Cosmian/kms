@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, KmsClient,
 };
-use tracing::trace;
+use tracing::log::trace;
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
@@ -15,6 +15,8 @@ pub enum CertificateExportFormat {
     JsonTtlv,
     Pem,
     Pkcs12,
+    #[cfg(not(feature = "fips"))]
+    Pkcs12Legacy,
 }
 
 /// Export a certificate from the KMS
@@ -22,9 +24,11 @@ pub enum CertificateExportFormat {
 /// The certificate is exported either:
 /// - in TTLV JSON KMIP format (json-ttlv)
 /// - in X509 PEM format (pem)
-/// - in PKCS12 format including private key and certificate file (pkcs12)
-///
-/// For PKCS#12, the `unique_id` should be that of the private key, not the certificate.
+/// - in PKCS12 format including private key, certificate and chain (pkcs12)
+/// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
+///    for keystores that do not support the new format
+///    (e.g. Java keystores, `MacOS` Keychain,...)
+///    This format is not available in FIPS mode.
 ///
 /// When using tags to retrieve rather than the unique id,
 /// an error is returned if multiple objects match the tags.
@@ -86,7 +90,7 @@ impl ExportCertificateAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either `--unique-id` or one or more `--tag` must be specified")
+            cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
         };
 
         let (key_format_type, wrapping_key_id) = match self.output_format {
@@ -95,6 +99,10 @@ impl ExportCertificateAction {
             }
             CertificateExportFormat::Pkcs12 => {
                 (KeyFormatType::PKCS12, self.pkcs12_password.as_deref())
+            }
+            #[cfg(not(feature = "fips"))]
+            CertificateExportFormat::Pkcs12Legacy => {
+                (KeyFormatType::Pkcs12Legacy, self.pkcs12_password.as_deref())
             }
         };
 
@@ -124,10 +132,17 @@ impl ExportCertificateAction {
                         write_bytes_to_file(pem.to_string().as_bytes(), &self.certificate_file)?;
                     }
                     CertificateExportFormat::Pkcs12 => {
-                        cli_bail!("PKCS12 format is not supported for certificates only");
+                        // PKCS12 is exported as a private key object
+                        cli_bail!("PKCS12: invalid object returned by the server.");
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    CertificateExportFormat::Pkcs12Legacy => {
+                        // PKCS12 is exported as a private key object
+                        cli_bail!("PKCS12: invalid object returned by the server.");
                     }
                 }
             }
+            // PKCS12 is exported as a private key object
             Object::PrivateKey { key_block } => {
                 let p12_bytes = key_block.key_bytes()?.to_vec();
                 // save it to a file
@@ -143,10 +158,8 @@ impl ExportCertificateAction {
         }
 
         let mut stdout = format!(
-            "The certificate {} of type {} was exported to {:?}",
-            &object_id,
-            object.object_type(),
-            &self.certificate_file
+            "The certificate {} was exported to {:?}",
+            &object_id, &self.certificate_file
         );
 
         // write attributes to a file

@@ -43,6 +43,8 @@ use crate::{
 pub struct KmsClient {
     pub server_url: String,
     client: Client,
+    /// will output the JSON KMIP request and response
+    print_json: bool,
 }
 
 impl KmsClient {
@@ -472,6 +474,7 @@ impl KmsClient {
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
         allowed_tee_tls_cert: Option<Certificate>,
+        print_json: bool,
     ) -> Result<Self, ClientError> {
         let server_url = server_url
             .strip_suffix('/')
@@ -525,6 +528,7 @@ impl KmsClient {
                 .tcp_keepalive(Duration::from_secs(60))
                 .build()?,
             server_url,
+            print_json,
         })
     }
 
@@ -616,7 +620,12 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
-
+        if self.print_json {
+            println!(
+                "\nKMIP Request ==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+            );
+        }
         trace!(
             "==>\n{}",
             serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
@@ -627,6 +636,12 @@ impl KmsClient {
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
+            if self.print_json {
+                println!(
+                    "\nKMIP Response <==\n{}\n",
+                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                );
+            }
             trace!(
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())

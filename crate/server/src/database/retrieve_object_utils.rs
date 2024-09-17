@@ -58,13 +58,12 @@ async fn _retrieve_object(
     // there can only be one object
     let owm = owm_s.pop().ok_or_else(|| {
         KmsError::ItemNotFound(format!(
-            "get_key: no available key found (must be an active or exportable KMIP object) for \
-             object identifier {uid_or_tags}"
+            "no active or exportable object found for identifier {uid_or_tags}"
         ))
     })?;
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for {uid_or_tags}",
+            "too many objects found for identifier {uid_or_tags}",
         )))
     }
     Ok(owm)
