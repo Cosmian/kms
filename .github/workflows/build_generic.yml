@@ -147,5 +147,5 @@ jobs:
           sudo chown -R $USER /usr/local/openssl
           rsync -ru usr/local/openssl/ /usr/local/openssl/
           find /usr/local/openssl
-          chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
+          chmod u+x /usr/local/openssl/lib64/ossl-modules/*.dylib
           ./$KMS_PATH/cosmian_kms_server --info
