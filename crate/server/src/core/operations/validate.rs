@@ -663,11 +663,10 @@ async fn certificate_by_uid(
 }
 
 fn validate_chain_date(certificates: &[X509], date: &Option<String>) -> KResult<ValidityIndicator> {
-    let current_date = if let Some(date) = date.clone() {
-        Asn1Time::from_str(date.as_str())
-    } else {
-        Asn1Time::days_from_now(0)
-    }?;
+    let current_date = date.clone().map_or_else(
+        || Asn1Time::days_from_now(0),
+        |date| Asn1Time::from_str(date.as_str()),
+    )?;
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {

@@ -18,6 +18,7 @@
     clippy::style,
     clippy::pedantic,
     clippy::cargo,
+    clippy::nursery,
 
     // restriction lints
     clippy::unwrap_used,
@@ -44,7 +45,12 @@
     clippy::similar_names,
     clippy::too_many_lines,
     clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions
+    clippy::multiple_crate_versions,
+    clippy::redundant_pub_crate,
+    clippy::future_not_send,
+    clippy::cognitive_complexity,
+    clippy::significant_drop_tightening,
+    clippy::iter_with_drain
 )]
 
 pub mod config;

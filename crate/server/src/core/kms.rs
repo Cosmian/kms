@@ -687,17 +687,15 @@ impl KMS {
             return default_username
         }
         // if there is a JWT token, use it in priority
-        let user = match req_http.extensions().get::<JwtAuthClaim>() {
-            Some(claim) => claim.email.clone(),
-            None => {
-                // check for client certificate authentication
-                match req_http.extensions().get::<PeerCommonName>() {
-                    Some(claim) => claim.common_name.clone(),
-                    // if no client certificate, use the default username
-                    None => default_username,
-                }
-            }
-        };
+        let user = req_http.extensions().get::<JwtAuthClaim>().map_or_else(
+            || {
+                req_http
+                    .extensions()
+                    .get::<PeerCommonName>()
+                    .map_or(default_username, |claim| claim.common_name.clone())
+            },
+            |claim| claim.email.clone(),
+        );
         debug!("Authenticated user: {}", user);
         user
     }

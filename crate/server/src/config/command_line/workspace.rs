@@ -82,11 +82,7 @@ impl WorkspaceConfig {
         relative_root: Option<&Path>,
     ) -> KResult<PathBuf> {
         let path = if path.is_relative() {
-            if let Some(relative_root) = relative_root {
-                relative_root.join(path)
-            } else {
-                path.clone()
-            }
+            relative_root.map_or_else(|| path.clone(), |relative_root| relative_root.join(path))
         } else {
             path.clone()
         };

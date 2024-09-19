@@ -351,7 +351,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     rekey_keypair_response.unwrap();
 
     // Encrypt for new attribute
-    let data = "New tech research data".as_bytes();
+    let data = b"New tech research data";
     let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
 
     let request = build_encryption_request(
@@ -383,7 +383,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     rekey_keypair_response.unwrap();
 
     // Encrypt for renamed attribute
-    let data = "hr data".as_bytes();
+    let data = b"hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
     let request = build_encryption_request(
@@ -413,7 +413,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Encrypt with disabled ABE attribute will fail
     let authentication_data = b"cc the uid".to_vec();
-    let data = "Will fail".as_bytes();
+    let data = b"Will fail";
     let encryption_policy = "Level::Confidential && Department::MKG";
 
     let request = build_encryption_request(
@@ -442,7 +442,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     rekey_keypair_response.unwrap();
 
     // Encrypt for removed attribute will fail
-    let data = "New hr data".as_bytes();
+    let data = b"New hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
     let request = build_encryption_request(
