@@ -19,8 +19,8 @@ test = false
 doctest = false
 
 [features]
-# Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
-staging = []
+# default is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
+default = []
 fips = ["cosmian_kms_client/fips"]
 openssl = ["cosmian_kms_client/openssl"]
 

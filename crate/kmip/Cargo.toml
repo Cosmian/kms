@@ -21,7 +21,6 @@ fips = ["openssl"]
 
 [dependencies]
 argon2 = "0.5"
-base58 = "0.2"
 bitflags = "2.6"
 chrono = { workspace = true }
 cloudproof = { workspace = true }
@@ -48,4 +47,4 @@ x509-parser = { workspace = true, optional = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
-ignored = ["rust-ini"]
+ignored = ["rust-ini", "sha3"]

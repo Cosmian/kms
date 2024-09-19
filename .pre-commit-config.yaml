@@ -94,7 +94,6 @@ repos:
     rev: 3.0.0
     hooks:
       - id: shellcheck
-        exclude: scripts/centos_install_curl.sh
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

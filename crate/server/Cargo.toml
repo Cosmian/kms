@@ -23,16 +23,10 @@ doctest = false
 insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = []
-
-# Enable all the feature even insecure but timeout
-staging = ["insecure"]
-
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = ["cosmian_kmip/fips"]
-
-# No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
+# No features (insecure or timeout) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
-prod = []
 
 [dependencies]
 actix-cors = "0.6"

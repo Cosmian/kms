@@ -30,7 +30,7 @@ COPY . /root/kms
 WORKDIR /root/kms
 
 RUN mkdir -p $OPENSSL_DIR \
-    && bash /root/kms/scripts/local_ossl_instl.sh $OPENSSL_DIR
+    && bash /root/kms/.github/scripts/local_ossl_instl.sh $OPENSSL_DIR
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features --features="fips"
 

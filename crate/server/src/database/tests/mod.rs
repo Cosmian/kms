@@ -151,7 +151,7 @@ pub(crate) async fn test_sqlite() -> KResult<()> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_pgsql() -> KResult<()> {
+pub(crate) async fn test_postgresql() -> KResult<()> {
     json_access(&get_pgsql().await?).await?;
     find_attributes(&get_pgsql().await?).await?;
     owner(&get_pgsql().await?).await?;
