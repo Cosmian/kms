@@ -65,7 +65,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms` can be either downloaded from [Cosian packages](https://package.cosmian.com/kms/) or launched from this GitHub project by running 
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running 
 ```sh
 cargo run --bin ckms -- --help
 ```
@@ -76,8 +76,7 @@ cargo run --bin ckms -- --help
 
 ```sh
 ➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag project1
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.49s
-     Running `target/debug/ckms sym keys create --number-of-bits 256 --algorithm aes --tag project1`
+...
 The symmetric key was successfully generated.
 	  Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
 
@@ -89,20 +88,15 @@ The symmetric key was successfully generated.
 
 ```sh
 ➜ cargo run --bin ckms -- sym encrypt --tag project1 --output-file image.enc image.png
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
-     Running `target/debug/ckms sym encrypt --tag project1 --output-file image.enc image.png`
+...
 The encrypted file is available at "image.enc"
 ```
 
 3. Decrypt the `image.enc` file using the key
 ```sh
 ➜ cargo run --bin ckms -- sym decrypt --tag project1 --output-file image2.png image.enc
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.57s
-     Running `target/debug/ckms sym decrypt --tag project1 --output-file image2.png image.enc`
+...
 The decrypted file is available at "image2.png"
-
-  Tags:
-    - project1
 ```
 
 
