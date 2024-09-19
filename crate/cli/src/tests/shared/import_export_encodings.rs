@@ -83,6 +83,8 @@ fn test_pems(
         false,
         None,
         true,
+        None,
+        None,
     )?;
     let export_bytes = read_bytes_from_file(&export_key_file.path())?;
     assert_eq!(imported_bytes, export_bytes);
@@ -97,6 +99,8 @@ fn test_pems(
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let get_bytes = read_bytes_from_file(&get_key_file.path())?;
     assert_eq!(imported_bytes, get_bytes);

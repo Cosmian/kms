@@ -116,7 +116,7 @@ pub struct ExportKeyAction {
     #[clap(
         long = "block-cipher-mode",
         short = 'm',
-        default_value = "nist-key-wrap"
+        default_value = None
     )]
     block_cipher_mode: Option<ExportBlockCipherMode>,
 

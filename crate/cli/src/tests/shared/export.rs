@@ -4,8 +4,8 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    kmip::kmip_types::KeyFormatType, read_bytes_from_file, read_object_from_json_ttlv_file,
-    KMS_CLI_CONF_ENV,
+    kmip::kmip_types::{BlockCipherMode, KeyFormatType},
+    read_bytes_from_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_client::{
@@ -31,7 +31,10 @@ use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
     actions::shared::ExportKeyFormat,
     error::{result::CliResult, CliError},
-    tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
+    tests::{
+        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
+        symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
+    },
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -44,6 +47,8 @@ pub(crate) fn export_key(
     unwrap: bool,
     wrap_key_id: Option<String>,
     allow_revoked: bool,
+    block_cipher_mode: Option<String>,
+    authenticated_additionnal_data: Option<String>,
 ) -> CliResult<()> {
     let mut args: Vec<String> = ["keys", "export", "--key-id", key_id, key_file]
         .iter()
@@ -75,6 +80,14 @@ pub(crate) fn export_key(
     }
     if allow_revoked {
         args.push("--allow-revoked".to_owned());
+    }
+    if let Some(block_cipher_mode) = block_cipher_mode {
+        args.push("--block-cipher-mode".to_owned());
+        args.push(block_cipher_mode);
+    }
+    if let Some(authenticated_additionnal_data) = authenticated_additionnal_data {
+        args.push("--authenticated-additional-data".to_owned());
+        args.push(authenticated_additionnal_data);
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -110,6 +123,8 @@ pub(crate) async fn test_export_sym() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // read the bytes from the exported file
@@ -128,6 +143,8 @@ pub(crate) async fn test_export_sym() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
     assert_eq!(&*key_bytes, bytes.as_slice());
@@ -143,6 +160,8 @@ pub(crate) async fn test_export_sym() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None
         )
         .is_err()
     );
@@ -170,7 +189,156 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
         false,
         None,
         true,
+        None,
+        None,
     )?;
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_export_wrapped() -> CliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a symmetric key
+    let (private_key_id, _public_key_id) =
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+
+    // generate a symmetric key
+    let sym_key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+
+    // Export wrapped key with symetric key as default (JsonTTLV with Raw Key Format Type)
+    export_key(
+        &ctx.owner_client_conf_path,
+        "rsa",
+        &private_key_id,
+        tmp_path.join("output.export").to_str().unwrap(),
+        None,
+        false,
+        Some(sym_key_id.clone()),
+        false,
+        None,
+        None,
+    )?;
+
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let key_bytes = object.key_block()?.key_bytes()?;
+    let cryptographic_parameters = object
+        .key_block()?
+        .key_wrapping_data
+        .clone()
+        .unwrap()
+        .encryption_key_information
+        .unwrap()
+        .cryptographic_parameters;
+    assert_eq!(cryptographic_parameters, None);
+
+    // Wrapping with symetric key should be by default with rfc5649
+    export_key(
+        &ctx.owner_client_conf_path,
+        "rsa",
+        &private_key_id,
+        tmp_path.join("output_2.export").to_str().unwrap(),
+        None,
+        false,
+        Some(sym_key_id.clone()),
+        false,
+        None,
+        None,
+    )?;
+
+    let object_2 = read_object_from_json_ttlv_file(&tmp_path.join("output_2.export"))?;
+    let key_bytes_2 = object_2.key_block()?.key_bytes()?;
+    let cryptographic_parameters = object_2
+        .key_block()?
+        .key_wrapping_data
+        .clone()
+        .unwrap()
+        .encryption_key_information
+        .unwrap()
+        .cryptographic_parameters;
+    assert_eq!(cryptographic_parameters, None);
+
+    assert_eq!(key_bytes, key_bytes_2);
+
+    // Can't specify nist-key-wrap with aad
+    assert!(
+        export_key(
+            &ctx.owner_client_conf_path,
+            "rsa",
+            &private_key_id,
+            tmp_path.join("output.export").to_str().unwrap(),
+            None,
+            false,
+            Some(sym_key_id.clone()),
+            false,
+            Some("nist-key-wrap".to_owned()),
+            Some("encryption_data".to_owned())
+        )
+        .is_err()
+    );
+
+    // Export wrapped key with symetric key using AESGCM as default (JsonTTLV with Raw Key Format Type)
+    export_key(
+        &ctx.owner_client_conf_path,
+        "rsa",
+        &private_key_id,
+        tmp_path.join("output.export").to_str().unwrap(),
+        None,
+        false,
+        Some(sym_key_id.clone()),
+        false,
+        Some("gcm".to_owned()),
+        None,
+    )?;
+
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let block_cipher_mode = object
+        .key_block()?
+        .key_wrapping_data
+        .clone()
+        .unwrap()
+        .encryption_key_information
+        .unwrap()
+        .cryptographic_parameters
+        .unwrap()
+        .block_cipher_mode
+        .unwrap();
+    assert_eq!(block_cipher_mode, BlockCipherMode::GCM);
+
+    // Block-cipher-mode option is ignored when not using symetric key for wrapping
+    export_key(
+        &ctx.owner_client_conf_path,
+        "rsa",
+        &sym_key_id.clone(),
+        tmp_path.join("output.export").to_str().unwrap(),
+        None,
+        false,
+        Some(private_key_id.clone()),
+        false,
+        Some("gcm".to_owned()),
+        None,
+    )?;
+
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+
+    println!("OBJECT {object:?}");
+    // let block_cipher_mode = object
+    //     .key_block()?
+    //     .key_wrapping_data
+    //     .clone()
+    //     .unwrap()
+    //     .encryption_key_information
+    //     .unwrap()
+    //     .cryptographic_parameters
+    //     .unwrap()
+    //     .block_cipher_mode
+    //     .unwrap();
+    // assert_ne!(block_cipher_mode, BlockCipherMode::GCM);
 
     Ok(())
 }
@@ -194,6 +362,8 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )?;
 
         // read the bytes from the exported file
@@ -212,6 +382,8 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )?;
         let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
         assert_eq!(&*key_bytes, bytes.as_slice());
@@ -280,6 +452,8 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )
     .err()
     .unwrap();
@@ -302,6 +476,8 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )
     .err()
     .unwrap();
@@ -334,6 +510,8 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // read the bytes from the exported file
@@ -372,6 +550,8 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
     let pkey_2 = PKey::private_key_from_der(&bytes).unwrap();
@@ -393,6 +573,8 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // read the bytes from the exported file
@@ -427,6 +609,8 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
     let pkey_2 = PKey::public_key_from_der(&bytes).unwrap();

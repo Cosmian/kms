@@ -198,6 +198,8 @@ pub(crate) fn export_import_test(
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
@@ -223,6 +225,8 @@ pub(crate) fn export_import_test(
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
     assert_eq!(object2.key_block()?.key_bytes()?, key_bytes);

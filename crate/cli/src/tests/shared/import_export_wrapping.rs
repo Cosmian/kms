@@ -227,6 +227,8 @@ fn test_import_export_wrap_private_key(
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let private_key = read_object_from_json_ttlv_file(&private_key_file)?;
 
@@ -241,6 +243,8 @@ fn test_import_export_wrap_private_key(
         false,
         Some(wrapping_key_uid.to_string()),
         false,
+        None,
+        None,
     )?;
 
     // test the exported private key with wrapping
@@ -299,6 +303,8 @@ fn test_import_export_wrap_private_key(
             false,
             None,
             false,
+            None,
+            None,
         )?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
         assert_eq!(
@@ -343,6 +349,8 @@ fn test_import_export_wrap_private_key(
             true,
             None,
             false,
+            None,
+            None,
         )?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
         assert_eq!(

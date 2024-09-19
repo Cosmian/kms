@@ -136,6 +136,8 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // the owner can encrypt and decrypt
@@ -152,6 +154,8 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )
         .is_err()
     );
@@ -189,6 +193,8 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )
         .is_err()
     );
@@ -220,6 +226,8 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
@@ -337,6 +345,8 @@ pub(crate) async fn test_revoke_access() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // switch back to owner
@@ -359,6 +369,8 @@ pub(crate) async fn test_revoke_access() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )
         .is_err()
     );
@@ -507,6 +519,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // the owner can encrypt and decrypt
@@ -523,6 +537,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )
         .is_err()
     );
@@ -550,6 +566,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None,
         )
         .is_err()
     );
@@ -576,6 +594,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());

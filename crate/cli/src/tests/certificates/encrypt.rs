@@ -263,6 +263,8 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         false,
         Some(certificate_id),
         false,
+        None,
+        None,
     )?;
 
     println!("import private key with unwrap");
@@ -308,6 +310,8 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     debug!("\n\nDecrypt using Private key");

@@ -55,6 +55,8 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
             false,
             None,
             false,
+            None,
+            None
         )
         .is_err()
     );
@@ -70,6 +72,8 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
             false,
             None,
             true,
+            None,
+            None
         )
         .is_ok()
     );
@@ -271,6 +275,8 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
                 false,
                 None,
                 false,
+                None,
+                None
             )
             .is_ok()
         );
@@ -284,6 +290,8 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
                 false,
                 None,
                 false,
+                None,
+                None
             )
             .is_ok()
         );
@@ -297,6 +305,8 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
                 false,
                 None,
                 false,
+                None,
+                None
             )
             .is_ok()
         );

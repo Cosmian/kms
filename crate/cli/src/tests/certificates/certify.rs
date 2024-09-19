@@ -344,6 +344,8 @@ fn check_certificate_and_public_key_linked(
         false,
         None,
         false,
+        None,
+        None,
     )
     .unwrap();
     let public_key = read_object_from_json_ttlv_file(&tmp_exported_pubkey).unwrap();
@@ -378,6 +380,8 @@ fn check_public_and_private_key_linked(
         false,
         None,
         false,
+        None,
+        None,
     )
     .unwrap();
     let private_key = read_object_from_json_ttlv_file(&tmp_exported_privkey).unwrap();

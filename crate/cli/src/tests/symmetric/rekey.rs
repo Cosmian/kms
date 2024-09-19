@@ -71,6 +71,8 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // and refresh it
@@ -88,6 +90,8 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // Compare the symmetric key bytes

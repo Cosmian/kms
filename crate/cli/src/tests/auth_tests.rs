@@ -44,6 +44,8 @@ fn create_api_token(ctx: &TestsContext) -> CliResult<(String, String)> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
     let api_token = base64::engine::general_purpose::STANDARD.encode(
         read_object_from_json_ttlv_file(&tmp_path.join("api_token"))?

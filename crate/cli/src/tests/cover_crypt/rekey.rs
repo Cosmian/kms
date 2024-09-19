@@ -135,6 +135,8 @@ async fn test_rekey_error() -> CliResult<()> {
         false,
         Some(symmetric_key_id),
         false,
+        None,
+        None,
     )?;
     // import it wrapped
     let wrapped_key_id = import_key(
@@ -217,6 +219,8 @@ async fn test_rekey_prune() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // rekey the attributes

@@ -149,6 +149,8 @@ async fn test_multiple_databases() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // create a new encrypted database
@@ -176,6 +178,8 @@ async fn test_multiple_databases() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // go back to original conf
@@ -191,6 +195,8 @@ async fn test_multiple_databases() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // go to new conf
@@ -206,6 +212,8 @@ async fn test_multiple_databases() -> CliResult<()> {
         false,
         None,
         false,
+        None,
+        None,
     )?;
 
     // stop that server

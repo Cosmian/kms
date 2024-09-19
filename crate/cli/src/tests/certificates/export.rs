@@ -80,6 +80,8 @@ async fn test_import_export_p12_25519() {
         false,
         None,
         false,
+        None,
+        None,
     )
     .unwrap();
     let sk = read_object_from_json_ttlv_file(&tmp_exported_sk).unwrap();
@@ -247,6 +249,8 @@ async fn test_import_p12_rsa() {
         false,
         None,
         false,
+        None,
+        None,
     )
     .unwrap();
     // export object by object
