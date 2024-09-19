@@ -87,7 +87,7 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
-          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash .github/scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Pre-cleanup
         run: |

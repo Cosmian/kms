@@ -57,7 +57,7 @@ jobs:
         run: |
           sudo mkdir -p ${{ env.OPENSSL_DIR }}
           sudo chown -R $USER ${{ env.OPENSSL_DIR }}
-          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash .github/scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
         env:

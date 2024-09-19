@@ -33,7 +33,7 @@ jobs:
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
       features: fips
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/ssl/openssl.cnf
@@ -64,7 +64,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
 
@@ -89,7 +89,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
 

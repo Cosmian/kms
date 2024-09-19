@@ -55,6 +55,16 @@ fi
 
 rustup target add "$TARGET"
 
+# Before building the crates, test crates individually on specific features
+cargo install --version 0.6.31 cargo-hack --force
+crates=("crate/kmip" "crate/client" "crate/server")
+for crate in "${crates[@]}"; do
+  echo "cargo hack on $crate"
+  cd "$crate"
+  cargo hack check --feature-powerset --no-dev-deps
+  cd "$ROOT_FOLDER"
+done
+
 echo "Building crate/pkcs11/provider"
 cd crate/pkcs11/provider
 # shellcheck disable=SC2086
@@ -79,7 +89,13 @@ done
 # find .
 
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
-./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server --info
+# Must use OpenSSL with this specific version 3.2.0
+OPENSSL_VERSION_REQUIRED="3.2.0"
+correct_openssl_version_found=$(./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server --info | grep "$OPENSSL_VERSION_REQUIRED")
+if [ -z "$correct_openssl_version_found" ]; then
+  echo "Error: The correct OpenSSL version $OPENSSL_VERSION_REQUIRED is not found."
+  exit 1
+fi
 
 if [ "$(uname)" = "Linux" ]; then
   ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
@@ -93,8 +109,27 @@ find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json
 
 export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
-# shellcheck disable=SC2086
-cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+
+# Testing on different databases
+# databases=("redis-findex" "mysql" "sqlite" "postgresql" "sqlite-enc")
+databases=("redis-findex" "sqlite" "postgresql" "sqlite-enc") # for now, do not handle mysql deadlock occurring in CI
+for database in "${databases[@]}"; do
+  # Discard test if skipping options have been passed in `SKIP_SERVICES_TESTS`
+  database_1=$(echo "$database" | cut -d '-' -f 1)
+  database_2=$(echo "$database" | cut -d '-' -f 2)
+  if [ -n "$database_1" ] && [[ "$SKIP_SERVICES_TESTS" == *"$database_1"* ]]; then
+    echo "Skipping tests for $database"
+    continue
+  fi
+  if [ -n "$database_2" ] && [[ "$SKIP_SERVICES_TESTS" == *"$database_2"* ]]; then
+    echo "Skipping tests for $database"
+    continue
+  fi
+  # shellcheck disable=SC2086
+  cargo build --target $TARGET $RELEASE $FEATURES
+  # shellcheck disable=SC2086
+  KMS_TEST_DB="$database" cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+done
 
 # Uncomment this code to run tests indefinitely
 # counter=1
