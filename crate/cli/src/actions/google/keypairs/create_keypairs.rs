@@ -47,7 +47,7 @@ pub struct CreateKeypairsAction {
     csekey_id: String,
 
     /// The issuer certificate id
-    #[clap(long = "issuer-private-key-id", short = 'i', required = true)]
+    #[clap(long, short = 'i', required = true)]
     issuer_private_key_id: String,
 
     /// When certifying a public key, or generating a keypair,
@@ -63,7 +63,7 @@ pub struct CreateKeypairsAction {
     subject_name: String,
 
     /// The existing private key id of an existing RSA keypair to use (optionnal - if no ID is provided, a RSA keypair will be created)
-    #[clap(long = "user-private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     rsa_private_key_id: Option<String>,
 }
 
@@ -194,7 +194,12 @@ impl CreateKeypairsAction {
             .authenticated_encryption_tag
             .unwrap_or_default();
 
-        let wrapped_private_key = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+        let mut wrapped_private_key = Vec::with_capacity(
+            iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+        );
+        wrapped_private_key.extend_from_slice(&iv_counter_nonce);
+        wrapped_private_key.extend_from_slice(&data);
+        wrapped_private_key.extend_from_slice(&authenticated_encryption_tag);
 
         // Sign created public key with issuer private key
         let attributes = Attributes {

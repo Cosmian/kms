@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use alcoholic_jwt::token_kid;
 
+use super::operations::Role;
 use crate::{
     error::KmsError,
     kms_ensure,
@@ -171,7 +172,7 @@ pub(crate) async fn validate_cse_authentication_token(
             "Fail to decode authentication token with the given config".to_owned(),
         )
     })?;
-    #[cfg(any(not(feature = "insecure"), not(test)))]
+    #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
             kacls_url == cse_config.kacls_url,
@@ -211,7 +212,7 @@ pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
     application: &str,
-    roles: Option<&[&str]>,
+    roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
@@ -230,27 +231,28 @@ pub(crate) async fn validate_cse_authorization_token(
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
-    #[cfg(any(not(feature = "insecure"), not(test)))]
+    #[cfg(not(feature = "insecure"))]
     if let Some(roles) = roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;
+        let roles_str: Vec<&str> = roles.iter().map(Role::as_role_str).collect();
         kms_ensure!(
-            roles.contains(&role.as_str()),
+            roles_str.contains(&role.as_str()),
             KmsError::Unauthorized(format!(
                 "Authorization token should contain a role of {}",
-                roles.join(" ")
+                roles_str.join(" ")
             ))
         );
     }
 
-    #[cfg(any(not(feature = "insecure"), not(test)))]
+    #[cfg(not(feature = "insecure"))]
     if authorization_token.resource_name.is_none() {
         return Err(KmsError::Unauthorized(
             "Authorization token should contain an resource_name".to_owned(),
         ))
     }
-    #[cfg(any(not(feature = "insecure"), not(test)))]
+    #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
             kacls_url == cse_config.kacls_url,
@@ -282,7 +284,7 @@ pub(crate) async fn validate_tokens(
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
     application: &str,
-    roles: Option<&[&str]>,
+    roles: Option<&[Role]>,
 ) -> KResult<TokenExtractedContent> {
     let authentication_email =
         validate_cse_authentication_token(authentication_token, cse_config, true).await?;

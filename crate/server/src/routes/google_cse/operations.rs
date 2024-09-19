@@ -41,6 +41,32 @@ use crate::{
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 
+#[derive(PartialEq)]
+pub enum Role {
+    Reader,
+    Signer,
+    Writer,
+    Upgrader,
+    Migrator,
+    Verifier,
+    Decrypter,
+}
+
+impl Role {
+    #[must_use]
+    pub fn as_role_str(role: &Self) -> &str {
+        match role {
+            Role::Reader => "reader",
+            Role::Signer => "signer",
+            Role::Writer => "writer",
+            Role::Upgrader => "upgrader",
+            Role::Migrator => "migrator",
+            Role::Verifier => "verifier",
+            Role::Decrypter => "decrypter",
+        }
+    }
+}
+
 fn get_hash_algorithm(algorithm: &str) -> Result<MessageDigest, KmsError> {
     match algorithm {
         "sha-256" => Ok(MessageDigest::sha256()),
@@ -140,7 +166,7 @@ pub async fn wrap(
     };
 
     // the possible roles to wrap a key
-    let roles = &["writer", "upgrader"];
+    let roles = &[Role::Writer, Role::Upgrader];
 
     debug!("wrap: validate_tokens");
     let token_extracted_content = validate_tokens(
@@ -176,7 +202,12 @@ pub async fn wrap(
         KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
     })?;
 
-    let wrapped_dek = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+    let mut wrapped_dek = Vec::with_capacity(
+        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+    );
+    wrapped_dek.extend_from_slice(&iv_counter_nonce);
+    wrapped_dek.extend_from_slice(&data);
+    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
 
     debug!("wrap: exiting with success");
     Ok(WrapResponse {
@@ -226,7 +257,7 @@ pub async fn unwrap(
     };
 
     // the possible roles to unwrap a key
-    let roles = &["writer", "reader"];
+    let roles = &[Role::Writer, Role::Reader];
 
     debug!("unwrap: validate_tokens");
     let token_extracted_content = validate_tokens(
@@ -313,7 +344,7 @@ pub async fn private_key_sign(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_sign: validate_tokens");
-    let roles: &[&str; 1] = &["signer"];
+    let roles: &[Role; 1] = &[Role::Signer];
 
     let token_extracted_content = validate_tokens(
         &request.authentication,
@@ -424,7 +455,7 @@ pub async fn private_key_decrypt(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_decrypt: validate_tokens");
-    let roles: &[&str; 1] = &["decrypter"];
+    let roles: &[Role; 1] = &[Role::Decrypter];
 
     let token_extracted_content = validate_tokens(
         &request.authentication,
@@ -513,7 +544,7 @@ pub async fn digest(
     };
     debug!("cse_digest: validate_authorization_token");
 
-    let roles = ["verifier"];
+    let roles = [Role::Verifier];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         cse_config,
@@ -603,7 +634,12 @@ pub async fn privileged_wrap(
         KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
     })?;
 
-    let wrapped_dek = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+    let mut wrapped_dek = Vec::with_capacity(
+        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+    );
+    wrapped_dek.extend_from_slice(&iv_counter_nonce);
+    wrapped_dek.extend_from_slice(&data);
+    wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
 
     debug!("privileged-wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
@@ -801,7 +837,7 @@ pub async fn rewrap(
     };
     debug!("rewrap: entering");
 
-    let roles = ["migrator"];
+    let roles = [Role::Migrator];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         cse_config,
@@ -860,7 +896,12 @@ pub async fn rewrap(
                 )
             })?;
 
-    let wrapped_key = [iv_counter_nonce, data, authenticated_encryption_tag].concat();
+    let mut wrapped_key = Vec::with_capacity(
+        iv_counter_nonce.len() + data.len() + authenticated_encryption_tag.len(),
+    );
+    wrapped_key.extend_from_slice(&iv_counter_nonce);
+    wrapped_key.extend_from_slice(&data);
+    wrapped_key.extend_from_slice(&authenticated_encryption_tag);
 
     debug!("rewrap: encode base64 wrapped_key to generate resource_key_hash");
     let base64_digest = compute_resource_key_hash(&resource_name, &perimeter_id, &unwrapped_data)?;
