@@ -14,12 +14,12 @@ Management System** that presents some unique features, such as
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line and graphical
   interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
-- Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudproof` libraries
+- Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
 - FIPS 140-2 mode gated behind the feature `fips`
-- out of the box support of
+- out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
-- out of the box support
+- out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 - [Veracrypt](https://veracrypt.fr/en/Home.html)
   and [LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) disk encryption support
@@ -53,16 +53,58 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 ## Quick start
 
 Pre-built binaries [are available](https://package.cosmian.com/kms/4.18.0/)
-for Linux, MacOS and Windows, as well as Docker images. Tu run the server binary, OpenSSL must be
+for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
 
-Using Docker, to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
-inside the container, simply run the following command:
+Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
+inside the container, run the following command:
 
 ```sh
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
 ```
+
+Then, use the CLI to issue commands to the KMS.
+The CLI, called `ckms` can be either downloaded from [Cosian packages](https://package.cosmian.com/kms/) or launched from this GitHub project by running 
+```sh
+cargo run --bin ckms -- --help
+```
+
+**Example**
+
+1. Create a 256-bit symmetric key 
+
+```sh
+➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag project1
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running `target/debug/ckms sym keys create --number-of-bits 256 --algorithm aes --tag project1`
+The symmetric key was successfully generated.
+	  Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+
+  Tags:
+    - project1
+```
+
+2. Encrypt the `image.png` file with AES GCM using the key
+
+```sh
+➜ cargo run --bin ckms -- sym encrypt --tag project1 --output-file image.enc image.png
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.53s
+     Running `target/debug/ckms sym encrypt --tag project1 --output-file image.enc image.png`
+The encrypted file is available at "image.enc"
+```
+
+3. Decrypt the `image.enc` file using the key
+```sh
+➜ cargo run --bin ckms -- sym decrypt --tag project1 --output-file image2.png image.enc
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.57s
+     Running `target/debug/ckms sym decrypt --tag project1 --output-file image2.png image.enc`
+The decrypted file is available at "image2.png"
+
+  Tags:
+    - project1
+```
+
 
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 
@@ -96,10 +138,10 @@ artifacts do not have this requirement.
 
 ### Linux
 
-Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
+Unless you require a FIPS-certified cryptographic module, the distribution provided by OpenSSL should
 be sufficient.
 
-You need to have the development packages of openssl installed. On Ubuntu, you can install them
+You need to have the development packages of OpenSSL installed. On Ubuntu, you can install them
 with:
 
 ```sh
@@ -320,7 +362,7 @@ To run benchmarks, go to the `crate/test_server` directory and run:
 cargo bench
 ```
 
-Typical values for single threaded HTTP KMIP 2.1 requests
+Typical values for single-threaded HTTP KMIP 2.1 requests
 (zero network latency) are as follows
 
 ```text
