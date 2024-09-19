@@ -16,7 +16,8 @@ use cosmian_kms_client::{
             ttlv::{deserializer::from_ttlv, TTLV},
         },
     },
-    export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file, KmsClient,
+    export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
+    ExportObjectParams, KmsClient,
 };
 
 use crate::{
@@ -155,12 +156,10 @@ async fn recover_policy(
         export_object(
             kms_rest_client,
             key_id,
-            unwrap,
-            None,
-            false,
-            None,
-            None,
-            None,
+            ExportObjectParams {
+                unwrap,
+                ..ExportObjectParams::default()
+            },
         )
         .await?
         .0

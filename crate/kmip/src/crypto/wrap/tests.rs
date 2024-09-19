@@ -167,7 +167,7 @@ fn test_encrypt_decrypt_rfc_5649() {
         create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, &[]).unwrap();
+    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, None).unwrap();
     let decrypted_plaintext =
         unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext, None).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
@@ -253,7 +253,7 @@ fn test_encrypt_decrypt_rsa() {
         &wrap_key_pair_pub,
         &KeyWrappingData::default(),
         plaintext,
-        &[],
+        None,
     )
     .unwrap();
     let decrypted_plaintext = unwrap(
@@ -290,7 +290,7 @@ fn test_encrypt_decrypt_no_rsa_1024_in_fips() {
         &wrap_key_pair_pub,
         &KeyWrappingData::default(),
         plaintext,
-        &[],
+        None,
     );
     assert!(encryption_res.is_err());
 }

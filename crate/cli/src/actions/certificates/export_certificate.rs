@@ -4,7 +4,8 @@ use clap::Parser;
 use cosmian_kms_client::{
     export_object,
     kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
-    write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, KmsClient,
+    write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
+    KmsClient,
 };
 use tracing::log::trace;
 
@@ -113,12 +114,12 @@ impl ExportCertificateAction {
         let (object, export_attributes) = export_object(
             client_connector,
             &object_id,
-            false,
-            wrapping_key_id,
-            self.allow_revoked,
-            Some(key_format_type),
-            None,
-            None,
+            ExportObjectParams {
+                wrapping_key_id,
+                allow_revoked: self.allow_revoked,
+                key_format_type: Some(key_format_type),
+                ..ExportObjectParams::default()
+            },
         )
         .await?;
 

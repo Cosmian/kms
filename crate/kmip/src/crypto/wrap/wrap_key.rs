@@ -110,7 +110,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                additional_data_encryption,
+                Some(additional_data_encryption),
             )?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext.into()),
@@ -124,7 +124,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                additional_data_encryption,
+                Some(additional_data_encryption),
             )?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
         }
@@ -140,7 +140,7 @@ pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
-    additionnal_data_encryption: &[u8],
+    additionnal_data_encryption: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
@@ -187,18 +187,14 @@ pub(crate) fn wrap(
                         .and_then(|info| info.cryptographic_parameters)
                         .and_then(|params| params.block_cipher_mode);
                     let wrap_secret = key_block.key_bytes()?;
+                    let aad = additionnal_data_encryption.unwrap_or_default();
                     match block_cipher_mode {
                         Some(BlockCipherMode::GCM) => {
                             // wrap using aes Gcm
                             let aead = AeadCipher::Aes256Gcm;
                             let nonce = random_nonce(aead)?;
-                            let (data, authenticated_encryption_tag) = aead_encrypt(
-                                aead,
-                                &wrap_secret,
-                                &nonce,
-                                additionnal_data_encryption,
-                                key_to_wrap,
-                            )?;
+                            let (data, authenticated_encryption_tag) =
+                                aead_encrypt(aead, &wrap_secret, &nonce, aad, key_to_wrap)?;
                             let ciphertext =
                                 [nonce.clone(), data, authenticated_encryption_tag.clone()]
                                     .concat();

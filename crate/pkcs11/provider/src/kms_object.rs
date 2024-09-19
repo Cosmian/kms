@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         UniqueIdentifier,
     },
 };
-use cosmian_kms_client::{batch_export_objects, ClientConf, KmsClient};
+use cosmian_kms_client::{batch_export_objects, ClientConf, ExportObjectParams, KmsClient};
 use cosmian_pkcs11_module::traits::EncryptionAlgorithm;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -64,12 +64,12 @@ pub(crate) async fn get_kms_objects_async(
     let responses = batch_export_objects(
         kms_client,
         key_ids,
-        true,
-        None,
-        true,
-        key_format_type,
-        None,
-        None,
+        ExportObjectParams {
+            unwrap: true,
+            allow_revoked: true,
+            key_format_type,
+            ..ExportObjectParams::default()
+        },
     )
     .await?;
     trace!("Found objects: {:?}", responses);

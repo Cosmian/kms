@@ -7,7 +7,8 @@ use cosmian_kms_client::{
         crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
         kmip::kmip_types::CryptographicAlgorithm,
     },
-    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, ExportObjectParams,
+    KmsClient,
 };
 
 use crate::{
@@ -94,18 +95,9 @@ impl UnwrapKeyAction {
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
-            export_object(
-                kms_rest_client,
-                key_id,
-                false,
-                None,
-                false,
-                None,
-                None,
-                None,
-            )
-            .await?
-            .0
+            export_object(kms_rest_client, key_id, ExportObjectParams::default())
+                .await?
+                .0
         } else if let Some(key_file) = &self.unwrap_key_file {
             read_object_from_json_ttlv_file(key_file)?
         } else {

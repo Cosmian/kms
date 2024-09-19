@@ -5,7 +5,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
     der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper,
-    KmsClient,
+    ExportObjectParams, KmsClient,
 };
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
@@ -188,12 +188,14 @@ impl ExportKeyAction {
         let (object, _) = export_object(
             kms_rest_client,
             &id,
-            self.unwrap,
-            self.wrap_key_id.as_deref(),
-            self.allow_revoked,
-            key_format_type,
-            block_mode,
-            aad.cloned(),
+            ExportObjectParams {
+                unwrap: self.unwrap,
+                wrapping_key_id: self.wrap_key_id.as_deref(),
+                allow_revoked: self.allow_revoked,
+                key_format_type,
+                block_cipher_mode: block_mode,
+                authenticated_encryption_additional_data: aad.cloned(),
+            },
         )
         .await?;
 
