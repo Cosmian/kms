@@ -36,11 +36,10 @@ mod permissions_test;
 mod tagging_tests;
 
 fn get_redis_url() -> String {
-    if let Ok(var_env) = std::env::var("REDIS_HOST") {
-        format!("redis://{var_env}:6379")
-    } else {
-        "redis://localhost:6379".to_owned()
-    }
+    std::env::var("REDIS_HOST").map_or_else(
+        |_| "redis://localhost:6379".to_owned(),
+        |var_env| format!("redis://{var_env}:6379"),
+    )
 }
 
 fn get_sql_cipher(

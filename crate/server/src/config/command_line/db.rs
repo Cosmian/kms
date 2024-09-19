@@ -200,16 +200,17 @@ impl DBConfig {
 }
 
 fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
-    let url = if let Some(url) = database_url {
-        Ok(url.to_owned())
-    } else {
-        std::env::var(alternate_env_variable).map_err(|_e| {
-            kms_error!(
-                "No database URL supplied either using the 'database-url' option, or the \
-                 KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
-            )
-        })
-    }?;
+    let url = database_url.map_or_else(
+        || {
+            std::env::var(alternate_env_variable).map_err(|_e| {
+                kms_error!(
+                    "No database URL supplied either using the 'database-url' option, or the \
+                     KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
+                )
+            })
+        },
+        |url| Ok(url.to_owned()),
+    )?;
     let url = Url::parse(&url)?;
     Ok(url)
 }
@@ -219,15 +220,16 @@ fn ensure_value(
     option_name: &str,
     env_variable_name: &str,
 ) -> KResult<String> {
-    if let Some(value) = value {
-        Ok(value.to_owned())
-    } else {
-        std::env::var(env_variable_name).map_err(|_e| {
-            kms_error!(
-                "No value supplied either using the {} option, or the {} environment variable",
-                option_name,
-                env_variable_name
-            )
-        })
-    }
+    value.map_or_else(
+        || {
+            std::env::var(env_variable_name).map_err(|_e| {
+                kms_error!(
+                    "No value supplied either using the {} option, or the {} environment variable",
+                    option_name,
+                    env_variable_name
+                )
+            })
+        },
+        |value| Ok(value.to_owned()),
+    )
 }

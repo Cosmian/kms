@@ -412,16 +412,17 @@ async fn get_issuer<'a>(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Issuer<'a>> {
-    let (issuer_certificate_id, issuer_private_key_id) = match &request.attributes {
-        Some(attributes) => {
-            // Retrieve the issuer certificate id if provided
-            let issuer_certificate_id = attributes.get_link(LinkType::CertificateLink);
-            // Retrieve the issuer private key id if provided
-            let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
-            (issuer_certificate_id, issuer_private_key_id)
-        }
-        None => (None, None),
-    };
+    let (issuer_certificate_id, issuer_private_key_id) =
+        request
+            .attributes
+            .as_ref()
+            .map_or((None, None), |attributes| {
+                // Retrieve the issuer certificate id if provided
+                let issuer_certificate_id = attributes.get_link(LinkType::CertificateLink);
+                // Retrieve the issuer private key id if provided
+                let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
+                (issuer_certificate_id, issuer_private_key_id)
+            });
     trace!(
         "Issuer certificate id: {issuer_certificate_id:?}, issuer private key id: \
          {issuer_private_key_id:?}"

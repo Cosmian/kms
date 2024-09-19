@@ -535,7 +535,7 @@ impl Database for RedisWithFindex {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         let mut keywords = {
-            if let Some(attributes) = researched_attributes {
+            researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags();
                 trace!("find: tags: {tags:?}");
                 let mut keywords = tags
@@ -545,9 +545,7 @@ impl Database for RedisWithFindex {
                 // index some of the attributes
                 keywords.extend(keywords_from_attributes(attributes));
                 keywords
-            } else {
-                HashSet::new()
-            }
+            })
         };
         if user_must_be_owner {
             trace!("find: user must be owner");
@@ -588,15 +586,12 @@ impl Database for RedisWithFindex {
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {
-                (if let Some(state) = state {
-                    redis_db_object.state == state
-                } else {
-                    true
-                }) && (if redis_db_object.owner == user {
-                    true
-                } else {
-                    permissions.contains_key(uid)
-                })
+                state.map_or(true, |state| redis_db_object.state == state)
+                    && (if redis_db_object.owner == user {
+                        true
+                    } else {
+                        permissions.contains_key(uid)
+                    })
             })
             .map(|(uid, redis_db_object)| {
                 (
