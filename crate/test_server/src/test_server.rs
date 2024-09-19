@@ -107,11 +107,8 @@ fn redis_findex_db_config() -> DBConfig {
     }
 }
 
-/// Start a test KMS server in a thread with the default options:
-/// No TLS, no certificate authentication
-pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    trace!("Starting default test server");
-    let db_config = env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
+fn get_db_config() -> DBConfig {
+    env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
         match v.to_str().unwrap_or("") {
             "redis-findex" => redis_findex_db_config(),
             "mysql" => mysql_db_config(),
@@ -119,10 +116,16 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
             "postgresql" => postgres_db_config(),
             _ => sqlite_enc_db_config(),
         }
-    });
+    })
+}
+
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
+pub async fn start_default_test_kms_server() -> &'static TestsContext {
+    trace!("Starting default test server");
     ONCE.get_or_try_init(|| {
         start_test_server_with_options(
-            db_config,
+            get_db_config(),
             9990,
             AuthenticationOptions {
                 use_jwt_token: false,
@@ -138,10 +141,11 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 }
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
             start_test_server_with_options(
-                sqlite_enc_db_config(),
+                get_db_config(),
                 9991,
                 AuthenticationOptions {
                     use_jwt_token: false,
