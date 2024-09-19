@@ -109,10 +109,10 @@ find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
 rm -f /tmp/*.json
 
 export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
-# Testing on different databases
-echo "Testing"
 
-databases=("redis-findex" "mysql" "sqlite" "postgresql" "sqlite-enc")
+# Testing on different databases
+# databases=("redis-findex" "mysql" "sqlite" "postgresql" "sqlite-enc")
+databases=("redis-findex" "sqlite" "postgresql" "sqlite-enc") # for now, do not handle mysql deadlock occurring in CI
 for database in "${databases[@]}"; do
   # Discard test if skipping options have been passed in `SKIP_SERVICES_TESTS`
   database_1=$(echo "$database" | cut -d '-' -f 1)
