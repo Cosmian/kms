@@ -7,7 +7,6 @@ use cosmian_kms_client::{
     der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper,
     ExportObjectParams, KmsClient,
 };
-use strum::{Display, EnumIter};
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
@@ -24,14 +23,6 @@ pub enum ExportKeyFormat {
     SpkiDer,
     Base64,
     Raw,
-}
-
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq, Display, EnumIter)]
-pub enum ExportBlockCipherMode {
-    #[value(name = "GCM")]
-    GCM,
-    #[value(name = "NISTKeyWrap")]
-    NISTKeyWrap,
 }
 
 /// Export a key from the KMS
@@ -121,7 +112,7 @@ pub struct ExportKeyAction {
         short = 'm',
         default_value = None
     )]
-    block_cipher_mode: Option<ExportBlockCipherMode>,
+    block_cipher_mode: Option<BlockCipherMode>,
 
     /// Authenticated encryption additional data
     #[clap(
@@ -152,21 +143,24 @@ impl ExportKeyAction {
         };
 
         let (block_mode, aad) = match self.block_cipher_mode {
-            Some(ExportBlockCipherMode::NISTKeyWrap) | None => {
+            Some(BlockCipherMode::NISTKeyWrap) | None => {
                 if self.authenticated_additional_data.is_some() {
                     cli_bail!(
-                        "Authenticated encryption additional data can't be provided using \
-                         NISTKeyWrap"
+                        "Authenticated encryption additional data can't be provided using {}",
+                        BlockCipherMode::NISTKeyWrap
                     )
                 }
                 (None, None)
             }
-            Some(ExportBlockCipherMode::GCM) => {
+            Some(BlockCipherMode::GCM) => {
                 if let Some(aad) = &self.authenticated_additional_data {
                     (Some(BlockCipherMode::GCM), Some(aad))
                 } else {
                     (Some(BlockCipherMode::GCM), None)
                 }
+            }
+            Some(mode) => {
+                cli_bail!("Block cipher mode {} is not yet supported", mode)
             }
         };
 

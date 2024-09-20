@@ -29,7 +29,7 @@ use crate::tests::cover_crypt::{
 #[cfg(not(feature = "fips"))]
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
-    actions::shared::{ExportBlockCipherMode, ExportKeyFormat},
+    actions::shared::ExportKeyFormat,
     error::{result::CliResult, CliError},
     tests::{
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
@@ -267,7 +267,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
             key_id: private_key_id.clone(),
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             wrap_key_id: Some(sym_key_id.clone()),
-            block_cipher_mode: Some(ExportBlockCipherMode::NISTKeyWrap.to_string()),
+            block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap.to_string()),
             authenticated_additional_data: Some("encryption_data".to_owned()),
             ..Default::default()
         })
@@ -281,7 +281,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
         key_id: private_key_id.clone(),
         key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
         wrap_key_id: Some(sym_key_id.clone()),
-        block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
+        block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
         ..Default::default()
     })?;
 
@@ -307,7 +307,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
             key_id: sym_key_id,
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             wrap_key_id: Some(private_key_id),
-            block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
+            block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
             ..Default::default()
         })
         .is_err()

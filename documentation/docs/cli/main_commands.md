@@ -272,7 +272,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"GCM", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -967,7 +967,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"GCM", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1261,7 +1261,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"GCM", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1537,7 +1537,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"GCM", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 

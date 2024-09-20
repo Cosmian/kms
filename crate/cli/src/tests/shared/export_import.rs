@@ -1,10 +1,9 @@
+use cosmian_kms_client::kmip::kmip_types::BlockCipherMode;
 use kms_test_server::start_default_test_kms_server;
-use strum::IntoEnumIterator;
 use tempfile::TempDir;
 use tracing::{debug, trace};
 
 use crate::{
-    actions::shared::ExportBlockCipherMode,
     error::result::CliResult,
     tests::{
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
@@ -29,7 +28,7 @@ pub(crate) async fn test_wrap_export_import() -> CliResult<()> {
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
 
     // Export and import the key with different block cipher modes
-    for block_cipher_mode in ExportBlockCipherMode::iter() {
+    for block_cipher_mode in [BlockCipherMode::GCM, BlockCipherMode::NISTKeyWrap] {
         debug!("block_cipher_mode: {block_cipher_mode}",);
         export_key(ExportKeyParams {
             cli_conf_path: ctx.user_client_conf_path.clone(),
@@ -61,7 +60,7 @@ pub(crate) async fn test_wrap_export_import() -> CliResult<()> {
             key_id: key_id.to_string(),
             key_file: key_file.clone(),
             wrap_key_id: Some(sym_wrapping_key_id.clone()),
-            block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
+            block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
             authenticated_additional_data: authenticated_additional_data.clone(),
             ..Default::default()
         })?;
@@ -86,7 +85,7 @@ pub(crate) async fn test_wrap_export_import() -> CliResult<()> {
         key_id: key_id.to_string(),
         key_file: key_file.clone(),
         wrap_key_id: Some(sym_wrapping_key_id.clone()),
-        block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
+        block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
         authenticated_additional_data: Some("aad".to_string()),
         ..Default::default()
     })?;

@@ -99,11 +99,17 @@ fn key_wrapping_specification(
 
 #[derive(Default)]
 pub struct ExportObjectParams<'a> {
+    ///  Unwrap the object if it is wrapped
     pub unwrap: bool,
+    ///  The wrapping key id to wrap the key, may be the PKCS#12 password. `wrapping_key_id` is ignored if `unwrap` is true
     pub wrapping_key_id: Option<&'a str>,
+    /// `allow_revoked` - Allow the export of a revoked object
     pub allow_revoked: bool,
+    /// `key_format_type` - The key format for export
     pub key_format_type: Option<KeyFormatType>,
+    /// `block_cipher_mode` - If wrapping with symmetric key, how to wrap key, using RFC5649 (`NistKeyWrap`) or AES256GCM (GCM)
     pub block_cipher_mode: Option<BlockCipherMode>,
+    /// `authenticated_encryption_additional_data` - Wrapping using GCM mode, additional data used for encryption
     pub authenticated_encryption_additional_data: Option<String>,
 }
 
@@ -126,14 +132,7 @@ impl<'a> ExportObjectParams<'a> {
 /// # Arguments
 ///  * `kms_rest_client` - The KMS client connector
 ///  * `object_id_or_tags` - The KMS object id or tags
-///  * `unwrap` - Unwrap the object if it is wrapped
-///  * `wrapping_key_id` - The wrapping key id to wrap the key, may be the PKCS#12 password
-///  * `allow_revoked` - Allow the export of a revoked object
-///  * `key_format_type` - The key format for export
-///  * `block_cipher_mode` - If wrapping with symmetric key, how to wrap key, using RFC5649 (`NistKeyWrap`) or AES256GCM (GCM)
-///  * `authenticated_encryption_additional_data` - Wrapping using GCM mode, additional data used for encryption
-///
-///  `wrapping_key_id` is ignored if `unwrap` is true
+///  * `params` - Export parameters
 ///
 /// # Returns
 /// * The exported object and the Export attributes (None for Get)

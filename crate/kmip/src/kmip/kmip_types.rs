@@ -9,6 +9,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use clap::ValueEnum;
 #[cfg(feature = "openssl")]
 use openssl::{
     hash::MessageDigest,
@@ -1680,25 +1681,47 @@ impl Default for WrappingMethod {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display,
+)]
 pub enum BlockCipherMode {
+    #[value(name = "CBC")]
     CBC = 0x0000_0001,
+    #[value(name = "ECB")]
     ECB = 0x0000_0002,
+    #[value(name = "PCBC")]
     PCBC = 0x0000_0003,
+    #[value(name = "CFB")]
     CFB = 0x0000_0004,
+    #[value(name = "OFB")]
     OFB = 0x0000_0005,
+    #[value(name = "CTR")]
     CTR = 0x0000_0006,
+    #[value(name = "CMAC")]
     CMAC = 0x0000_0007,
+    #[value(name = "CCM")]
     CCM = 0x0000_0008,
+    #[value(name = "GCM")]
     GCM = 0x0000_0009,
+    #[value(name = "CBCMAC")]
     CBCMAC = 0x0000_000A,
+    #[value(name = "XTS")]
     XTS = 0x0000_000B,
+    #[value(name = "X9102AESKW")]
     X9102AESKW = 0x0000_000E,
+    #[value(name = "X9102TDKW")]
     X9102TDKW = 0x0000_000F,
+    #[value(name = "X9102AKW1")]
     X9102AKW1 = 0x0000_0010,
+    #[value(name = "X9102AKW2")]
     X9102AKW2 = 0x0000_0011,
+    #[value(name = "AEAD")]
     AEAD = 0x0000_0012,
+    // Extensions - 8XXXXXXX
+    #[value(name = "NISTKeyWrap")]
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x8000_0001,
 }
 
 #[allow(non_camel_case_types)]
