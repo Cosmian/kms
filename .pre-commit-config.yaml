@@ -42,14 +42,6 @@ repos:
           ]
         exclude: documentation/docs
 
-  - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
-    rev: v1.1.2
-    hooks:
-      - id: htmlhint
-        exclude: documentation/theme_overrides
-      - id: dockerfile_lint
-      - id: markdown-toc
-
   - repo: https://github.com/tcort/markdown-link-check
     rev: v3.12.1
     hooks:

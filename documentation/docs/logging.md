@@ -1,7 +1,9 @@
-By default the Cosmian KMS server outputs logs to the console with a log level of INFO. You can
+# Logging
+
+By default, the Cosmian KMS server outputs logs to the console with a log level of INFO. You can
 change the log level and send traces to an [OpenTelemetry](https://opentelemetry.io/) collector.
 
-### Adjusting the log level
+## Adjusting the log level
 
 The log level can be adjusted by setting the `RUST_LOG` environment variable. The following log
 levels are available: `trace`, `debug`, `info`, `warn`, `error`.
@@ -32,7 +34,7 @@ RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=debug,sqlx::query=e
 **WARNING**: Setting the log level to `debug` or `trace` may leak sensitive information in the
 logs
 
-### Using the OTLP telemetry
+## Using the OTLP telemetry
 
 The server can send traces to an [OpenTelemetry](https://opentelemetry.io/) collector that
 supports the OTLP protocol.
@@ -47,7 +49,7 @@ The traces will contain the following information:
 
 - the start configuration of the KMS server
 - the KMIP requests
-- the requests linked to access-rights management
+- the requests that are linked to access-rights management
 
 The content of the traces is adjusted by the log level set above.
 

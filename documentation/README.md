@@ -21,7 +21,7 @@ sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
 sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
 ```
 
-#### MacOS pre-requisites
+#### MacOS pre requisites
 
 ```sh
 brew install pandoc librsvg
@@ -55,7 +55,7 @@ mkdocs serve -a 0.0.0.0:8003
 
 Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
 
-The doc is live rendered when editing the markdown files.
+The doc is live rendered when editing the Markdown files.
 
 ### Installing Pandoc to generate PDFs
 
@@ -71,11 +71,11 @@ cargo install pandoc-katex
 ### Generating a PDF
 
 Run
-Warning: You need a LaTeX install, if some content is written in LaTeX
+Warning: You need a LaTeX installation if some content is written in LaTeX
 
 ### Installing Latex
 
-WARNING: This is a BIG install
+WARNING: This is a BIG installation
 
 ```sh
 # LateX

@@ -1,46 +1,43 @@
-<h1>Encrypting emails with S/MIME</h1>
+# Deploying email encryption with S/MIME
 
 S/MIME is a [standard](https://en.wikipedia.org/wiki/S/MIME) for public key encryption and signing
 of MIME data.
 It is used to secure email messages and is supported by most email clients and servers.
 
-<!-- toc -->
-
-- [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
-    + [Setup (once)](#setup-once)
-    + [Handshake (once per recipient)](#handshake-once-per-recipient)
-- [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
-  * [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
-  * [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
-  * [Creating an S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
-    + [Create a Root CA](#create-a-root-ca)
-    + [Create an Intermediate CA](#create-an-intermediate-ca)
-  * [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
-- [Exporting and viewing](#exporting-and-viewing)
-  * [PKCS#12 format](#pkcs%2312-format)
-  * [PEM format](#pem-format)
-- [Loading the PKCS#12 file in an email client](#loading-the-pkcs%2312-file-in-an-email-client)
-- [Apple mail, MacOS](#apple-mail-macos)
-- [Outlook, Windows](#outlook-windows)
-  * [Setup](#setup)
-  * [Sending a message](#sending-a-message)
-
-<!-- tocstop -->
+- [Deploying email encryption with S/MIME](#deploying-email-encryption-with-smime)
+  - [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
+    - [Setup (once)](#setup-once)
+    - [Handshake (once per recipient)](#handshake-once-per-recipient)
+  - [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
+    - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
+    - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
+    - [Creating an S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
+      - [Create a Root CA](#create-a-root-ca)
+      - [Create an Intermediate CA](#create-an-intermediate-ca)
+    - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+  - [Exporting and viewing](#exporting-and-viewing)
+    - [PKCS#12 format](#pkcs12-format)
+    - [PEM format](#pem-format)
+  - [Loading the PKCS#12 file in an email client](#loading-the-pkcs12-file-in-an-email-client)
+  - [Apple mail, MacOS](#apple-mail-macos)
+  - [Outlook, Windows](#outlook-windows)
+    - [Setup](#setup)
+    - [Sending a message](#sending-a-message)
 
 ## Overview of the S/MIME workflow
 
 To enable S/MIME, a user will go through the following steps:
 
-#### Setup (once)
+### Setup (once)
 
 - Generate a key pair and a certificate holding the correct x509 extensions for S/MIME
 - Import this certificate and private key (usually in the form of a PKCS#12 file) in its email
   client
 
-#### Handshake (once per recipient)
+### Handshake (once per recipient)
 
-- Send a signed, non encrypted, email to a recipient to share its certificate
-- Receive a signed, encrypted or non encrypted, email from the recipient and import its certificate
+- Send a signed, non-encrypted, email to a recipient to share its certificate
+- Receive a signed, encrypted, or non-encrypted, email from the recipient and import its certificate
 
 No further actions are required to exchange signed encrypted emails with this recipient.
 
@@ -49,14 +46,14 @@ No further actions are required to exchange signed encrypted emails with this re
 For interoperability, the user certificate should be ultimately signed by a public certificate
 authority commonly found on email clients. If you want to use your own certificate authority,
 for internal use or test purposes, please see the instructions below on how to [create a root CA and
-an intermediate CA](#creating-a-smime-certificate-authority-with-a-root-and-intermediate-ca).
+an intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca).
 
 Please note that these certificates require certain x509 extensions to be compatible with Google
 CSE S/MIME and some other operators. Check the
 [Google requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 for details.
 
-For a user, there are 3 main possibilities to generate a key pair and a S/MIME certificate:
+For a user, there are 3 main possibilities to generate a key pair and an S/MIME certificate:
 
 ### Getting a user certificate from a public certificate authority
 
@@ -92,7 +89,7 @@ ckms certificates export  --format pem --certificate-id john.doe@acme.com john_d
 If you have many users, you will probably want top buy an intermediate certificate from a public
 certificate authority. This intermediate certificate will be used to sign the user certificates.
 
-First import the intermediate certificate and its private key in the KMS:
+First, import the intermediate certificate and its private key in the KMS:
 
 ```sh
 ckms certificates import --format pkcs12 --pkcs12-password mysecret \
@@ -169,7 +166,7 @@ Then, generate a user certificate signed by the intermediate certificate:
 Make sure the email address in the certificate Common Name matches the email address you are using
 in your email client.
 
-To be used for S/MIME, the user certificates needs to have certain extensions which are set in a
+To be used for S/MIME, the user certificate needs to have certain extensions which are set in a
 file containing a `[ v3_ca ]` section.
 
 Say we want to create an S/MIME certificate for user john.doe@acme.com, signed by the intermediate
@@ -217,7 +214,7 @@ file.
 To export the certificate and the private key in PKCS#12 format,
 use either the `pkcs12` or `pkcs12-legacy` format option.
 The `pkcs12-legacy` format is deprecated but is compatible with older versions of OpenSSL (1.1.x)
-and some keystores such as the Java keystore or the MacOS keychain.
+and some keystores such as the Java keystore or the macOS keychain.
 
 ```sh
 ckms certificates export --certificate-id john.doe@acme.com \
@@ -376,7 +373,7 @@ IB2S/1IdwvGrNPfX8SmHvPUzPAtskyNMT8dpwd8jlQ54
 
 ## Apple mail, MacOS
 
-To use you S/MIME certificate, load it in the login keychain:
+To use your S/MIME certificate, load it in the login keychain:
 
 ![keychain](./images/macos-keychain.png)
 
@@ -386,7 +383,7 @@ Then, in the Mail application, create a new email and tick the "encrypt" and "si
 
 When handshaking with a new recipient, send a signed email to the recipient (not encrypted).
 
-When receiving a signed email from the recipient, import the recipient's certificate in the
+When receiving a signed email from the recipient, import the recipient's certificate in
 your contacts.
 
 ## Outlook, Windows
@@ -402,7 +399,7 @@ Then go to Email Security and click on Import/Export to import the PKCS#12 file.
 
 Finally, go to the Email Security and click the Settings... button of Default Setting.
 In the popup, select the certificate you just imported, adjust the hash algorithm to SHA256 for
-maximum compatibility and make sure you tick the box "Send these certificates with signed messages".
+maximum compatibility and make sure you tick the box "Send these certificates with signed messages."
 
 ![outlook_2](./images/outlook_trust_center_2.png)
 
