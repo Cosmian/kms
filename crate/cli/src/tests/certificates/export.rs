@@ -240,7 +240,7 @@ async fn test_import_p12_rsa() {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
-        key_id: imported_p12_sk.clone(),
+        key_id: imported_p12_sk,
         key_file: key_file.to_str().unwrap().to_string(),
         key_format: Some(JsonTtlv),
         ..Default::default()
@@ -293,7 +293,7 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
     // Export the pkcs7
     export_certificate(
         &ctx.owner_client_conf_path,
-        &certificate_id.to_string(),
+        &certificate_id,
         tmp_exported_pkcs7.to_str().unwrap(),
         Some(CertificateExportFormat::Pkcs7),
         None,
@@ -313,7 +313,7 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
     // Export intermediate cert
     export_certificate(
         &ctx.owner_client_conf_path,
-        &issuer_private_key_id.to_string(),
+        &issuer_private_key_id,
         tmp_exported_int.to_str().unwrap(),
         Some(CertificateExportFormat::Pkcs12),
         Some("secret".to_owned()),
@@ -329,7 +329,7 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
     // Export root cert
     export_certificate(
         &ctx.owner_client_conf_path,
-        &root_ca_id.to_string(),
+        &root_ca_id,
         tmp_exported_root.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,

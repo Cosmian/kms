@@ -79,7 +79,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "sym".to_owned(),
-        key_id: id.clone(),
+        key_id: id,
         key_file: tmp_path.join("aes_sym_2").to_str().unwrap().to_owned(),
         ..Default::default()
     })?;

@@ -58,7 +58,7 @@ pub struct CreateKeypairsAction {
     )]
     subject_name: String,
 
-    /// The existing private key id of an existing RSA keypair to use (optionnal - if no ID is provided, a RSA keypair will be created)
+    /// The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
     #[clap(long, short = 'k')]
     rsa_private_key_id: Option<String>,
 }
@@ -129,7 +129,7 @@ impl CreateKeypairsAction {
                         attribute_references: None,
                     })
                     .await?;
-                if let Some(ObjectType::PrivateKey) = attributes_response.attributes.object_type {
+                if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
                     // Do we need to add encryption Algorithm to RSA too ?
                     if let Some(linked_public_key_id) = attributes_response
                         .attributes

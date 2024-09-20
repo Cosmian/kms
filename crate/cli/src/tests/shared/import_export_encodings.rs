@@ -89,7 +89,7 @@ fn test_pems(
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
-        key_id: key_uid.clone(),
+        key_id: key_uid,
         key_file: get_key_file.path().to_str().unwrap().to_string(),
         key_format: Some(export_format),
         ..Default::default()

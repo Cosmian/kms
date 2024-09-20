@@ -26,10 +26,10 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     // an empty uid will have the server generate if for us
     let unique_identifier = object_id.clone().unwrap_or_default();
 
-    trace!("import_object: unique_identifier");
+    trace!("import_object: unique_identifier: {unique_identifier}");
     // cache the object type
     let object_type = object.object_type();
-    trace!("object_type: {object_type:?}");
+    trace!("import_object: object: {object:?}");
 
     let (key_wrap_type, mut attributes) = if object_type == ObjectType::Certificate {
         // add the tags to the attributes
@@ -51,6 +51,8 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
         );
         (key_wrap_type, attributes)
     };
+
+    trace!("import_object: key_wrap_type: {key_wrap_type:?}, attributes: {attributes:?}");
 
     // set the new tags
     attributes.set_tags(tags)?;

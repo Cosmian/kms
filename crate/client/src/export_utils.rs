@@ -70,7 +70,7 @@ fn key_wrapping_specification(
 ) -> Option<KeyWrappingSpecification> {
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
         None
-    } else if let Some(BlockCipherMode::GCM) = block_cipher_mode {
+    } else if block_cipher_mode == Some(BlockCipherMode::GCM) {
         wrapping_key_id.map(|id| KeyWrappingSpecification {
             wrapping_method: WrappingMethod::Encrypt,
             encryption_key_information: Some(EncryptionKeyInformation {
@@ -108,6 +108,7 @@ pub struct ExportObjectParams<'a> {
 }
 
 impl<'a> ExportObjectParams<'a> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             unwrap: false,
@@ -129,7 +130,7 @@ impl<'a> ExportObjectParams<'a> {
 ///  * `wrapping_key_id` - The wrapping key id to wrap the key, may be the PKCS#12 password
 ///  * `allow_revoked` - Allow the export of a revoked object
 ///  * `key_format_type` - The key format for export
-///  * `block_cipher_mode` - If wrapping with symmetric key, how to wrap key, using RFC5649 (NistKeyWrap) or AES256GCM (GCM)
+///  * `block_cipher_mode` - If wrapping with symmetric key, how to wrap key, using RFC5649 (`NistKeyWrap`) or AES256GCM (GCM)
 ///  * `authenticated_encryption_additional_data` - Wrapping using GCM mode, additional data used for encryption
 ///
 ///  `wrapping_key_id` is ignored if `unwrap` is true

@@ -26,6 +26,7 @@ use crate::{
 
 #[derive(Default, Debug)]
 pub(crate) struct ImportKeyParams {
+    // TODO: should be replaced by ImportKeyAction
     pub(crate) cli_conf_path: String,
     pub(crate) sub_command: String,
     pub(crate) key_file: String,
@@ -35,6 +36,7 @@ pub(crate) struct ImportKeyParams {
     pub(crate) key_usage_vec: Option<Vec<KeyUsage>>,
     pub(crate) unwrap: bool,
     pub(crate) replace_existing: bool,
+    pub(crate) authenticated_additional_data: Option<String>,
 }
 
 pub(crate) fn import_key(params: ImportKeyParams) -> CliResult<String> {
@@ -76,6 +78,10 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CliResult<String> {
     }
     if params.unwrap {
         args.push("-u".to_owned());
+    }
+    if let Some(aad) = params.authenticated_additional_data {
+        args.push("--authenticated-additional-data".to_owned());
+        args.push(aad);
     }
     if params.replace_existing {
         args.push("-r".to_owned());
@@ -208,7 +214,7 @@ pub(crate) fn export_import_test(
     export_key(ExportKeyParams {
         cli_conf_path: cli_conf_path.to_string(),
         sub_command: sub_command.to_owned(),
-        key_id: uid.to_string(),
+        key_id: uid,
         key_file: "/tmp/output2.export".to_owned(),
         ..Default::default()
     })?;

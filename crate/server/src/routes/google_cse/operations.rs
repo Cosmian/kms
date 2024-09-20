@@ -41,7 +41,7 @@ use crate::{
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum Role {
     Reader,
     Signer,
@@ -56,13 +56,13 @@ impl Role {
     #[must_use]
     pub fn as_role_str(role: &Self) -> &str {
         match role {
-            Role::Reader => "reader",
-            Role::Signer => "signer",
-            Role::Writer => "writer",
-            Role::Upgrader => "upgrader",
-            Role::Migrator => "migrator",
-            Role::Verifier => "verifier",
-            Role::Decrypter => "decrypter",
+            Self::Reader => "reader",
+            Self::Signer => "signer",
+            Self::Writer => "writer",
+            Self::Upgrader => "upgrader",
+            Self::Migrator => "migrator",
+            Self::Verifier => "verifier",
+            Self::Decrypter => "decrypter",
         }
     }
 }

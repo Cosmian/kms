@@ -22,7 +22,7 @@ use crate::{
         wrap::common::rsa_parameters,
         FIPS_MIN_SALT_SIZE,
     },
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{
             KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
@@ -47,6 +47,32 @@ pub fn wrap_key_bytes(
     let wrapping_secret =
         derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
     rfc5649_wrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
+}
+
+// The purpose of this function is to check the block cipher mode in the encryption key information against the wrapping key
+// It verifies the BlockCipherMode is only used for a `SymmetricKey` object
+fn check_block_cipher_mode_in_encryption_key_information(
+    wrapping_key: &Object,
+    key_wrapping_specification: &KeyWrappingSpecification,
+) -> KmipResult<()> {
+    match wrapping_key {
+        Object::SymmetricKey { .. } => Ok(()),
+        _ => {
+            if let Some(encryption_key_information) = key_wrapping_specification
+                .encryption_key_information
+                .as_ref()
+            {
+                if let Some(cryptographic_parameters) =
+                    encryption_key_information.cryptographic_parameters.as_ref()
+                {
+                    if cryptographic_parameters.block_cipher_mode.is_some() {
+                        kmip_bail!("BlockCipherMode is only used for a SymmetricKey object")
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Wrap a key block with a wrapping key
@@ -77,6 +103,11 @@ pub fn wrap_key_block(
             kmip_bail!("Unable to wrap the key: wrapping method is not supported: {x:?}")
         }
     }
+
+    check_block_cipher_mode_in_encryption_key_information(
+        wrapping_key,
+        key_wrapping_specification,
+    )?;
 
     // determine the encoding of the wrapping
     let encoding = key_wrapping_specification
@@ -140,7 +171,7 @@ pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
-    additionnal_data_encryption: Option<&[u8]>,
+    additional_data_encryption: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
@@ -187,7 +218,7 @@ pub(crate) fn wrap(
                         .and_then(|info| info.cryptographic_parameters)
                         .and_then(|params| params.block_cipher_mode);
                     let wrap_secret = key_block.key_bytes()?;
-                    let aad = additionnal_data_encryption.unwrap_or_default();
+                    let aad = additional_data_encryption.unwrap_or_default();
                     match block_cipher_mode {
                         Some(BlockCipherMode::GCM) => {
                             // wrap using aes Gcm
@@ -195,9 +226,7 @@ pub(crate) fn wrap(
                             let nonce = random_nonce(aead)?;
                             let (data, authenticated_encryption_tag) =
                                 aead_encrypt(aead, &wrap_secret, &nonce, aad, key_to_wrap)?;
-                            let ciphertext =
-                                [nonce.clone(), data, authenticated_encryption_tag.clone()]
-                                    .concat();
+                            let ciphertext = [nonce, data, authenticated_encryption_tag].concat();
                             Ok(ciphertext)
                         }
                         _ => {

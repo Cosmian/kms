@@ -29,7 +29,7 @@ use crate::tests::cover_crypt::{
 #[cfg(not(feature = "fips"))]
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
-    actions::shared::ExportKeyFormat,
+    actions::shared::{ExportBlockCipherMode, ExportKeyFormat},
     error::{result::CliResult, CliError},
     tests::{
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
@@ -157,7 +157,7 @@ pub(crate) async fn test_export_sym() -> CliResult<()> {
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),
             sub_command: "sym".to_owned(),
-            key_id: key_id.clone(),
+            key_id,
             key_file: tmp_path
                 .join("output.export.bytes")
                 .to_str()
@@ -186,7 +186,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "sym".to_owned(),
-        key_id: key_id.clone(),
+        key_id,
         key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
         allow_revoked: true,
         ..Default::default()
@@ -267,7 +267,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
             key_id: private_key_id.clone(),
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             wrap_key_id: Some(sym_key_id.clone()),
-            block_cipher_mode: Some("nist-key-wrap".to_owned()),
+            block_cipher_mode: Some(ExportBlockCipherMode::NISTKeyWrap.to_string()),
             authenticated_additional_data: Some("encryption_data".to_owned()),
             ..Default::default()
         })
@@ -281,7 +281,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
         key_id: private_key_id.clone(),
         key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
         wrap_key_id: Some(sym_key_id.clone()),
-        block_cipher_mode: Some("gcm".to_owned()),
+        block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
         ..Default::default()
     })?;
 
@@ -299,32 +299,19 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
         .unwrap();
     assert_eq!(block_cipher_mode, BlockCipherMode::GCM);
 
-    // Block-cipher-mode option is ignored when not using symmetric key for wrapping
-    export_key(ExportKeyParams {
-        cli_conf_path: ctx.owner_client_conf_path.clone(),
-        sub_command: "rsa".to_owned(),
-        key_id: sym_key_id.clone(),
-        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-        wrap_key_id: Some(private_key_id.clone()),
-        block_cipher_mode: Some("gcm".to_owned()),
-        ..Default::default()
-    })?;
-
-    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-
-    println!("OBJECT {object:?}");
-    // let block_cipher_mode = object
-    //     .key_block()?
-    //     .key_wrapping_data
-    //     .clone()
-    //     .unwrap()
-    //     .encryption_key_information
-    //     .unwrap()
-    //     .cryptographic_parameters
-    //     .unwrap()
-    //     .block_cipher_mode
-    //     .unwrap();
-    // assert_ne!(block_cipher_mode, BlockCipherMode::GCM);
+    // Block-cipher-mode option raises an error when not using symmetric key for wrapping
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "rsa".to_owned(),
+            key_id: sym_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            wrap_key_id: Some(private_key_id),
+            block_cipher_mode: Some(ExportBlockCipherMode::GCM.to_string()),
+            ..Default::default()
+        })
+        .is_err()
+    );
 
     Ok(())
 }

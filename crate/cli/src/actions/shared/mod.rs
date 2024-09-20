@@ -10,7 +10,7 @@ mod wrap_key;
 #[cfg(feature = "openssl")]
 mod unwrap_key;
 
-pub use export_key::{ExportKeyAction, ExportKeyFormat};
+pub use export_key::{ExportBlockCipherMode, ExportKeyAction, ExportKeyFormat};
 pub use get_attributes::{AttributeTag, GetAttributesAction};
 pub use import_key::ImportKeyAction;
 pub use locate::LocateObjectsAction;

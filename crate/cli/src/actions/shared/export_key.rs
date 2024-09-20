@@ -1,16 +1,17 @@
 use std::path::PathBuf;
 
 use base64::Engine;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{BlockCipherMode, KeyFormatType},
     der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper,
     ExportObjectParams, KmsClient,
 };
+use strum::{Display, EnumIter};
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
     JsonTtlv,
     Sec1Pem,
@@ -25,9 +26,11 @@ pub enum ExportKeyFormat {
     Raw,
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ExportBlockCipherMode {
-    Gcm,
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq, Display, EnumIter)]
+pub enum ExportBlockCipherMode {
+    #[value(name = "GCM")]
+    GCM,
+    #[value(name = "NISTKeyWrap")]
     NISTKeyWrap,
 }
 
@@ -158,7 +161,7 @@ impl ExportKeyAction {
                 }
                 (None, None)
             }
-            Some(ExportBlockCipherMode::Gcm) => {
+            Some(ExportBlockCipherMode::GCM) => {
                 if let Some(aad) = &self.authenticated_additional_data {
                     (Some(BlockCipherMode::GCM), Some(aad))
                 } else {

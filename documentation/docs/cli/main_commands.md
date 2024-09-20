@@ -272,7 +272,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"gcm", "nist-key-wrap"`
+Possible values:  `"GCM", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -317,7 +317,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optionnal authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
 
 
 
@@ -967,7 +967,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"gcm", "nist-key-wrap"`
+Possible values:  `"GCM", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1012,7 +1012,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optionnal authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
 
 
 
@@ -1261,7 +1261,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"gcm", "nist-key-wrap"`
+Possible values:  `"GCM", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1306,7 +1306,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optionnal authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
 
 
 
@@ -1537,7 +1537,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"gcm", "nist-key-wrap"`
+Possible values:  `"GCM", "NISTKeyWrap"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1582,7 +1582,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optionnal authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
 
 
 
@@ -1851,7 +1851,7 @@ metadata for a user.
 `--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
 the subject name to use.
 
-`--rsa-private-key-id [-k] <RSA_PRIVATE_KEY_ID>` The existing private key id of an existing RSA keypair to use (optionnal - if no ID is provided, a RSA keypair will be created)
+`--rsa-private-key-id [-k] <RSA_PRIVATE_KEY_ID>` The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
 
 
 

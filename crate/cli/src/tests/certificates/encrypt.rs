@@ -213,8 +213,8 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         key_id: Some(Uuid::new_v4().to_string()),
         tags: tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>(),
         key_usage_vec: Some(vec![KeyUsage::Decrypt, KeyUsage::UnwrapKey]),
-        unwrap: false,
         replace_existing: true,
+        ..Default::default()
     })?;
 
     debug!("\n\nImport Certificate");
@@ -255,7 +255,7 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         key_id: private_key_id.clone(),
         key_file: private_key_wrapped.clone(),
         key_format: Some(ExportKeyFormat::JsonTtlv),
-        wrap_key_id: Some(certificate_id.clone()),
+        wrap_key_id: Some(certificate_id),
         ..Default::default()
     })?;
 
@@ -271,6 +271,7 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         key_usage_vec: Some(vec![KeyUsage::Decrypt]),
         unwrap: true,
         replace_existing: true,
+        authenticated_additional_data: None,
     })?;
     println!("import private key with unwrap OK");
 
@@ -278,7 +279,7 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
     let wrapped_private_key_uid = import_key(ImportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_string(),
-        key_file: private_key_wrapped.clone(),
+        key_file: private_key_wrapped,
         key_format: Some(ImportKeyFormat::JsonTtlv),
         key_id: Some(Uuid::new_v4().to_string()),
         key_usage_vec: Some(vec![KeyUsage::Decrypt]),
@@ -295,8 +296,8 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
-        key_id: wrapped_private_key_uid.clone(),
-        key_file: private_key_wrapped_as_is.clone(),
+        key_id: wrapped_private_key_uid,
+        key_file: private_key_wrapped_as_is,
         key_format: Some(ExportKeyFormat::JsonTtlv),
         ..Default::default()
     })?;
