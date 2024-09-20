@@ -193,7 +193,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() {
         wrap_key_pair.public_key(),
         &KeyWrappingData::default(),
         plaintext,
-        &[],
+        Some(&[]),
     )
     .unwrap();
     let decrypted_plaintext = unwrap(
@@ -322,7 +322,7 @@ fn test_encrypt_decrypt_ec_p192() {
         &wrap_key_pair_pub,
         &KeyWrappingData::default(),
         plaintext,
-        &[],
+        Some(&[]),
     )
     .unwrap();
     let decrypted_plaintext = unwrap(
@@ -362,7 +362,7 @@ fn test_encrypt_decrypt_ec_p384() {
         &wrap_key_pair_pub,
         &KeyWrappingData::default(),
         plaintext,
-        &[],
+        Some(&[]),
     )
     .unwrap();
     let decrypted_plaintext = unwrap(

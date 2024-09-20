@@ -18,7 +18,7 @@ use crate::{
     actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
     error::{result::CliResult, CliError},
     tests::{
-        shared::export::export_key,
+        shared::{export::export_key, ExportKeyParams},
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
     },
@@ -189,18 +189,14 @@ pub(crate) fn export_import_test(
     algorithm: CryptographicAlgorithm,
 ) -> CliResult<()> {
     // Export
-    export_key(
-        cli_conf_path,
-        sub_command,
-        private_key_id,
-        "/tmp/output.export",
-        None,
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: sub_command.to_owned(),
+        key_id: private_key_id.to_string(),
+        key_file: "/tmp/output.export".to_owned(),
+        ..Default::default()
+    })?;
+
     let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
@@ -216,18 +212,13 @@ pub(crate) fn export_import_test(
         false,
         false,
     )?;
-    export_key(
-        cli_conf_path,
-        sub_command,
-        &uid,
-        "/tmp/output2.export",
-        None,
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: sub_command.to_owned(),
+        key_id: uid.to_string(),
+        key_file: "/tmp/output2.export".to_owned(),
+        ..Default::default()
+    })?;
     let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
     assert_eq!(object2.key_block()?.key_bytes()?, key_bytes);
     assert_eq!(

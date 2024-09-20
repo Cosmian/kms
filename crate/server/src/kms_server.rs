@@ -64,7 +64,7 @@ pub async fn start_kms_server(
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
-    let _provider = if openssl::version::number() >= 0x30000000 {
+    let _provider = if openssl::version::number() >= 0x3000_0000 {
         debug!("OpenSSL: loading the legacy provider");
         openssl::provider::Provider::try_load(None, "legacy", true)
             .context("OpenSSL: unable to load the openssl legacy provider")?

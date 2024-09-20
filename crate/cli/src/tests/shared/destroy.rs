@@ -14,7 +14,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::{export::export_key, revoke::revoke},
+        shared::{export::export_key, revoke::revoke, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -45,35 +45,26 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     let tmp_path = tmp_dir.path();
     // should not be able to Get....
     assert!(
-        export_key(
-            cli_conf_path,
-            "ec",
-            key_id,
-            tmp_path.join("output.export").to_str().unwrap(),
-            None,
-            false,
-            None,
-            false,
-            None,
-            None
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: cli_conf_path.to_string(),
+            sub_command: "ec".to_owned(),
+            key_id: key_id.to_string(),
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
 
     // but should be able to Export....
     assert!(
-        export_key(
-            cli_conf_path,
-            "ec",
-            key_id,
-            tmp_path.join("output.export").to_str().unwrap(),
-            None,
-            false,
-            None,
-            true,
-            None,
-            None
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: cli_conf_path.to_string(),
+            sub_command: "ec".to_owned(),
+            key_id: key_id.to_string(),
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            allow_revoked: true,
+            ..Default::default()
+        })
         .is_ok()
     );
     let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
@@ -308,48 +299,33 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         let tmp_path = tmp_dir.path();
         // should able to Get the Master Keys and user key 2
         assert!(
-            export_key(
-                &ctx.owner_client_conf_path,
-                "cc",
-                &master_private_key_id,
-                tmp_path.join("output.export").to_str().unwrap(),
-                None,
-                false,
-                None,
-                false,
-                None,
-                None
-            )
+            export_key(ExportKeyParams {
+                cli_conf_path: ctx.owner_client_conf_path.clone(),
+                sub_command: "cc".to_owned(),
+                key_id: master_private_key_id.clone(),
+                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+                ..Default::default()
+            })
             .is_ok()
         );
         assert!(
-            export_key(
-                &ctx.owner_client_conf_path,
-                "cc",
-                &master_public_key_id,
-                tmp_path.join("output.export").to_str().unwrap(),
-                None,
-                false,
-                None,
-                false,
-                None,
-                None
-            )
+            export_key(ExportKeyParams {
+                cli_conf_path: ctx.owner_client_conf_path.clone(),
+                sub_command: "cc".to_owned(),
+                key_id: master_public_key_id.clone(),
+                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+                ..Default::default()
+            })
             .is_ok()
         );
         assert!(
-            export_key(
-                &ctx.owner_client_conf_path,
-                "cc",
-                &user_key_id_2,
-                tmp_path.join("output.export").to_str().unwrap(),
-                None,
-                false,
-                None,
-                false,
-                None,
-                None
-            )
+            export_key(ExportKeyParams {
+                cli_conf_path: ctx.owner_client_conf_path.clone(),
+                sub_command: "cc".to_owned(),
+                key_id: user_key_id_2.clone(),
+                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+                ..Default::default()
+            })
             .is_ok()
         );
     }

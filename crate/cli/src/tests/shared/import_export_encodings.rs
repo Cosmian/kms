@@ -6,7 +6,7 @@ use kms_test_server::{start_default_test_kms_server, TestsContext};
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     error::result::CliResult,
-    tests::shared::{export_key, import_key},
+    tests::shared::{export_key, import_key, ExportKeyParams},
 };
 
 #[tokio::test]
@@ -74,34 +74,29 @@ fn test_pems(
     let imported_bytes = read_bytes_from_file(&PathBuf::from(&key_file_path))?;
     // export the key
     let export_key_file = tempfile::NamedTempFile::new()?;
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &key_uid,
-        export_key_file.path().to_str().unwrap(),
-        Some(export_format.clone()),
-        false,
-        None,
-        true,
-        None,
-        None,
-    )?;
+
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: key_uid.clone(),
+        key_file: export_key_file.path().to_str().unwrap().to_string(),
+        key_format: Some(export_format.clone()),
+        allow_revoked: true,
+        ..Default::default()
+    })?;
+
     let export_bytes = read_bytes_from_file(&export_key_file.path())?;
     assert_eq!(imported_bytes, export_bytes);
     // Get the key
     let get_key_file = tempfile::NamedTempFile::new()?;
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &key_uid,
-        get_key_file.path().to_str().unwrap(),
-        Some(export_format),
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: key_uid.clone(),
+        key_file: get_key_file.path().to_str().unwrap().to_string(),
+        key_format: Some(export_format),
+        ..Default::default()
+    })?;
     let get_bytes = read_bytes_from_file(&get_key_file.path())?;
     assert_eq!(imported_bytes, get_bytes);
 

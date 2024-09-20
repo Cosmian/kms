@@ -22,6 +22,7 @@ use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::debug;
 
+use super::ExportKeyParams;
 use crate::{
     actions::shared::utils::KeyUsage,
     error::result::CliResult,
@@ -218,34 +219,26 @@ fn test_import_export_wrap_private_key(
 
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
-    export_key(
-        cli_conf_path,
-        sub_command,
-        private_key_id,
-        private_key_file.to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    let export_params = ExportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: sub_command.to_string(),
+        key_id: private_key_id.to_string(),
+        key_file: private_key_file.to_str().unwrap().to_string(),
+        ..Default::default()
+    };
+    export_key(export_params)?;
     let private_key = read_object_from_json_ttlv_file(&private_key_file)?;
 
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
-    export_key(
-        cli_conf_path,
-        sub_command,
-        private_key_id,
-        wrapped_private_key_file.to_str().unwrap(),
-        None,
-        false,
-        Some(wrapping_key_uid.to_string()),
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: sub_command.to_string(),
+        key_id: private_key_id.to_string(),
+        key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
+        wrap_key_id: Some(wrapping_key_uid.to_string()),
+        ..Default::default()
+    })?;
 
     // test the exported private key with wrapping
     {
@@ -294,18 +287,13 @@ fn test_import_export_wrap_private_key(
         )?;
         // re-export it as registered and check it was correctly unwrapped
         let re_exported_key_file = tmp_path.join("re_exported_master_private.key");
-        export_key(
-            cli_conf_path,
-            sub_command,
-            &unwrapped_key_id,
-            re_exported_key_file.to_str().unwrap(),
-            None,
-            false,
-            None,
-            false,
-            None,
-            None,
-        )?;
+        export_key(ExportKeyParams {
+            cli_conf_path: cli_conf_path.to_string(),
+            sub_command: sub_command.to_string(),
+            key_id: unwrapped_key_id.to_string(),
+            key_file: re_exported_key_file.to_str().unwrap().to_string(),
+            ..Default::default()
+        })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
         assert_eq!(
             re_exported_key.key_block()?.key_value.key_material,
@@ -340,18 +328,14 @@ fn test_import_export_wrap_private_key(
         )?;
         // re-export it as registered and check it was correctly unwrapped
         let exported_unwrapped_key_file = tmp_path.join("exported_unwrapped_master_private.key");
-        export_key(
-            cli_conf_path,
-            sub_command,
-            &wrapped_key_id,
-            exported_unwrapped_key_file.to_str().unwrap(),
-            None,
-            true,
-            None,
-            false,
-            None,
-            None,
-        )?;
+        export_key(ExportKeyParams {
+            cli_conf_path: cli_conf_path.to_string(),
+            sub_command: sub_command.to_string(),
+            key_id: wrapped_key_id.to_string(),
+            key_file: exported_unwrapped_key_file.to_str().unwrap().to_string(),
+            unwrap: true,
+            ..Default::default()
+        })?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
         assert_eq!(
             exported_unwrapped_key.key_block()?.key_value,

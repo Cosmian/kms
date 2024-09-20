@@ -15,7 +15,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
             SUB_COMMAND,
         },
-        shared::{export_key, import_key},
+        shared::{export_key, import_key, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -126,18 +126,15 @@ async fn test_rekey_error() -> CliResult<()> {
         create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
-    export_key(
-        &ctx.owner_client_conf_path,
-        SUB_COMMAND,
-        &master_private_key_id,
-        exported_wrapped_key_file.to_str().unwrap(),
-        None,
-        false,
-        Some(symmetric_key_id),
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: SUB_COMMAND.to_owned(),
+        key_id: master_private_key_id.to_string(),
+        key_file: exported_wrapped_key_file.to_str().unwrap().to_string(),
+        wrap_key_id: Some(symmetric_key_id),
+        ..Default::default()
+    })?;
+
     // import it wrapped
     let wrapped_key_id = import_key(
         &ctx.owner_client_conf_path,
@@ -210,18 +207,16 @@ async fn test_rekey_prune() -> CliResult<()> {
 
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-    export_key(
-        &ctx.owner_client_conf_path,
-        SUB_COMMAND,
-        &user_decryption_key,
-        exported_user_decryption_key_file.to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: SUB_COMMAND.to_owned(),
+        key_id: user_decryption_key.to_string(),
+        key_file: exported_user_decryption_key_file
+            .to_str()
+            .unwrap()
+            .to_string(),
+        ..Default::default()
+    })?;
 
     // rekey the attributes
     rekey(

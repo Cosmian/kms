@@ -16,7 +16,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},
-        shared::{export_key, import_key},
+        shared::{export_key, import_key, ExportKeyParams},
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -254,18 +254,16 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         .to_str()
         .unwrap()
         .to_owned();
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &private_key_id,
-        &private_key_wrapped,
-        Some(ExportKeyFormat::JsonTtlv),
-        false,
-        Some(certificate_id),
-        false,
-        None,
-        None,
-    )?;
+
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: private_key_id.clone(),
+        key_file: private_key_wrapped.clone(),
+        key_format: Some(ExportKeyFormat::JsonTtlv),
+        wrap_key_id: Some(certificate_id.clone()),
+        ..Default::default()
+    })?;
 
     println!("import private key with unwrap");
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
@@ -301,18 +299,14 @@ async fn import_encrypt_decrypt(filename: &str) -> CliResult<()> {
         .to_str()
         .unwrap()
         .to_owned();
-    export_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        &wrapped_private_key_uid,
-        &private_key_wrapped_as_is,
-        Some(ExportKeyFormat::JsonTtlv),
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_owned(),
+        key_id: wrapped_private_key_uid.clone(),
+        key_file: private_key_wrapped_as_is.clone(),
+        key_format: Some(ExportKeyFormat::JsonTtlv),
+        ..Default::default()
+    })?;
 
     debug!("\n\nDecrypt using Private key");
     // the user key should be able to decrypt the file

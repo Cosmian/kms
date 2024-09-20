@@ -12,7 +12,9 @@ use super::utils::recover_cmd_logs;
 use crate::{
     error::result::CliResult,
     tests::{
-        access::SUB_COMMAND, shared::export_key, symmetric::create_key::create_symmetric_key,
+        access::SUB_COMMAND,
+        shared::{export_key, ExportKeyParams},
+        symmetric::create_key::create_symmetric_key,
         PROG_NAME,
     },
 };
@@ -35,18 +37,14 @@ fn create_api_token(ctx: &TestsContext) -> CliResult<(String, String)> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &api_token_id,
-        tmp_path.join("api_token").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-        None,
-        None,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: api_token_id.clone(),
+        key_file: tmp_path.join("api_token").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
+
     let api_token = base64::engine::general_purpose::STANDARD.encode(
         read_object_from_json_ttlv_file(&tmp_path.join("api_token"))?
             .key_block()?
