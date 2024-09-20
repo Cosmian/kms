@@ -1,7 +1,7 @@
 pub(crate) use destroy::destroy;
 pub(crate) use export::{export_key, ExportKeyParams};
 pub(crate) use get_attributes::get_attributes;
-pub(crate) use import::import_key;
+pub(crate) use import::{import_key, ImportKeyParams};
 pub(crate) use revoke::revoke;
 
 mod destroy;

@@ -24,30 +24,36 @@ use crate::{
     },
 };
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn import_key(
-    cli_conf_path: &str,
-    sub_command: &str,
-    key_file: &str,
-    key_format: Option<ImportKeyFormat>,
-    key_id: Option<String>,
-    tags: &[String],
-    key_usage_vec: Option<Vec<KeyUsage>>,
-    unwrap: bool,
-    replace_existing: bool,
-) -> CliResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+#[derive(Default, Debug)]
+pub(crate) struct ImportKeyParams {
+    pub(crate) cli_conf_path: String,
+    pub(crate) sub_command: String,
+    pub(crate) key_file: String,
+    pub(crate) key_format: Option<ImportKeyFormat>,
+    pub(crate) key_id: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) key_usage_vec: Option<Vec<KeyUsage>>,
+    pub(crate) unwrap: bool,
+    pub(crate) replace_existing: bool,
+}
 
-    let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
-    if let Some(key_id) = key_id {
+pub(crate) fn import_key(params: ImportKeyParams) -> CliResult<String> {
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, params.cli_conf_path);
+
+    let mut args: Vec<String> = vec![
+        "keys".to_owned(),
+        "import".to_owned(),
+        params.key_file.clone(),
+    ];
+    if let Some(key_id) = params.key_id {
         args.push(key_id);
     }
-    for tag in tags {
+    for tag in params.tags {
         args.push("--tag".to_owned());
         args.push(tag.clone());
     }
-    if let Some(key_format) = key_format {
+    if let Some(key_format) = params.key_format {
         args.push("--key-format".to_owned());
         let kfs = match key_format {
             ImportKeyFormat::JsonTtlv => "json-ttlv",
@@ -62,19 +68,19 @@ pub(crate) fn import_key(
         };
         args.push(kfs.to_string());
     }
-    if let Some(key_usage_vec) = key_usage_vec {
+    if let Some(key_usage_vec) = params.key_usage_vec {
         for key_usage in key_usage_vec {
             args.push("--key-usage".to_owned());
             args.push(key_usage.into());
         }
     }
-    if unwrap {
+    if params.unwrap {
         args.push("-u".to_owned());
     }
-    if replace_existing {
+    if params.replace_existing {
         args.push("-r".to_owned());
     }
-    cmd.arg(sub_command).args(args);
+    cmd.arg(params.sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let import_output = std::str::from_utf8(&output.stdout)?;
@@ -93,47 +99,37 @@ pub(crate) fn import_key(
 pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
-    let uid: String = import_key(
-        &ctx.owner_client_conf_path,
-        "cc",
-        "test_data/ttlv_public_key.json",
-        None,
-        None,
-        &[],
-        None,
-        false,
-        false,
-    )?;
+    let import_params = ImportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "cc".to_string(),
+        key_file: "test_data/ttlv_public_key.json".to_string(),
+        ..Default::default()
+    };
+
+    let uid: String = import_key(import_params)?;
     assert_eq!(uid.len(), 36);
 
     // reimporting the same key  with the same id should fail
     assert!(
-        import_key(
-            &ctx.owner_client_conf_path,
-            "cc",
-            "test_data/ttlv_public_key.json",
-            None,
-            Some(uid.clone()),
-            &[],
-            None,
-            false,
-            false,
-        )
+        import_key(ImportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "cc".to_string(),
+            key_file: "test_data/ttlv_public_key.json".to_string(),
+            key_id: Some(uid.clone()),
+            ..Default::default()
+        })
         .is_err()
     );
 
     //...unless we force it with replace_existing
-    let uid_: String = import_key(
-        &ctx.owner_client_conf_path,
-        "cc",
-        "test_data/ttlv_public_key.json",
-        None,
-        Some(uid.clone()),
-        &[],
-        None,
-        false,
-        true,
-    )?;
+    let uid_: String = import_key(ImportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "cc".to_string(),
+        key_file: "test_data/ttlv_public_key.json".to_string(),
+        key_id: Some(uid.clone()),
+        replace_existing: true,
+        ..Default::default()
+    })?;
     assert_eq!(uid_, uid);
 
     Ok(())
@@ -201,17 +197,14 @@ pub(crate) fn export_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // import and re-export
-    let uid: String = import_key(
-        cli_conf_path,
-        sub_command,
-        "/tmp/output.export",
-        None,
-        None,
-        &[],
-        None,
-        false,
-        false,
-    )?;
+    let import_params = ImportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: sub_command.to_string(),
+        key_file: "/tmp/output.export".to_string(),
+        ..Default::default()
+    };
+
+    let uid: String = import_key(import_params)?;
     export_key(ExportKeyParams {
         cli_conf_path: cli_conf_path.to_string(),
         sub_command: sub_command.to_owned(),

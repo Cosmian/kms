@@ -6,7 +6,7 @@ use kms_test_server::{start_default_test_kms_server, TestsContext};
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     error::result::CliResult,
-    tests::shared::{export_key, import_key, ExportKeyParams},
+    tests::shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
 };
 
 #[tokio::test]
@@ -59,17 +59,14 @@ fn test_pems(
     export_format: ExportKeyFormat,
 ) -> CliResult<()> {
     // import the  key
-    let key_uid = import_key(
-        &ctx.owner_client_conf_path,
-        "ec",
-        key_file_path,
-        Some(ImportKeyFormat::Pem),
-        None,
-        &[],
-        None,
-        false,
-        true,
-    )?;
+    let key_uid = import_key(ImportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "ec".to_string(),
+        key_file: key_file_path.to_string(),
+        key_format: Some(ImportKeyFormat::Pem),
+        replace_existing: true,
+        ..Default::default()
+    })?;
     // PEM Line Endings are LF in both cases
     let imported_bytes = read_bytes_from_file(&PathBuf::from(&key_file_path))?;
     // export the key

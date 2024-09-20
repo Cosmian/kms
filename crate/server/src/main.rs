@@ -123,7 +123,7 @@ async fn main() -> KResult<()> {
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
-    let _provider = if openssl::version::number() >= 0x30000000 {
+    if openssl::version::number() >= 0x30000000 {
         openssl::provider::Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
     } else {

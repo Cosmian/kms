@@ -15,7 +15,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
             SUB_COMMAND,
         },
-        shared::{export_key, import_key, ExportKeyParams},
+        shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
         symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
@@ -136,17 +136,14 @@ async fn test_rekey_error() -> CliResult<()> {
     })?;
 
     // import it wrapped
-    let wrapped_key_id = import_key(
-        &ctx.owner_client_conf_path,
-        SUB_COMMAND,
-        &exported_wrapped_key_file.to_string_lossy(),
-        None,
-        None,
-        &[],
-        None,
-        false,
-        true,
-    )?;
+    let wrapped_key_id = import_key(ImportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: SUB_COMMAND.to_string(),
+        key_file: exported_wrapped_key_file.to_string_lossy().to_string(),
+        replace_existing: true,
+        ..Default::default()
+    })?;
+
     // Rekeying wrapped keys is not allowed
     assert!(
         rekey(
@@ -254,17 +251,16 @@ async fn test_rekey_prune() -> CliResult<()> {
     )?;
 
     // import the non rotated user_decryption_key
-    let old_user_decryption_key = import_key(
-        &ctx.owner_client_conf_path,
-        SUB_COMMAND,
-        &exported_user_decryption_key_file.to_string_lossy(),
-        None,
-        None,
-        &[],
-        Some(vec![KeyUsage::Unrestricted]),
-        false,
-        false,
-    )?;
+    let old_user_decryption_key = import_key(ImportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: SUB_COMMAND.to_owned(),
+        key_file: exported_user_decryption_key_file
+            .to_string_lossy()
+            .to_string(),
+        replace_existing: false,
+        key_usage_vec: Some(vec![KeyUsage::Unrestricted]),
+        ..Default::default()
+    })?;
     // the imported user key should not be able to decrypt the new file
     assert!(
         decrypt(
