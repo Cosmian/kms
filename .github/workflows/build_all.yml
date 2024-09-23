@@ -13,6 +13,16 @@ on:
 
 jobs:
   rhel9:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: redis-findex
+          - database: postgresql
+          - database: sqlite
+          - database: sqlite-enc
+          - database: mysql
+    name: RHEL9 - ${{ matrix.database }}
     uses: ./.github/workflows/build_rhel9.yml
     secrets: inherit
     with:
@@ -20,6 +30,7 @@ jobs:
       archive-name: rhel9
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
+      database: ${{ matrix.database }}
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
 

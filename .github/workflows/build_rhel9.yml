@@ -19,6 +19,9 @@ on:
       debug_or_release:
         required: true
         type: string
+      database:
+        required: true
+        type: string
       features:
         required: false
         type: string
@@ -119,6 +122,7 @@ jobs:
 
           TARGET: ${{ inputs.target }}
           DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          KMS_TEST_DB: ${{ inputs.database }}
           FEATURES: ${{ inputs.features }}
         run: |
           bash .github/scripts/cargo_build.sh
