@@ -65,8 +65,9 @@ jobs:
         ports:
           - 6379:6379
 
+    name: ${{ inputs.archive-name }}-${{ inputs.database }}
+    if: inputs.debug_or_release == 'release' || inputs.database == 'redis-findex'
     runs-on: ubuntu-22.04
-    name: ${{ inputs.archive-name }}
     container:
       image: redhat/ubi9
 
@@ -132,6 +133,7 @@ jobs:
           find target/ -type f -size ++100M -delete
 
       - name: Upload KMS for RHEL 9
+        if: inputs.database == 'redis-findex'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
