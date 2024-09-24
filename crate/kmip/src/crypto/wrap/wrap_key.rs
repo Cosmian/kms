@@ -226,7 +226,12 @@ pub(crate) fn wrap(
                             let nonce = random_nonce(aead)?;
                             let (data, authenticated_encryption_tag) =
                                 aead_encrypt(aead, &wrap_secret, &nonce, aad, key_to_wrap)?;
-                            let ciphertext = [nonce, data, authenticated_encryption_tag].concat();
+                            let mut ciphertext = Vec::with_capacity(
+                                nonce.len() + data.len() + authenticated_encryption_tag.len(),
+                            );
+                            ciphertext.extend_from_slice(&nonce);
+                            ciphertext.extend_from_slice(&data);
+                            ciphertext.extend_from_slice(&authenticated_encryption_tag);
                             Ok(ciphertext)
                         }
                         _ => {
