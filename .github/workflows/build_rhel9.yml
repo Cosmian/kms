@@ -148,6 +148,7 @@ jobs:
           if-no-files-found: error
 
   kms-test:
+    if: inputs.database == 'redis-findex'
     needs: rhel9-tests
     name: Clean env test ${{ inputs.archive-name }}
     runs-on: ubuntu-22.04
