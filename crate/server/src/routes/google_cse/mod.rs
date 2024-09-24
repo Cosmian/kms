@@ -74,7 +74,6 @@ pub(crate) async fn get_status(
 
 #[post("/digest")]
 pub(crate) async fn digest(
-    req_http: HttpRequest,
     request: Json<DigestRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -85,7 +84,7 @@ pub(crate) async fn digest(
     trace!("digest_request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::digest(req_http, request, &cse_config, &kms)
+    match operations::digest(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -96,7 +95,6 @@ pub(crate) async fn digest(
 
 #[post("/privilegedprivatekeydecrypt")]
 pub(crate) async fn privileged_private_key_decrypt(
-    req_http: HttpRequest,
     request: Json<PrivilegedPrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -108,7 +106,7 @@ pub(crate) async fn privileged_private_key_decrypt(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::privileged_private_key_decrypt(req_http, request, &cse_config, &kms)
+    match operations::privileged_private_key_decrypt(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -119,7 +117,6 @@ pub(crate) async fn privileged_private_key_decrypt(
 
 #[post("/privilegedunwrap")]
 pub(crate) async fn privileged_unwrap(
-    req_http: HttpRequest,
     request: Json<PrivilegedUnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -130,7 +127,7 @@ pub(crate) async fn privileged_unwrap(
     trace!("privileged_unwrap request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::privileged_unwrap(req_http, request, &cse_config, &kms)
+    match operations::privileged_unwrap(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -162,7 +159,6 @@ pub(crate) async fn privileged_wrap(
 
 #[post("/rewrap")]
 pub(crate) async fn rewrap(
-    req_http: HttpRequest,
     request: Json<RewrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -173,7 +169,7 @@ pub(crate) async fn rewrap(
     trace!("rewrap request: {:?}", request);
     let cse_config = cse_config.into_inner();
 
-    match operations::rewrap(req_http, request, &cse_config, &kms)
+    match operations::rewrap(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -228,7 +224,6 @@ pub(crate) async fn wrap(
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/unwrap")]
 pub(crate) async fn unwrap(
-    req_http: HttpRequest,
     request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -240,7 +235,7 @@ pub(crate) async fn unwrap(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::unwrap(req_http, request, &cse_config, &kms)
+    match operations::unwrap(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -254,7 +249,6 @@ pub(crate) async fn unwrap(
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-sign)
 #[post("/privatekeysign")]
 pub(crate) async fn private_key_sign(
-    req_http: HttpRequest,
     request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -266,7 +260,7 @@ pub(crate) async fn private_key_sign(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::private_key_sign(req_http, request, &cse_config, &kms)
+    match operations::private_key_sign(request, &cse_config, &kms)
         .await
         .map(Json)
     {
@@ -280,7 +274,6 @@ pub(crate) async fn private_key_sign(
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-decrypt)
 #[post("/privatekeydecrypt")]
 pub(crate) async fn private_key_decrypt(
-    req_http: HttpRequest,
     request: Json<operations::PrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
@@ -292,7 +285,7 @@ pub(crate) async fn private_key_decrypt(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    match operations::private_key_decrypt(req_http, request, &cse_config, &kms)
+    match operations::private_key_decrypt(request, &cse_config, &kms)
         .await
         .map(Json)
     {

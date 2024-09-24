@@ -1,18 +1,10 @@
 use std::sync::Arc;
 
-use actix_web::HttpRequest;
 use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_data_structures::KeyWrappingData,
-        kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{
-            self, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, EncodingOption,
-            UniqueIdentifier,
-        },
-    },
+use cosmian_kmip::kmip::{
+    kmip_operations::{Decrypt, Encrypt},
+    kmip_types::{BlockCipherMode, CryptographicParameters, UniqueIdentifier},
 };
 use openssl::{
     hash::MessageDigest,
@@ -28,10 +20,7 @@ use zeroize::Zeroizing;
 
 use super::GoogleCseConfig;
 use crate::{
-    core::{
-        extra_database_params::ExtraDatabaseParams,
-        operations::{decrypt, encrypt, unwrap_key},
-    },
+    core::operations::{decrypt, encrypt},
     error::KmsError,
     kms_ensure,
     result::KResult,
@@ -249,7 +238,6 @@ pub struct UnwrapResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn unwrap(
-    req_http: HttpRequest,
     request: UnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
@@ -275,15 +263,12 @@ pub async fn unwrap(
     .await?;
 
     debug!("unwrap: unwrap key");
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         token_extracted_content.user,
         token_extracted_content.resource_name,
         kms,
-        database_params,
-        EncodingOption::NoEncoding,
     )
     .await?;
     debug!("unwrap: exiting with success");
@@ -340,14 +325,11 @@ pub struct PrivateKeySignResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the encryption process or if the tokens validation fails.
 pub async fn private_key_sign(
-    req_http: HttpRequest,
     request: PrivateKeySignRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeySignResponse> {
     trace!("private_key_sign: entering: {request:?}");
-
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_sign: validate_tokens");
     let roles: &[Role; 1] = &[Role::Signer];
@@ -374,8 +356,6 @@ pub async fn private_key_sign(
         token_extracted_content.user,
         None,
         kms,
-        database_params,
-        EncodingOption::TTLVEncoding,
     )
     .await?;
 
@@ -452,14 +432,11 @@ pub struct PrivateKeyDecryptResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn private_key_decrypt(
-    req_http: HttpRequest,
     request: PrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeyDecryptResponse> {
     trace!("private_key_decrypt: entering: {request:?}");
-
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_decrypt: validate_tokens");
     let roles: &[Role; 1] = &[Role::Decrypter];
@@ -493,8 +470,6 @@ pub async fn private_key_decrypt(
         token_extracted_content.user,
         None,
         kms,
-        database_params,
-        EncodingOption::TTLVEncoding,
     )
     .await?;
 
@@ -553,7 +528,6 @@ pub struct DigestResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption or digest creation fails
 pub async fn digest(
-    req_http: HttpRequest,
     request: DigestRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
@@ -581,16 +555,12 @@ pub async fn digest(
     })?;
 
     debug!("cse_digest: encode base64 wrapped_dek");
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-
     let dek_data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
         Some(resource_name.clone().into_bytes()),
         kms,
-        database_params,
-        EncodingOption::NoEncoding,
     )
     .await?;
 
@@ -689,7 +659,6 @@ pub struct PrivilegedUnwrapResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption fails
 pub async fn privileged_unwrap(
-    req_http: HttpRequest,
     request: PrivilegedUnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
@@ -702,15 +671,12 @@ pub async fn privileged_unwrap(
     debug!("privileged_unwrap: validate_tokens");
 
     debug!("privileged_unwrap: unwrap key");
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
         Some(resource_name),
         kms,
-        database_params,
-        EncodingOption::NoEncoding,
     )
     .await?;
 
@@ -754,14 +720,11 @@ pub struct PrivilegedPrivateKeyDecryptResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption fails
 pub async fn privileged_private_key_decrypt(
-    req_http: HttpRequest,
     request: PrivilegedPrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("privileged_private_key_decrypt: entering");
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-
     debug!("privileged_private_key_decrypt: validate_tokens");
     let user = validate_cse_authentication_token(&request.authentication, cse_config, true).await?;
 
@@ -782,8 +745,6 @@ pub async fn privileged_private_key_decrypt(
         user,
         None,
         kms,
-        database_params,
-        EncodingOption::TTLVEncoding,
     )
     .await?;
 
@@ -846,7 +807,6 @@ pub struct RewrapResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if encryption fails
 pub async fn rewrap(
-    req_http: HttpRequest,
     request: RewrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
@@ -874,7 +834,6 @@ pub async fn rewrap(
     })?;
 
     debug!("rewrap: unwrap key using imported original KMS wrapping key");
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let unwrapped_data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
         // We consider that the key used by the previous KMS to wrap elements was imported under
@@ -883,8 +842,6 @@ pub async fn rewrap(
         user.clone(),
         Some(resource_name.clone().into_bytes()),
         kms,
-        database_params,
-        EncodingOption::NoEncoding,
     )
     .await?;
 
@@ -957,8 +914,6 @@ async fn cse_wrapped_key_decrypt(
     user: String,
     resource_name: Option<Vec<u8>>,
     kms: &Arc<KMSServer>,
-    database_params: Option<ExtraDatabaseParams>,
-    encoding_option: EncodingOption,
 ) -> KResult<Zeroizing<Vec<u8>>> {
     debug!("cse_wrapped_key_decrypt: wrapped_key: {wrapped_key}");
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
@@ -993,38 +948,11 @@ async fn cse_wrapped_key_decrypt(
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let key = decrypt(kms, decryption_request, &user, None).await;
+    let key = decrypt(kms, decryption_request, &user, None).await?;
 
-    let data = if let Ok(decrypted_key) = key {
-        decrypted_key.data.ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
-        })?
-    } else {
-        // If decrypting key fails, try to unwrap it as it was done initially
-        debug!("unwrap: key decryption fails, try to unwrap it instead");
-
-        let mut wrapped_key = create_symmetric_key_kmip_object(
-            &general_purpose::STANDARD.decode(&wrapped_key)?,
-            CryptographicAlgorithm::AES,
-        );
-        wrapped_key.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
-            wrapping_method: kmip_types::WrappingMethod::Encrypt,
-            encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
-                cryptographic_parameters: None,
-            }),
-            encoding_option: Some(encoding_option),
-            ..Default::default()
-        }));
-        unwrap_key(
-            wrapped_key.key_block_mut()?,
-            kms,
-            &user,
-            database_params.as_ref(),
-        )
-        .await?;
-        wrapped_key.key_block()?.key_bytes()?
-    };
+    let data = key.data.ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
+    })?;
     Ok(data)
 }
 
