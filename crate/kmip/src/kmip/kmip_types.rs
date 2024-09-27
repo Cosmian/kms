@@ -9,7 +9,6 @@ use std::{
 };
 
 use clap::ValueEnum;
-#[cfg(feature = "openssl")]
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
@@ -24,14 +23,13 @@ use tracing::trace;
 use uuid::Uuid;
 
 use super::kmip_objects::ObjectType;
-#[cfg(feature = "openssl")]
-use crate::kmip_error;
 use crate::{
     error::KmipError,
     kmip::{
         extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
     },
+    kmip_error,
 };
 pub const VENDOR_ATTR_AAD: &str = "aad";
 
@@ -2456,7 +2454,6 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
-#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for &'static MdRef {
     type Error = KmipError;
 
@@ -2478,7 +2475,6 @@ impl TryFrom<HashingAlgorithm> for &'static MdRef {
     }
 }
 
-#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for MessageDigest {
     type Error = KmipError;
 

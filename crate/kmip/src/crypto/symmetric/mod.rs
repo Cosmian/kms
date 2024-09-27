@@ -1,9 +1,7 @@
 mod symmetric_key;
 pub use symmetric_key::{create_symmetric_key_kmip_object, symmetric_key_create_request};
 
-#[cfg(feature = "openssl")]
 mod aes_256_gcm;
-#[cfg(feature = "openssl")]
 pub use aes_256_gcm::AesGcmSystem;
 
 /// AES 128 GCM key length in bytes.
@@ -23,13 +21,10 @@ pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 /// AES KEY WRAP with padding key length in bytes.
 pub const AES_KWP_KEY_LENGTH: usize = 0x20;
 
-#[cfg(feature = "openssl")]
 pub mod aead;
 
-#[cfg(feature = "openssl")]
 pub mod rfc5649;
 
-#[cfg(feature = "openssl")]
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests;

@@ -14,10 +14,9 @@ doctest = false
 
 [features]
 default = ["dep:sha3"]
-openssl = ["dep:openssl", "dep:x509-parser"]
 pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = ["openssl"]
+fips = []
 
 [dependencies]
 argon2 = "0.5"
@@ -42,18 +41,18 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
-openssl = { workspace = true, optional = true }
+openssl = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha3 = { version = "0.10", optional = true }
+sha3 = { workspace = true, optional = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-x509-parser = { workspace = true, optional = true }
+x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]

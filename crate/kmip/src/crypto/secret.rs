@@ -4,12 +4,10 @@ use std::{
 };
 
 use num_bigint_dig::BigUint;
-#[cfg(feature = "openssl")]
 use openssl::rand::rand_bytes;
 use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[cfg(feature = "openssl")]
 use crate::error::KmipError;
 
 /// Holds a big integer secret information. Wraps around `BigUint` type which is
@@ -68,7 +66,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     }
 
     /// Creates a new random secret.
-    #[cfg(feature = "openssl")]
     pub fn new_random() -> Result<Self, KmipError> {
         let mut secret = Self::new();
         rand_bytes(&mut secret)?;

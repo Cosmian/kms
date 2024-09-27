@@ -10,6 +10,7 @@ use cosmian_kms_client::{
     export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
 };
+use tracing::trace;
 
 use crate::{
     actions::console,
@@ -90,15 +91,18 @@ impl UnwrapKeyAction {
 
         // if the key must be unwrapped, prepare the unwrapping key
         let unwrapping_key = if let Some(b64) = &self.unwrap_key_b64 {
+            trace!("unwrap using a base64 encoded key: {b64}");
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)?
         } else if let Some(key_id) = &self.unwrap_key_id {
+            trace!("unwrap using the KMS server with the unique identifier of the unwrapping key");
             export_object(kms_rest_client, key_id, ExportObjectParams::default())
                 .await?
                 .0
         } else if let Some(key_file) = &self.unwrap_key_file {
+            trace!("unwrap using a key file path");
             read_object_from_json_ttlv_file(key_file)?
         } else {
             cli_bail!("one of the unwrapping options must be specified");

@@ -29,16 +29,52 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
+      # - name: Discover dumpbin location
+      #   shell: pwsh
+      #   run: |
+      #     Get-ChildItem -Recurse "C:\Program Files\Microsoft Visual Studio"
+
+      - name: Discover environment variables on Runner
+        shell: pwsh
+        run: |
+          Get-ChildItem env:
+
+      - name: Locate VCPKG_INSTALLATION_ROOT
+        shell: pwsh
+        run: |
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows-static
+          vcpkg integrate install
+
+          Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+
       - name: Build
         shell: pwsh
         run: |
-          . .\.github\scripts\windows_build.ps1
-          Build-Project -BuildType ${{ inputs.debug_or_release }}
+          . .\.github\scripts\cargo_build.ps1
+          BuildProject -BuildType ${{ inputs.debug_or_release }}
         env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+      - name: Build FIPS OpenSSL
+        shell: pwsh
+        run: |
+          Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
+          vcpkg install
+          vcpkg integrate install
+
+          Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+
+          # Copy fips.dll to the specified directory
+          Copy-Item -Path "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows\bin\legacy.dll" -Destination "D:\a\kms\kms"
+          Copy-Item -Path "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows\bin\fips.dll" -Destination "D:\a\kms\kms"
 
       - name: Upload KMS for windows-2022
         uses: actions/upload-artifact@v3

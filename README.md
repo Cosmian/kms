@@ -35,10 +35,10 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
     - [Example](#example)
   - [Repository content](#repository-content)
   - [Building the KMS](#building-the-kms)
-    - [Linux](#linux)
-    - [MacOS](#macos)
+    - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
     - [Windows](#windows)
-    - [Build the Docker container](#build-the-docker-container)
+    - [Build the KMS](#build-the-kms)
+    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
   - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
   - [Development: running the server with cargo](#development-running-the-server-with-cargo)
   - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
@@ -62,9 +62,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded
-from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub
-project by running
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
 
 ```sh
 cargo run --bin ckms -- --help
@@ -73,13 +71,15 @@ cargo run --bin ckms -- --help
 ### Example
 
 1. Create a 256-bit symmetric key
-1. Create a 256-bit symmetric key
 
 ```sh
 ➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
 ...
 The symmetric key was successfully generated.
    Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+
+  Tags:
+    - my-key-file
 ```
 
 2. Encrypt the `image.png` file with AES GCM using the key
@@ -121,37 +121,18 @@ directory.
 
 ## Building the KMS
 
-To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server, and the
-PKCS11 provider - should directly be built using `cargo build --release`within their own crate, not
-from the project root.
+OpenSSL v3.2.0 is required to build the KMS.
 
-In addition, the KMS server must be built against a local installation of OpenSSL 3. Other
-artifacts do not have this requirement.
+### Linux or MacOS (CPU Intel or MacOs ARM)
 
-### Linux
-
-Unless you require a FIPS-certified cryptographic module, the distribution provided by OpenSSL
-should be enough.
-
-You need to have the development packages of OpenSSL installed. On Ubuntu, you can install them
-with:
+Build OpenSSL v3.2.0 with the following commands:
 
 ```sh
-sudo apt install libssl-dev
+export OPENSSL_DIR=/usr/local/openssl
+sudo mkdir -p ${OPENSSL_DIR}
+sudo chown -R $USER ${OPENSSL_DIR}
+bash .github/scripts/local_ossl_instl.sh ${OPENSSL_DIR}
 ```
-
-You may also need to install the `pkg-config` package (on Ubuntu server typically).
-
-### MacOS
-
-Install OpenSSL 3 with Homebrew:
-
-```sh
-brew install openssl@3
-```
-
-The builder should find it automatically; if not, you can set the `OPENSSL_DIR` environment variable
-to the OpenSSL installation directory.
 
 ### Windows
 
@@ -160,22 +141,40 @@ to the OpenSSL installation directory.
 3. Install `vcpkg` following
    [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 
-4. Then install OpenSSL 3:
+4. Then install OpenSSL 3.2.0:
+
+The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
 
 ```powershell
-vcpkg.exe install openssl[fips,weak-ssl-ciphers]
-vcpkg.exe integrate install
-set VCPKGRS_DYNAMIC=1
-$env:OPENSSL_DIR = "<vcpkg>\installed\<archi>>"
+vcpkg install --triplet x64-windows-static
+vcpkg integrate install
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
 ```
 
-where `<vcpkg>` is the path to the vcpkg installation directory,
-and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc.
+For a FIPS compliant build, use the following commands (in order to build fips.dll), run also:
 
-To run the server from the command line, add `<vcpkg>\installed\<archi>\bin` to the `PATH`
-environment variable.
+```powershell
+Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
+vcpkg install
+vcpkg integrate install
+```
 
-### Build the Docker container
+### Build the KMS
+
+Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate, not
+from the project root.
+
+Build the server and CLI binaries:
+
+```sh
+cd crate/server
+cargo build --release
+cd ../..
+cd crate/ckms
+cargo build --release
+```
+
+### Build the Docker Ubuntu container
 
 You can build a docker containing the KMS server as follows:
 

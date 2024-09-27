@@ -13,8 +13,8 @@ doctest = false
 
 [dependencies]
 bincode = "1.3.3"
-hex = "0.4.3"
-log = "0.4.22"
+hex = { workspace = true }
+log = { workspace = true }
 once_cell = "1.19.0"
 p256 = { version = "0.13.2", default-features = false, features = [
   "arithmetic",
@@ -28,12 +28,9 @@ serde = { version = "1.0.204", features = ["derive"] }
 strum_macros = "0.26.4"
 thiserror = "1.0.63"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-zeroize = "1.8.1"
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 serial_test = { version = "3.1.1", default-features = false }
 tracing = { version = "0.1.40", default-features = false }
-tracing-subscriber = { version = "0.3.18", default-features = false, features = [
-  "env-filter",
-] }

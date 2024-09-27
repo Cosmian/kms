@@ -22,7 +22,6 @@ doctest = false
 # default is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 default = []
 fips = ["cosmian_kms_client/fips"]
-openssl = ["cosmian_kms_client/openssl"]
 
 [dependencies]
 actix-web = { workspace = true, features = ["macros"] }
@@ -39,13 +38,13 @@ clap = { workspace = true, features = [
 cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
 cosmian_logger = { path = "../logger" }
-der = { version = "0.7", features = ["pem"] }
+der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
 jwt-simple = { version = "0.12", default-features = false, features = [
   "pure-rust",
 ] }
 oauth2 = { version = "4.4", features = ["reqwest"] }
-pem = "3.0"
+pem = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -55,7 +54,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-x509-cert = { version = "0.2", features = ["pem"] }
+x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
