@@ -109,17 +109,6 @@ ON DUPLICATE KEY UPDATE object=VALUES(object),
                         state=VALUES(state),
                         owner=VALUES(owner);
 
--- , attributes=VALUES(attributes), state=VALUES(state), owner=VALUES(owner);
-
--- object = IF(objects.owner=?, VALUES(object), object),
---             attributes = IF(objects.owner=?, VALUES(attributes), attributes);
---             state=VALUES(state),
---             owner=VALUES(owner);
-
-
---                 state = IF(objects.owner=?, VALUES(state), state),
---                 owner = IF(objects.owner=?, VALUES(owner), owner);
-
 -- name: select-user-accesses-for-object
 SELECT permissions
 FROM read_access

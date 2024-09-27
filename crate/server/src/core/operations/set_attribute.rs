@@ -63,7 +63,7 @@ pub(crate) async fn set_attribute(
         }
         Attribute::CryptographicParameters(parameters) => {
             trace!("Set Attribute: Cryptographic Parameters: {:?}", parameters);
-            attributes.cryptographic_parameters = Some(Box::new(parameters));
+            attributes.cryptographic_parameters = Some(parameters);
         }
         Attribute::CryptographicDomainParameters(domain_parameters) => {
             trace!(

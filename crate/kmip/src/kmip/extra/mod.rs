@@ -1,7 +1,10 @@
+mod bulk_data;
 mod certificates;
 pub mod tagging;
 #[cfg(feature = "openssl")]
 pub mod x509_extensions;
+
+pub use bulk_data::BulkData;
 
 /// The vendor ID to use for Cosmian specific attributes
 pub const VENDOR_ID_COSMIAN: &str = "cosmian";

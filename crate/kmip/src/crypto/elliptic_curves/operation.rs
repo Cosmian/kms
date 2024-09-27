@@ -153,10 +153,10 @@ pub fn to_ec_public_key(
                     cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
-                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                    cryptographic_parameters: Some(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    })),
+                    }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length,
                         recommended_curve: Some(curve),
@@ -219,10 +219,10 @@ pub fn to_ec_private_key(
                     cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
-                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                    cryptographic_parameters: Some(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    })),
+                    }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length,
                         recommended_curve: Some(curve),

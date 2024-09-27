@@ -61,7 +61,7 @@ pub(crate) async fn delete_attribute(
                 }
             }
             Attribute::CryptographicParameters(parameters) => {
-                if Some(Box::new(parameters)) == attributes.cryptographic_parameters {
+                if Some(parameters) == attributes.cryptographic_parameters {
                     attributes.cryptographic_parameters = None;
                 }
             }
