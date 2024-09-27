@@ -59,7 +59,6 @@ pub use error::{result::KmipResultHelper, KmipError};
 pub mod crypto;
 mod error;
 pub mod kmip;
-#[cfg(feature = "openssl")]
 pub mod openssl;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {

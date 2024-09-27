@@ -266,7 +266,6 @@ pub(crate) fn wrap(
                         Ok(ciphertext)
                     }
                 }
-                #[cfg(feature = "openssl")]
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {
                     // convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
@@ -274,7 +273,6 @@ pub(crate) fn wrap(
                     wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
                 }
                 // this really is SPKI
-                #[cfg(feature = "openssl")]
                 KeyFormatType::PKCS8 => {
                     let p_key = PKey::public_key_from_der(&key_block.key_bytes()?)?;
                     wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)

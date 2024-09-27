@@ -18,5 +18,5 @@ mod import_export_wrapping;
 mod locate;
 mod revoke;
 mod set_attributes;
-#[cfg(all(not(feature = "fips"), feature = "openssl"))]
+#[cfg(not(feature = "fips"))]
 mod wrap_unwrap;

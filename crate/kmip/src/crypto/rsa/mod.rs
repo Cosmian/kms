@@ -4,15 +4,11 @@ use crate::kmip::kmip_types::{
     CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
 };
 
-#[cfg(feature = "openssl")]
 pub mod ckm_rsa_aes_key_wrap;
-#[cfg(feature = "openssl")]
 #[cfg(not(feature = "fips"))]
 pub mod ckm_rsa_pkcs;
-#[cfg(feature = "openssl")]
 pub mod ckm_rsa_pkcs_oaep;
 pub mod kmip_requests;
-#[cfg(feature = "openssl")]
 pub mod operation;
 
 #[cfg(feature = "fips")]

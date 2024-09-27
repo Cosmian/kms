@@ -11,6 +11,7 @@ use crate::kmip_bail;
 
 /// Minimum random salt size in bytes to use when deriving keys.
 pub const FIPS_MIN_SALT_SIZE: usize = 16;
+
 #[cfg(feature = "fips")]
 /// Output size in bits of the hash function used in PBKDF2.
 pub const FIPS_HLEN: usize = 512;

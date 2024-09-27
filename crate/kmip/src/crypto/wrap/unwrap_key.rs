@@ -2,10 +2,12 @@ use openssl::pkey::{Id, PKey, Private};
 use tracing::debug;
 use zeroize::Zeroizing;
 
+use super::WRAPPING_SECRET_LENGTH;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::{
     crypto::{
+        password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
@@ -15,6 +17,7 @@ use crate::{
             rfc5649::rfc5649_unwrap,
         },
         wrap::common::rsa_parameters,
+        FIPS_MIN_SALT_SIZE,
     },
     error::{result::KmipResultHelper, KmipError},
     kmip::{
@@ -32,6 +35,17 @@ use crate::{
 
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
+
+/// Unwrap a key using a password
+pub fn unwrap_key_bytes(
+    salt: &[u8; FIPS_MIN_SALT_SIZE],
+    key: &[u8],
+    wrapping_password: &str,
+) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+    let wrapping_secret =
+        derive_key_from_password::<WRAPPING_SECRET_LENGTH>(salt, wrapping_password.as_bytes())?;
+    rfc5649_unwrap(key, wrapping_secret.as_ref()).map_err(|e| KmipError::Default(e.to_string()))
+}
 
 /// Unwrap a key block with a wrapping key
 ///

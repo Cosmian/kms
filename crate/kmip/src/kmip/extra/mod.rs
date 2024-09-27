@@ -1,7 +1,6 @@
 mod bulk_data;
 mod certificates;
 pub mod tagging;
-#[cfg(feature = "openssl")]
 pub mod x509_extensions;
 
 pub use bulk_data::BulkData;
