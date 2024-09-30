@@ -162,7 +162,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_status() -> KResult<()> {
-    cosmian_logger::log_utils::log_init(Some("debug,cosmian_kms_server=trace"));
+    log_init(Some("debug,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -181,7 +181,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
-    cosmian_logger::log_utils::log_init(Some("debug,cosmian_kms_server=trace"));
+    log_init(Some("debug,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -239,8 +239,6 @@ async fn test_cse_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
-
-    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -312,7 +310,7 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(Some("info,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -363,7 +361,7 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(Some("info,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -414,7 +412,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(Some("info,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -496,7 +494,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    cosmian_logger::log_utils::log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(Some("info,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 

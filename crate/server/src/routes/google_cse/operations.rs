@@ -40,6 +40,7 @@ use crate::{
 
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
+const KEY_LENGTH_BOUND_SIZE: usize = 32;
 
 #[derive(PartialEq, Eq)]
 pub enum Role {
@@ -473,7 +474,10 @@ pub async fn private_key_decrypt(
     );
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
-    debug!("private_key_decrypt: decode encrypted_dek");
+    debug!(
+        "private_key_decrypt: request.encrypted_data_encryption_key: {}",
+        request.encrypted_data_encryption_key
+    );
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
     // Unwrap private key which has been previously wrapped using AES
@@ -504,6 +508,12 @@ pub async fn private_key_decrypt(
     debug!("privatekeydecrypt: allocation_size: {allocation_size}");
     let mut dek = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
+
+    if decrypt_size > KEY_LENGTH_BOUND_SIZE {
+        return Err(KmsError::CryptographicError(format!(
+            "Invalid decrypted key size. Expected less than {KEY_LENGTH_BOUND_SIZE} bytes"
+        )));
+    }
 
     debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {

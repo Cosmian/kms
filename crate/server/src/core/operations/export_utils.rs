@@ -764,7 +764,7 @@ async fn post_process_pkcs7(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
     owm: ObjectWithMetadata,
-) -> Result<ObjectWithMetadata, KmsError> {
+) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl
     let certificate = kmip_certificate_to_openssl(&owm.object)
         .context("export: unable to parse the certificate to openssl")?;
@@ -804,6 +804,7 @@ async fn post_process_pkcs7(
 
         // Retrieve the certificate chain
         while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
+            trace!("Certificate parent id is: {parent_id}");
             // Retrieve the parent certificate
             cert_owm = retrieve_object_for_operation(
                 &parent_id.to_string(),

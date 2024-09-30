@@ -358,7 +358,6 @@ async fn test_export_pkcs7() -> Result<(), CliError> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn export_certificate(
     cli_conf_path: &str,
     certificate_id: &str,
