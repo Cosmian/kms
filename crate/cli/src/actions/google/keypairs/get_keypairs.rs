@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use super::KEYPAIRS_ENDPOINT;
+use super::KEY_PAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
 
 /// Retrieves an existing client-side encryption key pair.
@@ -20,7 +20,7 @@ pub struct GetKeypairsAction {
 
 impl GetKeypairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
-        let endpoint = [KEYPAIRS_ENDPOINT, &self.keypairs_id].concat();
+        let endpoint = [KEY_PAIRS_ENDPOINT, &self.keypairs_id].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let response = gmail_client.await?.get(&endpoint).await?;
         GmailClient::handle_response(response).await

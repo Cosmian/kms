@@ -192,10 +192,7 @@ pub async fn export_object(
 /// # Arguments
 /// * `kms_rest_client` - The KMS client connector
 /// * `object_ids_or_tags` - The KMS object ids or tags
-/// * `unwrap` - Unwrap the object if it is wrapped
-/// * `wrapping_key_id` - The wrapping key id to wrap the key, may be the PKCS#12 password
-/// * `allow_revoked` - Allow the export of a revoked object
-/// * `key_format_type` - The key format type
+/// * `params` - Export parameters
 pub async fn batch_export_objects(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
@@ -262,10 +259,10 @@ async fn batch_get(
         match response {
             [
                 Ok(Operation::GetResponse(get)),
-                Ok(Operation::GetAttributesResponse(atts)),
+                Ok(Operation::GetAttributesResponse(get_attributes_response)),
             ] => {
                 let object = Object::post_fix(get.object_type, get.object.clone());
-                results.push(Ok((object, atts.attributes.clone())));
+                results.push(Ok((object, get_attributes_response.attributes.clone())));
             }
             [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
             e => client_bail!(
@@ -313,13 +310,13 @@ async fn batch_export(
         match response {
             [
                 Ok(Operation::ExportResponse(export_response)),
-                Ok(Operation::GetAttributesResponse(atts)),
+                Ok(Operation::GetAttributesResponse(get_attributes_response)),
             ] => {
                 let object =
                     Object::post_fix(export_response.object_type, export_response.object.clone());
                 let mut attributes = export_response.attributes.clone();
-                let _ = attributes.set_tags(atts.attributes.get_tags());
-                results.push(Ok((object, atts.attributes.clone())));
+                let _ = attributes.set_tags(get_attributes_response.attributes.get_tags());
+                results.push(Ok((object, get_attributes_response.attributes.clone())));
             }
             [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
             e => client_bail!(

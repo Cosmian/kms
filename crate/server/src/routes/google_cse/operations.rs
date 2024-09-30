@@ -779,7 +779,7 @@ pub async fn privileged_private_key_decrypt(
     kms_ensure!(
         spki_hash == request.spki_hash,
         KmsError::CryptographicError(
-            "spki_hash does not match with the associated privated key.".to_owned()
+            "spki_hash does not match with the associated private key.".to_owned()
         )
     );
 
@@ -996,7 +996,7 @@ async fn cse_wrapped_key_decrypt(
     Ok(data)
 }
 
-/// Compute resource key hqsh
+/// Compute resource key hash
 /// The resource key hash is a mechanism allowing Google to verify the integrity of the wrapped encryption keys without having access to the keys.
 ///
 /// Generating the resource key hash requires access to the unwrapped key including the DEK, the `resource_name` and the `perimeter_id` specified during the key wrapping operation.

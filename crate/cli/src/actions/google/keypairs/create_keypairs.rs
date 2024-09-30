@@ -18,7 +18,7 @@ use cosmian_kms_client::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::KEYPAIRS_ENDPOINT;
+use super::KEY_PAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
 const RSA_4096: usize = 4096;
@@ -33,14 +33,14 @@ const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
 /// metadata for a user.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct CreateKeypairsAction {
+pub struct CreateKeyPairsAction {
     /// The requester's primary email address
     #[clap(required = true)]
     user_id: String,
 
     /// CSE key ID to wrap exported user private key
-    #[clap(long = "csekey-id", short = 'w', required = true)]
-    csekey_id: String,
+    #[clap(long, short = 'w', required = true)]
+    cse_key_id: String,
 
     /// The issuer private key id
     #[clap(long, short = 'i', required = true)]
@@ -89,7 +89,7 @@ struct KaclsKeyMetadata {
     kaclsData: String,
 }
 
-impl CreateKeypairsAction {
+impl CreateKeyPairsAction {
     async fn post_keypair(
         gmail_client: &GmailClient,
         certificate_value: Vec<u8>,
@@ -107,7 +107,7 @@ impl CreateKeypairsAction {
         };
 
         let response = gmail_client
-            .post(KEYPAIRS_ENDPOINT, serde_json::to_string(&key_pair_info)?)
+            .post(KEY_PAIRS_ENDPOINT, serde_json::to_string(&key_pair_info)?)
             .await?;
         GmailClient::handle_response(response).await
     }
@@ -163,8 +163,7 @@ impl CreateKeypairsAction {
             kms_rest_client,
             &private_key_id,
             ExportObjectParams {
-                wrapping_key_id: Some(&self.csekey_id),
-                allow_revoked: true,
+                wrapping_key_id: Some(&self.cse_key_id),
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..ExportObjectParams::default()
             },
@@ -184,7 +183,7 @@ impl CreateKeypairsAction {
             link: Some(vec![Link {
                 link_type: LinkType::PrivateKeyLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    self.issuer_private_key_id.clone(),
+                    private_key_id.clone(),
                 ),
             }]),
             vendor_attributes: Some(vec![VendorAttribute {
@@ -196,9 +195,7 @@ impl CreateKeypairsAction {
         };
 
         let certify_request = Certify {
-            unique_identifier: Some(
-                cosmian_kms_client::kmip::kmip_types::UniqueIdentifier::TextString(public_key_id),
-            ),
+            unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),
             attributes: Some(attributes),
             ..Certify::default()
         };

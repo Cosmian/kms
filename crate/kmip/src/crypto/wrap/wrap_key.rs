@@ -2,7 +2,7 @@ use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
-use tracing::debug;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::WRAPPING_SECRET_LENGTH;
@@ -130,8 +130,11 @@ pub fn wrap_key_block(
         .attribute_name
         .as_ref()
         .and_then(|attributes| attributes.first())
-        .map(std::string::String::as_bytes)
-        .unwrap_or(&[]);
+        .map(std::string::String::as_bytes);
+    trace!(
+        "wrap_key_block: additional_data_encryption: {:?}",
+        additional_data_encryption
+    );
 
     // wrap the key based on the encoding
     match encoding {
@@ -141,7 +144,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                Some(additional_data_encryption),
+                additional_data_encryption,
             )?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext.into()),
@@ -155,7 +158,7 @@ pub fn wrap_key_block(
                 wrapping_key,
                 &key_wrapping_data,
                 &key_to_wrap,
-                Some(additional_data_encryption),
+                additional_data_encryption,
             )?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
         }

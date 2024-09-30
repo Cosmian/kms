@@ -1769,9 +1769,10 @@ Retrieves an existing client-side encryption key pair.
 Lists client-side encryption key pairs for a user.
 
 ### Usage
-`ckms google keypairs list [options]`
+`ckms google keypairs list [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The requester's primary email address
+` <USER_ID>` The requester's primary email address
 
 
 
@@ -1844,9 +1845,9 @@ metadata for a user.
 ### Arguments
 ` <USER_ID>` The requester's primary email address
 
-`--csekey-id [-w] <CSEKEY_ID>` CSE key ID to wrap exported user private key
+`--cse-key-id [-w] <CSE_KEY_ID>` CSE key ID to wrap exported user private key
 
-`--issuer-private-key-id [-i] <ISSUER_PRIVATE_KEY_ID>` The issuer certificate id
+`--issuer-private-key-id [-i] <ISSUER_PRIVATE_KEY_ID>` The issuer private key id
 
 `--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
 the subject name to use.
@@ -1889,9 +1890,10 @@ key pair must validate against Google's S/MIME certificate profiles.
 Retrieves a client-side encryption identity configuration.
 
 ### Usage
-`ckms google identities get [options]`
+`ckms google identities get [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
+` <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
 
 
@@ -1902,9 +1904,10 @@ Retrieves a client-side encryption identity configuration.
 Lists the client-side encrypted identities for an authenticated user.
 
 ### Usage
-`ckms google identities list [options]`
+`ckms google identities list [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The requester's primary email address
+` <USER_ID>` The requester's primary email address
 
 
 
@@ -1935,9 +1938,10 @@ to send encrypted messages. You cannot restore the identity after you delete it.
 the identities.create method to create another identity with the same configuration.
 
 ### Usage
-`ckms google identities delete [options]`
+`ckms google identities delete [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
+` <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
 
 
