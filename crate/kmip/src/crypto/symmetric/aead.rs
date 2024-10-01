@@ -84,13 +84,12 @@ impl AeadCipher {
     ) -> Result<Self, KmipError> {
         match algorithm {
             CryptographicAlgorithm::AES => {
-                if block_cipher_mode.is_some()
-                    && (Some(BlockCipherMode::GCM) != block_cipher_mode
-                        || Some(BlockCipherMode::AEAD) != block_cipher_mode)
-                {
-                    kmip_bail!(KmipError::NotSupported(
-                        "AES is only supported with GCM mode".to_owned()
-                    ));
+                if let Some(mode) = block_cipher_mode {
+                    if BlockCipherMode::GCM != mode && BlockCipherMode::AEAD != mode {
+                        kmip_bail!(KmipError::NotSupported(format!(
+                            "AES is only supported with GCM mode. Got: {mode:?}"
+                        )));
+                    }
                 }
                 match key_size {
                     AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),

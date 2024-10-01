@@ -8,7 +8,10 @@ use cosmian_kmip::{
     kmip::{
         kmip_data_structures::KeyWrappingData,
         kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
+        kmip_types::{
+            self, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, EncodingOption,
+            UniqueIdentifier,
+        },
     },
 };
 use openssl::{
@@ -20,7 +23,7 @@ use openssl::{
     sign::Signer,
 };
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::GoogleCseConfig;
@@ -40,7 +43,8 @@ use crate::{
 
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
-const KEY_LENGTH_BOUND_SIZE: usize = 32;
+// const KEY_LENGTH_BOUND_SIZE: usize = 32;
+pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
 
 #[derive(PartialEq, Eq)]
 pub enum Role {
@@ -181,7 +185,7 @@ pub async fn wrap(
 
     debug!("wrap: wrap dek");
     let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
         iv_counter_nonce: None,
@@ -274,7 +278,7 @@ pub async fn unwrap(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data = cse_wrapped_key_decrypt(
         request.wrapped_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         token_extracted_content.user,
         token_extracted_content.resource_name,
         kms,
@@ -365,7 +369,7 @@ pub async fn private_key_sign(
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         token_extracted_content.user,
         None,
         kms,
@@ -480,10 +484,11 @@ pub async fn private_key_decrypt(
     );
     let encrypted_dek = general_purpose::STANDARD.decode(&request.encrypted_data_encryption_key)?;
 
+    debug!("private_key_decrypt: [OK] base64 of encrypted_dek has been removed");
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         token_extracted_content.user,
         None,
         kms,
@@ -491,6 +496,11 @@ pub async fn private_key_decrypt(
         EncodingOption::TTLVEncoding,
     )
     .await?;
+
+    debug!(
+        "private_key_decrypt: [OK] private_key_der {}",
+        general_purpose::STANDARD.encode(private_key_der.clone()),
+    );
 
     // Decrypt with the unwrapped RSA private key
     debug!("private_key_decrypt: from_rsa");
@@ -505,15 +515,15 @@ pub async fn private_key_decrypt(
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
-    debug!("privatekeydecrypt: allocation_size: {allocation_size}");
+    debug!("private_key_decrypt: allocation_size: {allocation_size}");
     let mut dek = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
-    if decrypt_size > KEY_LENGTH_BOUND_SIZE {
-        return Err(KmsError::CryptographicError(format!(
-            "Invalid decrypted key size. Expected less than {KEY_LENGTH_BOUND_SIZE} bytes"
-        )));
-    }
+    // if decrypt_size > KEY_LENGTH_BOUND_SIZE {
+    //     return Err(KmsError::CryptographicError(format!(
+    //         "Invalid decrypted key size. Expected less than {KEY_LENGTH_BOUND_SIZE} bytes"
+    //     )));
+    // }
 
     debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {
@@ -574,7 +584,7 @@ pub async fn digest(
 
     let dek_data = cse_wrapped_key_decrypt(
         request.wrapped_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
         Some(resource_name.clone().into_bytes()),
         kms,
@@ -622,7 +632,7 @@ pub async fn privileged_wrap(
     debug!("privileged-wrap: wrap dek");
     let resource_name = request.resource_name.into_bytes();
     let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(general_purpose::STANDARD.decode(&request.key)?.into()),
         iv_counter_nonce: None,
@@ -694,7 +704,7 @@ pub async fn privileged_unwrap(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
         request.wrapped_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
         Some(resource_name),
         kms,
@@ -767,7 +777,7 @@ pub async fn privileged_private_key_decrypt(
     // Unwrap private key which has been previously wrapped using AES
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
-        UniqueIdentifier::TextString("google_cse".to_owned()),
+        UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
         None,
         kms,
@@ -879,7 +889,7 @@ pub async fn rewrap(
 
     debug!("rewrap: wrap key using current KMS");
     let encryption_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString("google_cse".to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         cryptographic_parameters: None,
         data: Some(unwrapped_data.clone()),
         iv_counter_nonce: None,
@@ -949,6 +959,7 @@ async fn cse_wrapped_key_decrypt(
     database_params: Option<ExtraDatabaseParams>,
     encoding_option: EncodingOption,
 ) -> KResult<Zeroizing<Vec<u8>>> {
+    debug!("cse_wrapped_key_decrypt: wrapped_key: {wrapped_key}");
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
     if len < TAG_LENGTH + NONCE_LENGTH {
@@ -960,9 +971,19 @@ async fn cse_wrapped_key_decrypt(
     let ciphertext = &wrapped_key_bytes[NONCE_LENGTH..len - TAG_LENGTH];
     let authenticated_tag = &wrapped_key_bytes[len - TAG_LENGTH..];
 
+    trace!(
+        "cse_wrapped_key_decrypt: iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
+        general_purpose::STANDARD.encode(iv_counter_nonce),
+        general_purpose::STANDARD.encode(ciphertext),
+        general_purpose::STANDARD.encode(authenticated_tag)
+    );
+
     let decryption_request = Decrypt {
         unique_identifier: Some(wrapping_key_id),
-        cryptographic_parameters: None,
+        cryptographic_parameters: Some(CryptographicParameters {
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..Default::default()
+        }),
         data: Some(ciphertext.to_vec()),
         iv_counter_nonce: Some(iv_counter_nonce.to_vec()),
         correlation_value: None,
@@ -988,7 +1009,7 @@ async fn cse_wrapped_key_decrypt(
         wrapped_key.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString("google_cse".to_owned()),
+                unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
                 cryptographic_parameters: None,
             }),
             encoding_option: Some(encoding_option),

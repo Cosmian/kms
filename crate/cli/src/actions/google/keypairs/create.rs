@@ -17,6 +17,7 @@ use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
 };
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use super::KEY_PAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
@@ -213,6 +214,20 @@ impl CreateKeyPairsAction {
             },
         )
         .await?;
+
+        if let Object::Certificate {
+            certificate_value, ..
+        } = &pkcs7_object
+        {
+            trace!(
+                "pkcs7_object: {:?}",
+                general_purpose::STANDARD.encode(certificate_value)
+            );
+            trace!(
+                "wrapped_key_bytes: {:?}",
+                general_purpose::STANDARD.encode(wrapped_key_bytes.clone())
+            );
+        }
 
         if self.dry_run {
             println!("Dry run mode - keypair not pushed to Gmail API");

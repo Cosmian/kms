@@ -35,7 +35,6 @@ pub(crate) async fn tx_and_list<DB: Database>(
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create key
-
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_1 =

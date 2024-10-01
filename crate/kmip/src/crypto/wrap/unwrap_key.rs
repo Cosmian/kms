@@ -44,7 +44,7 @@ pub fn unwrap_key_block(
     object_key_block: &mut KeyBlock,
     unwrapping_key: &Object,
 ) -> Result<(), KmipError> {
-    // Extract authenticated addtionnal data on attributes if exist
+    // Extract authenticated additional data on attributes if exist
     let aad = object_key_block.attributes_mut()?.remove_aad();
 
     // check that the key wrapping data is present

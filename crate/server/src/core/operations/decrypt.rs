@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine};
 use cloudproof::reexport::cover_crypt::Covercrypt;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
@@ -44,7 +45,7 @@ pub(crate) async fn decrypt(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<DecryptResponse> {
-    trace!("Decrypt: {:?}", &request.unique_identifier);
+    trace!("decrypt: {}", serde_json::to_string(&request)?);
 
     let owm = get_key(kms, &request, user, params).await?;
 
@@ -184,6 +185,10 @@ fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Decr
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
+            trace!(
+                "dispatch_decrypt: cryptographic_algorithm: {cryptographic_algorithm:?}, \
+                 block_cipher_mode: {block_cipher_mode:?}"
+            );
             let key_bytes = key_block.key_bytes()?;
             let aead = AeadCipher::from_algorithm_and_key_size(
                 cryptographic_algorithm,
@@ -191,7 +196,9 @@ fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Decr
                 key_bytes.len(),
             )?;
             let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
+                KmsError::InvalidRequest(
+                    "dispatch_decrypt: the nonce/IV must be provided".to_owned(),
+                )
             })?;
             let aad = request
                 .authenticated_encryption_additional_data
@@ -201,6 +208,13 @@ fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Decr
                 .authenticated_encryption_tag
                 .as_deref()
                 .unwrap_or(EMPTY_SLICE);
+
+            trace!(
+                "dispatch_decrypt: nonce: {}, aad: {}, tag: {}",
+                general_purpose::STANDARD.encode(nonce),
+                general_purpose::STANDARD.encode(aad),
+                general_purpose::STANDARD.encode(tag)
+            );
 
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
 

@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine};
 use cloudproof::reexport::cover_crypt::Covercrypt;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
@@ -47,11 +48,9 @@ pub(crate) async fn encrypt(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<EncryptResponse> {
-    trace!("operations::encrypt: {}", serde_json::to_string(&request)?);
+    trace!("Encrypt: {}", serde_json::to_string(&request)?);
 
     let owm = get_key(kms, &request, user, params).await?;
-    trace!("get_encryption_system: unwrap done (if required)");
-
     match &owm.object {
         Object::SymmetricKey { .. } => encrypt_with_aead(&request, &owm),
         Object::PublicKey { .. } => encrypt_with_public_key(&request, &owm),
@@ -176,6 +175,13 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .authenticated_encryption_additional_data
                 .as_deref()
                 .unwrap_or(EMPTY_SLICE);
+
+            trace!(
+                "encrypt_with_aead: nonce: {}, aad: {}",
+                general_purpose::STANDARD.encode(&nonce),
+                general_purpose::STANDARD.encode(aad),
+            );
+
             let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),

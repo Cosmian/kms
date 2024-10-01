@@ -1263,6 +1263,7 @@ name = "cosmian_kmip"
 version = "4.18.0"
 dependencies = [
  "argon2",
+ "base64 0.21.7",
  "bitflags 2.6.0",
  "chrono",
  "clap",

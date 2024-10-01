@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -91,6 +92,10 @@ pub fn wrap_key_block(
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<(), KmipError> {
+    trace!(
+        "wrap_key_block: entering: object type: {:?}",
+        wrapping_key.object_type()
+    );
     if object_key_block.key_wrapping_data.is_some() {
         kmip_bail!("unable to wrap the key: it is already wrapped")
     }
@@ -176,7 +181,7 @@ pub(crate) fn wrap(
     key_to_wrap: &[u8],
     additional_data_encryption: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipError> {
-    debug!("wrap: with object: {:?}", wrapping_key.object_type());
+    debug!("wrap: with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
         Object::Certificate {
             certificate_value, ..
@@ -194,9 +199,10 @@ pub(crate) fn wrap(
         | Object::PrivateKey { key_block }
         | Object::PublicKey { key_block }
         | Object::SymmetricKey { key_block } => {
+            debug!("wrap: key_block: {:?}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
-                kmip_bail!("unable to wrap keys: wrapping key is wrapped and that is not supported")
+                kmip_bail!("unable to wrap key: wrapping key is wrapped and that is not supported")
             }
 
             // Make sure that the key used to wrap can be used to wrap.
@@ -210,6 +216,16 @@ pub(crate) fn wrap(
                 ))
             }
 
+            // recover the cryptographic algorithm from the key block or default to AES
+            let cryptographic_algorithm = key_block
+                .cryptographic_algorithm()
+                .copied()
+                .unwrap_or(CryptographicAlgorithm::AES);
+            debug!(
+                "wrap: cryptographic_algorithm: {:?}",
+                cryptographic_algorithm
+            );
+
             let ciphertext = match key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     let block_cipher_mode = key_wrapping_data
@@ -217,26 +233,41 @@ pub(crate) fn wrap(
                         .clone()
                         .and_then(|info| info.cryptographic_parameters)
                         .and_then(|params| params.block_cipher_mode);
-                    let wrap_secret = key_block.key_bytes()?;
+                    debug!("wrap: block_cipher_mode: {:?}", block_cipher_mode);
+                    let key_bytes = key_block.key_bytes()?;
                     let aad = additional_data_encryption.unwrap_or_default();
                     match block_cipher_mode {
                         Some(BlockCipherMode::GCM) => {
-                            // wrap using aes Gcm
-                            let aead = AeadCipher::Aes256Gcm;
+                            // wrap using aes GCM
+                            let aead = AeadCipher::from_algorithm_and_key_size(
+                                cryptographic_algorithm,
+                                block_cipher_mode,
+                                key_bytes.len(),
+                            )?;
+
                             let nonce = random_nonce(aead)?;
-                            let (data, authenticated_encryption_tag) =
-                                aead_encrypt(aead, &wrap_secret, &nonce, aad, key_to_wrap)?;
+
+                            let (ct, authenticated_encryption_tag) =
+                                aead_encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
                             let mut ciphertext = Vec::with_capacity(
-                                nonce.len() + data.len() + authenticated_encryption_tag.len(),
+                                nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                             );
                             ciphertext.extend_from_slice(&nonce);
-                            ciphertext.extend_from_slice(&data);
+                            ciphertext.extend_from_slice(&ct);
                             ciphertext.extend_from_slice(&authenticated_encryption_tag);
+
+                            debug!(
+                                "wrap: nonce: {}, aad: {}, tag: {}",
+                                general_purpose::STANDARD.encode(&nonce),
+                                general_purpose::STANDARD.encode(aad),
+                                general_purpose::STANDARD.encode(&authenticated_encryption_tag),
+                            );
+
                             Ok(ciphertext)
                         }
                         _ => {
                             // wrap using rfc_5649
-                            let ciphertext = rfc5649_wrap(key_to_wrap, &wrap_secret)?;
+                            let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
                             Ok(ciphertext)
                         }
                     }

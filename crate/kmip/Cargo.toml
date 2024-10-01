@@ -21,6 +21,7 @@ fips = ["openssl"]
 
 [dependencies]
 argon2 = "0.5"
+base64 = { workspace = true }
 bitflags = "2.6"
 chrono = { workspace = true }
 clap ={ workspace = true, features = [
