@@ -176,10 +176,7 @@ pub(crate) fn wrap(
     key_to_wrap: &[u8],
     additional_data_encryption: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipError> {
-    debug!(
-        "encrypt_bytes: with object: {:?}",
-        wrapping_key.object_type()
-    );
+    debug!("wrap: with object: {:?}", wrapping_key.object_type());
     match wrapping_key {
         Object::Certificate {
             certificate_value, ..

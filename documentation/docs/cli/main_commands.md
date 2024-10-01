@@ -48,7 +48,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 **`markdown`** [[13]](#13-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
-**`google`** [[14]](#14-ckms-google)  Manage google elements. Handle keypairs and identities from Gmail API
+**`google`** [[14]](#14-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
 ---
 
@@ -1703,60 +1703,60 @@ Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- mark
 
 ## 14 ckms google
 
-Manage google elements. Handle keypairs and identities from Gmail API
+Manage google elements. Handle key pairs and identities from Gmail API
 
 ### Usage
 `ckms google <subcommand>`
 
 ### Subcommands
 
-**`keypairs`** [[14.1]](#141-ckms-google-keypairs)  Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
+**`key-pairs`** [[14.1]](#141-ckms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
 **`identities`** [[14.2]](#142-ckms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
 
 ---
 
-## 14.1 ckms google keypairs
+## 14.1 ckms google key-pairs
 
-Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
+Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
 ### Usage
-`ckms google keypairs <subcommand>`
+`ckms google key-pairs <subcommand>`
 
 ### Subcommands
 
-**`get`** [[14.1.1]](#1411-ckms-google-keypairs-get)  Retrieves an existing client-side encryption key pair.
+**`get`** [[14.1.1]](#1411-ckms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
 
-**`list`** [[14.1.2]](#1412-ckms-google-keypairs-list)  Lists client-side encryption key pairs for a user.
+**`list`** [[14.1.2]](#1412-ckms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
 
-**`enable`** [[14.1.3]](#1413-ckms-google-keypairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+**`enable`** [[14.1.3]](#1413-ckms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
-**`disable`** [[14.1.4]](#1414-ckms-google-keypairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+**`disable`** [[14.1.4]](#1414-ckms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
-keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
-by using the keypairs.obliterate method.
+key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the key pairs.obliterate method.
 
-**`obliterate`** [[14.1.5]](#1415-ckms-google-keypairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+**`obliterate`** [[14.1.5]](#1415-ckms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
-**`create`** [[14.1.6]](#1416-ckms-google-keypairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+**`create`** [[14.1.6]](#1416-ckms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
 
 ---
 
-## 14.1.1 ckms google keypairs get
+## 14.1.1 ckms google key-pairs get
 
 Retrieves an existing client-side encryption key pair.
 
 ### Usage
-`ckms google keypairs get [options] <KEYPAIRS_ID>
+`ckms google key-pairs get [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to retrieve
+` <KEY_PAIRS_ID>` The identifier of the key pair to retrieve
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1764,12 +1764,12 @@ Retrieves an existing client-side encryption key pair.
 
 ---
 
-## 14.1.2 ckms google keypairs list
+## 14.1.2 ckms google key-pairs list
 
 Lists client-side encryption key pairs for a user.
 
 ### Usage
-`ckms google keypairs list [options] <USER_ID>
+`ckms google key-pairs list [options] <USER_ID>
 `
 ### Arguments
 ` <USER_ID>` The requester's primary email address
@@ -1778,16 +1778,16 @@ Lists client-side encryption key pairs for a user.
 
 ---
 
-## 14.1.3 ckms google keypairs enable
+## 14.1.3 ckms google key-pairs enable
 
 Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
 ### Usage
-`ckms google keypairs enable [options] <KEYPAIRS_ID>
+`ckms google key-pairs enable [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to enable
+` <KEY_PAIRS_ID>` The identifier of the key pair to enable
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1795,18 +1795,18 @@ again for any associated client-side encryption identities.
 
 ---
 
-## 14.1.4 ckms google keypairs disable
+## 14.1.4 ckms google key-pairs disable
 
 Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
-keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
-by using the keypairs.obliterate method.
+key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the key pairs.obliterate method.
 
 ### Usage
-`ckms google keypairs disable [options] <KEYPAIRS_ID>
+`ckms google key-pairs disable [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to disable
+` <KEY_PAIRS_ID>` The identifier of the key pair to disable
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1814,19 +1814,19 @@ by using the keypairs.obliterate method.
 
 ---
 
-## 14.1.5 ckms google keypairs obliterate
+## 14.1.5 ckms google key-pairs obliterate
 
 Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
 ### Usage
-`ckms google keypairs obliterate [options] <KEYPAIRS_ID>
+`ckms google key-pairs obliterate [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to obliterate
+` <KEY_PAIRS_ID>` The identifier of the key pair to obliterate
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1834,13 +1834,13 @@ reading the encrypted messages.
 
 ---
 
-## 14.1.6 ckms google keypairs create
+## 14.1.6 ckms google key-pairs create
 
 Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
 
 ### Usage
-`ckms google keypairs create [options] <USER_ID>
+`ckms google key-pairs create [options] <USER_ID>
 `
 ### Arguments
 ` <USER_ID>` The requester's primary email address
@@ -1853,6 +1853,10 @@ metadata for a user.
 the subject name to use.
 
 `--rsa-private-key-id [-k] <RSA_PRIVATE_KEY_ID>` The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
+
+`--dry-run <DRY_RUN>` Dry run mode. If set, the action will not be executed
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -1920,10 +1924,10 @@ user account. Google publishes the S/MIME certificate to a shared domain-wide di
 people within a Google Workspace organization can encrypt and send mail to the identity.
 
 ### Usage
-`ckms google identities insert [options] <KEYPAIRS_ID>
+`ckms google identities insert [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
+` <KEY_PAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
 
 `--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
@@ -1953,10 +1957,10 @@ Associates a different key pair with an existing client-side encryption identity
 key pair must validate against Google's S/MIME certificate profiles.
 
 ### Usage
-`ckms google identities patch [options] <KEYPAIRS_ID>
+`ckms google identities patch [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
+` <KEY_PAIRS_ID>` The key pair id, associated with a given cert/key. You can get the by listing the key pairs associated with the user-id
 
 `--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 

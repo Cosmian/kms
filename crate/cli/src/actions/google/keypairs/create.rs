@@ -50,17 +50,16 @@ pub struct CreateKeyPairsAction {
     /// the subject name to use.
     ///
     /// For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"
-    #[clap(
-        long = "subject-name",
-        short = 's',
-        verbatim_doc_comment,
-        required = true
-    )]
+    #[clap(long, short = 's', verbatim_doc_comment, required = true)]
     subject_name: String,
 
     /// The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
     #[clap(long, short = 'k')]
     rsa_private_key_id: Option<String>,
+
+    /// Dry run mode. If set, the action will not be executed.
+    #[clap(long, default_value = "false")]
+    dry_run: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -172,8 +171,6 @@ impl CreateKeyPairsAction {
 
         let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
 
-        let encoded_private_key = general_purpose::STANDARD.encode(wrapped_key_bytes.clone());
-
         // Sign created public key with issuer private key
         let attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
@@ -183,7 +180,7 @@ impl CreateKeyPairsAction {
             link: Some(vec![Link {
                 link_type: LinkType::PrivateKeyLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    private_key_id.clone(),
+                    self.issuer_private_key_id.clone(),
                 ),
             }]),
             vendor_attributes: Some(vec![VendorAttribute {
@@ -217,28 +214,33 @@ impl CreateKeyPairsAction {
         )
         .await?;
 
-        let email = &self.user_id;
-        if let Object::Certificate {
-            certificate_value, ..
-        } = pkcs7_object
-        {
-            tracing::info!("Processing {email:?}.");
-            Self::post_keypair(
-                &gmail_client.await?,
-                certificate_value,
-                encoded_private_key,
-                kacls_url.await?.kacls_url,
-            )
-            .await?;
-            tracing::info!("Keypair inserted for {email:?}.");
+        if self.dry_run {
+            println!("Dry run mode - keypair not pushed to Gmail API");
         } else {
-            tracing::info!(
-                "Error inserting keypair for {email:?} - exported object is not a Certificate"
-            );
-            Err(CliError::ServerError(format!(
-                "Error inserting keypair for {email:?} - exported object is not a Certificate"
-            )))?;
-        };
+            let email = &self.user_id;
+            println!("[{email}] - Pushing new keypair to Gmail API");
+            if let Object::Certificate {
+                certificate_value, ..
+            } = pkcs7_object
+            {
+                tracing::info!("Processing {email:?}.");
+                Self::post_keypair(
+                    &gmail_client.await?,
+                    certificate_value,
+                    general_purpose::STANDARD.encode(wrapped_key_bytes.clone()),
+                    kacls_url.await?.kacls_url,
+                )
+                .await?;
+                tracing::info!("Keypair inserted for {email:?}.");
+            } else {
+                tracing::info!(
+                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
+                );
+                Err(CliError::ServerError(format!(
+                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
+                )))?;
+            };
+        }
         Ok(())
     }
 }

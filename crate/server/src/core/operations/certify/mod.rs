@@ -79,11 +79,14 @@ pub(crate) async fn certify(
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
     let subject = get_subject(kms, &request, user, params).await?;
+    trace!("Subject name: {:?}", subject.subject_name());
     let issuer = get_issuer(&subject, kms, &request, user, params).await?;
+    trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
+            trace!("Certify X509Req or Certificate:{unique_identifier}");
             (
                 vec![
                     // upsert the certificate
@@ -99,6 +102,10 @@ pub(crate) async fn certify(
             )
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
+            trace!(
+                "Certify PublicKeyAndSubjectName:{unique_identifier} : public key: \
+                 {from_public_key:?}"
+            );
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes;
             public_key_attributes.set_link(

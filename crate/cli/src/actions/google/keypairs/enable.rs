@@ -9,19 +9,19 @@ use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult
 /// again for any associated client-side encryption identities.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-pub struct EnableKeypairsAction {
+pub struct EnableKeyPairsAction {
     /// The identifier of the key pair to enable
     #[clap(required = true)]
-    keypairs_id: String,
+    key_pairs_id: String,
 
     /// The requester's primary email address
-    #[clap(long = "user-id", short = 'u', required = true)]
+    #[clap(long, short = 'u', required = true)]
     user_id: String,
 }
 
-impl EnableKeypairsAction {
+impl EnableKeyPairsAction {
     pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
-        let endpoint = [KEY_PAIRS_ENDPOINT, &self.keypairs_id, ":enable"].concat();
+        let endpoint = [KEY_PAIRS_ENDPOINT, &self.key_pairs_id, ":enable"].concat();
         let gmail_client = GmailClient::new(conf_path, &self.user_id);
         let response = gmail_client.await?.post(&endpoint, String::new()).await?;
         GmailClient::handle_response(response).await
