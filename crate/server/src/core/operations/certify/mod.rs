@@ -28,8 +28,9 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
-    asn1::Asn1Time,
+    asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
+    sha::Sha1,
     x509::{X509Req, X509},
 };
 use tracing::{debug, info, trace};
@@ -562,6 +563,19 @@ async fn issuer_for_self_signed_certificate<'a>(
     }
 }
 
+fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer> {
+    let pk = subject.public_key()?;
+    let spki_der = pk.public_key_to_der()?;
+    let mut sha1 = Sha1::default();
+    sha1.update(&spki_der);
+    let serial_number_bytes = sha1.finish().to_vec();
+
+    let serial_number = openssl::asn1::Asn1Integer::from_bn(
+        openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
+    )?;
+    Ok(serial_number)
+}
+
 fn build_and_sign_certificate(
     issuer: &Issuer,
     subject: &Subject,
@@ -627,6 +641,7 @@ fn build_and_sign_certificate(
 
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
+    x509_builder.set_serial_number(create_subject_key_identifier_value(subject)?.as_ref())?;
     x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
 
     let x509 = x509_builder.build();

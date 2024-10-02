@@ -345,7 +345,8 @@ pub async fn private_key_sign(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeySignResponse> {
-    debug!("private_key_sign: entering");
+    trace!("private_key_sign: entering: {request:?}");
+
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_sign: validate_tokens");
@@ -456,7 +457,8 @@ pub async fn private_key_decrypt(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeyDecryptResponse> {
-    debug!("private_key_decrypt: entering");
+    trace!("private_key_decrypt: entering: {request:?}");
+
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
     debug!("private_key_decrypt: validate_tokens");
@@ -471,7 +473,6 @@ pub async fn private_key_decrypt(
     )
     .await?;
 
-    debug!("private_key_decrypt: check algorithm");
     kms_ensure!(
         request.algorithm == "RSA/ECB/PKCS1Padding",
         "Only RSA/ECB/PKCS1Padding is supported"

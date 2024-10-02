@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
+    cosmian_kmip::crypto::{
+        certificates::EXTENSION_CONFIG, rsa::kmip_requests::create_rsa_key_pair_request,
+    },
     export_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
@@ -23,12 +25,6 @@ use super::KEY_PAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::CliError};
 
 const RSA_4096: usize = 4096;
-
-/// Extension configuration
-const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
-    keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
-    extendedKeyUsage=emailProtection
-";
 
 /// Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 /// metadata for a user.
@@ -230,7 +226,7 @@ impl CreateKeyPairsAction {
         }
 
         if self.dry_run {
-            println!("Dry run mode - keypair not pushed to Gmail API");
+            println!("Dry run mode - key pair not pushed to Gmail API");
         } else {
             let email = &self.user_id;
             println!("[{email}] - Pushing new keypair to Gmail API");
@@ -246,13 +242,10 @@ impl CreateKeyPairsAction {
                     kacls_url.await?.kacls_url,
                 )
                 .await?;
-                tracing::info!("Keypair inserted for {email:?}.");
+                tracing::info!("Key pair inserted for {email:?}.");
             } else {
-                tracing::info!(
-                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
-                );
                 Err(CliError::ServerError(format!(
-                    "Error inserting keypair for {email:?} - exported object is not a Certificate"
+                    "Error inserting key pair for {email:?} - exported object is not a Certificate"
                 )))?;
             };
         }

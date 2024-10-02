@@ -11,7 +11,7 @@ use actix_service::Service;
 use actix_web::dev::ServiceResponse;
 use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
-    crypto::rsa::kmip_requests::create_rsa_key_pair_request,
+    crypto::{certificates::EXTENSION_CONFIG, rsa::kmip_requests::create_rsa_key_pair_request},
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
@@ -35,7 +35,7 @@ use openssl::{
     sign::{Signer, Verifier},
     x509::X509,
 };
-use tracing::debug;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -56,11 +56,6 @@ use crate::{
 };
 
 pub(crate) mod utils;
-
-const EXTENSION_CONFIG: &[u8] = b"[ v3_ca ]
-    keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment\
-    extendedKeyUsage=emailProtection
-";
 
 // Default JWT issuer URI for Gmail endpoint
 #[cfg(test)]
@@ -422,7 +417,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         .unique_identifier;
 
     // Export the certificate and chain in PKCS7 format (just checking that it works)
-    let _pkcs7 = kms
+    let pkcs7 = kms
         .get(
             Get::new(
                 certificate_unique_identifier.clone(),
@@ -434,7 +429,16 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    // debug!("pkcs7: {:?}", pkcs7);
+
+    if let Object::Certificate {
+        certificate_value, ..
+    } = &pkcs7.object
+    {
+        trace!(
+            "pkcs7_format: {:?}",
+            general_purpose::STANDARD.encode(certificate_value)
+        );
+    }
 
     // Encrypt with RSA public key
     let rsa_public_key = kms

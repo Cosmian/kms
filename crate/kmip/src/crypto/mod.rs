@@ -10,6 +10,7 @@ use crate::{
     },
 };
 
+pub mod certificates;
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
