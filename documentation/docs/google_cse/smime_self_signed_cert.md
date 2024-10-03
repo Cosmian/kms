@@ -17,10 +17,10 @@ Links:
 
 First, import the AES wrapping key (will wrap the RSA private key):
 cd target/debug
-./ckms login
-./ckms sym keys import -t google_cse ../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.json
-./ckms rsa keys import -f pem ../../crate/server/src/routes/google_cse/python/openssl/blue.key -t gmail_blue
-./ckms rsa keys export -t gmail_blue -w google_cse pk_blue -f raw
+ckms login
+ckms sym keys import -t google_cse ../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.json
+ckms rsa keys import -f pem ../../crate/server/src/routes/google_cse/python/openssl/blue.key -t gmail_blue
+ckms rsa keys export -t gmail_blue -w google_cse pk_blue -f raw
 base64 -w 0 pk_blue
 base64 -w 0 pk_blue> ../../documentation/docs/google_cse/blue_wrapped_private_key
 + update private key file blue@cosmian.com.wrap

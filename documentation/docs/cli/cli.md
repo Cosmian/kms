@@ -1,3 +1,5 @@
+# Cosmian KMS Command Line Interface (CLI)
+
 Cosmian KMS can be managed using the `ckms` command line interface (CLI) or its graphical
 client `ckms_gui`.
 
