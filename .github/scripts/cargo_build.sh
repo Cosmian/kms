@@ -69,7 +69,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   for crate in "${crates[@]}"; do
     echo "cargo hack on $crate"
     cd "$crate"
-    cargo hack check --feature-powerset --no-dev-deps
+    cargo hack test --feature-powerset --no-dev-deps
     cd "$ROOT_FOLDER"
   done
 fi
