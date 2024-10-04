@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose, Engine};
 use cloudproof::reexport::cover_crypt::Covercrypt;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
@@ -15,6 +14,7 @@ use cosmian_kmip::{
         DecryptionSystem,
     },
     kmip::{
+        extra::BulkData,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
         kmip_types::{
@@ -26,7 +26,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::pkey::{Id, PKey, Private};
-use tracing::trace;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -49,8 +49,6 @@ pub(crate) async fn decrypt(
 
     let owm = get_key(kms, &request, user, params).await?;
 
-    trace!("decrypt: [OK] Get object with metadata");
-
     // Make sure that the key used to decrypt can be used to decrypt.
     if !owm
         .object
@@ -63,10 +61,19 @@ pub(crate) async fn decrypt(
         ))
     }
 
-    trace!("decrypt: matching on object: {:?}", owm.object);
-
     match &owm.object {
-        Object::SymmetricKey { .. } | Object::PrivateKey { .. } => dispatch_decrypt(&request, &owm),
+        Object::SymmetricKey { .. } | Object::PrivateKey { .. } => {
+            // we do not (yet) support continuation cases
+            let data = request.data.as_ref().ok_or_else(|| {
+                KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+            })?;
+
+            // it may be a bulk decryption request, if not, fallback to single decryption
+            BulkData::deserialize(data).map_or_else(
+                |_| decrypt_single(&owm, &request),
+                |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
+            )
+        }
         other => kms_bail!(KmsError::NotSupported(format!(
             "decrypt: decryption with keys of type: {} is not supported",
             other.object_type()
@@ -143,86 +150,94 @@ async fn get_key(
     Ok(owm)
 }
 
-fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<DecryptResponse> {
-    let ciphertext = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Dispatch Decrypt: data to decrypt must be provided".to_owned())
-    })?;
-
+fn decrypt_bulk(
+    owm: &ObjectWithMetadata,
+    request: &Decrypt,
+    bulk_data: BulkData,
+) -> KResult<DecryptResponse> {
+    debug!(
+        "decrypt_bulk: ==> decrypting {} ciphertexts",
+        bulk_data.len()
+    );
     let key_block = owm.object.key_block()?;
+    let mut plaintexts = Vec::with_capacity(bulk_data.len());
+
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => {
-            CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
-                .decrypt(request)
-                .map_err(Into::into)
+            for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                let request = Decrypt {
+                    data: Some(ciphertext.to_vec()),
+                    ..request.clone()
+                };
+                let response = decrypt_with_covercrypt(owm, &request)?;
+                plaintexts.push(response.data.unwrap_or_default());
+            }
         }
 
         KeyFormatType::TransparentECPrivateKey
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
-            trace!(
-                "dispatch_decrypt: matching on key format type: {:?}",
-                key_block.key_format_type
-            );
-            let private_key = kmip_private_key_to_openssl(&owm.object)?;
-            trace!("dispatch_decrypt: OpenSSL Private Key instantiated before decryption");
-            decrypt_with_pkey(request, &owm.id, ciphertext, &private_key)
+            for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                let request = Decrypt {
+                    data: Some(ciphertext.to_vec()),
+                    ..request.clone()
+                };
+                let response = decrypt_with_public_key(owm, &request)?;
+                plaintexts.push(response.data.unwrap_or_default());
+            }
         }
 
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-            // recover the cryptographic algorithm from the request or the key block or default to AES
-            let cryptographic_algorithm = request
-                .cryptographic_parameters
-                .as_ref()
-                .and_then(|cp| cp.cryptographic_algorithm)
-                .unwrap_or_else(|| {
-                    key_block
-                        .cryptographic_algorithm()
-                        .copied()
-                        .unwrap_or(CryptographicAlgorithm::AES)
-                });
-            let block_cipher_mode = request
-                .cryptographic_parameters
-                .as_ref()
-                .and_then(|cp| cp.block_cipher_mode);
+            let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+            for nonce_ciphertext_tag in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data)
+            {
+                let nonce = &nonce_ciphertext_tag[0..aead.nonce_size()];
+                let ciphertext = &nonce_ciphertext_tag
+                    [aead.nonce_size()..nonce_ciphertext_tag.len() - aead.tag_size()];
+                let tag = &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - aead.tag_size()..];
+                let plaintext = aead_decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
+                plaintexts.push(plaintext);
+            }
+        }
+
+        other => {
+            return Err(KmsError::NotSupported(format!(
+                "decryption with keys of format: {other}"
+            )))
+        }
+    };
+
+    debug!(
+        "decrypt_bulk: ==> decrypted {} plaintexts",
+        plaintexts.len()
+    );
+    Ok(DecryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        data: Some(BulkData::new(plaintexts).serialize()?),
+        correlation_value: request.correlation_value.clone(),
+    })
+}
+
+fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
+    trace!("decrypt_single");
+    let key_block = owm.object.key_block()?;
+    match &key_block.key_format_type {
+        KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
+
+        KeyFormatType::TransparentECPrivateKey
+        | KeyFormatType::TransparentRSAPrivateKey
+        | KeyFormatType::PKCS1
+        | KeyFormatType::PKCS8 => {
             trace!(
-                "dispatch_decrypt: cryptographic_algorithm: {cryptographic_algorithm:?}, \
-                 block_cipher_mode: {block_cipher_mode:?}"
+                "dispatch_decrypt: matching on public key format type: {:?}",
+                key_block.key_format_type
             );
-            let key_bytes = key_block.key_bytes()?;
-            let aead = AeadCipher::from_algorithm_and_key_size(
-                cryptographic_algorithm,
-                block_cipher_mode,
-                key_bytes.len(),
-            )?;
-            let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "dispatch_decrypt: the nonce/IV must be provided".to_owned(),
-                )
-            })?;
-            let aad = request
-                .authenticated_encryption_additional_data
-                .as_deref()
-                .unwrap_or(EMPTY_SLICE);
-            let tag = request
-                .authenticated_encryption_tag
-                .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+            decrypt_with_public_key(owm, request)
+        }
 
-            trace!(
-                "dispatch_decrypt: nonce: {}, aad: {}, tag: {}",
-                general_purpose::STANDARD.encode(nonce),
-                general_purpose::STANDARD.encode(aad),
-                general_purpose::STANDARD.encode(tag)
-            );
-
-            let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
-
-            Ok(DecryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
-                data: Some(plaintext),
-                correlation_value: request.correlation_value.clone(),
-            })
+        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+            decrypt_single_with_symmetric_key(owm, request)?
         }
 
         other => Err(KmsError::NotSupported(format!(
@@ -231,26 +246,100 @@ fn dispatch_decrypt(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Decr
     }
 }
 
-fn decrypt_with_pkey(
+fn decrypt_with_covercrypt(
+    owm: &ObjectWithMetadata,
     request: &Decrypt,
-    key_id: &str,
-    ciphertext: &[u8],
-    private_key: &PKey<Private>,
+) -> Result<DecryptResponse, KmsError> {
+    CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
+        .decrypt(request)
+        .map_err(Into::into)
+}
+
+fn decrypt_single_with_symmetric_key(
+    owm: &ObjectWithMetadata,
+    request: &Decrypt,
+) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    let ciphertext = request.data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),
+        )
+    })?;
+    trace!(
+        "Decrypt single with symmetric key: ciphertext size: {:?}",
+        ciphertext.len()
+    );
+    let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+    let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
+    })?;
+    let aad = request
+        .authenticated_encryption_additional_data
+        .as_deref()
+        .unwrap_or(EMPTY_SLICE);
+    let tag = request
+        .authenticated_encryption_tag
+        .as_deref()
+        .unwrap_or(EMPTY_SLICE);
+    let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    Ok(Ok(DecryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        data: Some(plaintext),
+        correlation_value: request.correlation_value.clone(),
+    }))
+}
+
+fn get_aead_and_key(
+    owm: &ObjectWithMetadata,
+    request: &Decrypt,
+) -> Result<(Zeroizing<Vec<u8>>, AeadCipher), KmsError> {
+    let key_block = owm.object.key_block()?;
+    // recover the cryptographic algorithm from the request or the key block or default to AES
+    let cryptographic_algorithm = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .unwrap_or_else(|| {
+            key_block
+                .cryptographic_algorithm()
+                .copied()
+                .unwrap_or(CryptographicAlgorithm::AES)
+        });
+    let block_cipher_mode = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| cp.block_cipher_mode);
+    let key_bytes = key_block.key_bytes()?;
+    let aead = AeadCipher::from_algorithm_and_key_size(
+        cryptographic_algorithm,
+        block_cipher_mode,
+        key_bytes.len(),
+    )?;
+    Ok((key_bytes, aead))
+}
+
+fn decrypt_with_public_key(
+    owm: &ObjectWithMetadata,
+    request: &Decrypt,
 ) -> KResult<DecryptResponse> {
+    let ciphertext = request.data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+    })?;
+    let private_key = kmip_private_key_to_openssl(&owm.object)?;
+
     let plaintext = match private_key.id() {
         Id::RSA => decrypt_with_rsa(
-            private_key,
+            &private_key,
             request.cryptographic_parameters.as_ref(),
             ciphertext,
         )?,
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext)?,
         other => {
             kms_bail!("Decrypt with PKey: private key type not supported: {other:?}")
         }
     };
     Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         data: Some(plaintext),
         correlation_value: request.correlation_value.clone(),
     })

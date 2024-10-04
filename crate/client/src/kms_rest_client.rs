@@ -39,6 +39,7 @@ use crate::{
     },
     certificate_verifier::{LeafCertificateVerifier, NoVerifier},
     error::ClientError,
+    ClientResultHelper,
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -517,7 +518,6 @@ impl KmsClient {
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
-        headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
         // We deal with 4 scenarios:
         // 1. HTTP: no TLS
@@ -553,7 +553,8 @@ impl KmsClient {
             client: builder
                 .default_headers(headers)
                 .tcp_keepalive(Duration::from_secs(60))
-                .build()?,
+                .build()
+                .context("Reqwest client builder")?,
             server_url,
             print_json,
         })
@@ -705,9 +706,9 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
     ))
 }
 
-/// Build a `TLSClient` to use with a KMS running inside a tee
-/// The TLS verification is the basic one but also include the verification of the leaf certificate
-/// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
+/// Build a `TLSClient` to use with a KMS running inside a tee.
+/// The TLS verification is the basic one but also includes the verification of the leaf certificate
+/// The TLS socket is mounted since the leaf certificate is exactly the same as the expected one.
 pub(crate) fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,

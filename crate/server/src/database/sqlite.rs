@@ -63,7 +63,10 @@ impl SqlitePool {
             .disable_statement_logging();
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(1)
+            .max_connections(
+                u32::try_from(num_cpus::get())
+                    .expect("this conversion cannot fail (or I want that machine)"),
+            )
             .connect_with(options)
             .await?;
 

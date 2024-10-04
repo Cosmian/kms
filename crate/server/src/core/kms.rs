@@ -251,7 +251,7 @@ impl KMS {
     /// manage the IV/Counter/Nonce.
     ///
     /// If the Managed Cryptographic Object referenced has a Usage Limits
-    /// attribute then the server SHALL obtain an allocation from the
+    /// attribute, then the server SHALL obtain an allocation from the
     /// current Usage Limits value prior to performing the encryption operation.
     /// If the allocation is unable to be obtained the operation SHALL
     /// return with a result status of Operation Failed and result reason of
@@ -261,7 +261,7 @@ impl KMS {
     /// Object used as the key and the result of the encryption operation.
     ///
     /// The success or failure of the operation is indicated by the Result
-    /// Status (and if failure the Result Reason) in the response header.
+    /// Status (and if failure is the Result Reason) in the response header.
     pub(crate) async fn encrypt(
         &self,
         request: Encrypt,
@@ -277,7 +277,7 @@ impl KMS {
     /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
-    /// The server SHALL copy the Unique Identifier returned by this operations
+    /// The server SHALL copy the Unique Identifier returned by this operation
     /// into the ID Placeholder variable.
     pub(crate) async fn export(
         &self,

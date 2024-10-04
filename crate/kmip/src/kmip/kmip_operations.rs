@@ -930,7 +930,7 @@ pub struct DeleteAttributeResponse {
     pub unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     /// The Unique Identifier of the Managed
@@ -1014,7 +1014,7 @@ pub struct EncryptResponse {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     /// The Unique Identifier of the Managed

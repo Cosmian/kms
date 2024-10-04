@@ -295,7 +295,7 @@ impl ClientConf {
             print_json,
         )
         .with_context(|| {
-            format!("Unable to instantiate a KMS server REST client {kms_server_url}")
+            format!("Unable to instantiate a KMS REST client to server at {kms_server_url}")
         })?;
 
         Ok(kms_rest_client)

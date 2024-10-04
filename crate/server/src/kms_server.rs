@@ -314,7 +314,7 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
-        // The default scope serves from the root / the KMIP, permissions and tee endpoints
+        // The default scope serves from the root / the KMIP, permissions, and tee endpoints
         let default_scope = web::scope("")
             .wrap(AuthTransformer::new(
                 kms_server.clone(),
@@ -346,8 +346,8 @@ pub async fn prepare_kms_server(
     .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s
     .tls_handshake_timeout(std::time::Duration::from_secs(18)) // default: 3s
     .keep_alive(std::time::Duration::from_secs(30)) // default: 5s
-    .shutdown_timeout(180) // default: 30s
-    .client_request_timeout(std::time::Duration::from_secs(30)); // default: 5s
+    .client_request_timeout(std::time::Duration::from_secs(30)) // default: 5s
+    .shutdown_timeout(180); // default: 30s
 
     Ok(match builder {
         Some(cert_auth_builder) => {
