@@ -2,11 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.19.0] - xxxx-xx-xx
+## [4.19.0] - 2024-10-04
 
 ### 🚀 Features
 
+- Google Workspace Client-Side-Encryption (CSE) updates ([#319](https://github.com/Cosmian/kms/pull/319))
+  - Generate Google S/MIME key-pairs and identities and upload them to Gmail API from ckms CLI ([#270](https://github.com/Cosmian/kms/issues/270))
+  - Server-side, export cert at PKCS7 format
+  - Implement missing CSE endpoints
+  - Wrap/unwrap CSE elements with authenticated encryption
+  - Export wrapped keys from KMS specifying the cipher mode
+  - Handle auth for guest users ([#271](https://github.com/Cosmian/kms/issues/271))
+- Add SetAttribute/DeleteAttribute KMIP operations ([#303](https://github.com/Cosmian/kms/pull/303))
+- Reenable wrap/unwrap on ckms by linking statically on openssl ([#317](https://github.com/Cosmian/kms/pull/317))
+
+### Documentation
+
 - Documentation: Migrating emails to Gmail CSE ([#316](https://github.com/Cosmian/kms/pull/316))
+- Update CSE documentation (Gmail S/MIME) ([#316](https://github.com/Cosmian/kms/pull/316))
+- Update KMS build instructions ([#320](https://github.com/Cosmian/kms/pull/320))
+
+### 🧪 Testing
+
+- Add test on database backends ([#311](https://github.com/Cosmian/kms/pull/311))
+- Reduce CI pipeline duration in debug ([#315](https://github.com/Cosmian/kms/pull/315))
+- Add CSE endpoints testing ([#319](https://github.com/Cosmian/kms/pull/319))
+
+### ⚙️ Miscellaneous Tasks
+
+- Clippy hardening in crate `kmip` ([#304](https://github.com/Cosmian/kms/pull/304))
 
 ## [4.18.0] - 2024-09-17
 
