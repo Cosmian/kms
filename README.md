@@ -98,13 +98,6 @@ The encrypted file is available at "image.enc"
 The decrypted file is available at "image2.png"
 ```
 
-Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
-
-```sh
-cargo run --bin ckms -- --help
-```
-
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 
 ## Repository content
