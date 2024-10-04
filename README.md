@@ -13,9 +13,9 @@ Management System** that presents some unique features, such as
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line and graphical
   interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
-- Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
-  on [Cosmian GitHub](https://github.com/Cosmian))
-- FIPS 140–3 mode gated behind the feature `fips`
+- Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+  on [Cosmian Github](https://github.com/Cosmian))
+- FIPS 140-2 mode gated behind the feature `fips`
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
 - out-of-the-box support
@@ -50,15 +50,15 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 ## Quick start
 
 Pre-built binaries [are available](https://package.cosmian.com/kms/4.18.0/)
-for Linux, macOS, and Windows, as well as Docker images.
-To run the server binary, OpenSSL must be available in your path (see "building the KMS" below
-for details); other binaries do not have this requirement.
+for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
+available in your path (see "building the KMS" below for details); other binaries do not have this
+requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
