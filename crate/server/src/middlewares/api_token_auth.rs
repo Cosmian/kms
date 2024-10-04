@@ -82,52 +82,47 @@ async fn get_api_token(kms_server: &Arc<KMS>, api_token_id: &str) -> KResult<Str
 }
 
 async fn manage_api_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
-    match &kms_server.params.api_token_id {
-        Some(api_token_id) => {
-            trace!("Token authentication using this API token ID: {api_token_id}");
-            let api_token = get_api_token(&kms_server, api_token_id.as_str()).await?;
+    if let Some(api_token_id) = &kms_server.params.api_token_id {
+        trace!("Token authentication using this API token ID: {api_token_id}");
+        let api_token = get_api_token(&kms_server, api_token_id.as_str()).await?;
 
-            let client_token = req
-                .headers()
-                .get(header::AUTHORIZATION)
-                .ok_or_else(|| KmsError::InvalidRequest("Missing Authorization header".to_owned()))?
-                .to_str()
-                .map_err(|e| {
-                    KmsError::InvalidRequest(format!(
-                        "Error converting header value to string: {e:?}"
-                    ))
-                })?
-                .split("Bearer")
-                .collect::<Vec<&str>>();
+        let client_token = req
+            .headers()
+            .get(header::AUTHORIZATION)
+            .ok_or_else(|| KmsError::InvalidRequest("Missing Authorization header".to_owned()))?
+            .to_str()
+            .map_err(|e| {
+                KmsError::InvalidRequest(format!("Error converting header value to string: {e:?}"))
+            })?
+            .split("Bearer")
+            .collect::<Vec<&str>>();
 
-            if client_token.len() != 2 {
-                return Err(KmsError::InvalidRequest(format!(
-                    "Invalid Authorization header format: expected: \"Bearer <API_TOKEN>\", got \
-                     {client_token:?}"
-                )));
-            }
-            let client_token = client_token[1].trim_start().to_lowercase();
-
-            trace!("API Token: {api_token}");
-            trace!("Client API Token: {client_token}");
-
-            if client_token == api_token.as_str() {
-                debug!("Token authentication successful");
-                Ok(())
-            } else {
-                error!(
-                    "{:?} {} 401 unauthorized: Client and server authentication tokens mismatch",
-                    req.method(),
-                    req.path(),
-                );
-                Err(KmsError::Unauthorized(
-                    "Client and server authentication tokens mismatch".to_owned(),
-                ))
-            }
+        if client_token.len() != 2 {
+            return Err(KmsError::InvalidRequest(format!(
+                "Invalid Authorization header format: expected: \"Bearer <API_TOKEN>\", got \
+                 {client_token:?}"
+            )));
         }
-        None => {
-            trace!("No API Token provided");
+        let client_token = client_token[1].trim_start().to_lowercase();
+
+        trace!("API Token: {api_token}");
+        trace!("Client API Token: {client_token}");
+
+        if client_token == api_token.as_str() {
+            debug!("Token authentication successful");
             Ok(())
+        } else {
+            error!(
+                "{:?} {} 401 unauthorized: Client and server authentication tokens mismatch",
+                req.method(),
+                req.path(),
+            );
+            Err(KmsError::Unauthorized(
+                "Client and server authentication tokens mismatch".to_owned(),
+            ))
         }
+    } else {
+        trace!("No API Token provided");
+        Ok(())
     }
 }

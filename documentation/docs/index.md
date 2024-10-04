@@ -1,45 +1,67 @@
-The Cosmian Key Management System (KMS) is a high-performance,
-[**open-source**](https://github.com/Cosmian/kms), server application
-written in [**Rust**](https://www.rust-lang.org/) that provides a [**KMIP**](#kmip-21-api) REST API
-to store and manage keys used in many standard (AES, ECIES,...) cryptographic stacks as well as
-Cosmian cryptographic stacks
-([**Covercrypt**](https://github.com/Cosmian/cover_crypt),
-[**Findex**](https://github.com/Cosmian/findex)).
-The KMS can also be used to perform encryption and decryption operations.
+The Cosmian KMS is a high-performance,
+[**open-sourced**](https://github.com/Cosmian/kms), server application
+written in [**Rust**](https://www.rust-lang.org/) that provides a [**KMIP 2.1**](#kmip-21-api)
+REST API.
 
-The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_trust.md), such as
-the public cloud,
-using confidential [Cosmian VMs](https://docs.cosmian.com/compute/cosmian_vm/overview/)
-and an application-level encrypted database indexed with Findex.
+The Cosmian KMS is both a Key Management System and a Public Key Infrastructure.
+As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic
+services such as on-the-fly key generation, encryption, and decryption operations.
 
-!!! info "Docker Quick start"
+The KMS supports all the standard NIST cryptographic algorithms as well as advanced post-quantum
+cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
+
+As a PKI it can manage root and intermediate certificates, sign and verify certificates, use
+their public keys to encrypt and decrypt data.
+Certificates can be exported under various formats including PKCS#12 modern and legacy flavor,
+to be used in various applications, such as in S/MIME encrypted emails.
+
+!!! info "Quick start"
 
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0
     ```
 
-    Check the Cosmian KMS server version
+    Pre-built binaries, for both the server and CLI (called `ckms`) are available for multiple
+    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.19.0/).
+
+    Using [`ckms`](./cli/cli.md), you can easily manage the server:
+
+    1) Create a 256-bit symmetric key
 
     ```sh
-    curl http://localhost:9998/version
+    ckms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
+    ...
+    The symmetric key was successfully generated.
+          Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.18.0/).
+    2) Encrypt the `image.png` file with AES GCM using the key
 
-<!-- toc -->
+    ```sh
+    ckms sym encrypt --tag my-file-key --output-file image.enc image.png
+    ...
+    The encrypted file is available at "image.enc"
+    ```
+
+    3) Decrypt the `image.enc` file using the key
+    ```sh
+    ckms sym decrypt --tag my-file-key --output-file image2.png image.enc
+    ...
+    The decrypted file is available at "image2.png"
+    ```
 
 - [Public Source Code](#public-source-code)
 - [KMIP 2.1 API](#kmip-21-api)
 - [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
 - [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-- [FIPS Mode](#fips-mode)
+- [FIPS 140-3 certifications](#fips-140-3-certifications)
 - [Veracrypt and LUKS disk encryption support](#veracrypt-and-luks-disk-encryption-support)
 - [State-of-the-art authentication](#state-of-the-art-authentication)
 - [High-availability and databases](#high-availability-and-databases)
-- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-public-cloud-or-other-zero-trust-environments)
 - [Support for object tagging](#support-for-object-tagging)
 - [Command line interface client](#command-line-interface-client)
 - [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
@@ -48,11 +70,9 @@ and an application-level encrypted database indexed with Findex.
 - [Comprehensive inline help](#comprehensive-inline-help)
 - [TOML configuration file](#toml-configuration-file)
 
-<!-- tocstop -->
-
 #### Public Source Code
 
-The server's source code is fully available on [Github](https://github.com/Cosmian/kms) under a
+The server's source code is fully available on [GitHub](https://github.com/Cosmian/kms) under a
 Business Source License so that it can be audited and improved by anyone.
 
 #### KMIP 2.1 API
@@ -78,14 +98,12 @@ The KMS server can be used as a Key Management System for the Microsoft Double K
 feature.
 Please check the [Microsoft Double Key Encryption](./ms_dke/ms_dke.md) page for details.
 
-#### FIPS Mode
+#### FIPS 140-3 certifications
 
-The server exposes all lot of advanced [cryptographic algorithms](algorithms.md) and can also be run
-in [FIPS
-mode](./fips.md).
-In this mode, the server is only built with FIPS 140-2 validated cryptographic libraries and the
-cryptographic
-operations are performed in a FIPS 140-2 validated mode.
+When run in FIPS mode, the Cosmian KMS uses only cryptographic primitives that are compliant with
+the standards of the National Institute of Standards and Technology (NIST) and uses
+implementations of an NIST FIPS 140–3 compliant cryptographic module.
+See [FIPS mode](./fips.md)
 
 #### Veracrypt and LUKS disk encryption support
 
@@ -117,13 +135,15 @@ For additional security, the server supports concurrent user encrypted databases
 mode
 and an application-level encrypted database on top of Redis in a high-availability scenario.
 
-#### Designed to securely run in the Cloud or other Zero-Trust environments
+#### Designed to securely run in the Public Cloud or other Zero-Trust environments
 
-Thanks to its design, running on top of Cosmian VMs with a fully application-level encrypted
-database on top of Redis,
-the Cosmian KMS is able to securely operate in zero-trust environments, such as the public cloud.
+When running on top of Cosmian VMs with a fully application-level encrypted
+Redis database, the Cosmian KMS can securely run in zero-trust environments, such as the public
+cloud.
+See our cloud-ready confidential KMS on the
+[Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
 
-See the dedicated page for [running the KMS in a zero-trust environment](./zero_trust.md).
+Read our dedicated page for [running the KMS in a zero-trust environment](./zero_trust.md).
 
 #### Support for object tagging
 
@@ -155,7 +175,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.18.0/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.0/)
 
 #### Integrated with OpenTelemetry
 
@@ -165,13 +185,12 @@ an [OpenTelemetry](https://opentelemetry.io/) collector.
 #### Integrated with Cloudproof libraries
 
 To build the next generation of privacy-by-design applications with end-to-end encryption,
-the KMS server is integrated with the [**Cloudproof
-**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/)
-libraries
-to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption
-and decryption.
+the KMS server is integrated with the
+[**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/)
+libraries to deliver keys and secrets to the client-side cryptographic stacks or perform
+delegated encryption and decryption.
 
-The libraries are available in many languages, including Javascript, Java, Dart, and Python.
+The libraries are available in many languages, including JavaScript, Java, Dart, and Python.
 Check
 their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/)
 for details.
@@ -182,7 +201,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.18.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.19.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the

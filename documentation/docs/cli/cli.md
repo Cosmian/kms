@@ -1,10 +1,12 @@
+# Cosmian KMS Command Line Interface (CLI)
+
 Cosmian KMS can be managed using the `ckms` command line interface (CLI) or its graphical
 client `ckms_gui`.
 
 !!! info "Download ckms and ckms_gui"
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.18.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.0/)
 
 ## Configuring the clients
 

@@ -13,13 +13,20 @@
     clippy::perf,
     clippy::style,
     clippy::pedantic,
-    clippy::cargo
+    clippy::cargo,
+    clippy::nursery,
+
+    // restriction lints
+    clippy::map_err_ignore,
+    clippy::print_stdout,
+    clippy::redundant_clone
 )]
 #![allow(
     clippy::module_name_repetitions,
     clippy::too_many_lines,
     clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions
+    clippy::multiple_crate_versions,
+    clippy::redundant_pub_crate
 )]
 pub mod actions;
 pub mod error;

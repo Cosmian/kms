@@ -5,21 +5,16 @@ use super::attributes::{
     access_policy_as_vendor_attribute, policy_as_vendor_attribute,
     rekey_edit_action_as_vendor_attribute, RekeyEditAction,
 };
-#[cfg(feature = "openssl")]
 use crate::{
     crypto::wrap::wrap_key_bytes,
-    kmip::kmip_data_structures::KeyWrappingData,
-    kmip::kmip_types::{KeyWrapType, WrappingMethod},
-};
-use crate::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-            LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
+            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
         },
     },
 };
@@ -76,7 +71,6 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
-#[cfg(feature = "openssl")]
 pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
@@ -114,6 +108,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
         private_key.to_vec()
     });
 
+    let cryptographic_length = Some(i32::try_from(private_key.len())? * 8);
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PrivateKey,
@@ -134,7 +129,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(Box::new(attributes)),
                 },
-                cryptographic_length: Some(private_key.len() as i32 * 8),
+                cryptographic_length,
                 key_wrapping_data: if is_wrapped {
                     Some(Box::new(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
@@ -152,7 +147,6 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
-#[cfg(feature = "openssl")]
 pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
@@ -190,6 +184,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
         private_key.to_vec()
     });
 
+    let cryptographic_length = Some(i32::try_from(private_key.len())? * 8);
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PrivateKey,
@@ -209,7 +204,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(Box::new(attributes)),
                 },
-                cryptographic_length: Some(private_key.len() as i32 * 8),
+                cryptographic_length,
                 key_wrapping_data: if is_wrapped {
                     Some(Box::new(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
@@ -249,6 +244,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     };
     attributes.set_tags(tags)?;
 
+    let cryptographic_length = Some(i32::try_from(public_key.len())? * 8);
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PublicKey,
@@ -264,7 +260,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(public_key.to_vec())),
                     attributes: Some(Box::new(attributes)),
                 },
-                cryptographic_length: Some(public_key.len() as i32 * 8),
+                cryptographic_length,
                 key_wrapping_data: None,
             },
         },
@@ -288,7 +284,7 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
 /// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipError> {
     Ok(Destroy {
-        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
     })
 }
 
@@ -301,11 +297,11 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    action: RekeyEditAction,
+    action: &RekeyEditAction,
 ) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(UniqueIdentifier::TextString(
-            master_private_key_unique_identifier.to_string(),
+            master_private_key_unique_identifier.to_owned(),
         )),
         private_key_attributes: Some(Attributes {
             object_type: Some(ObjectType::PrivateKey),

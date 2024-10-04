@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
@@ -7,7 +8,10 @@ use std::{
 
 use cosmian_kmip::kmip::{
     kmip_messages::{Message, MessageResponse},
-    kmip_operations::{ReKey, ReKeyResponse},
+    kmip_operations::{
+        DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
+        SetAttributeResponse,
+    },
 };
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
@@ -16,7 +20,7 @@ use cosmian_kmip::kmip::{
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
         ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
         ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-        RevokeResponse, Validate, ValidateResponse,
+        RevokeResponse, StatusResponse, Validate, ValidateResponse,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -35,6 +39,7 @@ use crate::{
     },
     certificate_verifier::{LeafCertificateVerifier, NoVerifier},
     error::ClientError,
+    ClientResultHelper,
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -225,6 +230,24 @@ impl KmsClient {
         request: GetAttributes,
     ) -> Result<GetAttributesResponse, ClientError> {
         self.post_ttlv::<GetAttributes, GetAttributesResponse>(&request)
+            .await
+    }
+
+    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
+    pub async fn set_attribute(
+        &self,
+        request: SetAttribute,
+    ) -> Result<SetAttributeResponse, ClientError> {
+        self.post_ttlv::<SetAttribute, SetAttributeResponse>(&request)
+            .await
+    }
+
+    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
+    pub async fn delete_attribute(
+        &self,
+        request: DeleteAttribute,
+    ) -> Result<DeleteAttributeResponse, ClientError> {
+        self.post_ttlv::<DeleteAttribute, DeleteAttributeResponse>(&request)
             .await
     }
 
@@ -463,6 +486,11 @@ impl KmsClient {
         self.get_no_ttlv("/version", None::<&()>).await
     }
 
+    /// This operation requests `google_cse` status of the server
+    pub async fn google_cse_status(&self) -> Result<StatusResponse, ClientError> {
+        self.get_no_ttlv("/google_cse/status", None::<&()>).await
+    }
+
     /// Instantiate a new KMIP REST Client
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
@@ -490,7 +518,6 @@ impl KmsClient {
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
-        headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
         // We deal with 4 scenarios:
         // 1. HTTP: no TLS
@@ -526,7 +553,8 @@ impl KmsClient {
             client: builder
                 .default_headers(headers)
                 .tcp_keepalive(Duration::from_secs(60))
-                .build()?,
+                .build()
+                .context("Reqwest client builder")?,
             server_url,
             print_json,
         })
@@ -589,7 +617,7 @@ impl KmsClient {
             Some(d) => {
                 trace!(
                     "==>\n{}",
-                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_string())
+                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_owned())
                 );
                 self.client.post(server_url).json(d).send().await?
             }
@@ -601,7 +629,7 @@ impl KmsClient {
             let response = response.json::<R>().await?;
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_string())
+                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_owned())
             );
             return Ok(response)
         }
@@ -613,9 +641,10 @@ impl KmsClient {
 
     pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, ClientError>
     where
-        O: Serialize,
+        O: Serialize + Debug,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
+        trace!("kmip_request: {:?}", kmip_request);
         let endpoint = "/kmip/2_1";
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);
@@ -628,7 +657,7 @@ impl KmsClient {
         }
         trace!(
             "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
         );
         request = request.json(&ttlv);
 
@@ -644,7 +673,7 @@ impl KmsClient {
             }
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_string())
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
             return from_ttlv(&ttlv).map_err(|e| ClientError::ResponseFailed(e.to_string()))
         }
@@ -658,6 +687,7 @@ impl KmsClient {
 /// Some errors are returned by the Middleware without going through our own error manager.
 /// In that case, we make the error clearer here for the client.
 async fn handle_error(endpoint: &str, response: Response) -> Result<String, ClientError> {
+    trace!("Error response received on {endpoint}: Response: {response:?}");
     let status = response.status();
     let text = response.text().await?;
 
@@ -666,8 +696,8 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
         endpoint,
         if text.is_empty() {
             match status {
-                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
-                StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
+                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_owned(),
+                StatusCode::UNAUTHORIZED => "Bad authorization token".to_owned(),
                 _ => format!("{status} {text}"),
             }
         } else {
@@ -676,9 +706,9 @@ async fn handle_error(endpoint: &str, response: Response) -> Result<String, Clie
     ))
 }
 
-/// Build a `TLSClient` to use with a KMS running inside a tee
-/// The TLS verification is the basic one but also include the verification of the leaf certificate
-/// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
+/// Build a `TLSClient` to use with a KMS running inside a tee.
+/// The TLS verification is the basic one but also includes the verification of the leaf certificate
+/// The TLS socket is mounted since the leaf certificate is exactly the same as the expected one.
 pub(crate) fn build_tls_client_tee(
     leaf_cert: Certificate,
     accept_invalid_certs: bool,

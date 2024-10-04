@@ -1,11 +1,13 @@
 use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{
+    kmip::kmip_types::{LinkType, Tag},
+    KMS_CLI_CONF_ENV,
+};
 use serde_json::Value;
 
 use crate::{
-    actions::shared::AttributeTag,
     error::{
         result::{CliResult, CliResultHelper},
         CliError,
@@ -16,8 +18,9 @@ use crate::{
 pub(crate) fn get_attributes(
     cli_conf_path: &str,
     uid: &str,
-    attribute_tags: &[AttributeTag],
-) -> CliResult<HashMap<AttributeTag, Value>> {
+    attribute_tags: &[Tag],
+    attribute_link_types: &[LinkType],
+) -> CliResult<HashMap<String, Value>> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [
         "--id",
@@ -34,21 +37,12 @@ pub(crate) fn get_attributes(
 
     for tag in attribute_tags {
         args.push("--attribute".to_owned());
-        let arg_value = match tag {
-            AttributeTag::ActivationDate => "activation-date",
-            AttributeTag::CryptographicAlgorithm => "cryptographic-algorithm",
-            AttributeTag::CryptographicLength => "cryptographic-length",
-            AttributeTag::CryptographicParameters => "cryptographic-parameters",
-            AttributeTag::CryptographicUsageMask => "cryptographic-usage-mask",
-            AttributeTag::KeyFormatType => "key-format-type",
-            AttributeTag::LinkedPrivateKeyId => "linked-private-key-id",
-            AttributeTag::LinkedPublicKeyId => "linked-public-key-id",
-            AttributeTag::LinkedIssuerCertificateId => "linked-issuer-certificate-id",
-            AttributeTag::LinkedCertificateId => "linked-certificate-id",
-            AttributeTag::CryptographicDomainParameters => "cryptographic-domain-parameters",
-            AttributeTag::Tags => "tags",
-        };
-        args.push(arg_value.to_owned());
+        args.push(tag.to_string());
+    }
+
+    for link_type in attribute_link_types {
+        args.push("--link-type".to_owned());
+        args.push(link_type.to_string());
     }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -59,26 +53,7 @@ pub(crate) fn get_attributes(
     if output.status.success() {
         let output = std::fs::read_to_string(temp_file.path())?;
         let output: HashMap<String, Value> = serde_json::from_str(&output)?;
-        let mut result = HashMap::with_capacity(output.len());
-        for (k, v) in output {
-            let tag = match k.as_str() {
-                "activation-date" => AttributeTag::ActivationDate,
-                "cryptographic-algorithm" => AttributeTag::CryptographicAlgorithm,
-                "cryptographic-length" => AttributeTag::CryptographicLength,
-                "cryptographic-parameters" => AttributeTag::CryptographicParameters,
-                "cryptographic-usage-mask" => AttributeTag::CryptographicUsageMask,
-                "key-format-type" => AttributeTag::KeyFormatType,
-                "linked-private-key-id" => AttributeTag::LinkedPrivateKeyId,
-                "linked-public-key-id" => AttributeTag::LinkedPublicKeyId,
-                "linked-issuer-certificate-id" => AttributeTag::LinkedIssuerCertificateId,
-                "linked-certificate-id" => AttributeTag::LinkedCertificateId,
-                "cryptographic-domain-parameters" => AttributeTag::CryptographicDomainParameters,
-                "tags" => AttributeTag::Tags,
-                _ => return Err(CliError::Default(format!("unknown attribute tag: {k}"))),
-            };
-            result.insert(tag, v);
-        }
-        return Ok(result)
+        return Ok(output)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),

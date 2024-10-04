@@ -9,14 +9,15 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod},
     read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
+use cosmian_logger::log_utils::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use tempfile::TempDir;
 
+use super::ExportKeyParams;
 use crate::{
     error::{result::CliResult, CliError},
     tests::{
@@ -30,7 +31,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn wrap(
+pub(crate) fn wrap(
     cli_conf_path: &str,
     sub_command: &str,
     key_file_in: &Path,
@@ -69,7 +70,6 @@ pub fn wrap(
 
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
-    println!("wrap output: {output:?}");
     if output.status.success() {
         let wrap_output = std::str::from_utf8(&output.stdout)?;
         let b64_wrapping_key = extract_wrapping_key(wrap_output)
@@ -83,7 +83,7 @@ pub fn wrap(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn unwrap(
+pub(crate) fn unwrap(
     cli_conf_path: &str,
     sub_command: &str,
     key_file_in: &Path,
@@ -130,7 +130,8 @@ pub fn unwrap(
 }
 
 #[tokio::test]
-pub async fn test_password_wrap_import() -> CliResult<()> {
+pub(crate) async fn test_password_wrap_import() -> CliResult<()> {
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
     // CC
@@ -147,14 +148,14 @@ pub async fn test_password_wrap_import() -> CliResult<()> {
         create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
-    // syn
+    // sym
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())
 }
 
-pub fn password_wrap_import_test(
+pub(crate) fn password_wrap_import_test(
     ctx: &TestsContext,
     sub_command: &str,
     private_key_id: &str,
@@ -163,16 +164,13 @@ pub fn password_wrap_import_test(
 
     // Export
     let key_file = temp_dir.path().join("master_private.key");
-    export_key(
-        &ctx.owner_client_conf_path,
-        sub_command,
-        private_key_id,
-        key_file.to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.to_string(),
+        sub_command: sub_command.to_owned(),
+        key_id: private_key_id.to_owned(),
+        key_file: key_file.to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
 
     let object = read_object_from_json_ttlv_file(&key_file)?;
     let key_bytes = object.key_block()?.key_bytes()?;

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cloudproof::reexport::crypto_core::reexport::x509_cert;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
@@ -30,7 +30,7 @@ use crate::{
 const MOZILLA_CCADB: &str =
     "https://ccadb.my.salesforce-sites.com/mozilla/IncludedRootsPEMTxt?TrustBitsInclude=Websites";
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(ValueEnum, Debug, Clone)]
 pub enum CertificateInputFormat {
     JsonTtlv,
     Pem,
@@ -81,17 +81,17 @@ pub struct ImportCertificateAction {
 
     /// The corresponding private key id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
     /// The corresponding public key id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "public-key-id", short = 'q')]
+    #[clap(long, short = 'q')]
     public_key_id: Option<String>,
 
     /// The issuer certificate id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "issuer-certificate-id", short = 'i')]
+    #[clap(long, short = 'i')]
     issuer_certificate_id: Option<String>,
 
     /// PKCS12 password: only available for PKCS12 format.
@@ -119,7 +119,7 @@ pub struct ImportCertificateAction {
 
 impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        debug!("CLI: entering import certificate");
+        trace!("CLI: entering import certificate: {:?}", self);
 
         //generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
@@ -145,6 +145,10 @@ impl ImportCertificateAction {
             );
         };
 
+        trace!(
+            "CLI: leaf_certificate_attributes: {:?}",
+            leaf_certificate_attributes
+        );
         let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("CLI: import certificate as TTLV JSON file");
@@ -159,7 +163,7 @@ impl ImportCertificateAction {
                     )
                     .await?;
                 (
-                    "The certificate in the JSON TTLV was successfully imported!".to_string(),
+                    "The certificate in the JSON TTLV was successfully imported!".to_owned(),
                     Some(certificate_id),
                 )
             }
@@ -183,7 +187,7 @@ impl ImportCertificateAction {
                     )
                     .await?;
                 (
-                    "The certificate in the PEM file was successfully imported!".to_string(),
+                    "The certificate in the PEM file was successfully imported!".to_owned(),
                     Some(certificate_id),
                 )
             }
@@ -207,7 +211,7 @@ impl ImportCertificateAction {
                     )
                     .await?;
                 (
-                    "The certificate in the DER file was successfully imported!".to_string(),
+                    "The certificate in the DER file was successfully imported!".to_owned(),
                     Some(certificate_id),
                 )
             }
@@ -235,7 +239,7 @@ impl ImportCertificateAction {
                     )
                     .await?;
                 (
-                    "The certificate chain in the PEM file was successfully imported!".to_string(),
+                    "The certificate chain in the PEM file was successfully imported!".to_owned(),
                     Some(leaf_certificate_id),
                 )
             }
@@ -259,7 +263,7 @@ impl ImportCertificateAction {
                 self.import_chain(kms_rest_client, objects, self.replace_existing, None)
                     .await?;
 
-                ("The list of Mozilla CCADB certificates".to_string(), None)
+                ("The list of Mozilla CCADB certificates".to_owned(), None)
             }
         };
         let mut stdout = console::Stdout::new(&stdout_message);

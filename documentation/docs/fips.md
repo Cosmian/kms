@@ -1,19 +1,25 @@
-Cosmian KMS has a build option, called the FIPS mode, to ensure the KMS only uses cryptographic primitives that are
-compliant with the standards of the National Institute of Standards and Technology (NIST) and uses implementations of a
-NIST [FIPS 140-3](https://csrc.nist.gov/pubs/fips/140-3/final) compliant cryptographic module.
+# FIPS 140-3
 
-When built using this mode, the KMS will be produced as a binary, statically linked to an OpenSSL library (also in FIPS
-mode), that will only contain compliant algorithms and primitives. The [Cryptographic algorithms page](./algorithms.md)
-specifies the list of NIST compliant algorithms available in this mode.
+The Federal Information Processing Standard (FIPS) Publication 140-3, Security Requirements for
+Cryptographic Modules, is a US government standard that specifies the security requirements for
+cryptographic modules protecting sensitive information.
 
-OpenSSL in FIPS mode, operated on certain operating systems, is part of the list of FIPS compliant cryptographic
-modules; the full list can be
-searched [here](https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search).
-Cosmian recommends using the OpensSSL 3.1 library on Red Hat Linux 9 or Ubuntu 22.04 to fully meet future NIST
-compliance requirements.
+When compiled in FIPS mode, the Cosmian KMS uses only cryptographic primitives that are compliant
+with the standards of the National Institute of Standards and Technology (NIST) and uses
+implementations of an NIST FIPS 140-3 compliant cryptographic module: the OpenSSL FIPS provider.
 
-Cosmian produces pre-built FIPS mode binaries and docker containers of the KMS.
-Alternatively, to build the FIPS mode version from source, use the `--features fips` flag when building the project:
+The OpenSSL FIPS provider is certified under
+
+- [#4779](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4794)
+  when used un Ubuntu 22.04
+- [#4776](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4746)
+  when used on Red Hat Enterprise Linux 9 (RHEL 9)
+
+Cosmian
+produces [pre-built Ubuntu 22.04 FIPS mode binaries](https://package.cosmian.com/kms/4.19.0/ubuntu-22.04/)
+and docker containers of the KMS (on gcr.io).
+
+Alternatively, you can build the FIPS mode version from source, using the `--features fips` flag:
 
 ```shell
 cargo build --release --features fips

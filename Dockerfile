@@ -1,6 +1,6 @@
 FROM ubuntu:22.04 AS builder
 
-LABEL version="4.18.0"
+LABEL version="4.19.0"
 LABEL name="Cosmian KMS docker container"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -30,7 +30,7 @@ COPY . /root/kms
 WORKDIR /root/kms
 
 RUN mkdir -p $OPENSSL_DIR \
-    && bash /root/kms/scripts/local_ossl_instl.sh $OPENSSL_DIR
+    && bash /root/kms/.github/scripts/local_ossl_instl.sh $OPENSSL_DIR
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features
 

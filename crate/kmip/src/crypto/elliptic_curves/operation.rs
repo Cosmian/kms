@@ -1,4 +1,3 @@
-#[cfg(feature = "openssl")]
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},
@@ -6,7 +5,6 @@ use openssl::{
     pkey::PKey,
 };
 use tracing::trace;
-#[cfg(feature = "openssl")]
 use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
@@ -15,7 +13,8 @@ use crate::crypto::elliptic_curves::{
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use crate::{
-    crypto::secret::SafeBigUint,
+    crypto::{secret::SafeBigUint, KeyPair},
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -25,9 +24,8 @@ use crate::{
             LinkedObjectIdentifier, RecommendedCurve,
         },
     },
+    kmip_bail,
 };
-#[cfg(feature = "openssl")]
-use crate::{crypto::KeyPair, error::KmipError, kmip_bail};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -126,15 +124,16 @@ pub fn to_ec_public_key(
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
     public_key_mask: Option<CryptographicUsageMask>,
-) -> Object {
-    let cryptographic_length_in_bits = bytes.len() as i32 * 8;
+) -> KmipResult<Object> {
+    let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
     trace!(
-        "to_ec_public_key: bytes len: {}, bits: {}",
-        cryptographic_length_in_bits,
+        "to_ec_public_key: bytes len: {:?}, bits: {}",
+        cryptographic_length,
         pkey_bits_number
     );
 
-    Object::PublicKey {
+    let q_length = Some(i32::try_from(pkey_bits_number)?);
+    Ok(Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPublicKey,
@@ -147,31 +146,31 @@ pub fn to_ec_public_key(
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: algorithm,
-                    cryptographic_length: Some(cryptographic_length_in_bits),
+                    cryptographic_length,
                     cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
-                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                    cryptographic_parameters: Some(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    })),
+                    }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(pkey_bits_number as i32),
+                        q_length,
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
                         link_type: LinkType::PrivateKeyLink,
                         linked_object_identifier: LinkedObjectIdentifier::TextString(
-                            private_key_uid.to_string(),
+                            private_key_uid.to_owned(),
                         ),
                     }]),
                     ..Attributes::default()
                 })),
             },
-            cryptographic_length: Some(cryptographic_length_in_bits),
+            cryptographic_length,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 /// Convert to an Elliptic Curve KMIP Private Key.
@@ -190,16 +189,17 @@ pub fn to_ec_private_key(
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
     private_key_mask: Option<CryptographicUsageMask>,
-) -> Object {
-    let cryptographic_length_in_bits = bytes.len() as i32 * 8;
+) -> KmipResult<Object> {
+    let cryptographic_length = Some(i32::try_from(bytes.len())? * 8);
 
     trace!(
-        "to_ec_private_key: bytes len: {}, bits: {}",
-        cryptographic_length_in_bits,
+        "to_ec_private_key: bytes len: {:?}, bits: {}",
+        cryptographic_length,
         pkey_bits_number
     );
 
-    Object::PrivateKey {
+    let q_length = Some(i32::try_from(pkey_bits_number)?);
+    Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
@@ -212,35 +212,35 @@ pub fn to_ec_private_key(
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: algorithm,
-                    cryptographic_length: Some(cryptographic_length_in_bits),
+                    cryptographic_length,
                     cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
-                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                    cryptographic_parameters: Some(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    })),
+                    }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(pkey_bits_number as i32),
+                        q_length,
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
                         link_type: LinkType::PublicKeyLink,
                         linked_object_identifier: LinkedObjectIdentifier::TextString(
-                            public_key_uid.to_string(),
+                            public_key_uid.to_owned(),
                         ),
                     }]),
                     ..Attributes::default()
                 })),
             },
-            cryptographic_length: Some(cryptographic_length_in_bits),
+            cryptographic_length,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(all(not(feature = "fips"), feature = "openssl"))]
+#[cfg(not(feature = "fips"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -257,7 +257,7 @@ pub fn create_x25519_key_pair(
         RecommendedCurve::CURVE25519,
         algorithm,
         public_key_mask,
-    );
+    )?;
 
     let private_key = to_ec_private_key(
         &Zeroizing::from(private_key.raw_private_key()?),
@@ -266,13 +266,13 @@ pub fn create_x25519_key_pair(
         RecommendedCurve::CURVE25519,
         algorithm,
         private_key_mask,
-    );
+    )?;
 
     Ok(KeyPair::new(private_key, public_key))
 }
 
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(all(not(feature = "fips"), feature = "openssl"))]
+#[cfg(not(feature = "fips"))]
 pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -289,7 +289,7 @@ pub fn create_x448_key_pair(
         RecommendedCurve::CURVE448,
         algorithm,
         public_key_mask,
-    );
+    )?;
 
     let private_key = to_ec_private_key(
         &Zeroizing::from(private_key.raw_private_key()?),
@@ -298,7 +298,7 @@ pub fn create_x448_key_pair(
         RecommendedCurve::CURVE448,
         algorithm,
         private_key_mask,
-    );
+    )?;
 
     Ok(KeyPair::new(private_key, public_key))
 }
@@ -309,7 +309,6 @@ pub fn create_x448_key_pair(
 /// Sources:
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-#[cfg(feature = "openssl")]
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -336,7 +335,7 @@ pub fn create_ed25519_key_pair(
         RecommendedCurve::CURVEED25519,
         algorithm,
         public_key_mask,
-    );
+    )?;
     trace!("create_ed25519_key_pair: public_key OK");
 
     let private_key = to_ec_private_key(
@@ -346,7 +345,7 @@ pub fn create_ed25519_key_pair(
         RecommendedCurve::CURVEED25519,
         algorithm,
         private_key_mask,
-    );
+    )?;
     trace!("create_ed25519_key_pair: private_key OK");
 
     Ok(KeyPair::new(private_key, public_key))
@@ -358,7 +357,6 @@ pub fn create_ed25519_key_pair(
 /// Sources:
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-#[cfg(feature = "openssl")]
 pub fn create_ed448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -385,7 +383,7 @@ pub fn create_ed448_key_pair(
         RecommendedCurve::CURVEED448,
         algorithm,
         public_key_mask,
-    );
+    )?;
     trace!("create_ed448_key_pair: public_key OK");
 
     let private_key = to_ec_private_key(
@@ -395,13 +393,12 @@ pub fn create_ed448_key_pair(
         RecommendedCurve::CURVEED448,
         algorithm,
         private_key_mask,
-    );
+    )?;
     trace!("create_ed448_key_pair: private_key OK");
 
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[cfg(feature = "openssl")]
 pub fn create_approved_ecc_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -438,14 +435,15 @@ pub fn create_approved_ecc_key_pair(
 
     trace!("create_approved_ecc_key_pair: ec key OK");
 
+    let pkey_bits_number = u32::try_from(ec_private_key.private_key().num_bits())?;
     let private_key = to_ec_private_key(
         &Zeroizing::from(ec_private_key.private_key().to_vec()),
-        ec_private_key.private_key().num_bits() as u32,
+        pkey_bits_number,
         public_key_uid,
         curve,
         algorithm,
         private_key_mask,
-    );
+    )?;
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
     let mut ctx = BigNumContext::new()?;
@@ -453,18 +451,19 @@ pub fn create_approved_ecc_key_pair(
         &ec_private_key
             .public_key()
             .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?,
-        ec_private_key.private_key().num_bits() as u32,
+        pkey_bits_number,
         private_key_uid,
         curve,
         algorithm,
         public_key_mask,
-    );
+    )?;
     trace!("create_approved_ecc_key_pair: public key converted OK");
 
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[cfg(all(test, feature = "openssl"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
 mod tests {
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
@@ -563,9 +562,12 @@ mod tests {
         // public key
         //
         let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
-        let original_public_key_bytes = match &original_public_key_value.key_material {
-            KeyMaterial::TransparentECPublicKey { q_string, .. } => q_string,
-            _ => panic!("Not a transparent public key"),
+        let KeyMaterial::TransparentECPublicKey {
+            q_string: original_public_key_bytes,
+            ..
+        } = &original_public_key_value.key_material
+        else {
+            panic!("Not a transparent public key")
         };
         // try to convert to openssl
         let p_key = PKey::public_key_from_raw_bytes(original_public_key_bytes, Id::X25519).unwrap();
@@ -676,9 +678,12 @@ mod tests {
         // public key
         //
         let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
-        let original_public_key_bytes = match &original_public_key_value.key_material {
-            KeyMaterial::TransparentECPublicKey { q_string, .. } => q_string,
-            _ => panic!("Not a transparent public key"),
+        let KeyMaterial::TransparentECPublicKey {
+            q_string: original_public_key_bytes,
+            ..
+        } = &original_public_key_value.key_material
+        else {
+            panic!("Not a transparent public key")
         };
         // try to convert to openssl
         let p_key = PKey::public_key_from_raw_bytes(original_public_key_bytes, Id::X448).unwrap();
@@ -725,7 +730,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]
@@ -744,7 +749,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]
@@ -784,7 +789,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]
@@ -796,12 +801,12 @@ mod tests {
         let mask = CryptographicUsageMask::Sign;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN);
 
-        assert!(res.is_ok());
+        res.unwrap();
 
         let mask = CryptographicUsageMask::Verify;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN);
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]
@@ -813,24 +818,24 @@ mod tests {
         let mask = CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_ECDH);
 
-        assert!(res.is_ok());
+        res.unwrap();
 
         let mask = CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_ECDH);
 
-        assert!(res.is_ok());
+        res.unwrap();
 
         let mask = CryptographicUsageMask::CRLSign
             | CryptographicUsageMask::CertificateSign
             | CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
 
-        assert!(res.is_ok());
+        res.unwrap();
 
         let mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN_ECDH);
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]
@@ -959,7 +964,7 @@ mod tests {
             allowed,
         );
 
-        assert!(res.is_ok());
+        res.unwrap();
     }
 
     #[test]

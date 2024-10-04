@@ -31,21 +31,26 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Km
 
 /// Extract an `CoverCrypt` policy from attributes
 pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipError> {
-    if let Some(bytes) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
-    {
-        Policy::parse_and_convert(bytes).map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed deserializing the CoverCrypt Policy from the attributes: {e}"),
-            )
-        })
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain a CoverCrypt Policy".to_string(),
-        ))
-    }
+    attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
+        .map_or_else(
+            || {
+                Err(KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "the attributes do not contain a CoverCrypt Policy".to_owned(),
+                ))
+            },
+            |bytes| {
+                Policy::parse_and_convert(bytes).map_err(|e| {
+                    KmipError::InvalidKmipValue(
+                        ErrorReason::Invalid_Attribute_Value,
+                        format!(
+                            "failed deserializing the CoverCrypt Policy from the attributes: {e}"
+                        ),
+                    )
+                })
+            },
+        )
 }
 
 /// Add or replace an `CoverCrypt` policy in attributes in place
@@ -72,7 +77,7 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from `CoverCrypt` policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: Vec<abe_policy::Attribute>,
+    attributes: &[abe_policy::Attribute],
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -116,30 +121,34 @@ pub fn attributes_from_attributes(
     } else {
         Err(KmipError::InvalidKmipValue(
             ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain CoverCrypt (vendor) Attributes".to_string(),
+            "the attributes do not contain CoverCrypt (vendor) Attributes".to_owned(),
         ))
     }
 }
 
 /// Extract an `CoverCrypt` Access policy from attributes
 pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, KmipError> {
-    if let Some(bytes) = attributes
+    attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
-    {
-        String::from_utf8(bytes.to_vec()).map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!(
-                    "failed to read Access Policy string from the (vendor) attributes bytes: {e}"
-                ),
-            )
-        })
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain an Access Policy".to_string(),
-        ))
-    }
+        .map_or_else(
+            || {
+                Err(KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "the attributes do not contain an Access Policy".to_owned(),
+                ))
+            },
+            |bytes| {
+                String::from_utf8(bytes.to_vec()).map_err(|e| {
+                    KmipError::InvalidKmipValue(
+                        ErrorReason::Invalid_Attribute_Value,
+                        format!(
+                            "failed to read Access Policy string from the (vendor) attributes \
+                             bytes: {e}"
+                        ),
+                    )
+                })
+            },
+        )
 }
 
 /// Add or replace an access policy in attributes in place
@@ -174,12 +183,12 @@ pub enum RekeyEditAction {
 
 /// Convert an edit action to a vendor attribute
 pub fn rekey_edit_action_as_vendor_attribute(
-    action: RekeyEditAction,
+    action: &RekeyEditAction,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
-        attribute_value: serde_json::to_vec(&action).map_err(|e| {
+        attribute_value: serde_json::to_vec(action).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 format!("failed serializing the CoverCrypt action: {e}"),
@@ -195,19 +204,24 @@ pub fn rekey_edit_action_as_vendor_attribute(
 pub fn rekey_edit_action_from_attributes(
     attributes: &Attributes,
 ) -> Result<RekeyEditAction, KmipError> {
-    if let Some(bytes) = attributes
+    attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)
-    {
-        serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed reading the CoverCrypt action from the attribute bytes: {e}"),
-            )
-        })
-    } else {
-        Err(KmipError::InvalidKmipObject(
-            ErrorReason::Missing_Data,
-            "Missing VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION".to_string(),
-        ))
-    }
+        .map_or_else(
+            || {
+                Err(KmipError::InvalidKmipObject(
+                    ErrorReason::Missing_Data,
+                    "Missing VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION".to_owned(),
+                ))
+            },
+            |bytes| {
+                serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
+                    KmipError::InvalidKmipValue(
+                        ErrorReason::Invalid_Attribute_Value,
+                        format!(
+                            "failed reading the CoverCrypt action from the attribute bytes: {e}"
+                        ),
+                    )
+                })
+            },
+        )
 }

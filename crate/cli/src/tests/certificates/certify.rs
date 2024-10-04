@@ -27,7 +27,7 @@ use crate::{
             import::{import_certificate, ImportCertificateInput},
         },
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
-        shared::export_key,
+        shared::{export_key, ExportKeyParams},
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
     },
@@ -117,7 +117,9 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CliResult<S
     ))
 }
 
-fn import_root_and_intermediate(ctx: &TestsContext) -> CliResult<(String, String, String)> {
+pub(crate) fn import_root_and_intermediate(
+    ctx: &TestsContext,
+) -> CliResult<(String, String, String)> {
     // import Root CA
     let root_ca_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
@@ -333,16 +335,13 @@ fn check_certificate_and_public_key_linked(
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     let tmp_exported_pubkey = tmp_path.join("exported_pubkey.json");
-    export_key(
-        &ctx.owner_client_conf_path,
-        "rsa",
-        &public_key_link.to_string(),
-        tmp_exported_pubkey.to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "rsa".to_owned(),
+        key_id: public_key_link.to_string(),
+        key_file: tmp_exported_pubkey.to_str().unwrap().to_string(),
+        ..Default::default()
+    })
     .unwrap();
     let public_key = read_object_from_json_ttlv_file(&tmp_exported_pubkey).unwrap();
     //check that the public key contains a link to the certificate
@@ -367,16 +366,13 @@ fn check_public_and_private_key_linked(
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     let tmp_exported_privkey = tmp_path.join("exported_privkey.json");
-    export_key(
-        &ctx.owner_client_conf_path,
-        "rsa",
-        &private_key_link.to_string(),
-        tmp_exported_privkey.to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "rsa".to_owned(),
+        key_id: private_key_link.to_string(),
+        key_file: tmp_exported_privkey.to_str().unwrap().to_string(),
+        ..Default::default()
+    })
     .unwrap();
     let private_key = read_object_from_json_ttlv_file(&tmp_exported_privkey).unwrap();
     //check that the private key contains a link to the public key
@@ -480,7 +476,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
             public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -523,7 +519,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
             public_key_id_to_certify: Some(public_key_id),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             certificate_extensions: Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
             ..Default::default()
@@ -622,7 +618,7 @@ async fn test_certify_issue_with_subject_name() -> CliResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             issuer_private_key_id: Some(issuer_private_key_id.clone()),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
@@ -665,7 +661,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
         CertifyOp {
             public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -698,7 +694,7 @@ pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<Str
         CertifyOp {
             public_key_id_to_certify: Some(public_key_id),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -744,7 +740,7 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             tags: Some(vec!["certify_self_signed".to_owned()]),
             certificate_extensions: Some(PathBuf::from(

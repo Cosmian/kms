@@ -2,6 +2,13 @@ pub mod deserializer;
 pub mod error;
 pub mod serializer;
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::as_conversions,
+    clippy::unwrap_used,
+    clippy::panic
+)]
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +21,8 @@ use serde::{
     Deserialize, Serialize,
 };
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+use crate::error::result::KmipResult;
 
 pub enum ItemTypeEnumeration {
     Structure = 0x01,
@@ -117,7 +126,6 @@ impl PartialEq for TTLValue {
         match (self, other) {
             (Self::Structure(l0), Self::Structure(r0)) => l0 == r0,
             (Self::Integer(l0), Self::Integer(r0)) => l0 == r0,
-            (Self::BitMask(l0), Self::BitMask(r0)) => l0 == r0,
             (Self::LongInteger(l0), Self::LongInteger(r0)) => l0 == r0,
             (Self::BigInteger(l0), Self::BigInteger(r0)) => l0 == r0,
             (Self::Enumeration(l0), Self::Enumeration(r0)) => l0 == r0,
@@ -125,7 +133,9 @@ impl PartialEq for TTLValue {
             (Self::TextString(l0), Self::TextString(r0)) => l0 == r0,
             (Self::ByteString(l0), Self::ByteString(r0)) => l0 == r0,
             (Self::DateTime(l0), Self::DateTime(r0)) => l0.unix_timestamp() == r0.unix_timestamp(),
-            (Self::Interval(l0), Self::Interval(r0)) => l0 == r0,
+            (Self::BitMask(l0), Self::BitMask(r0)) | (Self::Interval(l0), Self::Interval(r0)) => {
+                l0 == r0
+            }
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
                 l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
@@ -169,13 +179,13 @@ impl Serialize for TTLV {
                 serializer,
                 &self.tag,
                 "Integer",
-                &("0x".to_string() + &hex::encode_upper(v.to_be_bytes())),
+                &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
             ),
             TTLValue::LongInteger(v) => _serialize(
                 serializer,
                 &self.tag,
                 "LongInteger",
-                &("0x".to_string() + &hex::encode_upper(v.to_be_bytes())),
+                &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
             ),
             TTLValue::BigInteger(v) => {
                 //TODO Note that Big Integers must be sign extended to
@@ -185,7 +195,7 @@ impl Serialize for TTLV {
                     serializer,
                     &self.tag,
                     "BigInteger",
-                    &("0x".to_string() + &hex::encode_upper(v.to_bytes_be())),
+                    &("0x".to_owned() + &hex::encode_upper(v.to_bytes_be())),
                 )
             }
             TTLValue::Enumeration(v) => _serialize(serializer, &self.tag, "Enumeration", v),
@@ -207,7 +217,7 @@ impl Serialize for TTLV {
                 serializer,
                 &self.tag,
                 "DateTimeExtended",
-                &("0x".to_string()
+                &("0x".to_owned()
                     + &hex::encode_upper((v.unix_timestamp_nanos() / 1000).to_be_bytes())),
             ),
         }
@@ -252,19 +262,22 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
                 })?))
             }
 
-            fn visit_str<E>(self, hex: &str) -> Result<Self::Value, E>
+            // v is in hexadecimal format
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                if &hex[0..2] != "0x" {
-                    return Err(de::Error::custom(format!("Invalid value for Mask: {hex}")))
+                if &v[0..2] != "0x" {
+                    return Err(de::Error::custom(format!("Invalid value for Mask: {v}")))
                 }
-                let bytes = hex::decode(&hex[2..])
-                    .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {hex}")))?;
-                let m: u32 =
-                    u32::from_be_bytes(bytes.as_slice().try_into().map_err(|_e| {
-                        de::Error::custom(format!("Invalid value for Mask: {hex}"))
-                    })?);
+                let bytes = hex::decode(&v[2..])
+                    .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?;
+                let m: u32 = u32::from_be_bytes(
+                    bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?,
+                );
                 Ok(IntegerOrMask::Mask(m))
             }
         }
@@ -322,7 +335,7 @@ impl<'de> Deserialize<'de> for TTLV {
                             if value.is_some() {
                                 return Err(de::Error::duplicate_field("value"))
                             }
-                            let typ = typ.clone().unwrap_or_else(|| "Structure".to_string());
+                            let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
                                 "Integer" => {
@@ -340,16 +353,17 @@ impl<'de> Deserialize<'de> for TTLV {
                                              start with 0x)"
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|_| {
+                                    let bytes = hex::decode(&hex[2..]).map_err(|e| {
                                         de::Error::custom(format!(
                                             "Invalid value for i64 hex String: {hex} (not a hex \
-                                             string)"
+                                             string). Error: {e}",
                                         ))
                                     })?;
                                     let v: i64 = i64::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|_| {
+                                        bytes.as_slice().try_into().map_err(|e| {
                                             de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {hex}"
+                                                "Invalid value for i64 hex String: {hex}. Error: \
+                                                 {e}",
                                             ))
                                         })?,
                                     );
@@ -366,9 +380,15 @@ impl<'de> Deserialize<'de> for TTLV {
                                         de::Error::custom(format!("Invalid value for Mask: {hex}"))
                                     })?;
                                     // build the `BigUint` using the `Vec<u32>` representation.
-                                    let v = BigUint::from_slice(&to_u32_digits(
-                                        &BigUint::from_bytes_be(bytes.as_slice()),
-                                    ));
+                                    let v = BigUint::from_slice(
+                                        &to_u32_digits(&BigUint::from_bytes_be(bytes.as_slice()))
+                                            .map_err(|e| {
+                                            de::Error::custom(format!(
+                                                "Invalid value for BigInteger: {}. Error: {}",
+                                                &hex, e
+                                            ))
+                                        })?,
+                                    );
                                     TTLValue::BigInteger(v)
                                 }
                                 "Enumeration" => {
@@ -411,23 +431,25 @@ impl<'de> Deserialize<'de> for TTLV {
                                              start with 0x)",
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|_| {
+                                    let bytes = hex::decode(&hex[2..]).map_err(|e| {
                                         de::Error::custom(format!(
                                             "Invalid value for i64 hex String: {hex} (not an hex \
-                                             string)"
+                                             string). Error: {e}",
                                         ))
                                     })?;
                                     let v = i128::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|_| {
+                                        bytes.as_slice().try_into().map_err(|e| {
                                             de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {hex}"
+                                                "Invalid value for i64 hex String: {hex}. Error: \
+                                                 {e}",
                                             ))
                                         })?,
                                     );
                                     let dt = OffsetDateTime::from_unix_timestamp_nanos(v * 1000)
-                                        .map_err(|_| {
+                                        .map_err(|e| {
                                             de::Error::custom(format!(
-                                                "Invalid value for unix timestamp: {hex}",
+                                                "Invalid value for unix timestamp: {hex}. Error: \
+                                                 {e}",
                                             ))
                                         })?;
                                     TTLValue::DateTimeExtended(dt)
@@ -456,8 +478,7 @@ impl<'de> Deserialize<'de> for TTLV {
 ///
 /// This conversion is done manually, as `num-bigint-dig`
 /// doesn't provide such conversion.
-#[must_use]
-pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
+pub fn to_u32_digits(big_int: &BigUint) -> KmipResult<Vec<u32>> {
     // Since the KMS works with big-endian representation of byte arrays, casting
     // a group of 4 bytes in big-endian u32 representation needs revert iter so
     // that if you have a chunk [0, 12, 143, 239] you will do
@@ -471,14 +492,13 @@ pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
     let mut bytes_be = big_int.to_bytes_be();
     bytes_be.reverse();
 
-    bytes_be
-        .chunks(4)
-        .map(|group_of_4_bytes| {
-            let mut acc = 0;
-            for (k, elt) in group_of_4_bytes.iter().enumerate() {
-                acc += u32::from(*elt) * 2_u32.pow(k as u32 * 8);
-            }
-            acc
-        })
-        .collect::<Vec<_>>()
+    let mut result = Vec::new();
+    for group_of_4_bytes in bytes_be.chunks(4) {
+        let mut acc = 0;
+        for (k, elt) in group_of_4_bytes.iter().enumerate() {
+            acc += u32::from(*elt) * 2_u32.pow(u32::try_from(k)? * 8);
+        }
+        result.push(acc);
+    }
+    Ok(result)
 }

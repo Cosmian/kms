@@ -91,9 +91,6 @@ pub fn from_ttlv<'a, T>(s: &'a TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = TtlvDeserializer::from_ttlv(s);
-    let value = T::deserialize(&mut deserializer)?;
-
     // postfix the TTLV if it is a root object
     trait PostFix
     where
@@ -112,6 +109,10 @@ where
             Ok(Self::post_fix(object_type, self))
         }
     }
+
+    let mut deserializer = TtlvDeserializer::from_ttlv(s);
+    let value = T::deserialize(&mut deserializer)?;
+
     value.post_fix(s.tag.as_str())
 }
 
@@ -178,7 +179,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             }),
             TTLValue::BigInteger(e) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::BigInt,
-                inputs: Inputs::BigInt(to_u32_digits(e)),
+                inputs: Inputs::BigInt(to_u32_digits(e)?),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
@@ -217,7 +218,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize an i8 value. Not supported in KMIP:".to_string(),
+            "Unable to deserialize an i8 value. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -227,7 +228,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize an i16 value. Not supported in KMIP:".to_string(),
+            "Unable to deserialize an i16 value. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -289,7 +290,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize a u16 value. Not supported in KMIP:".to_string(),
+            "Unable to deserialize a u16 value. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -340,7 +341,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize a f32 value. Not supported in KMIP:".to_string(),
+            "Unable to deserialize a f32 value. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -363,7 +364,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize a char value. Not supported in KMIP:".to_string(),
+            "Unable to deserialize a char value. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -415,7 +416,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         Err(TtlvError::custom(
             "Unable to deserialize a byte array (not in a ByteString). Not supported in KMIP:"
-                .to_string(),
+                .to_owned(),
         ))
     }
 
@@ -426,7 +427,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         Err(TtlvError::custom(
             "Unable to deserialize a byte array (not in a ByteString). Not supported in KMIP:"
-                .to_string(),
+                .to_owned(),
         ))
     }
 
@@ -446,7 +447,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize unit. Not supported in KMIP:".to_string(),
+            "Unable to deserialize unit. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -457,7 +458,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         Err(TtlvError::custom(
-            "Unable to deserialize unit struct. Not supported in KMIP:".to_string(),
+            "Unable to deserialize unit struct. Not supported in KMIP:".to_owned(),
         ))
     }
 
@@ -483,7 +484,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         match self.deserializing {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "deserialize_seq. A seq should not be deserialized when deserializing a tag"
-                    .to_string(),
+                    .to_owned(),
             )),
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
@@ -503,7 +504,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::BigInt,
-                            inputs: Inputs::BigInt(to_u32_digits(big_int)),
+                            inputs: Inputs::BigInt(to_u32_digits(big_int)?),
                             index: 0,
                         })
                     }
@@ -606,8 +607,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     // #[instrument(skip(self, visitor))]
     fn deserialize_enum<V>(
         self,
-        _name: &'static str,
-        _variants: &'static [&'static str],
+        name: &'static str,
+        variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
@@ -616,14 +617,14 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         match &self.deserializing {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "deserialize_enum. An enum should not be deserialized when deserializing a tag"
-                    .to_string(),
+                    .to_owned(),
             )),
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
                 trace!(
                     "\ndeserialize_enum {}: {:?}, \n[{}]: {:#?}\n",
-                    _name,
-                    _variants,
+                    name,
+                    variants,
                     &self.index - 1,
                     &value
                 );
@@ -709,7 +710,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "next_key_seed. An next key seed should not be deserialized when deserializing a \
                  Tag"
-                .to_string(),
+                .to_owned(),
             )),
             Deserializing::StructureValue => {
                 // Check if there are no more elements.
@@ -757,7 +758,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
             Deserializing::StructureValue => Err(TtlvError::custom(
                 "next_value_seed. A next value seed should not be deserialized when already \
                  deserializing a Value"
-                    .to_string(),
+                    .to_owned(),
             )),
             x => Err(TtlvError::custom(format!(
                 "next_value_seed. A next value seed should not be deserialized when deserializing \
@@ -823,7 +824,7 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer<'de> {
                 // method on the injected Deserializer (`self` in this case)
                 seed.deserialize(self).map(Some)
             }
-            x => Err(TtlvError::custom(format!(
+            x @ Deserializing::StructureTag => Err(TtlvError::custom(format!(
                 "next_element_seed. A next element seed should not be deserialized when \
                  deserializing a {x:?}"
             ))),

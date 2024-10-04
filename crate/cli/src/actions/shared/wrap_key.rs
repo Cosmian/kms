@@ -12,7 +12,8 @@ use cosmian_kms_client::{
             kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
         },
     },
-    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, ExportObjectParams,
+    KmsClient,
 };
 
 use crate::{
@@ -77,6 +78,7 @@ impl WrapKeyAction {
     /// - The key block cannot be wrapped with the wrapping key.
     /// - The wrapped key object cannot be written to the output file.
     /// - The console output cannot be written.
+    #[allow(clippy::print_stdout)]
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
@@ -94,7 +96,7 @@ impl WrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)?
         } else if let Some(password) = &self.wrap_password {
             let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
                 &[0_u8; 16],
@@ -102,7 +104,7 @@ impl WrapKeyAction {
             )?;
 
             let symmetric_key_object =
-                create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);
+                create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES)?;
 
             // Print the wrapping key for user.
             println!(
@@ -111,7 +113,7 @@ impl WrapKeyAction {
             );
             symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false, None)
+            export_object(kms_rest_client, key_id, ExportObjectParams::default())
                 .await?
                 .0
         } else if let Some(key_file) = &self.wrap_key_file {

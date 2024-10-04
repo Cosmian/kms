@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         UniqueIdentifier,
     },
 };
-use cosmian_kms_client::{batch_export_objects, ClientConf, KmsClient};
+use cosmian_kms_client::{batch_export_objects, ClientConf, ExportObjectParams, KmsClient};
 use cosmian_pkcs11_module::traits::EncryptionAlgorithm;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -61,8 +61,17 @@ pub(crate) async fn get_kms_objects_async(
     key_format_type: Option<KeyFormatType>,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     let key_ids = locate_objects(kms_client, tags).await?;
-    let responses =
-        batch_export_objects(kms_client, key_ids, true, None, true, key_format_type).await?;
+    let responses = batch_export_objects(
+        kms_client,
+        key_ids,
+        ExportObjectParams {
+            unwrap: true,
+            allow_revoked: true,
+            key_format_type,
+            ..ExportObjectParams::default()
+        },
+    )
+    .await?;
     trace!("Found objects: {:?}", responses);
     let mut results = vec![];
     for response in responses {
@@ -142,6 +151,6 @@ pub(crate) async fn kms_decrypt_async(
     };
     let response = kms_client.decrypt(decryption_request).await?;
     response.data.ok_or_else(|| {
-        Pkcs11Error::ServerError("Decryption response does not contain data".to_string())
+        Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
     })
 }

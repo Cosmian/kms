@@ -3,12 +3,13 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
+use tracing::trace;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
     error::{result::CliResult, CliError},
     tests::{
-        shared::{destroy, export_key, revoke},
+        shared::{destroy, export_key, revoke, ExportKeyParams},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
         PROG_NAME,
     },
@@ -127,32 +128,26 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // the owner should have access
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_id,
-        "/tmp/output.json",
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_id.clone(),
+        key_file: "/tmp/output.json".to_owned(),
+        ..Default::default()
+    })?;
 
     // the owner can encrypt and decrypt
     run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)?;
 
     // the user should not be able to export
     assert!(
-        export_key(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.user_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: "/tmp/output.json".to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
     // the user should not be able to encrypt or decrypt
@@ -180,16 +175,13 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export_key(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.user_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: "/tmp/output.json".to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
 
@@ -211,16 +203,13 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
 
     // switch to user
     // the user should now be able to export
-    export_key(
-        &ctx.user_client_conf_path,
-        "sym",
-        &key_id,
-        "/tmp/output.json",
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.user_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_id.clone(),
+        key_file: "/tmp/output.json".to_owned(),
+        ..Default::default()
+    })?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
@@ -328,16 +317,13 @@ pub(crate) async fn test_revoke_access() -> CliResult<()> {
 
     // switch to user
     // the user should now be able to export
-    export_key(
-        &ctx.user_client_conf_path,
-        "sym",
-        &key_id,
-        "/tmp/output.json",
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.user_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_id.clone(),
+        key_file: "/tmp/output.json".to_owned(),
+        ..Default::default()
+    })?;
 
     // switch back to owner
     // revoke access to user
@@ -350,16 +336,13 @@ pub(crate) async fn test_revoke_access() -> CliResult<()> {
 
     // the user should not be able to export anymore
     assert!(
-        export_key(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.user_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: "/tmp/output.json".to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
 
@@ -405,7 +388,7 @@ pub(crate) async fn test_list_access_rights() -> CliResult<()> {
 
     // the owner can list access rights granted
     let owner_list = list_access(&ctx.owner_client_conf_path, &key_id)?;
-    print!("owner list {owner_list}");
+    trace!("owner list {owner_list}");
     assert!(owner_list.contains("user.client@acme.com: {get}"));
 
     // The user is not the owner and thus should not be able to list accesses on this object
@@ -476,7 +459,7 @@ pub(crate) async fn test_access_right_obtained() -> CliResult<()> {
 
     // the user should have the "get" access granted
     let list = list_accesses_rights_obtained(&ctx.user_client_conf_path)?;
-    println!("user list {list}");
+    trace!("user list {list}");
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
 
@@ -498,32 +481,26 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
 
     // the owner should have access
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_id,
-        "/tmp/output.json",
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_id.clone(),
+        key_file: "/tmp/output.json".to_owned(),
+        ..Default::default()
+    })?;
 
     // the owner can encrypt and decrypt
     run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)?;
 
     // the user should not be able to export
     assert!(
-        export_key(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.user_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: "/tmp/output.json".to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
     // the user should not be able to encrypt or decrypt
@@ -541,16 +518,13 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export_key(
-            &ctx.user_client_conf_path,
-            "sym",
-            &key_id,
-            "/tmp/output.json",
-            None,
-            false,
-            None,
-            false,
-        )
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.user_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: "/tmp/output.json".to_owned(),
+            ..Default::default()
+        })
         .is_err()
     );
 
@@ -567,16 +541,13 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
 
     // switch to user
     // the user should now be able to export
-    export_key(
-        &ctx.user_client_conf_path,
-        "sym",
-        &key_id,
-        "/tmp/output.json",
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.user_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_id.clone(),
+        key_file: "/tmp/output.json".to_owned(),
+        ..Default::default()
+    })?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
@@ -623,7 +594,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> CliResult<()>
 
     // the user should have the "get" access granted
     let list = list_accesses_rights_obtained(&ctx.user_client_conf_path)?;
-    println!("user list {list}");
+    trace!("user list {list}");
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
     assert!(list.contains("encrypt"));
@@ -649,7 +620,7 @@ pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &key_id,
         "user.client@acme.com",
-        &["get", "revoke", "create", "create"], // double `create` will be dedupe
+        &["get", "revoke", "create", "create"], // double `create` will be dedup
     )?;
 
     // the owner can list access rights granted
@@ -661,7 +632,7 @@ pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &key_id,
         "user.client@acme.com",
-        &["get", "revoke", "get"], // double `get` will be dedupe
+        &["get", "revoke", "get"], // double `get` will be dedup
     )?;
 
     let owner_list = list_access(&ctx.owner_client_conf_path, &key_id)?;
@@ -672,7 +643,7 @@ pub(crate) async fn test_grant_multiple_operations() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &key_id,
         "user.client@acme.com",
-        &["get", "revoke", "get"], // double `get` will be dedupe
+        &["get", "revoke", "get"], // double `get` will be dedup
     )?;
     let owner_list = list_access(&ctx.owner_client_conf_path, &key_id)?;
     assert!(owner_list.contains("user.client@acme.com: {create}"));

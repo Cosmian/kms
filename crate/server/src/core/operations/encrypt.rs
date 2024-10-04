@@ -14,6 +14,7 @@ use cosmian_kmip::{
         EncryptionSystem,
     },
     kmip::{
+        extra::BulkData,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
         kmip_types::{
@@ -29,7 +30,8 @@ use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
 };
-use tracing::trace;
+use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
@@ -47,22 +49,104 @@ pub(crate) async fn encrypt(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<EncryptResponse> {
-    trace!("operations::encrypt: {}", serde_json::to_string(&request)?);
+    trace!("Encrypt: {}", serde_json::to_string(&request)?);
 
     let owm = get_key(kms, &request, user, params).await?;
-    trace!("get_encryption_system: unwrap done (if required)");
 
+    // we do not (yet) support continuation cases
+    let data = request.data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+    })?;
+
+    // it may be a bulk encryption request, if not, fallback to single encryption
+    match BulkData::deserialize(data) {
+        Ok(bulk_data) => {
+            // it is a bulk encryption request
+            encrypt_bulk(&owm, request, bulk_data)
+        }
+        Err(_) => {
+            // fallback to single encryption
+            encrypt_single(&owm, &request)
+        }
+    }
+}
+
+fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
     match &owm.object {
-        Object::SymmetricKey { .. } => encrypt_with_aead(&request, &owm),
-        Object::PublicKey { .. } => encrypt_with_public_key(&request, &owm),
+        Object::SymmetricKey { .. } => encrypt_with_aead(request, owm),
+        Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
         Object::Certificate {
             certificate_value, ..
-        } => encrypt_with_certificate(&request, &owm.id, certificate_value),
+        } => encrypt_with_certificate(request, &owm.id, certificate_value),
         other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
         ))),
     }
+}
+
+/// Encrypt multiple plaintexts with the same key
+/// and return the corresponding ciphertexts.
+///
+/// This is a hack where `request.data` is a serialized `BulkData` object.
+// TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
+pub(crate) fn encrypt_bulk(
+    owm: &ObjectWithMetadata,
+    mut request: Encrypt,
+    bulk_data: BulkData,
+) -> KResult<EncryptResponse> {
+    debug!(
+        "encrypt_bulk: ==> encrypting {} clear texts",
+        bulk_data.len()
+    );
+    let mut ciphertexts = Vec::with_capacity(bulk_data.len());
+
+    match &owm.object {
+        Object::SymmetricKey { .. } => {
+            for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                request.data = Some(plaintext.clone());
+                let (key_bytes, aead) = get_aead_and_key(&request, owm)?;
+                let nonce = random_nonce(aead)?;
+                let (ciphertext, tag) =
+                    aead_encrypt(aead, &key_bytes, &nonce, EMPTY_SLICE, &plaintext)?;
+                // concatenate nonce || ciphertext || tag
+                let nct = [nonce.as_slice(), ciphertext.as_slice(), tag.as_slice()].concat();
+                ciphertexts.push(Zeroizing::new(nct));
+            }
+        }
+        Object::PublicKey { .. } => {
+            for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                request.data = Some(plaintext.clone());
+                let response = encrypt_with_public_key(&request, owm)?;
+                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+            }
+        }
+        Object::Certificate {
+            certificate_value, ..
+        } => {
+            for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                request.data = Some(plaintext.clone());
+                let response = encrypt_with_certificate(&request, &owm.id, certificate_value)?;
+                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+            }
+        }
+        other => kms_bail!(KmsError::NotSupported(format!(
+            "Encrypt bulk: encryption with keys of type: {} is not supported",
+            other.object_type()
+        ))),
+    };
+
+    debug!(
+        "encrypt_bulk: <== encrypted {} ciphertexts",
+        ciphertexts.len()
+    );
+    Ok(EncryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        data: Some(BulkData::new(ciphertexts).serialize()?.to_vec()),
+        iv_counter_nonce: None,
+        correlation_value: request.correlation_value,
+        authenticated_encryption_tag: None,
+    })
 }
 
 async fn get_key(
@@ -79,7 +163,7 @@ async fn get_key(
         .as_str()
         .context("Encrypt: the unique identifier or tags must be a string")?
         .to_owned();
-    trace!("operations::encrypt: uid_or_tags: {uid_or_tags}");
+    trace!("operations::encrypt: key uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
@@ -96,7 +180,7 @@ async fn get_key(
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
-    trace!("operations::encrypt: owm_s: {:?}", owm_s);
+    trace!("operations::encrypt: key owm_s: {:?}", owm_s);
     // there can only be one key
     let mut owm = owm_s
         .pop()
@@ -129,6 +213,32 @@ async fn get_key(
 }
 
 fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<EncryptResponse> {
+    let (key_bytes, aead) = get_aead_and_key(request, owm)?;
+    let plaintext = request.data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+    })?;
+    let nonce = request
+        .iv_counter_nonce
+        .clone()
+        .unwrap_or(random_nonce(aead)?);
+    let aad = request
+        .authenticated_encryption_additional_data
+        .as_deref()
+        .unwrap_or(EMPTY_SLICE);
+    let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+    Ok(EncryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        data: Some(ciphertext),
+        iv_counter_nonce: Some(nonce),
+        correlation_value: request.correlation_value.clone(),
+        authenticated_encryption_tag: Some(tag),
+    })
+}
+
+fn get_aead_and_key(
+    request: &Encrypt,
+    owm: &ObjectWithMetadata,
+) -> KResult<(Zeroizing<Vec<u8>>, AeadCipher)> {
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object
@@ -140,12 +250,9 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
         ))
     }
-
-    let plaintext = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
-    })?;
     let key_block = owm.object.key_block()?;
-    match key_block.key_format_type {
+    let key_bytes = key_block.key_bytes()?;
+    let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
             let cryptographic_algorithm = request
@@ -162,33 +269,19 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
-            let key_bytes = key_block.key_bytes()?;
-            let aead = AeadCipher::from_algorithm_and_key_size(
+            AeadCipher::from_algorithm_and_key_size(
                 cryptographic_algorithm,
                 block_cipher_mode,
                 key_bytes.len(),
-            )?;
-            let nonce = request
-                .iv_counter_nonce
-                .clone()
-                .unwrap_or(random_nonce(aead)?);
-            let aad = request
-                .authenticated_encryption_additional_data
-                .as_deref()
-                .unwrap_or(EMPTY_SLICE);
-            let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
-            Ok(EncryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
-                data: Some(ciphertext),
-                iv_counter_nonce: Some(nonce),
-                correlation_value: request.correlation_value.clone(),
-                authenticated_encryption_tag: Some(tag),
-            })
+            )?
         }
-        other => Err(KmsError::NotSupported(format!(
-            "symmetric encryption with keys of format: {other}"
-        ))),
-    }
+        other => {
+            return Err(KmsError::NotSupported(format!(
+                "symmetric encryption with keys of format: {other}"
+            )))
+        }
+    };
+    Ok((key_bytes, aead))
 }
 
 fn encrypt_with_public_key(

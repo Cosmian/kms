@@ -14,10 +14,11 @@ use cosmian_kmip::{
         kmip_messages::{Message, MessageResponse},
         kmip_operations::{
             Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-            Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-            ImportResponse, Locate, LocateResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-            ReKeyResponse, Revoke, RevokeResponse, Validate, ValidateResponse,
+            Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
+            DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+            GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
+            ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse,
+            SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
         },
         kmip_types::{StateEnumeration, UniqueIdentifier},
     },
@@ -250,7 +251,7 @@ impl KMS {
     /// manage the IV/Counter/Nonce.
     ///
     /// If the Managed Cryptographic Object referenced has a Usage Limits
-    /// attribute then the server SHALL obtain an allocation from the
+    /// attribute, then the server SHALL obtain an allocation from the
     /// current Usage Limits value prior to performing the encryption operation.
     /// If the allocation is unable to be obtained the operation SHALL
     /// return with a result status of Operation Failed and result reason of
@@ -260,7 +261,7 @@ impl KMS {
     /// Object used as the key and the result of the encryption operation.
     ///
     /// The success or failure of the operation is indicated by the Result
-    /// Status (and if failure the Result Reason) in the response header.
+    /// Status (and if failure is the Result Reason) in the response header.
     pub(crate) async fn encrypt(
         &self,
         request: Encrypt,
@@ -276,7 +277,7 @@ impl KMS {
     /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
-    /// The server SHALL copy the Unique Identifier returned by this operations
+    /// The server SHALL copy the Unique Identifier returned by this operation
     /// into the ID Placeholder variable.
     pub(crate) async fn export(
         &self,
@@ -334,6 +335,26 @@ impl KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
         operations::get_attributes(self, request, user, params).await
+    }
+
+    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
+    pub(crate) async fn set_attribute(
+        &self,
+        request: SetAttribute,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<SetAttributeResponse> {
+        operations::set_attribute(self, request, user, params).await
+    }
+
+    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
+    pub(crate) async fn delete_attribute(
+        &self,
+        request: DeleteAttribute,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<DeleteAttributeResponse> {
+        operations::delete_attribute(self, request, user, params).await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -687,17 +708,15 @@ impl KMS {
             return default_username
         }
         // if there is a JWT token, use it in priority
-        let user = match req_http.extensions().get::<JwtAuthClaim>() {
-            Some(claim) => claim.email.clone(),
-            None => {
-                // check for client certificate authentication
-                match req_http.extensions().get::<PeerCommonName>() {
-                    Some(claim) => claim.common_name.clone(),
-                    // if no client certificate, use the default username
-                    None => default_username,
-                }
-            }
-        };
+        let user = req_http.extensions().get::<JwtAuthClaim>().map_or_else(
+            || {
+                req_http
+                    .extensions()
+                    .get::<PeerCommonName>()
+                    .map_or(default_username, |claim| claim.common_name.clone())
+            },
+            |claim| claim.email.clone(),
+        );
         debug!("Authenticated user: {}", user);
         user
     }

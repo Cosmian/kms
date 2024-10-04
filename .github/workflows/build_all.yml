@@ -13,6 +13,16 @@ on:
 
 jobs:
   rhel9:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: redis-findex
+          - database: sqlite
+          - database: sqlite-enc
+          # - database: postgresql # for now, deadlock trouble in tests
+          # - database: mysql # for now, deadlock trouble in tests
+    name: RHEL9 - ${{ matrix.database }}
     uses: ./.github/workflows/build_rhel9.yml
     secrets: inherit
     with:
@@ -20,6 +30,7 @@ jobs:
       archive-name: rhel9
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
+      database: ${{ matrix.database }}
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
 
@@ -33,7 +44,7 @@ jobs:
       target: x86_64-unknown-linux-gnu
       debug_or_release: ${{ inputs.debug_or_release }}
       features: fips
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/fips.so
         /usr/local/openssl/ssl/openssl.cnf
@@ -64,7 +75,7 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib64/ossl-modules/legacy.so
 
@@ -89,11 +100,12 @@ jobs:
       archive-name: ${{ matrix.archive-name }}
       target: ${{ matrix.target }}
       debug_or_release: ${{ inputs.debug_or_release }}
-      skip_services_tests: --skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse
+      skip_services_tests: --skip test_mysql --skip test_postgresql --skip test_redis --skip google_cse
       artifacts: |
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
 
   windows-2022:
+    if: inputs.debug_or_release == 'release'
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}

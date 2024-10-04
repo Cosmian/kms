@@ -19,17 +19,22 @@ default to `admin` if not set.
 In authenticated mode, the server requires authentication for all requests. The authentication
 method can be either (one of them is enough):
 
-- a TLS client certificate and the server extracts the username from the certificate's subject
+- a TLS client certificate and the server will extract the username from the certificate's subject
   common name (CN)
 - or a JWT access token and the server extracts the username from the token's subject (sub) claim
-- an API token passed in the `Authorization` header configured both at the client and server side (user being `default-username`)
+- an API token passed in the `Authorization` header configured both at the client and server
+  side (the user being `default-username`)
 
 The server can be configured to use multiple authentication methods concurrently:
 
-- if server is started with TLS client certificate authentication, client MUST provide a valid certificate issued by the authority certificate provided by the server ;
-- if server only provides JWT and API token authentication, client MUST provide a valid JWT token OR an API token in the `Authorization` header. Server will first try to authenticate using the JWT token, then the API token if JWT token is not provided.
+- if the server is started with TLS client certificate authentication, the client MUST provide a
+  valid certificate issued by the authority certificate provided by the server ;
+- if server only provides JWT and API token authentication, client MUST provide a valid JWT token OR
+  an API token in the `Authorization` header. Server will first try to authenticate using the JWT
+  token, then the API token if JWT token is not provided.
 
-At the end, if the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment
+At the end, if the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME`
+environment
 variable) is set, the server still performs the authentication but maps all requests to the default
 username.
 
@@ -41,7 +46,7 @@ must be provided in PEM format using the `--authority-cert-file` option.
 !!! info "Example client TLS authentication."
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0 \
         --https-p12-file kms.server.p12  --https-p12-password password \
         --authority-cert-file verifier.cert.pem
     ```
@@ -90,7 +95,7 @@ environment variables):
     server.
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0 \
         --jwt-issuer-uri=https://accounts.google.com \
         --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
         --jwt-audience=cosmian_kms
@@ -179,7 +184,7 @@ Use the following options to configure the KMS server for Okta:
 
 #### Microsoft Entra ID
 
-Use the following options to configure the KMS server for Microsoft Entra Id:
+Use the following options to configure the KMS server for Microsoft Entra ID:
 
 ```sh
 --jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
@@ -189,7 +194,8 @@ Use the following options to configure the KMS server for Microsoft Entra Id:
 
 ## Authenticating using an API Token
 
-The server can be configured to authenticate using an API token passed in the `Authorization` header.
+The server can be configured to authenticate using an API token passed in the `Authorization`
+header.
 
 To proceed, follow these steps:
 
@@ -198,7 +204,8 @@ To proceed, follow these steps:
 - restart the server with the `--api-token-id` option
 - configure `ckms` client with a `kms_access_token` containing the API token in base64.
 
-To generate a new API token, use the `ckms` CLI and save the symmetric key unique identifier (<SYMMETRIC_KEY_ID>):
+To generate a new API token, use the `ckms` CLI and save the symmetric key unique identifier (<
+SYMMETRIC_KEY_ID>):
 
 ```sh
 ckms sym keys create
@@ -210,7 +217,8 @@ Then export the symmetric key content in base64:
 ckms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
 ```
 
-Reconfigure `ckms` client with the previous base64 encoded key as `kms_access_token`. Your `ckms` is now ready to authenticate using the API token.
+Reconfigure `ckms` client with the previous base64 encoded key as `kms_access_token`.
+Your `ckms` is now ready to authenticate using the API token.
 
 And finally, restart the server with the `--api-token-id` option.
 

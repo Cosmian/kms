@@ -38,7 +38,7 @@ impl ServerCertVerifier for LeafCertificateVerifier {
         // Verify the leaf certificate
         if !end_entity.eq(&self.expected_cert) {
             return Err(RustTLSError::General(
-                "Leaf certificate doesn't match the expected one".to_string(),
+                "Leaf certificate doesn't match the expected one".to_owned(),
             ))
         }
 

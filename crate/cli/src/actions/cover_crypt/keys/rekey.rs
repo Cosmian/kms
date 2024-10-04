@@ -51,7 +51,7 @@ impl RekeyAction {
         // Create the kmip query
         let query = build_rekey_keypair_request(
             &id,
-            RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+            &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
         )?;
 
         // Query the KMS with your kmip data
@@ -118,7 +118,7 @@ impl PruneAction {
         // Create the kmip query
         let query = build_rekey_keypair_request(
             &id,
-            RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
+            &RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
         )?;
 
         // Query the KMS with your kmip data

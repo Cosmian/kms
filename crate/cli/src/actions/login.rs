@@ -71,6 +71,7 @@ impl LoginAction {
     /// * The token exchange request fails.
     /// * The token exchange response cannot be parsed.
     /// * The client configuration cannot be updated or saved.
+    #[allow(clippy::print_stdout)]
     pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
         let mut conf = ClientConf::load(conf_path)?;
         let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {
@@ -233,17 +234,17 @@ impl LoginState {
         // parameter returned by the server matches `csrf_state`.
         let received_state = auth_parameters
             .get("state")
-            .ok_or_else(|| CliError::Default("state not received on authentication".to_string()))?;
+            .ok_or_else(|| CliError::Default("state not received on authentication".to_owned()))?;
         if received_state != self.csrf_token.secret() {
             return Err(CliError::Default(
-                "state received on authentication does not match".to_string(),
+                "state received on authentication does not match".to_owned(),
             ))
         }
 
         // extract the authorization code
         let authorization_code = auth_parameters
             .get("code")
-            .ok_or_else(|| CliError::Default("code not received on authentication".to_string()))?;
+            .ok_or_else(|| CliError::Default("code not received on authentication".to_owned()))?;
 
         // Now you can trade it for an access token.
 

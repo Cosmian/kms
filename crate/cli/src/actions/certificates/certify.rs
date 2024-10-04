@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// The algorithm to use for the keypair generation
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub(crate) enum Algorithm {
     #[cfg(not(feature = "fips"))]
     NistP192,
@@ -52,21 +52,21 @@ impl Display for Algorithm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             #[cfg(not(feature = "fips"))]
-            Algorithm::NistP192 => write!(f, "nist-p192"),
+            Self::NistP192 => write!(f, "nist-p192"),
             Self::NistP224 => write!(f, "nist-p224"),
             Self::NistP256 => write!(f, "nist-p256"),
             Self::NistP384 => write!(f, "nist-p384"),
             Self::NistP521 => write!(f, "nist-p521"),
             #[cfg(not(feature = "fips"))]
-            Algorithm::X25519 => write!(f, "x25519"),
+            Self::X25519 => write!(f, "x25519"),
             #[cfg(not(feature = "fips"))]
-            Algorithm::Ed25519 => write!(f, "ed25519"),
+            Self::Ed25519 => write!(f, "ed25519"),
             #[cfg(not(feature = "fips"))]
-            Algorithm::X448 => write!(f, "x448"),
+            Self::X448 => write!(f, "x448"),
             #[cfg(not(feature = "fips"))]
-            Algorithm::Ed448 => write!(f, "ed448"),
+            Self::Ed448 => write!(f, "ed448"),
             #[cfg(not(feature = "fips"))]
-            Algorithm::RSA1024 => write!(f, "rsa1024"),
+            Self::RSA1024 => write!(f, "rsa1024"),
             Self::RSA2048 => write!(f, "rsa2048"),
             Self::RSA3072 => write!(f, "rsa3072"),
             Self::RSA4096 => write!(f, "rsa4096"),
@@ -283,7 +283,7 @@ impl CertifyAction {
                 Some(Box::new(CertificateAttributes::parse_subject_line(
                     self.subject_name.as_ref().ok_or_else(|| {
                         CliError::Default(
-                            "subject name is required when certifying a public key".to_string(),
+                            "subject name is required when certifying a public key".to_owned(),
                         )
                     })?,
                 )?));
@@ -299,7 +299,7 @@ impl CertifyAction {
                 Some(Box::new(CertificateAttributes::parse_subject_line(
                     self.subject_name.as_ref().ok_or_else(|| {
                         CliError::Default(
-                            "subject name is required when generating a keypair".to_string(),
+                            "subject name is required when generating a keypair".to_owned(),
                         )
                     })?,
                 )?));

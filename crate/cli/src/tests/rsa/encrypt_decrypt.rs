@@ -5,6 +5,7 @@ use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
+use tracing::trace;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -104,6 +105,8 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
+
+    use tracing::trace;
     let ctx = start_default_test_kms_server().await;
 
     // create a temp dir
@@ -120,8 +123,8 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
     let (private_key_id, public_key_id) =
         create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
-    println!("private_key_id: {private_key_id}");
-    println!("public_key_id: {public_key_id}");
+    trace!("private_key_id: {private_key_id}");
+    trace!("public_key_id: {public_key_id}");
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
@@ -192,8 +195,8 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
     let (private_key_id, public_key_id) =
         create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
-    println!("private_key_id: {private_key_id}");
-    println!("public_key_id: {public_key_id}");
+    trace!("private_key_id: {private_key_id}");
+    trace!("public_key_id: {public_key_id}");
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
@@ -276,8 +279,8 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
     let (private_key_id, public_key_id) =
         create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
-    println!("private_key_id: {private_key_id}");
-    println!("public_key_id: {public_key_id}");
+    trace!("private_key_id: {private_key_id}");
+    trace!("public_key_id: {public_key_id}");
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],

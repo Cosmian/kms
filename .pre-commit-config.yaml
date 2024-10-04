@@ -16,15 +16,15 @@ repos:
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
-    hooks:
-      - id: prettier
-        stages: [commit]
-        exclude_types:
-          - yaml
-          - markdown
-        exclude: documentation/theme_overrides
+  # - repo: https://github.com/pre-commit/mirrors-prettier
+  #   rev: v4.0.0-alpha.8
+  #   hooks:
+  #     - id: prettier
+  #       stages: [commit]
+  #       exclude_types:
+  #         - yaml
+  #         - markdown
+  #       exclude: documentation/theme_overrides|.cargo_check
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.40.0
@@ -41,14 +41,6 @@ repos:
             --fix,
           ]
         exclude: documentation/docs
-
-  - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
-    rev: v1.1.2
-    hooks:
-      - id: htmlhint
-        exclude: documentation/theme_overrides
-      - id: dockerfile_lint
-      - id: markdown-toc
 
   - repo: https://github.com/tcort/markdown-link-check
     rev: v3.12.1
@@ -94,7 +86,6 @@ repos:
     rev: 3.0.0
     hooks:
       - id: shellcheck
-        exclude: scripts/centos_install_curl.sh
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -115,7 +106,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private|documentation/docs/pki/smime.md
+        exclude: crate/server/src/tests/ms_dke|crate/server/src/routes/google_cse/python/openssl/blue.key|documentation/docs/cli/cli.md|crate/test_server/certificates|crate/pkcs11/provider/test_data|crate/server/src/tests/certificates/chain/root/ca/private|crate/server/src/tests/certificates/chain/root/ca/intermediate/private|documentation/docs/pki/smime.md|crate/cli/src/tests/google_cmd/identities.rs|crate/server/src/tests/google_cse/init_kms_cse.sh
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs
@@ -138,7 +129,7 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.27
+    rev: v1.0.29
     hooks:
       - id: cargo-format
       # - id: dprint-toml-fix
@@ -150,12 +141,11 @@ repos:
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, google_cse]
-      - id: clippy-autofix-all
       - id: clippy-autofix-unreachable-pub
-      - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
-      - id: clippy-autofix-others
+      - id: clippy-autofix-all-targets-all-features
+      - id: clippy-autofix-all-targets
       - id: clippy-all-targets-all-features
+      - id: clippy-all-targets
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 

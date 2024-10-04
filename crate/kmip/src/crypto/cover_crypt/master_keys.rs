@@ -30,9 +30,9 @@ pub fn create_master_keypair(
     cover_crypt: &Covercrypt,
     private_key_uid: &str,
     public_key_uid: &str,
-    common_attributes: Option<Attributes>,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    common_attributes: &Option<Attributes>,
+    private_key_attributes: &Option<Attributes>,
+    public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, KmipError> {
     let any_attributes = common_attributes
         .as_ref()
@@ -109,9 +109,10 @@ fn create_master_private_key_object(
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_public_key_uid.to_string(),
+            master_public_key_uid.to_owned(),
         ),
     }]);
+    let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -121,7 +122,7 @@ fn create_master_private_key_object(
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(Box::new(attributes)),
             },
-            cryptographic_length: Some(key.len() as i32 * 8),
+            cryptographic_length,
             key_wrapping_data: None,
         },
     })
@@ -148,9 +149,10 @@ fn create_master_public_key_object(
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_private_key_uid.to_string(),
+            master_private_key_uid.to_owned(),
         ),
     }]);
+    let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -160,7 +162,7 @@ fn create_master_public_key_object(
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(Box::new(attributes)),
             },
-            cryptographic_length: Some(key.len() as i32 * 8),
+            cryptographic_length,
             key_wrapping_data: None,
         },
     })

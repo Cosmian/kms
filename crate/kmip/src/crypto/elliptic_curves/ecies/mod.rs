@@ -9,8 +9,8 @@ mod standard_curves;
 /// Encrypt `plaintext` data using `pubkey` public key following ECIES.
 ///
 /// When using Curve25519 (X25519 or Ed25519 which is converted to X25519),
-/// SalsaSealBox is used. The implementation is compatible with that of libsodium:
-/// the hashing algorithm is set to Blake2b and the AEAD to Salsa20Poly1305.
+/// `SalsaSealBox` is used. The implementation is compatible with that of libsodium:
+/// the hashing algorithm is set to Blake2b and the AEAD to `Salsa20Poly1305`.
 ///
 /// When using standard curves, the hashing algorithm is SHAKE128, the
 /// AEAD is AES 128 GCM and the following ECIES algorithm is used:
@@ -42,8 +42,8 @@ pub fn ecies_encrypt(public_key: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<
 /// Decrypt `ciphertext` data using `privkey` private key following ECIES.
 ///
 /// When using Curve25519 (X25519 or Ed25519 which is converted to X25519),
-/// SalsaSealBox is used. The implementation is compatible with that of libsodium:
-/// the hashing algorithm is set to Blake2b and the AEAD to Salsa20Poly1305.
+/// `SalsaSealBox` is used. The implementation is compatible with that of libsodium:
+/// the hashing algorithm is set to Blake2b and the AEAD to `Salsa20Poly1305`.
 ///
 /// When using standard curves, the hashing algorithm is SHAKE128, the
 /// AEAD is AES 128 GCM and the following ECIES algorithm is used:

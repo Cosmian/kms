@@ -15,7 +15,9 @@ use tracing::info;
 use crate::{
     error::result::CliResult,
     tests::{
-        shared::export_key, symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs,
+        shared::{export_key, ExportKeyParams},
+        symmetric::create_key::create_symmetric_key,
+        utils::recover_cmd_logs,
         PROG_NAME,
     },
 };
@@ -120,7 +122,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     // since we are going to rewrite the conf, use a different port
     let ctx = start_test_server_with_options(
         DBConfig {
-            database_type: Some("sqlite-enc".to_string()),
+            database_type: Some("sqlite-enc".to_owned()),
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
             clear_database: true,
             ..DBConfig::default()
@@ -140,16 +142,14 @@ async fn test_multiple_databases() -> CliResult<()> {
     let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_1,
-        tmp_path.join("output.export").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_1.clone(),
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })
+    .unwrap();
 
     // create a new encrypted database
     let kms_client = ctx
@@ -167,46 +167,38 @@ async fn test_multiple_databases() -> CliResult<()> {
     let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_2,
-        tmp_path.join("output.export").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_2.clone(),
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })
+    .unwrap();
 
     // go back to original conf
     write_json_object_to_file(&ctx.owner_client_conf, &ctx.owner_client_conf_path)
         .expect("Can't rewrite the original conf");
     // we should be able to export key_1 again
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_1,
-        tmp_path.join("output.export").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_1.clone(),
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
 
     // go to new conf
     write_json_object_to_file(&new_conf, &ctx.owner_client_conf_path)
         .expect("Can't rewrite the new conf");
     // we should be able to export key_2 again
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &key_2,
-        tmp_path.join("output.export").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: key_2.clone(),
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
 
     // stop that server
     ctx.stop_server().await?;

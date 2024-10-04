@@ -8,6 +8,7 @@ use crate::{
         },
         DecryptionSystem, EncryptionSystem,
     },
+    error::result::KmipResult,
     kmip::{
         kmip_operations::{Decrypt, Encrypt},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
@@ -15,21 +16,21 @@ use crate::{
 };
 
 #[test]
-pub(crate) fn test_aes() {
+pub(crate) fn test_aes() -> KmipResult<()> {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
     rand_bytes(&mut symmetric_key).unwrap();
-    let key = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES);
+    let key = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES)?;
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
     let mut data = zeroize::Zeroizing::from(vec![0_u8; 42]);
     rand_bytes(&mut data).unwrap();
     let mut uid = vec![0_u8; 32];
     rand_bytes(&mut uid).unwrap();
 
-    let mut nonce = vec![0u8; AES_256_GCM_IV_LENGTH];
+    let mut nonce = vec![0_u8; AES_256_GCM_IV_LENGTH];
     rand_bytes(&mut nonce).unwrap();
 
     // encrypt
@@ -69,4 +70,5 @@ pub(crate) fn test_aes() {
         .unwrap();
 
     assert_eq!(&data.clone(), &dec_res.data.unwrap());
+    Ok(())
 }

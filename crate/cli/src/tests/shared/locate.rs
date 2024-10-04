@@ -67,6 +67,8 @@ pub(crate) fn locate(
 #[tokio::test]
 pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
     // init the test server
+
+    use tracing::trace;
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new master key pair
@@ -77,8 +79,8 @@ pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
         &["test_cc"],
     )?;
 
-    println!("master_private_key_id: {master_private_key_id}");
-    println!("master_public_key_id: {master_public_key_id}");
+    trace!("master_private_key_id: {master_private_key_id}");
+    trace!("master_public_key_id: {master_public_key_id}");
 
     // Locate with Tags
     let ids = locate(
@@ -88,7 +90,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
         None,
         None,
     )?;
-    println!("ids: {ids:?}");
+    trace!("ids: {ids:?}");
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&master_private_key_id));
     assert!(ids.contains(&master_public_key_id));

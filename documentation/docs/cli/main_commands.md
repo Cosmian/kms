@@ -32,23 +32,27 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 **`get-attributes`** [[5]](#5-ckms-get-attributes)  Get the KMIP object attributes and tags.
 
-**`locate`** [[6]](#6-ckms-locate)  Locate cryptographic objects inside the KMS
+**`set-attributes`** [[6]](#6-ckms-set-attributes)  Set the KMIP object attributes (one or multiple attributes).
 
-**`new-database`** [[7]](#7-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+**`delete-attributes`** [[7]](#7-ckms-delete-attributes)  Delete the KMIP object attributes (one or multiple attributes).
 
-**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
+**`locate`** [[8]](#8-ckms-locate)  Locate cryptographic objects inside the KMS
 
-**`server-version`** [[9]](#9-ckms-server-version)  Print the version of the server
+**`new-database`** [[9]](#9-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`sym`** [[10]](#10-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
+**`rsa`** [[10]](#10-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
-**`login`** [[11]](#11-ckms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+**`server-version`** [[11]](#11-ckms-server-version)  Print the version of the server
 
-**`logout`** [[12]](#12-ckms-logout)  Logout from the Identity Provider.
+**`sym`** [[12]](#12-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
-**`markdown`** [[13]](#13-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
+**`login`** [[13]](#13-ckms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
-**`google`** [[14]](#14-ckms-google)  Manage google elements. Handle keypairs and identities from Gmail API
+**`logout`** [[14]](#14-ckms-logout)  Logout from the Identity Provider.
+
+**`markdown`** [[15]](#15-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
+
+**`google`** [[16]](#16-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
 ---
 
@@ -184,13 +188,17 @@ Create, destroy, import, export, and rekey `Covercrypt` master and user keys
 
 **`import`** [[2.1.4]](#214-ckms-cc-keys-import)  Import a private or public key in the KMS.
 
-**`revoke`** [[2.1.5]](#215-ckms-cc-keys-revoke)  Revoke a Covercrypt master or user decryption key
+**`wrap`** [[2.1.5]](#215-ckms-cc-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`destroy`** [[2.1.6]](#216-ckms-cc-keys-destroy)  Destroy a Covercrypt master or user decryption key
+**`unwrap`** [[2.1.6]](#216-ckms-cc-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`rekey`** [[2.1.7]](#217-ckms-cc-keys-rekey)  Rekey the master and user keys for a given access policy.
+**`revoke`** [[2.1.7]](#217-ckms-cc-keys-revoke)  Revoke a Covercrypt master or user decryption key
 
-**`prune`** [[2.1.8]](#218-ckms-cc-keys-prune)  Prune the master and user keys for a given access policy.
+**`destroy`** [[2.1.8]](#218-ckms-cc-keys-destroy)  Destroy a Covercrypt master or user decryption key
+
+**`rekey`** [[2.1.9]](#219-ckms-cc-keys-rekey)  Rekey the master and user keys for a given access policy.
+
+**`prune`** [[2.1.10]](#2110-ckms-cc-keys-prune)  Prune the master and user keys for a given access policy.
 
 ---
 
@@ -270,6 +278,12 @@ Destroyed keys have their key material removed.
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
+`--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
+
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
+
 
 
 ---
@@ -311,11 +325,61 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+
 
 
 ---
 
-## 2.1.5 ckms cc keys revoke
+## 2.1.5 ckms cc keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms cc keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into a AES-256 symmetric key. For security reasons, a fresh salt is internally handled and generated by `ckms` and this final AES symmetric key will be displayed only once
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+
+
+---
+
+## 2.1.6 ckms cc keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms cc keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 2.1.7 ckms cc keys revoke
 
 Revoke a Covercrypt master or user decryption key
 
@@ -333,7 +397,7 @@ Revoke a Covercrypt master or user decryption key
 
 ---
 
-## 2.1.6 ckms cc keys destroy
+## 2.1.8 ckms cc keys destroy
 
 Destroy a Covercrypt master or user decryption key
 
@@ -348,7 +412,7 @@ Destroy a Covercrypt master or user decryption key
 
 ---
 
-## 2.1.7 ckms cc keys rekey
+## 2.1.9 ckms cc keys rekey
 
 Rekey the master and user keys for a given access policy.
 
@@ -366,7 +430,7 @@ Rekey the master and user keys for a given access policy.
 
 ---
 
-## 2.1.8 ckms cc keys prune
+## 2.1.10 ckms cc keys prune
 
 Prune the master and user keys for a given access policy.
 
@@ -751,7 +815,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy", "pkcs7"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
@@ -894,9 +958,13 @@ Create, destroy, import, and export elliptic curve key pairs
 
 **`import`** [[4.1.3]](#413-ckms-ec-keys-import)  Import a private or public key in the KMS.
 
-**`revoke`** [[4.1.4]](#414-ckms-ec-keys-revoke)  Revoke a public or private key
+**`wrap`** [[4.1.4]](#414-ckms-ec-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`destroy`** [[4.1.5]](#415-ckms-ec-keys-destroy)  Destroy a public or private key
+**`unwrap`** [[4.1.5]](#415-ckms-ec-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[4.1.6]](#416-ckms-ec-keys-revoke)  Revoke a public or private key
+
+**`destroy`** [[4.1.7]](#417-ckms-ec-keys-destroy)  Destroy a public or private key
 
 ---
 
@@ -957,6 +1025,12 @@ Destroyed keys have their key material removed.
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
+`--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
+
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
+
 
 
 ---
@@ -998,11 +1072,61 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+
 
 
 ---
 
-## 4.1.4 ckms ec keys revoke
+## 4.1.4 ckms ec keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms ec keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into a AES-256 symmetric key. For security reasons, a fresh salt is internally handled and generated by `ckms` and this final AES symmetric key will be displayed only once
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+
+
+---
+
+## 4.1.5 ckms ec keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms ec keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 4.1.6 ckms ec keys revoke
 
 Revoke a public or private key
 
@@ -1020,7 +1144,7 @@ Revoke a public or private key
 
 ---
 
-## 4.1.5 ckms ec keys destroy
+## 4.1.7 ckms ec keys destroy
 
 Destroy a public or private key
 
@@ -1092,10 +1216,17 @@ Get the KMIP object attributes and tags.
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
-`--attribute [-a] <ATTRIBUTE>` The attributes or tags to retrieve.
+`--attribute [-a] <ATTRIBUTE>` The attributes or `KMIP-tags` to retrieve.
 To specify multiple attributes, use the option multiple times.
+If not specified, all possible attributes are returned.
 
-Possible values:  `"activation-date", "cryptographic-algorithm", "cryptographic-length", "cryptographic-parameters", "cryptographic-domain-parameters", "cryptographic-usage-mask", "key-format-type", "linked-private-key-id", "linked-public-key-id", "linked-issuer-certificate-id", "linked-certificate-id", "tags"`
+Possible values:  `"ActivationDate", "ApplicationData", "ApplicationNamespace", "ApplicationSpecific_Information", "ArchiveDate", "AsynchronousCorrelation_Value", "AsynchronousIndicator", "Attribute", "AttributeName", "AttributeValue", "Authentication", "BatchCount", "BatchErrorContinuationOption", "BatchItem", "BatchOrderOption", "BlockCipherMode", "CancellationResult", "Certificate", "CertificateRequest", "CertificateRequestType", "CertificateType", "CertificateValue", "CompromiseDate", "CompromiseOccurrenceDate", "ContactInformation", "Credential", "CredentialType", "CredentialValue", "CriticalityIndicator", "CRTCoefficient", "CryptographicAlgorithm", "CryptographicDomainParameters", "CryptographicLength", "CryptographicParameters", "CryptographicUsageMask", "D", "DeactivationDate", "DerivationData", "DerivationMethod", "DerivationParameters", "DestroyDate", "Digest", "DigestValue", "EncryptionKeyInformation", "G", "HashingAlgorithm", "InitialDate", "InitializationVector", "IterationCount", "IVCounterNonce", "J", "Key", "KeyBlock", "KeyCompressionType", "KeyFormatType", "KeyMaterial", "KeyPartIdentifier", "KeyValue", "KeyWrappingData", "KeyWrappingSpecification", "LastChangeDate", "LeaseTime", "Link", "LinkType", "LinkedObjectIdentifier", "MACSignature", "MACSignatureKey_Information", "MaximumItems", "MaximumResponseSize", "MessageExtension", "Modulus", "Name", "NameType", "NameValue", "ObjectGroup", "ObjectType", "Offset", "OpaqueDataType", "OpaqueDataValue", "OpaqueObject", "Operation", "P", "PaddingMethod", "PrimeExponentP", "PrimeExponentQ", "PrimeFieldSize", "PrivateExponent", "PrivateKey", "PrivateKeyUniqueIdentifier", "ProcessStartDate", "ProtectStopDate", "ProtocolVersion", "ProtocolVersionMajor", "ProtocolVersionMinor", "PublicExponent", "PublicKey", "PublicKeyUniqueIdentifier", "PutFunction", "Q", "QString", "Qlength", "QueryFunction", "RecommendedCurve", "ReplacedUniqueIdentifier", "RequestHeader", "RequestMessage", "RequestPayload", "ResponseHeader", "ResponseMessage", "ResponsePayload", "ResultMessage", "ResultReason", "ResultStatus", "RevocationMessage", "RevocationReason", "RevocationReasonCode", "KeyRoleType", "Salt", "SecretData", "SecretDataType", "ServerInformation", "SplitKey", "SplitKeyMethod", "SplitKeyParts", "SplitKeyThreshold", "State", "StorageStatusMask", "SymmetricKey", "TimeStamp", "UniqueBatchItemID", "UniqueIdentifier", "UsageLimits", "UsageLimitsCount", "UsageLimitsTotal", "UsageLimitsUnit", "Username", "ValidityDate", "ValidityIndicator", "VendorExtension", "VendorIdentification", "WrappingMethod", "X", "Y", "Password", "DeviceIdentifier", "EncodingOption", "ExtensionInformation", "ExtensionName", "ExtensionTag", "ExtensionType", "Fresh", "MachineIdentifier", "MediaIdentifier", "NetworkIdentifier", "ObjectGroupMember", "CertificateLength", "DigitalSignatureAlgorithm", "CertificateSerialNumber", "DeviceSerialNumber", "IssuerAlternativeName", "IssuerDistinguishedName", "SubjectAlternativeName", "SubjectDistinguishedName", "X509CertificateIdentifier", "X509CertificateIssuer", "X509CertificateSubject", "KeyValueLocation", "KeyValueLocationValue", "KeyValueLocationType", "KeyValuePresent", "OriginalCreationDate", "PGPKey", "PGPKeyVersion", "AlternativeName", "AlternativeNameValue", "AlternativeNameType", "Data", "SignatureData", "DataLength", "RandomIV", "MACData", "AttestationType", "Nonce", "NonceID", "NonceValue", "AttestationMeasurement", "AttestationAssertion", "IVLength", "TagLength", "FixedFieldLength", "CounterLength", "InitialCounterValue", "InvocationFieldLength", "AttestationCapableIndicator", "OffsetItems", "LocatedItems", "CorrelationValue", "InitIndicator", "FinalIndicator", "RNGParameters", "RNGAlgorithm", "DRBGAlgorithm", "FIPS186Variation", "PredictionResistance", "RandomNumberGenerator", "ValidationInformation", "ValidationAuthorityType", "ValidationAuthorityCountry", "ValidationAuthorityURI", "ValidationVersionMajor", "ValidationVersionMinor", "ValidationType", "ValidationLevel", "ValidationCertificateIdentifier", "ValidationCertificateURI", "ValidationVendorURI", "ValidationProfile", "ProfileInformation", "ProfileName", "ServerURI", "ServerPort", "StreamingCapability", "AsynchronousCapability", "AttestationCapability", "UnwrapMode", "DestroyAction", "ShreddingAlgorithm", "RNGMode", "ClientRegistrationMethod", "CapabilityInformation", "KeyWrapType", "BatchUndoCapability", "BatchContinueCapability", "PKCS12FriendlyName", "Description", "Comment", "AuthenticatedEncryptionAdditionalData", "AuthenticatedEncryptionTag", "SaltLength", "MaskGenerator", "MaskGeneratorHashingAlgorithm", "PSource", "TrailerField", "ClientCorrelationValue", "ServerCorrelationValue", "DigestedData", "CertificateSubjectCN", "CertificateSubjectO", "CertificateSubjectOU", "CertificateSubjectEmail", "CertificateSubjectC", "CertificateSubjectST", "CertificateSubjectL", "CertificateSubjectUID", "CertificateSubjectSerialNumber", "CertificateSubjectTitle", "CertificateSubjectDC", "CertificateSubjectDNQualifier", "CertificateIssuerCN", "CertificateIssuerO", "CertificateIssuerOU", "CertificateIssuerEmail", "CertificateIssuerC", "CertificateIssuerST", "CertificateIssuerL", "CertificateIssuerUID", "CertificateIssuerSerialNumber", "CertificateIssuerTitle", "CertificateIssuerDC", "CertificateIssuerDNQualifier", "Sensitive", "AlwaysSensitive", "Extractable", "NeverExtractable", "ReplaceExisting", "Attributes", "CommonAttributes", "PrivateKeyAttributes", "PublicKeyAttributes", "ExtensionEnumeration", "ExtensionAttribute", "ExtensionParentStructureTag", "ExtensionDescription", "ServerName", "ServerSerialNumber", "ServerVersion", "ServerLoad", "ProductName", "BuildLevel", "BuildDate", "ClusterInfo", "AlternateFailoverEndpoints", "ShortUniqueIdentifier", "Reserved", "Tag", "CertificateRequestUniqueIdentifier", "NISTKeyType", "AttributeReference", "CurrentAttribute", "NewAttribute", "CertificateRequestValue", "LogMessage", "ProfileVersion", "ProfileVersionMajor", "ProfileVersionMinor", "ProtectionLevel", "ProtectionPeriod", "QuantumSafe", "QuantumSafeCapability", "Ticket", "TicketType", "TicketValue", "RequestCount", "Rights", "Objects", "Operations", "Right", "EndpointRole", "DefaultsInformation", "ObjectDefaults", "Ephemeral", "ServerHashedPassword", "OneTimePassword", "HashedPassword", "AdjustmentType", "PKCS11Interface", "PKCS11Function", "PKCS11InputParameters", "PKCS11OutputParameters", "PKCS11ReturnCode", "ProtectionStorageMask", "ProtectionStorageMasks", "InteropFunction", "InteropIdentifier", "AdjustmentValue", "CommonProtectionStorageMasks", "PrivateProtectionStorageMasks", "PublicProtectionStorageMasks"`
+
+`--link-type [-l] <LINK_TYPE>` Filter on retrieved links. Only if KMIP tag `LinkType` is used in `attribute` parameter.
+To specify multiple attributes, use the option multiple times.
+If not specified, all possible link types are returned.
+
+Possible values:  `"CertificateLink", "PublicKeyLink", "PrivateKeyLink", "DerivationBaseObjectLink", "DerivedKeyLink", "ReplacementObjectLink", "ReplacedObjectLink", "ParentLink", "ChildLink", "PreviousLink", "NextLink", "PKCS12CertificateLink", "PKCS12PasswordLink", "WrappingKeyLink"`
 
 `--output-file [-o] <OUTPUT_FILE>` An optional file where to export the attributes.
 The attributes will be in JSON TTLV format.
@@ -1104,7 +1235,114 @@ The attributes will be in JSON TTLV format.
 
 ---
 
-## 6 ckms locate
+## 6 ckms set-attributes
+
+Set the KMIP object attributes (one or multiple attributes).
+
+### Usage
+`ckms set-attributes [options]`
+### Arguments
+`--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key
+
+`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
+
+Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1", "HMACSHA224", "HMACSHA256", "HMACSHA384", "HMACSHA512", "HMACMD5", "DH", "ECDH", "ECMQV", "Blowfish", "Camellia", "CAST5", "IDEA", "MARS", "RC2", "RC4", "RC5", "SKIPJACK", "Twofish", "EC", "OneTimePad", "ChaCha20", "Poly1305", "ChaCha20Poly1305", "SHA3224", "SHA3256", "SHA3384", "SHA3512", "HMACSHA3224", "HMACSHA3256", "HMACSHA3384", "HMACSHA3512", "SHAKE128", "SHAKE256", "ARIA", "SEED", "SM2", "SM3", "SM4", "GOSTR34102012", "GOSTR34112012", "GOSTR34132015", "GOST2814789", "XMSS", "SPHINCS_256", "Page166Of230McEliece", "McEliece6960119", "McEliece8192128", "Ed25519", "Ed448", "CoverCrypt", "CoverCryptBulk"`
+
+`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
+
+`--key-usage [-u] <KEY_USAGE>` The key usage
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--public-key-id <PUBLIC_KEY_ID>` The link to the corresponding public key id if any
+
+`--private-key-id <PRIVATE_KEY_ID>` The link to the corresponding private key id if any
+
+`--certificate-id <CERTIFICATE_ID>` The link to the corresponding certificate id if any
+
+`--p12-id <PKCS12_CERTIFICATE_ID>` The link to the corresponding PKCS12 certificate id if any
+
+`--p12-pwd <PKCS12_PASSWORD_CERTIFICATE>` The link to the corresponding PKCS12 password certificate if any
+
+`--parent-id <PARENT_ID>` The link to the corresponding parent id if any
+
+`--child-id <CHILD_ID>` The link to the corresponding child id if any
+
+`--state [-s] <STATE>` The state of the object
+
+Possible values:  `"PreActive", "Active", "Deactivated", "Compromised", "Destroyed", "Destroyed_Compromised"`
+
+`--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
+
+`--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
+
+`--attribute-value <ATTRIBUTE_VALUE>` The attribute value
+
+
+
+---
+
+## 7 ckms delete-attributes
+
+Delete the KMIP object attributes (one or multiple attributes).
+
+### Usage
+`ckms delete-attributes [options]`
+### Arguments
+`--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key
+
+`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
+
+Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1", "HMACSHA224", "HMACSHA256", "HMACSHA384", "HMACSHA512", "HMACMD5", "DH", "ECDH", "ECMQV", "Blowfish", "Camellia", "CAST5", "IDEA", "MARS", "RC2", "RC4", "RC5", "SKIPJACK", "Twofish", "EC", "OneTimePad", "ChaCha20", "Poly1305", "ChaCha20Poly1305", "SHA3224", "SHA3256", "SHA3384", "SHA3512", "HMACSHA3224", "HMACSHA3256", "HMACSHA3384", "HMACSHA3512", "SHAKE128", "SHAKE256", "ARIA", "SEED", "SM2", "SM3", "SM4", "GOSTR34102012", "GOSTR34112012", "GOSTR34132015", "GOST2814789", "XMSS", "SPHINCS_256", "Page166Of230McEliece", "McEliece6960119", "McEliece8192128", "Ed25519", "Ed448", "CoverCrypt", "CoverCryptBulk"`
+
+`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
+
+`--key-usage [-u] <KEY_USAGE>` The key usage
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--public-key-id <PUBLIC_KEY_ID>` The link to the corresponding public key id if any
+
+`--private-key-id <PRIVATE_KEY_ID>` The link to the corresponding private key id if any
+
+`--certificate-id <CERTIFICATE_ID>` The link to the corresponding certificate id if any
+
+`--p12-id <PKCS12_CERTIFICATE_ID>` The link to the corresponding PKCS12 certificate id if any
+
+`--p12-pwd <PKCS12_PASSWORD_CERTIFICATE>` The link to the corresponding PKCS12 password certificate if any
+
+`--parent-id <PARENT_ID>` The link to the corresponding parent id if any
+
+`--child-id <CHILD_ID>` The link to the corresponding child id if any
+
+`--state [-s] <STATE>` The state of the object
+
+Possible values:  `"PreActive", "Active", "Deactivated", "Compromised", "Destroyed", "Destroyed_Compromised"`
+
+`--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
+
+`--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
+
+`--attribute-value <ATTRIBUTE_VALUE>` The attribute value
+
+`--attribute <ATTRIBUTE>` The attributes or tags to retrieve.
+To specify multiple attributes, use the option multiple times.
+
+Possible values:  `"ActivationDate", "ApplicationData", "ApplicationNamespace", "ApplicationSpecific_Information", "ArchiveDate", "AsynchronousCorrelation_Value", "AsynchronousIndicator", "Attribute", "AttributeName", "AttributeValue", "Authentication", "BatchCount", "BatchErrorContinuationOption", "BatchItem", "BatchOrderOption", "BlockCipherMode", "CancellationResult", "Certificate", "CertificateRequest", "CertificateRequestType", "CertificateType", "CertificateValue", "CompromiseDate", "CompromiseOccurrenceDate", "ContactInformation", "Credential", "CredentialType", "CredentialValue", "CriticalityIndicator", "CRTCoefficient", "CryptographicAlgorithm", "CryptographicDomainParameters", "CryptographicLength", "CryptographicParameters", "CryptographicUsageMask", "D", "DeactivationDate", "DerivationData", "DerivationMethod", "DerivationParameters", "DestroyDate", "Digest", "DigestValue", "EncryptionKeyInformation", "G", "HashingAlgorithm", "InitialDate", "InitializationVector", "IterationCount", "IVCounterNonce", "J", "Key", "KeyBlock", "KeyCompressionType", "KeyFormatType", "KeyMaterial", "KeyPartIdentifier", "KeyValue", "KeyWrappingData", "KeyWrappingSpecification", "LastChangeDate", "LeaseTime", "Link", "LinkType", "LinkedObjectIdentifier", "MACSignature", "MACSignatureKey_Information", "MaximumItems", "MaximumResponseSize", "MessageExtension", "Modulus", "Name", "NameType", "NameValue", "ObjectGroup", "ObjectType", "Offset", "OpaqueDataType", "OpaqueDataValue", "OpaqueObject", "Operation", "P", "PaddingMethod", "PrimeExponentP", "PrimeExponentQ", "PrimeFieldSize", "PrivateExponent", "PrivateKey", "PrivateKeyUniqueIdentifier", "ProcessStartDate", "ProtectStopDate", "ProtocolVersion", "ProtocolVersionMajor", "ProtocolVersionMinor", "PublicExponent", "PublicKey", "PublicKeyUniqueIdentifier", "PutFunction", "Q", "QString", "Qlength", "QueryFunction", "RecommendedCurve", "ReplacedUniqueIdentifier", "RequestHeader", "RequestMessage", "RequestPayload", "ResponseHeader", "ResponseMessage", "ResponsePayload", "ResultMessage", "ResultReason", "ResultStatus", "RevocationMessage", "RevocationReason", "RevocationReasonCode", "KeyRoleType", "Salt", "SecretData", "SecretDataType", "ServerInformation", "SplitKey", "SplitKeyMethod", "SplitKeyParts", "SplitKeyThreshold", "State", "StorageStatusMask", "SymmetricKey", "TimeStamp", "UniqueBatchItemID", "UniqueIdentifier", "UsageLimits", "UsageLimitsCount", "UsageLimitsTotal", "UsageLimitsUnit", "Username", "ValidityDate", "ValidityIndicator", "VendorExtension", "VendorIdentification", "WrappingMethod", "X", "Y", "Password", "DeviceIdentifier", "EncodingOption", "ExtensionInformation", "ExtensionName", "ExtensionTag", "ExtensionType", "Fresh", "MachineIdentifier", "MediaIdentifier", "NetworkIdentifier", "ObjectGroupMember", "CertificateLength", "DigitalSignatureAlgorithm", "CertificateSerialNumber", "DeviceSerialNumber", "IssuerAlternativeName", "IssuerDistinguishedName", "SubjectAlternativeName", "SubjectDistinguishedName", "X509CertificateIdentifier", "X509CertificateIssuer", "X509CertificateSubject", "KeyValueLocation", "KeyValueLocationValue", "KeyValueLocationType", "KeyValuePresent", "OriginalCreationDate", "PGPKey", "PGPKeyVersion", "AlternativeName", "AlternativeNameValue", "AlternativeNameType", "Data", "SignatureData", "DataLength", "RandomIV", "MACData", "AttestationType", "Nonce", "NonceID", "NonceValue", "AttestationMeasurement", "AttestationAssertion", "IVLength", "TagLength", "FixedFieldLength", "CounterLength", "InitialCounterValue", "InvocationFieldLength", "AttestationCapableIndicator", "OffsetItems", "LocatedItems", "CorrelationValue", "InitIndicator", "FinalIndicator", "RNGParameters", "RNGAlgorithm", "DRBGAlgorithm", "FIPS186Variation", "PredictionResistance", "RandomNumberGenerator", "ValidationInformation", "ValidationAuthorityType", "ValidationAuthorityCountry", "ValidationAuthorityURI", "ValidationVersionMajor", "ValidationVersionMinor", "ValidationType", "ValidationLevel", "ValidationCertificateIdentifier", "ValidationCertificateURI", "ValidationVendorURI", "ValidationProfile", "ProfileInformation", "ProfileName", "ServerURI", "ServerPort", "StreamingCapability", "AsynchronousCapability", "AttestationCapability", "UnwrapMode", "DestroyAction", "ShreddingAlgorithm", "RNGMode", "ClientRegistrationMethod", "CapabilityInformation", "KeyWrapType", "BatchUndoCapability", "BatchContinueCapability", "PKCS12FriendlyName", "Description", "Comment", "AuthenticatedEncryptionAdditionalData", "AuthenticatedEncryptionTag", "SaltLength", "MaskGenerator", "MaskGeneratorHashingAlgorithm", "PSource", "TrailerField", "ClientCorrelationValue", "ServerCorrelationValue", "DigestedData", "CertificateSubjectCN", "CertificateSubjectO", "CertificateSubjectOU", "CertificateSubjectEmail", "CertificateSubjectC", "CertificateSubjectST", "CertificateSubjectL", "CertificateSubjectUID", "CertificateSubjectSerialNumber", "CertificateSubjectTitle", "CertificateSubjectDC", "CertificateSubjectDNQualifier", "CertificateIssuerCN", "CertificateIssuerO", "CertificateIssuerOU", "CertificateIssuerEmail", "CertificateIssuerC", "CertificateIssuerST", "CertificateIssuerL", "CertificateIssuerUID", "CertificateIssuerSerialNumber", "CertificateIssuerTitle", "CertificateIssuerDC", "CertificateIssuerDNQualifier", "Sensitive", "AlwaysSensitive", "Extractable", "NeverExtractable", "ReplaceExisting", "Attributes", "CommonAttributes", "PrivateKeyAttributes", "PublicKeyAttributes", "ExtensionEnumeration", "ExtensionAttribute", "ExtensionParentStructureTag", "ExtensionDescription", "ServerName", "ServerSerialNumber", "ServerVersion", "ServerLoad", "ProductName", "BuildLevel", "BuildDate", "ClusterInfo", "AlternateFailoverEndpoints", "ShortUniqueIdentifier", "Reserved", "Tag", "CertificateRequestUniqueIdentifier", "NISTKeyType", "AttributeReference", "CurrentAttribute", "NewAttribute", "CertificateRequestValue", "LogMessage", "ProfileVersion", "ProfileVersionMajor", "ProfileVersionMinor", "ProtectionLevel", "ProtectionPeriod", "QuantumSafe", "QuantumSafeCapability", "Ticket", "TicketType", "TicketValue", "RequestCount", "Rights", "Objects", "Operations", "Right", "EndpointRole", "DefaultsInformation", "ObjectDefaults", "Ephemeral", "ServerHashedPassword", "OneTimePassword", "HashedPassword", "AdjustmentType", "PKCS11Interface", "PKCS11Function", "PKCS11InputParameters", "PKCS11OutputParameters", "PKCS11ReturnCode", "ProtectionStorageMask", "ProtectionStorageMasks", "InteropFunction", "InteropIdentifier", "AdjustmentValue", "CommonProtectionStorageMasks", "PrivateProtectionStorageMasks", "PublicProtectionStorageMasks"`
+
+
+
+---
+
+## 8 ckms locate
 
 Locate cryptographic objects inside the KMS
 
@@ -1132,7 +1370,7 @@ To specify multiple tags, use the option multiple times.
 
 ---
 
-## 7 ckms new-database
+## 9 ckms new-database
 
 Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
@@ -1142,7 +1380,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ---
 
-## 8 ckms rsa
+## 10 ckms rsa
 
 Manage RSA keys. Encrypt and decrypt data using RSA keys
 
@@ -1151,15 +1389,15 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Subcommands
 
-**`keys`** [[8.1]](#81-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
+**`keys`** [[10.1]](#101-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
+**`encrypt`** [[10.2]](#102-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
+**`decrypt`** [[10.3]](#103-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -1167,7 +1405,7 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ---
 
-## 8.1 ckms rsa keys
+## 10.1 ckms rsa keys
 
 Create, destroy, import, and export RSA key pairs
 
@@ -1176,19 +1414,23 @@ Create, destroy, import, and export RSA key pairs
 
 ### Subcommands
 
-**`create`** [[8.1.1]](#811-ckms-rsa-keys-create)  Create a new RSA key pair
+**`create`** [[10.1.1]](#1011-ckms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[8.1.2]](#812-ckms-rsa-keys-export)  Export a key from the KMS
+**`export`** [[10.1.2]](#1012-ckms-rsa-keys-export)  Export a key from the KMS
 
-**`import`** [[8.1.3]](#813-ckms-rsa-keys-import)  Import a private or public key in the KMS.
+**`import`** [[10.1.3]](#1013-ckms-rsa-keys-import)  Import a private or public key in the KMS.
 
-**`revoke`** [[8.1.4]](#814-ckms-rsa-keys-revoke)  Revoke a public or private key
+**`wrap`** [[10.1.4]](#1014-ckms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`destroy`** [[8.1.5]](#815-ckms-rsa-keys-destroy)  Destroy a public or private key
+**`unwrap`** [[10.1.5]](#1015-ckms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[10.1.6]](#1016-ckms-rsa-keys-revoke)  Revoke a public or private key
+
+**`destroy`** [[10.1.7]](#1017-ckms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 8.1.1 ckms rsa keys create
+## 10.1.1 ckms rsa keys create
 
 Create a new RSA key pair
 
@@ -1203,7 +1445,7 @@ Create a new RSA key pair
 
 ---
 
-## 8.1.2 ckms rsa keys export
+## 10.1.2 ckms rsa keys export
 
 Export a key from the KMS
 
@@ -1243,11 +1485,17 @@ Destroyed keys have their key material removed.
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
+`--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
+
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
+
 
 
 ---
 
-## 8.1.3 ckms rsa keys import
+## 10.1.3 ckms rsa keys import
 
 Import a private or public key in the KMS.
 
@@ -1284,11 +1532,61 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+
 
 
 ---
 
-## 8.1.4 ckms rsa keys revoke
+## 10.1.4 ckms rsa keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms rsa keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into a AES-256 symmetric key. For security reasons, a fresh salt is internally handled and generated by `ckms` and this final AES symmetric key will be displayed only once
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+
+
+---
+
+## 10.1.5 ckms rsa keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms rsa keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 10.1.6 ckms rsa keys revoke
 
 Revoke a public or private key
 
@@ -1306,7 +1604,7 @@ Revoke a public or private key
 
 ---
 
-## 8.1.5 ckms rsa keys destroy
+## 10.1.7 ckms rsa keys destroy
 
 Destroy a public or private key
 
@@ -1322,7 +1620,7 @@ Destroy a public or private key
 
 ---
 
-## 8.2 ckms rsa encrypt
+## 10.2 ckms rsa encrypt
 
 Encrypt a file with the given public key using either
 
@@ -1354,7 +1652,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 8.3 ckms rsa decrypt
+## 10.3 ckms rsa decrypt
 
 Decrypt a file with the given public key using either
 
@@ -1387,7 +1685,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 9 ckms server-version
+## 11 ckms server-version
 
 Print the version of the server
 
@@ -1397,7 +1695,7 @@ Print the version of the server
 
 ---
 
-## 10 ckms sym
+## 12 ckms sym
 
 Manage symmetric keys. Encrypt and decrypt data
 
@@ -1406,15 +1704,15 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[10.1]](#101-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[12.1]](#121-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[10.2]](#102-ckms-sym-encrypt)  Encrypt a file using AES GCM
+**`encrypt`** [[12.2]](#122-ckms-sym-encrypt)  Encrypt a file using AES GCM
 
-**`decrypt`** [[10.3]](#103-ckms-sym-decrypt)  Decrypts a file using AES GCM
+**`decrypt`** [[12.3]](#123-ckms-sym-decrypt)  Decrypts a file using AES GCM
 
 ---
 
-## 10.1 ckms sym keys
+## 12.1 ckms sym keys
 
 Create, destroy, import, and export symmetric keys
 
@@ -1423,21 +1721,25 @@ Create, destroy, import, and export symmetric keys
 
 ### Subcommands
 
-**`create`** [[10.1.1]](#1011-ckms-sym-keys-create)  Create a new symmetric key
+**`create`** [[12.1.1]](#1211-ckms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[10.1.2]](#1012-ckms-sym-keys-re-key)  Refresh an existing symmetric key
+**`re-key`** [[12.1.2]](#1212-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[10.1.3]](#1013-ckms-sym-keys-export)  Export a key from the KMS
+**`export`** [[12.1.3]](#1213-ckms-sym-keys-export)  Export a key from the KMS
 
-**`import`** [[10.1.4]](#1014-ckms-sym-keys-import)  Import a private or public key in the KMS.
+**`import`** [[12.1.4]](#1214-ckms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`revoke`** [[10.1.5]](#1015-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`wrap`** [[12.1.5]](#1215-ckms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`destroy`** [[10.1.6]](#1016-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`unwrap`** [[12.1.6]](#1216-ckms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[12.1.7]](#1217-ckms-sym-keys-revoke)  Revoke a symmetric key
+
+**`destroy`** [[12.1.8]](#1218-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
-## 10.1.1 ckms sym keys create
+## 12.1.1 ckms sym keys create
 
 Create a new symmetric key
 
@@ -1458,7 +1760,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ---
 
-## 10.1.2 ckms sym keys re-key
+## 12.1.2 ckms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -1471,7 +1773,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 10.1.3 ckms sym keys export
+## 12.1.3 ckms sym keys export
 
 Export a key from the KMS
 
@@ -1511,11 +1813,17 @@ Destroyed keys have their key material removed.
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
+`--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
+
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
+
 
 
 ---
 
-## 10.1.4 ckms sym keys import
+## 12.1.4 ckms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -1552,11 +1860,61 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+
 
 
 ---
 
-## 10.1.5 ckms sym keys revoke
+## 12.1.5 ckms sym keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms sym keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into a AES-256 symmetric key. For security reasons, a fresh salt is internally handled and generated by `ckms` and this final AES symmetric key will be displayed only once
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+
+
+---
+
+## 12.1.6 ckms sym keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+`ckms sym keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 12.1.7 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -1574,7 +1932,7 @@ Revoke a symmetric key
 
 ---
 
-## 10.1.6 ckms sym keys destroy
+## 12.1.8 ckms sym keys destroy
 
 Destroy a symmetric key
 
@@ -1590,7 +1948,7 @@ Destroy a symmetric key
 
 ---
 
-## 10.2 ckms sym encrypt
+## 12.2 ckms sym encrypt
 
 Encrypt a file using AES GCM
 
@@ -1612,7 +1970,7 @@ Encrypt a file using AES GCM
 
 ---
 
-## 10.3 ckms sym decrypt
+## 12.3 ckms sym decrypt
 
 Decrypts a file using AES GCM
 
@@ -1635,7 +1993,7 @@ Decrypts a file using AES GCM
 
 ---
 
-## 11 ckms login
+## 13 ckms login
 
 Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
@@ -1645,7 +2003,7 @@ Login to the Identity Provider of the KMS server using the `OAuth2` authorizatio
 
 ---
 
-## 12 ckms logout
+## 14 ckms logout
 
 Logout from the Identity Provider.
 
@@ -1655,7 +2013,7 @@ Logout from the Identity Provider.
 
 ---
 
-## 13 ckms markdown
+## 15 ckms markdown
 
 Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
@@ -1669,62 +2027,62 @@ Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- mark
 
 ---
 
-## 14 ckms google
+## 16 ckms google
 
-Manage google elements. Handle keypairs and identities from Gmail API
+Manage google elements. Handle key pairs and identities from Gmail API
 
 ### Usage
 `ckms google <subcommand>`
 
 ### Subcommands
 
-**`keypairs`** [[14.1]](#141-ckms-google-keypairs)  Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
+**`key-pairs`** [[16.1]](#161-ckms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
-**`identities`** [[14.2]](#142-ckms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
+**`identities`** [[16.2]](#162-ckms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
 
 ---
 
-## 14.1 ckms google keypairs
+## 16.1 ckms google key-pairs
 
-Insert, get, list, enable, disabled and obliterate keypairs to Gmail API
+Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
 ### Usage
-`ckms google keypairs <subcommand>`
+`ckms google key-pairs <subcommand>`
 
 ### Subcommands
 
-**`get`** [[14.1.1]](#1411-ckms-google-keypairs-get)  Retrieves an existing client-side encryption key pair.
+**`get`** [[16.1.1]](#1611-ckms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
 
-**`list`** [[14.1.2]](#1412-ckms-google-keypairs-list)  Lists client-side encryption key pairs for a user.
+**`list`** [[16.1.2]](#1612-ckms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
 
-**`insert`** [[14.1.3]](#1413-ckms-google-keypairs-insert)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
-metadata for a user.
-
-**`enable`** [[14.1.4]](#1414-ckms-google-keypairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+**`enable`** [[16.1.3]](#1613-ckms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
-**`disable`** [[14.1.5]](#1415-ckms-google-keypairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+**`disable`** [[16.1.4]](#1614-ckms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
-keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
-by using the keypairs.obliterate method.
+key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the key pairs.obliterate method.
 
-**`obliterate`** [[14.1.6]](#1416-ckms-google-keypairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+**`obliterate`** [[16.1.5]](#1615-ckms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
+**`create`** [[16.1.6]](#1616-ckms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
+
 ---
 
-## 14.1.1 ckms google keypairs get
+## 16.1.1 ckms google key-pairs get
 
 Retrieves an existing client-side encryption key pair.
 
 ### Usage
-`ckms google keypairs get [options] <KEYPAIRS_ID>
+`ckms google key-pairs get [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to retrieve
+` <KEY_PAIRS_ID>` The identifier of the key pair to retrieve
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1732,47 +2090,30 @@ Retrieves an existing client-side encryption key pair.
 
 ---
 
-## 14.1.2 ckms google keypairs list
+## 16.1.2 ckms google key-pairs list
 
 Lists client-side encryption key pairs for a user.
 
 ### Usage
-`ckms google keypairs list [options]`
+`ckms google key-pairs list [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The requester's primary email address
+` <USER_ID>` The requester's primary email address
 
 
 
 ---
 
-## 14.1.3 ckms google keypairs insert
-
-Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
-metadata for a user.
-
-### Usage
-`ckms google keypairs insert [options]`
-### Arguments
-`--user-id [-u] <USER_ID>` The requester's primary email address
-
-`--inkeydir [-k] <INKEYDIR>` Input directory with wrapped key files, with email as basename
-
-`--incertdir [-c] <INCERTDIR>` Input directory with p7 pem certs with extension p7pem, with email as basename
-
-
-
----
-
-## 14.1.4 ckms google keypairs enable
+## 16.1.3 ckms google key-pairs enable
 
 Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
 ### Usage
-`ckms google keypairs enable [options] <KEYPAIRS_ID>
+`ckms google key-pairs enable [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to enable
+` <KEY_PAIRS_ID>` The identifier of the key pair to enable
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1780,18 +2121,18 @@ again for any associated client-side encryption identities.
 
 ---
 
-## 14.1.5 ckms google keypairs disable
+## 16.1.4 ckms google key-pairs disable
 
 Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
-keypairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
-by using the keypairs.obliterate method.
+key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
+by using the key pairs.obliterate method.
 
 ### Usage
-`ckms google keypairs disable [options] <KEYPAIRS_ID>
+`ckms google key-pairs disable [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to disable
+` <KEY_PAIRS_ID>` The identifier of the key pair to disable
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
 
@@ -1799,28 +2140,56 @@ by using the keypairs.obliterate method.
 
 ---
 
-## 14.1.6 ckms google keypairs obliterate
+## 16.1.5 ckms google key-pairs obliterate
 
 Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
-the keypairs.disable method. Gmail can't restore or decrypt any messages that were encrypted by
+the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
 ### Usage
-`ckms google keypairs obliterate [options] <KEYPAIRS_ID>
+`ckms google key-pairs obliterate [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The identifier of the key pair to obliterate
+` <KEY_PAIRS_ID>` The identifier of the key pair to obliterate
 
 `--user-id [-u] <USER_ID>` The requester's primary email address
+
+
+
+---
+
+## 16.1.6 ckms google key-pairs create
+
+Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+metadata for a user.
+
+### Usage
+`ckms google key-pairs create [options] <USER_ID>
+`
+### Arguments
+` <USER_ID>` The requester's primary email address
+
+`--cse-key-id [-w] <CSE_KEY_ID>` CSE key ID to wrap exported user private key
+
+`--issuer-private-key-id [-i] <ISSUER_PRIVATE_KEY_ID>` The issuer private key id
+
+`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, or generating a keypair,
+the subject name to use.
+
+`--rsa-private-key-id [-k] <RSA_PRIVATE_KEY_ID>` The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
+
+`--dry-run <DRY_RUN>` Dry run mode. If set, the action will not be executed
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
 
 ---
 
-## 14.2 ckms google identities
+## 16.2 ckms google identities
 
 Insert, get, list, patch and delete identities from Gmail API
 
@@ -1829,60 +2198,62 @@ Insert, get, list, patch and delete identities from Gmail API
 
 ### Subcommands
 
-**`get`** [[14.2.1]](#1421-ckms-google-identities-get)  Retrieves a client-side encryption identity configuration.
+**`get`** [[16.2.1]](#1621-ckms-google-identities-get)  Retrieves a client-side encryption identity configuration.
 
-**`list`** [[14.2.2]](#1422-ckms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
+**`list`** [[16.2.2]](#1622-ckms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
 
-**`insert`** [[14.2.3]](#1423-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
+**`insert`** [[16.2.3]](#1623-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
 people within a Google Workspace organization can encrypt and send mail to the identity.
 
-**`delete`** [[14.2.4]](#1424-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
+**`delete`** [[16.2.4]](#1624-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
 the identities.create method to create another identity with the same configuration.
 
-**`patch`** [[14.2.5]](#1425-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
+**`patch`** [[16.2.5]](#1625-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.
 
 ---
 
-## 14.2.1 ckms google identities get
+## 16.2.1 ckms google identities get
 
 Retrieves a client-side encryption identity configuration.
 
 ### Usage
-`ckms google identities get [options]`
+`ckms google identities get [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
+` <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
 
 
 ---
 
-## 14.2.2 ckms google identities list
+## 16.2.2 ckms google identities list
 
 Lists the client-side encrypted identities for an authenticated user.
 
 ### Usage
-`ckms google identities list [options]`
+`ckms google identities list [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The requester's primary email address
+` <USER_ID>` The requester's primary email address
 
 
 
 ---
 
-## 14.2.3 ckms google identities insert
+## 16.2.3 ckms google identities insert
 
 Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
 people within a Google Workspace organization can encrypt and send mail to the identity.
 
 ### Usage
-`ckms google identities insert [options] <KEYPAIRS_ID>
+`ckms google identities insert [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
+` <KEY_PAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
 
 `--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
@@ -1890,31 +2261,32 @@ people within a Google Workspace organization can encrypt and send mail to the i
 
 ---
 
-## 14.2.4 ckms google identities delete
+## 16.2.4 ckms google identities delete
 
 Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
 the identities.create method to create another identity with the same configuration.
 
 ### Usage
-`ckms google identities delete [options]`
+`ckms google identities delete [options] <USER_ID>
+`
 ### Arguments
-`--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
+` <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 
 
 
 ---
 
-## 14.2.5 ckms google identities patch
+## 16.2.5 ckms google identities patch
 
 Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.
 
 ### Usage
-`ckms google identities patch [options] <KEYPAIRS_ID>
+`ckms google identities patch [options] <KEY_PAIRS_ID>
 `
 ### Arguments
-` <KEYPAIRS_ID>` The keypair id, associated with a given cert/key. You can get the by listing the keypairs associated with the user-id
+` <KEY_PAIRS_ID>` The key pair id, associated with a given cert/key. You can get the by listing the key pairs associated with the user-id
 
 `--user-id [-u] <USER_ID>` The primary email address associated with the client-side encryption identity configuration that's retrieved
 

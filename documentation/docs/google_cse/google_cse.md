@@ -1,10 +1,12 @@
+# Google CSE
+
 The Cosmian Key Management Server is compatible with Google Workspace client-side encryption. Using this feature, your users can encrypt files and documents, in their browsers, before sending them to Google servers. The ephemeral encryption keys are protected by "key wrapping keys", stored in the KMS and unavailable to Google. Only users that have the right to unwrap the ephemeral encryption keys inside the KMS, can decrypt the files. An overview is provided in Google's [About client-side encryption page](https://support.google.com/a/answer/10741897?hl=en).
 
 To enable client-side encryption (CSE) in Google Workspace, connect as an admin to the admin console and go to the [Google Workspace client-side encryption page](https://admin.google.com/ac/cse?hl=en).
 
 Google has extensive documentation on how to enable CSE in Google Workspace. The [Use client-side encryption for users' data page](https://support.google.com/a/topic/10742486?hl=en) is a good starting point. It may be slightly overwhelming, and this documentation adds some details to help you get started.
 
-### 1. Choosing and configuring the Identity Provider
+## Choosing and configuring the Identity Provider
 
 The first thing that will need to be done is to configure the Identity Provider. This is the service that the Cosmian Key Management Server will use to authenticate users before they can encrypt files or access encrypted files.
 
@@ -24,7 +26,7 @@ Once this is complete, the screen on refresh should turn to this:
 
 ![IdP configuration is successful](./images/idp-configuration-is-successful.png)
 
-### 2. Configuring the Key Management Server
+## Configuring the Key Management Server
 
 The KMS must be behind a valid TLS certificate when started.
 Assuming it is running at `https://cse.example.com`, you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
@@ -44,7 +46,7 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0 \
     --jwt-issuer-uri=https://accounts.google.com \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
     --google-cse-kacls-url=https://cse.example.com/google_cse
@@ -60,21 +62,38 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 
 ![Cosmian KMS active](./images/cosmian_kms_active.png)
 
-## Configuring CSE for GMail
+## Creating google_cse key
 
-[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.md)
-
-```sh
---jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com
---jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com
---jwt-audience=cse-authorization
-```
-
-For example, if you are using the docker image, you can run the following command:
+Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
+This key MUST be created under the `google_cse` ID.
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0 \
-    --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwt-audience=cse-authorization
+ckms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
 ```
+
+Next, you’ll need to assign access rights to each user who requires CSE functionality, whether they are part of your organization or a guest.
+You can also grant wildcard access ('*') to allow all users to use this key in CSE endpoints.
+
+```sh
+ckms access-rights grant USER_ID google_cse get encrypt decrypt
+
+# or give access to everyone
+
+ckms access-rights grant '*' google_cse get encrypt decrypt
+```
+
+## Handling Guest identity providers
+
+As an administrator, you can allow external users to access your encrypted content via Google Workspace Client-Side Encryption (CSE), including sharing encrypted documents or hosting encrypted Google Meet sessions.
+
+For more information on this configuration, refer to [Google documentation](https://support.google.com/a/answer/14757842?hl=en-0).
+
+Cosmian KMS supports this feature, and to enable it:
+
+- Add the identity provider's information in the server-side [Cosmian KMS configuration](../authentication.md)
+- Ensure that external users can access the Google CSE symmetric key
+
+
+## User experience
+
+Learn more [details about CSE user experience](https://support.google.com/a/answer/14311764?hl=en&ref_topic=10742486) over all supported applications.

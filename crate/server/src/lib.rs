@@ -1,7 +1,6 @@
 //! The lib is mostly useful for the CLI tests but
 //! since it is declared, all the modules in other Files
 //! will be resolved against the lib. So everything is exported
-
 #![deny(
     nonstandard_style,
     refining_impl_trait,
@@ -11,6 +10,7 @@
     rust_2024_compatibility,
     unreachable_pub,
     unused,
+    unsafe_code,
     clippy::all,
     clippy::suspicious,
     clippy::complexity,
@@ -18,6 +18,7 @@
     clippy::style,
     clippy::pedantic,
     clippy::cargo,
+    clippy::nursery,
 
     // restriction lints
     clippy::unwrap_used,
@@ -38,13 +39,19 @@
     clippy::empty_structs_with_brackets,
     clippy::unseparated_literal_suffix,
     clippy::map_err_ignore,
+    clippy::redundant_clone,
 )]
 #![allow(
     clippy::module_name_repetitions,
     clippy::similar_names,
     clippy::too_many_lines,
     clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions
+    clippy::multiple_crate_versions,
+    clippy::redundant_pub_crate,
+    clippy::future_not_send,
+    clippy::cognitive_complexity,
+    clippy::significant_drop_tightening,
+    clippy::iter_with_drain
 )]
 
 pub mod config;
@@ -60,6 +67,6 @@ pub mod telemetry;
 
 pub use database::KMSServer;
 
-#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used, unsafe_code)]
 #[cfg(test)]
 mod tests;

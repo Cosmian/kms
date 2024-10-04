@@ -40,7 +40,7 @@ impl AeadCipher {
             Self::Aes128Gcm => Cipher::aes_128_gcm(),
             Self::Aes256Gcm => Cipher::aes_256_gcm(),
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => Cipher::chacha20_poly1305(),
+            Self::Chacha20Poly1305 => Cipher::chacha20_poly1305(),
         }
     }
 
@@ -51,7 +51,7 @@ impl AeadCipher {
             Self::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
+            Self::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
         }
     }
 
@@ -62,7 +62,7 @@ impl AeadCipher {
             Self::Aes128Gcm => AES_128_GCM_IV_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
+            Self::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
         }
     }
 
@@ -73,7 +73,7 @@ impl AeadCipher {
             Self::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
+            Self::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
         }
     }
 
@@ -84,13 +84,12 @@ impl AeadCipher {
     ) -> Result<Self, KmipError> {
         match algorithm {
             CryptographicAlgorithm::AES => {
-                if block_cipher_mode.is_some()
-                    && (Some(BlockCipherMode::GCM) != block_cipher_mode
-                        || Some(BlockCipherMode::AEAD) != block_cipher_mode)
-                {
-                    kmip_bail!(KmipError::NotSupported(
-                        "AES is only supported with GCM mode".to_owned()
-                    ));
+                if let Some(mode) = block_cipher_mode {
+                    if BlockCipherMode::GCM != mode && BlockCipherMode::AEAD != mode {
+                        kmip_bail!(KmipError::NotSupported(format!(
+                            "AES is only supported with GCM mode. Got: {mode:?}"
+                        )));
+                    }
                 }
                 match key_size {
                     AES_128_GCM_KEY_LENGTH => Ok(Self::Aes128Gcm),
@@ -110,7 +109,7 @@ impl AeadCipher {
                     ));
                 }
                 match key_size {
-                    32 => Ok(AeadCipher::Chacha20Poly1305),
+                    32 => Ok(Self::Chacha20Poly1305),
                     _ => kmip_bail!(KmipError::NotSupported(
                         "ChaCha20 key must be 32 bytes long".to_owned()
                     )),
@@ -183,6 +182,7 @@ pub fn aead_decrypt(
     Ok(plaintext)
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "fips")]

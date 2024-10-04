@@ -2,7 +2,8 @@
 //! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 //! <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 //!
-//! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2
+//! This scheme is part of the NIST 800-56B rev. 2
+//!  recommendation available at section 7.2.2
 //! <https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf>
 //!
 //! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
@@ -87,7 +88,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     }
 
     // The ciphertext has the same length as the modulus.
-    let encapsulation_bytes_len = rsa_pub_key.size() as usize;
+    let encapsulation_bytes_len = usize::try_from(rsa_pub_key.size())?;
     let ciphertext = Vec::with_capacity(encapsulation_bytes_len);
 
     // Perform OAEP encryption.
@@ -161,7 +162,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     let hash_fn: &MdRef = hash_fn.try_into()?;
 
     // The ciphertext has the same length as the modulus.
-    let plaintext_bytes_len = rsa_priv_key.size() as usize - 2 - 2 * hash_fn.size();
+    let plaintext_bytes_len = usize::try_from(rsa_priv_key.size())? - 2 - 2 * hash_fn.size();
     let plaintext = Zeroizing::from(Vec::with_capacity(plaintext_bytes_len));
 
     // Perform OAEP encryption.
@@ -172,6 +173,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     Ok((ctx, plaintext))
 }
 
+#[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use openssl::pkey::PKey;

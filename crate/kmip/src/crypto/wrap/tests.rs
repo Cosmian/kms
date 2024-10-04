@@ -25,6 +25,7 @@ use crate::{
         symmetric::create_symmetric_key_kmip_object,
         wrap::{unwrap_key::unwrap, wrap_key::wrap},
     },
+    error::result::KmipResult,
     kmip::{
         kmip_data_structures::KeyWrappingData,
         kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
@@ -42,7 +43,7 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
     let sym_wrapping_key = create_symmetric_key_kmip_object(
         sym_wrapping_key_bytes.as_slice(),
         CryptographicAlgorithm::AES,
-    );
+    )?;
 
     // the key to wrap
     let mut sym_key_to_wrap_bytes = vec![0; 32];
@@ -50,7 +51,7 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
     let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
         sym_key_to_wrap_bytes.as_slice(),
         CryptographicAlgorithm::AES,
-    );
+    )?;
 
     let algorithm = Some(CryptographicAlgorithm::EC);
     let private_key_mask_wp = Some(CryptographicUsageMask::UnwrapKey);
@@ -119,7 +120,7 @@ fn wrap_test(
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
-            Some(Default::default())
+            Some(Box::default())
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
@@ -156,7 +157,7 @@ fn wrap_test(
 }
 
 #[test]
-fn test_encrypt_decrypt_rfc_5649() {
+fn test_encrypt_decrypt_rfc_5649() -> KmipResult<()> {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
@@ -164,12 +165,14 @@ fn test_encrypt_decrypt_rfc_5649() {
     let mut symmetric_key = vec![0; 32];
     rand_bytes(&mut symmetric_key).unwrap();
     let wrap_key =
-        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES)?;
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext).unwrap();
-    let decrypted_plaintext = unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext).unwrap();
+    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext, None).unwrap();
+    let decrypted_plaintext =
+        unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext, None).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
+    Ok(())
 }
 #[test]
 #[cfg(not(feature = "fips"))]
@@ -192,12 +195,14 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() {
         wrap_key_pair.public_key(),
         &KeyWrappingData::default(),
         plaintext,
+        Some(&[]),
     )
     .unwrap();
     let decrypted_plaintext = unwrap(
         wrap_key_pair.private_key(),
         &KeyWrappingData::default(),
         &ciphertext,
+        None,
     )
     .unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
@@ -246,11 +251,18 @@ fn test_encrypt_decrypt_rsa() {
         .cryptographic_usage_mask = Some(CryptographicUsageMask::UnwrapKey);
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let ciphertext = wrap(
+        &wrap_key_pair_pub,
+        &KeyWrappingData::default(),
+        plaintext,
+        None,
+    )
+    .unwrap();
     let decrypted_plaintext = unwrap(
         &wrap_key_pair_priv,
         &KeyWrappingData::default(),
         &ciphertext,
+        None,
     )
     .unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
@@ -276,8 +288,13 @@ fn test_encrypt_decrypt_no_rsa_1024_in_fips() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let encryption_res = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext);
-    assert!(encryption_res.is_err());
+    let encryption_res = wrap(
+        &wrap_key_pair_pub,
+        &KeyWrappingData::default(),
+        plaintext,
+        None,
+    );
+    encryption_res.unwrap_err();
 }
 
 #[test]
@@ -303,11 +320,18 @@ fn test_encrypt_decrypt_ec_p192() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let ciphertext = wrap(
+        &wrap_key_pair_pub,
+        &KeyWrappingData::default(),
+        plaintext,
+        Some(&[]),
+    )
+    .unwrap();
     let decrypted_plaintext = unwrap(
         &wrap_key_pair_priv,
         &KeyWrappingData::default(),
         &ciphertext,
+        None,
     )
     .unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
@@ -336,11 +360,18 @@ fn test_encrypt_decrypt_ec_p384() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let ciphertext = wrap(
+        &wrap_key_pair_pub,
+        &KeyWrappingData::default(),
+        plaintext,
+        Some(&[]),
+    )
+    .unwrap();
     let decrypted_plaintext = unwrap(
         &wrap_key_pair_priv,
         &KeyWrappingData::default(),
         &ciphertext,
+        None,
     )
     .unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);

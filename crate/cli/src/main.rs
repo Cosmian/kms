@@ -14,7 +14,9 @@ use cosmian_kms_cli::{
         markdown::MarkdownAction,
         new_database::NewDatabaseAction,
         rsa::RsaCommands,
-        shared::{GetAttributesAction, LocateObjectsAction},
+        shared::{
+            DeleteAttributesAction, GetAttributesAction, LocateObjectsAction, SetAttributesAction,
+        },
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
@@ -66,6 +68,8 @@ enum CliCommands {
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
     GetAttributes(GetAttributesAction),
+    SetAttributes(SetAttributesAction),
+    DeleteAttributes(DeleteAttributesAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     #[command(subcommand)]
@@ -129,7 +133,9 @@ async fn main_() -> CliResult<()> {
                 CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
                 CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
-                CliCommands::Google(action) => action.process(&conf_path).await?,
+                CliCommands::SetAttributes(action) => action.process(&kms_rest_client).await?,
+                CliCommands::DeleteAttributes(action) => action.process(&kms_rest_client).await?,
+                CliCommands::Google(action) => action.process(&conf_path, &kms_rest_client).await?,
                 _ => {
                     tracing::error!("unexpected command");
                 }

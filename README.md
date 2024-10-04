@@ -5,8 +5,7 @@
 Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
 Management System** that presents some unique features, such as
 
-- the ability to confidentially run in a public cloud - or any zero-trust environment -
-  using
+- the ability to confidentially run in a public cloud — or any zero-trust environment — using
   Cosmian VM (see [Cosmian VM](https://docs.cosmian.com/compute/cosmian_vm/overview/))
   and application-level encryption
   (see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
@@ -24,31 +23,29 @@ Management System** that presents some unique features, such as
 - [Veracrypt](https://veracrypt.fr/en/Home.html)
   and [LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) disk encryption support
 
-The KMS has an extensive
+The KMS has extensive
 online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
 Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
 Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
-<!-- toc -->
-
-- [Quick start](#quick-start)
-- [Repository content](#repository-content)
-- [Building the KMS](#building-the-kms)
-  * [Linux](#linux)
-  * [MacOS](#macos)
-  * [Windows](#windows)
-  * [Build the Docker container](#build-the-docker-container)
-- [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-- [Development: running the server with cargo](#development-running-the-server-with-cargo)
-- [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
-- [Server parameters](#server-parameters)
-- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-- [Releases](#releases)
-- [Benchmarks](#benchmarks)
-
-<!-- tocstop -->
+- [Cosmian KMS](#cosmian-kms)
+  - [Quick start](#quick-start)
+    - [Example](#example)
+  - [Repository content](#repository-content)
+  - [Building the KMS](#building-the-kms)
+    - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Windows](#windows)
+    - [Build the KMS](#build-the-kms)
+    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+  - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+  - [Development: running the server with cargo](#development-running-the-server-with-cargo)
+  - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
+  - [Server parameters](#server-parameters)
+  - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+  - [Releases](#releases)
+  - [Benchmarks](#benchmarks)
 
 ## Quick start
 
@@ -61,44 +58,52 @@ Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running 
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
+
 ```sh
 cargo run --bin ckms -- --help
 ```
 
-**Example**
+### Example
 
-1. Create a 256-bit symmetric key 
+1. Create a 256-bit symmetric key
 
 ```sh
-➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag project1
+➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
 ...
 The symmetric key was successfully generated.
-	  Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+   Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
 
   Tags:
-    - project1
+    - my-key-file
 ```
 
 2. Encrypt the `image.png` file with AES GCM using the key
 
 ```sh
-➜ cargo run --bin ckms -- sym encrypt --tag project1 --output-file image.enc image.png
+➜ cargo run --bin ckms -- sym encrypt --tag my-key-file --output-file image.enc image.png
 ...
 The encrypted file is available at "image.enc"
 ```
 
 3. Decrypt the `image.enc` file using the key
+
 ```sh
-➜ cargo run --bin ckms -- sym decrypt --tag project1 --output-file image2.png image.enc
+➜ cargo run --bin ckms -- sym decrypt --tag my-key-file --output-file image2.png image.enc
 ...
 The decrypted file is available at "image2.png"
 ```
 
+Then, use the CLI to issue commands to the KMS.
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
+
+```sh
+cargo run --bin ckms -- --help
+```
 
 See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
 
@@ -123,37 +128,18 @@ directory.
 
 ## Building the KMS
 
-To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the
-PKCS11 provider - should directly be built using `cargo build --release`within their own crate, not
-from the project root.
+OpenSSL v3.2.0 is required to build the KMS.
 
-In addition, the KMS server must be built against a local installation of OpenSSL 3. Other
-artifacts do not have this requirement.
+### Linux or MacOS (CPU Intel or MacOs ARM)
 
-### Linux
-
-Unless you require a FIPS-certified cryptographic module, the distribution provided by OpenSSL should
-be sufficient.
-
-You need to have the development packages of OpenSSL installed. On Ubuntu, you can install them
-with:
+Build OpenSSL v3.2.0 with the following commands:
 
 ```sh
-sudo apt install libssl-dev
+export OPENSSL_DIR=/usr/local/openssl
+sudo mkdir -p ${OPENSSL_DIR}
+sudo chown -R $USER ${OPENSSL_DIR}
+bash .github/scripts/local_ossl_instl.sh ${OPENSSL_DIR}
 ```
-
-You may also need to install the `pkg-config` package (on Ubuntu server typically).
-
-### MacOS
-
-Install OpenSSL 3 with Homebrew:
-
-```sh
-brew install openssl@3
-```
-
-The builder should find it automatically; if not, you can set the `OPENSSL_DIR` environment variable
-to the OpenSSL installation directory.
 
 ### Windows
 
@@ -162,24 +148,42 @@ to the OpenSSL installation directory.
 3. Install `vcpkg` following
    [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 
-4. Then install OpenSSL 3:
+4. Then install OpenSSL 3.2.0:
+
+The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
 
 ```powershell
-vcpkg.exe install openssl[fips]
-vcpkg.exe integrate install
-set VCPKGRS_DYNAMIC=1
-$env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
+vcpkg install --triplet x64-windows-static
+vcpkg integrate install
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
 ```
 
-where `<vcpkg>` is the path to the vcpkg installation directory,
-and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
+For a FIPS compliant build, use the following commands (in order to build fips.dll), run also:
 
-To run the server from the command line, add `<vcpkg>\installed\<archi>\bin` to the `PATH`
-environment variable.
+```powershell
+Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
+vcpkg install
+vcpkg integrate install
+```
 
-### Build the Docker container
+### Build the KMS
 
-You can build a docker containing the KMS server as follow:
+Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate, not
+from the project root.
+
+Build the server and CLI binaries:
+
+```sh
+cd crate/server
+cargo build --release
+cd ../..
+cd crate/ckms
+cargo build --release
+```
+
+### Build the Docker Ubuntu container
+
+You can build a docker containing the KMS server as follows:
 
 ```sh
 docker build . --network=host -t kms
@@ -213,8 +217,8 @@ Example: testing with a plain SQLite and some logging
 RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
 ````
 
-Alternatively, when writing a test, or running a test from your IDE, the following can be inserted
-ath the top of the test:
+Alternatively, when writing a test or running a test from your IDE, the following can be inserted
+at the top of the test:
 
 ```rust
 unsafe {
@@ -243,8 +247,8 @@ Supervisor (A Process Control System) is a client/server system that allows its 
 control a number of processes on UNIX-like operating systems.
 
 Concerning the KMS, copy the binary `target/release/cosmian_kms_server` to the remote machine folder
-according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (
-ie: `/usr/sbin/cosmian_kms_server`).
+according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (i.e.:
+`/usr/sbin/cosmian_kms_server`).
 
 Copy the [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) config file
 as `/etc/supervisord.d/cosmian_kms.ini` in the remote machine.
@@ -264,9 +268,9 @@ If a configuration file is provided, parameters are set following this order:
 - conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/server.toml`)
 - default (set on struct)
 
-Otherwise the parameters are set following this order:
+Otherwise, the parameters are set following this order:
 
-- args in command line
+- args in the command line
 - env var
 - default (set on struct)
 
@@ -298,7 +302,7 @@ $ sudo tail -f /var/log/cosmian_kms.out.log
 
 Now you can interact with your KMS through the KMS CLI.
 
-You can also interact with the Cosmian VM Agent through its own CLI as follow:
+You can also interact with the Cosmian VM Agent through its own CLI as follows:
 
 ```console
 # From your local machine

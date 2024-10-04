@@ -4,12 +4,10 @@ use std::{
 };
 
 use num_bigint_dig::BigUint;
-#[cfg(feature = "openssl")]
 use openssl::rand::rand_bytes;
 use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[cfg(feature = "openssl")]
 use crate::error::KmipError;
 
 /// Holds a big integer secret information. Wraps around `BigUint` type which is
@@ -57,9 +55,10 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     ///
     /// All bytes are initially set to 0.
     #[must_use]
+    #[allow(unsafe_code)]
     pub fn new() -> Self {
         // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
-        let data = vec![0u8; LENGTH].into_boxed_slice();
+        let data = vec![0_u8; LENGTH].into_boxed_slice();
         // cast the raw pointer back to our fixed-length type
         // it is considered safe because `data` is initialized in the previous line
         let data = unsafe { Box::from_raw(Box::into_raw(data).cast::<[u8; LENGTH]>()) };
@@ -67,7 +66,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     }
 
     /// Creates a new random secret.
-    #[cfg(feature = "openssl")]
     pub fn new_random() -> Result<Self, KmipError> {
         let mut secret = Self::new();
         rand_bytes(&mut secret)?;

@@ -19,6 +19,9 @@ on:
       debug_or_release:
         required: true
         type: string
+      database:
+        required: true
+        type: string
       features:
         required: false
         type: string
@@ -62,8 +65,9 @@ jobs:
         ports:
           - 6379:6379
 
+    name: ${{ inputs.archive-name }}-${{ inputs.database }}
+    if: inputs.debug_or_release == 'release' || inputs.database == 'redis-findex'
     runs-on: ubuntu-22.04
-    name: ${{ inputs.archive-name }}
     container:
       image: redhat/ubi9
 
@@ -87,7 +91,7 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
-          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash .github/scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Pre-cleanup
         run: |
@@ -116,9 +120,11 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
 
           TARGET: ${{ inputs.target }}
           DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          KMS_TEST_DB: ${{ inputs.database }}
           FEATURES: ${{ inputs.features }}
         run: |
           bash .github/scripts/cargo_build.sh
@@ -128,6 +134,7 @@ jobs:
           find target/ -type f -size ++100M -delete
 
       - name: Upload KMS for RHEL 9
+        if: inputs.database == 'redis-findex'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
@@ -142,6 +149,7 @@ jobs:
           if-no-files-found: error
 
   kms-test:
+    if: inputs.database == 'redis-findex'
     needs: rhel9-tests
     name: Clean env test ${{ inputs.archive-name }}
     runs-on: ubuntu-22.04

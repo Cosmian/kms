@@ -9,4 +9,4 @@ rust-version.workspace = true
 
 [dependencies]
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

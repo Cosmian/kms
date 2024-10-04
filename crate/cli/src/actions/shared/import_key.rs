@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -20,7 +20,7 @@ use crate::{
     error::{result::CliResult, CliError},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(ValueEnum, Debug, Clone)]
 pub(crate) enum ImportKeyFormat {
     JsonTtlv,
     Pem,
@@ -66,29 +66,24 @@ pub struct ImportKeyAction {
     key_id: Option<String>,
 
     /// The format of the key.
-    #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
+    #[clap(long, short = 'f', default_value = "json-ttlv")]
     key_format: ImportKeyFormat,
 
     /// For a private key: the corresponding public key id if any.
-    #[clap(long = "public-key-id", short = 'p')]
+    #[clap(long, short = 'p')]
     public_key_id: Option<String>,
 
     /// For a public key: the corresponding private key id if any.
-    #[clap(long = "private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
     /// For a public or private key: the corresponding certificate id if any.
-    #[clap(long = "certificate-id", short = 'c')]
+    #[clap(long, short = 'c')]
     certificate_id: Option<String>,
 
     /// In the case of a JSON TTLV key,
     /// unwrap the key if it is wrapped before storing it.
-    #[clap(
-        long = "unwrap",
-        short = 'u',
-        required = false,
-        default_value = "false"
-    )]
+    #[clap(long, short = 'u', required = false, default_value = "false")]
     unwrap: bool,
 
     /// Replace an existing key under the same id.
@@ -106,8 +101,16 @@ pub struct ImportKeyAction {
     tags: Vec<String>,
 
     /// For what operations should the key be used.
-    #[clap(long = "key-usage")]
+    #[clap(long)]
     key_usage: Option<Vec<KeyUsage>>,
+
+    /// Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+    #[clap(
+        long,
+        short = 'd',
+        default_value = None,
+    )]
+    authenticated_additional_data: Option<String>,
 }
 
 impl ImportKeyAction {
@@ -193,6 +196,14 @@ impl ImportKeyAction {
             );
         };
 
+        if self.unwrap {
+            if let Some(data) = &self.authenticated_additional_data {
+                // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
+                let aad = data.as_bytes();
+                object.attributes_mut()?.add_aad(aad);
+            }
+        }
+
         // import the key
         let unique_identifier = import_object(
             kms_rest_client,
@@ -220,6 +231,7 @@ impl ImportKeyAction {
 }
 
 /// Read a key from a PEM file
+#[allow(clippy::print_stdout)]
 fn read_key_from_pem(bytes: &[u8]) -> CliResult<Object> {
     let mut objects = objects_from_pem(bytes)?;
     let object = objects

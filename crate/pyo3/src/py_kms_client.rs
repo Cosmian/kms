@@ -111,11 +111,11 @@ impl KmsClient {
             Some(cert_bytes) => Some(Certificate(
                 X509::from_pem(cert_bytes.as_bytes())
                     .map_err(|_| {
-                        PyException::new_err("Cannot parse TEE certificate as PEM".to_string())
+                        PyException::new_err("Cannot parse TEE certificate as PEM".to_owned())
                     })?
                     .to_der()
                     .map_err(|_| {
-                        PyException::new_err("Cannot convert TEE certificate to DER".to_string())
+                        PyException::new_err("Cannot convert TEE certificate to DER".to_owned())
                     })?,
             )),
             None => None,
@@ -295,7 +295,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::RekeyAccessPolicy(access_policy),
+            &RekeyEditAction::RekeyAccessPolicy(access_policy),
             py
         )
     }
@@ -321,7 +321,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::PruneAccessPolicy(access_policy),
+            &RekeyEditAction::PruneAccessPolicy(access_policy),
             py
         )
     }
@@ -349,7 +349,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::RemoveAttribute(vec![attr]),
+            &RekeyEditAction::RemoveAttribute(vec![attr]),
             py
         )
     }
@@ -374,7 +374,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::DisableAttribute(vec![attr]),
+            &RekeyEditAction::DisableAttribute(vec![attr]),
             py
         )
     }
@@ -400,7 +400,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized))]),
+            &RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized))]),
             py
         )
     }
@@ -426,7 +426,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
+            &RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
             py
         )
     }

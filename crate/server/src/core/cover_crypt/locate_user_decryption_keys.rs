@@ -28,7 +28,7 @@ pub(crate) async fn locate_user_decryption_keys(
 ) -> KResult<Option<Vec<String>>> {
     // Convert the policy attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
-        Some(att) => Some(vec![attributes_as_vendor_attribute(att)?]),
+        Some(att) => Some(vec![attributes_as_vendor_attribute(&att)?]),
         None => None,
     };
     // Search the user decryption keys that need to be refreshed

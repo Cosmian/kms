@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.19.0] - 2024-10-04
+
+### 🚀 Features
+
+- Google Workspace Client-Side-Encryption (CSE) updates ([#319](https://github.com/Cosmian/kms/pull/319))
+  - Generate Google S/MIME key-pairs and identities and upload them to Gmail API from ckms CLI ([#270](https://github.com/Cosmian/kms/issues/270))
+  - Server-side, export cert at PKCS7 format
+  - Implement missing CSE endpoints
+  - Wrap/unwrap CSE elements with authenticated encryption
+  - Export wrapped keys from KMS specifying the cipher mode
+  - Handle auth for guest users ([#271](https://github.com/Cosmian/kms/issues/271))
+- Add SetAttribute/DeleteAttribute KMIP operations ([#303](https://github.com/Cosmian/kms/pull/303))
+- Reenable wrap/unwrap on ckms by linking statically on openssl ([#317](https://github.com/Cosmian/kms/pull/317))
+
+### Documentation
+
+- Documentation: Migrating emails to Gmail CSE ([#316](https://github.com/Cosmian/kms/pull/316))
+- Update CSE documentation (Gmail S/MIME) ([#316](https://github.com/Cosmian/kms/pull/316))
+- Update KMS build instructions ([#320](https://github.com/Cosmian/kms/pull/320))
+
+### 🧪 Testing
+
+- Add test on database backends ([#311](https://github.com/Cosmian/kms/pull/311))
+- Reduce CI pipeline duration in debug ([#315](https://github.com/Cosmian/kms/pull/315))
+- Add CSE endpoints testing ([#319](https://github.com/Cosmian/kms/pull/319))
+
+### ⚙️ Miscellaneous Tasks
+
+- Clippy hardening in crate `kmip` ([#304](https://github.com/Cosmian/kms/pull/304))
+
 ## [4.18.0] - 2024-09-17
 
 ### 🚀 Features
@@ -19,25 +49,25 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - KMIP Attributes:
-  * In get_attributes, use attributes from ObjectWithMetadata instead of
+  - In get_attributes, use attributes from ObjectWithMetadata instead of
       Object.Attributes ([#278](https://github.com/Cosmian/kms/pull/278))
-  * When inserting in db, force Object::Attributes to be synced with
+  - When inserting in db, force Object::Attributes to be synced with
       Attributes ([#279](https://github.com/Cosmian/kms/pull/279))
 - Certificates handling/tasks:
-  * **Validate** KMIP operation:
+  - **Validate** KMIP operation:
     - Simplify getting CRLs and get returned
           errors ([#268](https://github.com/Cosmian/kms/pull/268))
     - Validate certificate generation ([#283](https://github.com/Cosmian/kms/pull/283))
     - Use certificate file path in ckms
           arguments ([#292](https://github.com/Cosmian/kms/pull/292))
-  * **Certify** KMIP operation: Server must sign x509 after adding X509
+  - **Certify** KMIP operation: Server must sign x509 after adding X509
       extensions ([#282](https://github.com/Cosmian/kms/pull/282))
 - Merge decrypt match in same function ([#295](https://github.com/Cosmian/kms/pull/295))
 - Fix Public RSA Key size in get attributes ([#275](https://github.com/Cosmian/kms/pull/275))
 - RUSTSEC:
-  * **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade
+  - **RUSTSEC-2024-0357**: MemBio::get_buf has undefined behavior with empty buffers: upgrade
       crate `openssl` from 1.0.64 to 1.0.66 ([#280](https://github.com/Cosmian/kms/pull/280))
-  * **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing
+  - **RUSTSEC-2024-0363**: Binary Protocol Misinterpretation caused by Truncating or Overflowing
       Casts: bump sqlx to 0.8.1 ([#291](https://github.com/Cosmian/kms/pull/291)
       and [#297](https://github.com/Cosmian/kms/pull/297))
 - CLI doc fixes (certificates certify)
@@ -48,9 +78,9 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - **clippy** tasks:
-  * Only expose pub functions that need to be
+  - Only expose pub functions that need to be
       public ([#277](https://github.com/Cosmian/kms/pull/277))
-  * Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
+  - Hardcode clippy lints ([#293](https://github.com/Cosmian/kms/pull/293))
 - Rename MacOS artifacts giving CPU architecture
 - Configure `ckms` to build reqwest with minimal idle connections
   reuse ([#272](https://github.com/Cosmian/kms/pull/272))

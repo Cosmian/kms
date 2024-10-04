@@ -11,7 +11,7 @@ use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
     client_bail, client_error,
     cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
-    write_json_object_to_file, ClientConf, ClientError, KmsClient,
+    write_json_object_to_file, ClientConf, ClientError, GmailApiConf, KmsClient,
 };
 use cosmian_kms_server::{
     config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
@@ -36,6 +36,7 @@ fn sqlite_db_config() -> DBConfig {
     trace!("TESTS: using sqlite");
     let tmp_dir = TempDir::new().unwrap();
     let file_path = tmp_dir.path().join("test_sqlite.db");
+    // let file_path = PathBuf::from("test_sqlite.db");
     if file_path.exists() {
         std::fs::remove_file(&file_path).unwrap();
     }
@@ -107,10 +108,8 @@ fn redis_findex_db_config() -> DBConfig {
     }
 }
 
-/// Start a test KMS server in a thread with the default options:
-/// No TLS, no certificate authentication
-pub async fn start_default_test_kms_server() -> &'static TestsContext {
-    let db_config = env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
+fn get_db_config() -> DBConfig {
+    env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
         match v.to_str().unwrap_or("") {
             "redis-findex" => redis_findex_db_config(),
             "mysql" => mysql_db_config(),
@@ -118,10 +117,16 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
             "postgresql" => postgres_db_config(),
             _ => sqlite_enc_db_config(),
         }
-    });
+    })
+}
+
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
+pub async fn start_default_test_kms_server() -> &'static TestsContext {
+    trace!("Starting default test server");
     ONCE.get_or_try_init(|| {
         start_test_server_with_options(
-            db_config,
+            get_db_config(),
             9990,
             AuthenticationOptions {
                 use_jwt_token: false,
@@ -137,10 +142,11 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 }
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
             start_test_server_with_options(
-                sqlite_enc_db_config(),
+                get_db_config(),
                 9991,
                 AuthenticationOptions {
                     use_jwt_token: false,
@@ -294,7 +300,7 @@ fn generate_http_config(
             HttpConfig {
                 port,
                 https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
-                https_p12_password: Some("password".to_string()),
+                https_p12_password: Some("password".to_owned()),
                 authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
                 api_token_id,
                 ..HttpConfig::default()
@@ -303,7 +309,7 @@ fn generate_http_config(
             HttpConfig {
                 port,
                 https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
-                https_p12_password: Some("password".to_string()),
+                https_p12_password: Some("password".to_owned()),
                 api_token_id,
                 ..HttpConfig::default()
             }
@@ -364,8 +370,10 @@ fn generate_owner_conf(
     // Create a conf
     let owner_client_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
-    // Generate a CLI Conf.
-    // We will update it later by appending the database secret
+    let gmail_api_conf: Option<GmailApiConf> = std::env::var("TEST_GMAIL_API_CONF")
+        .ok()
+        .and_then(|config| serde_json::from_str(&config).ok());
+
     let owner_client_conf = ClientConf {
         kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
             format!("https://0.0.0.0:{}", server_params.port)
@@ -381,19 +389,19 @@ fn generate_owner_conf(
             let p = root_dir.join("certificates/owner/owner.client.acme.com.old.format.p12");
             Some(
                 p.to_str()
-                    .ok_or_else(|| {
-                        ClientError::Default("Can't convert path to string".to_string())
-                    })?
+                    .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
                     .to_string(),
             )
         } else {
             None
         },
         ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
-            Some("password".to_string())
+            Some("password".to_owned())
         } else {
             None
         },
+        gmail_api_conf,
+
         // We use the private key since the private key is the public key with additional information.
         ..ClientConf::default()
     };
@@ -417,11 +425,11 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
         let p = root_dir.join("certificates/user/user.client.acme.com.old.format.p12");
         Some(
             p.to_str()
-                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_string()))?
+                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
                 .to_string(),
         )
     };
-    user_conf.ssl_client_pkcs12_password = Some("password".to_string());
+    user_conf.ssl_client_pkcs12_password = Some("password".to_owned());
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.json");
@@ -441,7 +449,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 
     let mut invalid_conf = correct_conf.clone();
     // and a temp file
-    let invalid_conf_path = "/tmp/invalid_conf.json".to_string();
+    let invalid_conf_path = "/tmp/invalid_conf.json".to_owned();
     // Generate a wrong token with valid group id
     let secrets = b64
         .decode(

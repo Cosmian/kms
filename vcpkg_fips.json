@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    {
+      "name": "openssl",
+      "features": ["fips"]
+    }
+  ],
+  "overrides": [
+    {
+      "name": "openssl",
+      "version": "3.2.0"
+    }
+  ],
+  "builtin-baseline": "9760ce6194ef51aa4faf77b6321e1280daa4545c"
+}

@@ -3,13 +3,12 @@
 
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
-
 use std::{
     fmt,
     fmt::{Display, Formatter},
 };
 
-#[cfg(feature = "openssl")]
+use clap::ValueEnum;
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
@@ -20,28 +19,32 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
+use tracing::trace;
 use uuid::Uuid;
 
 use super::kmip_objects::ObjectType;
-#[cfg(feature = "openssl")]
-use crate::kmip_error;
 use crate::{
     error::KmipError,
     kmip::{
         extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
     },
+    kmip_error,
 };
+pub const VENDOR_ATTR_AAD: &str = "aad";
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
+/// The PKCS7 format is a Cosmian extension from KMIP.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::enum_clike_unportable_variant)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
+    PKCS7 = 0x8000_0001,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
@@ -79,6 +82,7 @@ pub enum SplitKeyMethod {
 /// | Type | Default Key Format Type |
 /// |------|-------------------------|
 /// | Certificate | X.509 |
+/// | Certificate | PKCS#7 |
 /// | Certificate Request | PKCS#10 |
 /// | Opaque Object | Opaque |
 /// | PGP Key | Raw |
@@ -102,117 +106,199 @@ pub enum SplitKeyMethod {
 ///  - Raw for opaque objects and Secret Data
 ///
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display,
+)]
 pub enum KeyFormatType {
+    #[value(name = "Raw")]
     Raw = 0x01,
+    #[value(name = "Opaque")]
     Opaque = 0x02,
+    #[value(name = "PKCS1")]
     PKCS1 = 0x03,
+    #[value(name = "PKCS8")]
     PKCS8 = 0x04,
+    #[value(name = "X509")]
     X509 = 0x05,
+    #[value(name = "ECPrivateKey")]
     ECPrivateKey = 0x06,
+    #[value(name = "TransparentSymmetricKey")]
     TransparentSymmetricKey = 0x07,
+    #[value(name = "TransparentDSAPrivateKey")]
     TransparentDSAPrivateKey = 0x08,
+    #[value(name = "TransparentDSAPublicKey")]
     TransparentDSAPublicKey = 0x09,
+    #[value(name = "TransparentRSAPrivateKey")]
     TransparentRSAPrivateKey = 0x0A,
+    #[value(name = "TransparentRSAPublicKey")]
     TransparentRSAPublicKey = 0x0B,
+    #[value(name = "TransparentDHPrivateKey")]
     TransparentDHPrivateKey = 0x0C,
+    #[value(name = "TransparentDHPublicKey")]
     TransparentDHPublicKey = 0x0D,
+    #[value(name = "TransparentECPrivateKey")]
     TransparentECPrivateKey = 0x14,
+    #[value(name = "TransparentECPublicKey")]
     TransparentECPublicKey = 0x15,
+    #[value(name = "PKCS12")]
     PKCS12 = 0x16,
+    #[value(name = "PKCS10")]
     PKCS10 = 0x17,
     #[cfg(not(feature = "fips"))]
     /// This mode is to support legacy, but common, PKCS#12 formats that use
-    /// PBE_WITHSHA1AND40BITRC2_CBC for the encryption algorithm of certificate,
-    /// PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC for the encryption algorithm of the key
+    /// `PBE_WITHSHA1AND40BITRC2_CBC` for the encryption algorithm of certificate,
+    /// `PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC` for the encryption algorithm of the key
     /// and SHA-1 for the MAC.
     /// This is not a standard PKCS#12 format but is used by some software
-    /// such as Java KeyStores, Mac OS X Keychains, and some versions of OpenSSL (1x).
+    /// such as Java `KeyStores`, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
     Pkcs12Legacy = 0x8880_0001,
-    // Available slot 0x8880_0001,
-    // Available slot 0x8880_0002,
+    PKCS7 = 0x8880_0002,
     // Available slot 0x8880_0003,
     // Available slot 0x8880_0004,
+    #[value(name = "EnclaveECKeyPair")]
     EnclaveECKeyPair = 0x8880_0005,
+    #[value(name = "EnclaveECSharedKey")]
     EnclaveECSharedKey = 0x8880_0006,
     // Available slot 0x8880_0007,
     // Available slot 0x8880_0008,
     // Available slot 0x8880_0009,
     // Available slot 0x8880_000A,
     // Available slot 0x8880_000B,
+    #[value(name = "CoverCryptSecretKey")]
     CoverCryptSecretKey = 0x8880_000C,
+    #[value(name = "CoverCryptPublicKey")]
     CoverCryptPublicKey = 0x8880_000D,
 }
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter,
+)]
 pub enum CryptographicAlgorithm {
+    #[value(name = "DES")]
     DES = 0x0000_0001,
+    #[value(name = "THREE_DES")]
     THREE_DES = 0x0000_0002,
+    #[value(name = "AES")]
     AES = 0x0000_0003,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
     /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
     /// To use  `CKM_RSA_AES_KEY_WRAP` from PKCS#11, use and RSA key with AES as the algorithm
     /// See <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226908
+    #[value(name = "RSA")]
     RSA = 0x0000_0004,
+    #[value(name = "DSA")]
     DSA = 0x0000_0005,
+    #[value(name = "ECDSA")]
     ECDSA = 0x0000_0006,
+    #[value(name = "HMACSHA1")]
     HMACSHA1 = 0x0000_0007,
+    #[value(name = "HMACSHA224")]
     HMACSHA224 = 0x0000_0008,
+    #[value(name = "HMACSHA256")]
     HMACSHA256 = 0x0000_0009,
+    #[value(name = "HMACSHA384")]
     HMACSHA384 = 0x0000_000A,
+    #[value(name = "HMACSHA512")]
     HMACSHA512 = 0x0000_000B,
+    #[value(name = "HMACMD5")]
     HMACMD5 = 0x0000_000C,
+    #[value(name = "DH")]
     DH = 0x0000_000D,
+    #[value(name = "ECDH")]
     ECDH = 0x0000_000E,
+    #[value(name = "ECMQV")]
     ECMQV = 0x0000_000F,
+    #[value(name = "Blowfish")]
     Blowfish = 0x0000_0010,
+    #[value(name = "Camellia")]
     Camellia = 0x0000_0011,
+    #[value(name = "CAST5")]
     CAST5 = 0x0000_0012,
+    #[value(name = "IDEA")]
     IDEA = 0x0000_0013,
+    #[value(name = "MARS")]
     MARS = 0x0000_0014,
+    #[value(name = "RC2")]
     RC2 = 0x0000_0015,
+    #[value(name = "RC4")]
     RC4 = 0x0000_0016,
+    #[value(name = "RC5")]
     RC5 = 0x0000_0017,
+    #[value(name = "SKIPJACK")]
     SKIPJACK = 0x0000_0018,
+    #[value(name = "Twofish")]
     Twofish = 0x0000_0019,
+    #[value(name = "EC")]
     EC = 0x0000_001A,
+    #[value(name = "OneTimePad")]
     OneTimePad = 0x0000_001B,
+    #[value(name = "ChaCha20")]
     ChaCha20 = 0x0000_001C,
+    #[value(name = "Poly1305")]
     Poly1305 = 0x0000_001D,
+    #[value(name = "ChaCha20Poly1305")]
     ChaCha20Poly1305 = 0x0000_001E,
+    #[value(name = "SHA3224")]
     SHA3224 = 0x0000_001F,
+    #[value(name = "SHA3256")]
     SHA3256 = 0x0000_0020,
+    #[value(name = "SHA3384")]
     SHA3384 = 0x0000_0021,
+    #[value(name = "SHA3512")]
     SHA3512 = 0x0000_0022,
+    #[value(name = "HMACSHA3224")]
     HMACSHA3224 = 0x0000_0023,
+    #[value(name = "HMACSHA3256")]
     HMACSHA3256 = 0x0000_0024,
+    #[value(name = "HMACSHA3384")]
     HMACSHA3384 = 0x0000_0025,
+    #[value(name = "HMACSHA3512")]
     HMACSHA3512 = 0x0000_0026,
+    #[value(name = "SHAKE128")]
     SHAKE128 = 0x0000_0027,
+    #[value(name = "SHAKE256")]
     SHAKE256 = 0x0000_0028,
+    #[value(name = "ARIA")]
     ARIA = 0x0000_0029,
+    #[value(name = "SEED")]
     SEED = 0x0000_002A,
+    #[value(name = "SM2")]
     SM2 = 0x0000_002B,
+    #[value(name = "SM3")]
     SM3 = 0x0000_002C,
+    #[value(name = "SM4")]
     SM4 = 0x0000_002D,
+    #[value(name = "GOSTR34102012")]
     GOSTR34102012 = 0x0000_002E,
+    #[value(name = "GOSTR34112012")]
     GOSTR34112012 = 0x0000_002F,
+    #[value(name = "GOSTR34132015")]
     GOSTR34132015 = 0x0000_0030,
+    #[value(name = "GOST2814789")]
     GOST2814789 = 0x0000_0031,
+    #[value(name = "XMSS")]
     XMSS = 0x0000_0032,
+    #[value(name = "SPHINCS_256")]
     SPHINCS_256 = 0x0000_0033,
+    #[value(name = "Page166Of230McEliece")]
     Page166Of230McEliece = 0x0000_0034,
+    #[value(name = "McEliece6960119")]
     McEliece6960119 = 0x0000_0035,
+    #[value(name = "McEliece8192128")]
     McEliece8192128 = 0x0000_0036,
+    #[value(name = "Ed25519")]
     Ed25519 = 0x0000_0037,
+    #[value(name = "Ed448")]
     Ed448 = 0x0000_0038,
     // Available slot 0x8880_0001,
     // Available slot 0x8880_0002,
     // Available slot 0x8880_0003,
+    #[value(name = "CoverCrypt")]
     CoverCrypt = 0x8880_0004,
+    #[value(name = "CoverCryptBulk")]
     CoverCryptBulk = 0x8880_0005,
 }
 
@@ -402,7 +488,7 @@ impl Serialize for CryptographicUsageMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for CryptographicUsageMask {
@@ -431,14 +517,18 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -446,7 +536,9 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask(v as u32))
+                Ok(CryptographicUsageMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(CryptographicUsageMaskVisitor)
@@ -481,7 +573,7 @@ impl Serialize for ProtectionStorageMasks {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for ProtectionStorageMasks {
@@ -510,14 +602,18 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -525,7 +621,9 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks(v as u32))
+                Ok(ProtectionStorageMasks(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(ProtectionStorageMasksVisitor)
@@ -558,7 +656,7 @@ impl Serialize for StorageStatusMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits() as i32)
+        serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
 impl<'de> Deserialize<'de> for StorageStatusMask {
@@ -587,14 +685,18 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
 
             // used by the direct JSON representation
@@ -602,7 +704,9 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask(v as u32))
+                Ok(StorageStatusMask(
+                    u32::try_from(v).map_err(de::Error::custom)?,
+                ))
             }
         }
         deserializer.deserialize_any(StorageStatusMaskVisitor)
@@ -610,49 +714,65 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, Display, PartialEq, EnumIter,
+)]
 pub enum LinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
     /// certificate(s), containing the same public key.
+    #[value(name = "CertificateLink")]
     CertificateLink = 0x0000_0101,
     /// For a Private Key object: the public key corresponding to the private
     /// key. For a Certificate object: the public key contained in the
     /// certificate.
+    #[value(name = "PublicKeyLink")]
     PublicKeyLink = 0x0000_0102,
     /// For a Public Key object: the private key corresponding to the public
     /// key.
+    #[value(name = "PrivateKeyLink")]
     PrivateKeyLink = 0x0000_0103,
     /// For a derived Symmetric Key or Secret Data object: the object(s) from
     /// which the current symmetric key was derived.
+    #[value(name = "DerivationBaseObjectLink")]
     DerivationBaseObjectLink = 0x0000_0104,
     /// The symmetric key(s) or Secret Data object(s) that were derived from
     /// the current object.
+    #[value(name = "DerivedKeyLink")]
     DerivedKeyLink = 0x0000_0105,
     /// For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric
     /// Public Key object: the key that resulted from the re-key of the current
     /// key. For a Certificate object: the certificate that resulted from the
     /// re- certify. Note that there SHALL be only one such replacement
     /// object per Managed Object.
+    #[value(name = "ReplacementObjectLink")]
     ReplacementObjectLink = 0x0000_0106,
     /// For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric
     /// Public Key object: the key that was re-keyed to obtain the current key.
     /// For a Certificate object: the certificate that was re-certified to
     /// obtain the current certificate.
+    #[value(name = "ReplacedObjectLink")]
     ReplacedObjectLink = 0x0000_0107,
     /// For all object types: the container or other parent object corresponding
     /// to the object.
+    #[value(name = "ParentLink")]
     ParentLink = 0x0000_0108,
     /// For all object types: the subordinate, derived or other child object
     /// corresponding to the object.
+    #[value(name = "ChildLink")]
     ChildLink = 0x0000_0109,
     /// For all object types: the previous object to this object.
+    #[value(name = "PreviousLink")]
     PreviousLink = 0x0000_010A,
     /// For all object types: the next object to this object.
+    #[value(name = "NextLink")]
     NextLink = 0x0000_010B,
+    #[value(name = "PKCS12CertificateLink")]
     PKCS12CertificateLink = 0x0000_010C,
+    #[value(name = "PKCS12PasswordLink")]
     PKCS12PasswordLink = 0x0000_010D,
     /// For wrapped objects: the object that was used to wrap this object.
+    #[value(name = "WrappingKeyLink")]
     WrappingKeyLink = 0x0000_010E,
     //Extensions 8XXXXXXX
 }
@@ -805,6 +925,19 @@ pub struct VendorAttribute {
     pub attribute_value: Vec<u8>,
 }
 
+impl Display for VendorAttribute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "VendorAttribute {{ vendor_identification: {}, attribute_name: {}, attribute_value: \
+             {} }}",
+            self.vendor_identification,
+            self.attribute_name,
+            hex::encode(&self.attribute_value)
+        )
+    }
+}
+
 /// The following subsections describe the attributes that are associated with
 /// Managed Objects. Attributes that an object MAY have multiple instances of
 /// are referred to as multi-instance attributes. All instances of an attribute
@@ -890,7 +1023,7 @@ pub struct Attributes {
 
     /// See `CryptographicParameters`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
+    pub cryptographic_parameters: Option<CryptographicParameters>,
 
     /// The Cryptographic Usage Mask attribute defines the cryptographic usage
     /// of a key. This is a bit mask that indicates to the client which
@@ -1076,14 +1209,12 @@ impl Attributes {
     /// Get the link to the object.
     #[must_use]
     pub fn get_link(&self, link_type: LinkType) -> Option<LinkedObjectIdentifier> {
-        if let Some(links) = &self.link {
+        self.link.as_ref().and_then(|links| {
             links
                 .iter()
                 .find(|&l| l.link_type == link_type)
                 .map(|l| l.linked_object_identifier.clone())
-        } else {
-            None
-        }
+        })
     }
 
     /// Remove the link from the attributes
@@ -1130,11 +1261,9 @@ impl Attributes {
 
     /// Set the bits in `mask` to the attributes's `CryptographicUsageMask` bits.
     pub fn set_cryptographic_usage_mask_bits(&mut self, mask: CryptographicUsageMask) {
-        let mask = if let Some(attr_mask) = self.cryptographic_usage_mask {
-            attr_mask | mask
-        } else {
-            mask
-        };
+        let mask = self
+            .cryptographic_usage_mask
+            .map_or(mask, |attr_mask| attr_mask | mask);
 
         self.cryptographic_usage_mask = Some(mask);
     }
@@ -1149,7 +1278,7 @@ impl Attributes {
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-                "CryptographicUsageMask is None".to_string(),
+                "CryptographicUsageMask is None".to_owned(),
             )
         })?;
 
@@ -1158,6 +1287,247 @@ impl Attributes {
         let flag = flag | CryptographicUsageMask::Unrestricted;
 
         Ok((usage_mask & flag).bits() != 0)
+    }
+
+    /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
+    #[must_use]
+    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
+        let aad = self
+            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
+            .map(|value: &[u8]| value.to_vec());
+
+        if aad.is_some() {
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
+        }
+        aad
+    }
+
+    /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
+    pub fn add_aad(&mut self, value: &[u8]) {
+        let va = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_AAD.to_owned(),
+            attribute_value: value.to_vec(),
+        };
+        self.add_vendor_attribute(va);
+    }
+}
+
+/// Structure used in various operations to provide the New Attribute value in the request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+pub enum Attribute {
+    ActivationDate(u64),
+    CryptographicAlgorithm(CryptographicAlgorithm),
+    CryptographicLength(i32),
+    CryptographicParameters(CryptographicParameters),
+    CryptographicDomainParameters(CryptographicDomainParameters),
+    CryptographicUsageMask(CryptographicUsageMask),
+    Links(Vec<Link>),
+    State(StateEnumeration),
+    VendorAttributes(Vec<VendorAttribute>),
+}
+
+impl Serialize for Attribute {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::ActivationDate(activation_date) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("ActivationDate", activation_date)?;
+                st.end()
+            }
+            Self::CryptographicAlgorithm(crypto_algorithm) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("CryptographicAlgorithm", crypto_algorithm)?;
+                st.end()
+            }
+            Self::CryptographicLength(crypto_length) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("CryptographicLength", crypto_length)?;
+                st.end()
+            }
+            Self::CryptographicParameters(crypto_parameters) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("CryptographicParameters", crypto_parameters)?;
+                st.end()
+            }
+            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("CryptographicDomainParameters", crypto_domain_parameters)?;
+                st.end()
+            }
+            Self::CryptographicUsageMask(crypto_usage_mask) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("CryptographicUsageMask", crypto_usage_mask)?;
+                st.end()
+            }
+            Self::Links(links) => {
+                let mut st = serializer.serialize_struct("Attribute", links.len())?;
+                for link in links {
+                    st.serialize_field("Link", link)?;
+                }
+                st.end()
+            }
+            Self::State(state) => {
+                let mut st = serializer.serialize_struct("Attribute", 1)?;
+                st.serialize_field("State", state)?;
+                st.end()
+            }
+            Self::VendorAttributes(vendor_attributes) => {
+                let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
+                for vendor_attribute in vendor_attributes {
+                    st.serialize_field("VendorAttribute", vendor_attribute)?;
+                }
+                st.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Attribute {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Debug)]
+        #[serde(field_identifier)]
+        enum Field {
+            ActivationDate,
+            CryptographicAlgorithm,
+            CryptographicLength,
+            CryptographicParameters,
+            CryptographicDomainParameters,
+            CryptographicUsageMask,
+            Link,
+            State,
+            VendorAttribute,
+        }
+
+        struct AttributeVisitor;
+
+        impl<'de> Visitor<'de> for AttributeVisitor {
+            type Value = Attribute;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct AttributeVisitor")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut activation_date: Option<u64> = None;
+                let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
+                let mut cryptographic_length: Option<i32> = None;
+                let mut cryptographic_parameters: Option<CryptographicParameters> = None;
+                let mut cryptographic_domain_parameters: Option<CryptographicDomainParameters> =
+                    None;
+                let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
+                let mut links: Vec<Link> = Vec::new();
+                let mut state: Option<StateEnumeration> = None;
+                let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
+
+                while let Some(key) = map.next_key()? {
+                    trace!("visit_map: Key: {key:?}");
+                    match key {
+                        Field::ActivationDate => {
+                            if activation_date.is_some() {
+                                return Err(de::Error::duplicate_field("activation_date"))
+                            }
+                            activation_date = Some(map.next_value()?);
+                        }
+                        Field::CryptographicAlgorithm => {
+                            if cryptographic_algorithm.is_some() {
+                                return Err(de::Error::duplicate_field("cryptographic_algorithm"))
+                            }
+                            cryptographic_algorithm = Some(map.next_value()?);
+                        }
+                        Field::CryptographicLength => {
+                            if cryptographic_length.is_some() {
+                                return Err(de::Error::duplicate_field("cryptographic_length"))
+                            }
+                            cryptographic_length = Some(map.next_value()?);
+                        }
+                        Field::CryptographicParameters => {
+                            if cryptographic_parameters.is_some() {
+                                return Err(de::Error::duplicate_field("cryptographic_parameters"))
+                            }
+                            cryptographic_parameters = Some(map.next_value()?);
+                        }
+                        Field::CryptographicDomainParameters => {
+                            if cryptographic_domain_parameters.is_some() {
+                                return Err(de::Error::duplicate_field(
+                                    "cryptographic_domain_parameters",
+                                ))
+                            }
+                            cryptographic_domain_parameters = Some(map.next_value()?);
+                        }
+                        Field::CryptographicUsageMask => {
+                            if cryptographic_usage_mask.is_some() {
+                                return Err(de::Error::duplicate_field("cryptographic_usage_mask"))
+                            }
+                            cryptographic_usage_mask = Some(map.next_value()?);
+                        }
+                        Field::Link => {
+                            links.push(map.next_value()?);
+                        }
+                        Field::State => {
+                            if state.is_some() {
+                                return Err(de::Error::duplicate_field("state"))
+                            }
+                            state = Some(map.next_value()?);
+                        }
+                        Field::VendorAttribute => {
+                            vendor_attributes.push(map.next_value()?);
+                        }
+                    }
+                }
+
+                trace!("Attribute::deserialize: Link: {:?}", links);
+                if let Some(activation_date) = activation_date {
+                    return Ok(Attribute::ActivationDate(activation_date))
+                } else if let Some(cryptographic_algorithm) = cryptographic_algorithm {
+                    return Ok(Attribute::CryptographicAlgorithm(cryptographic_algorithm))
+                } else if let Some(cryptographic_length) = cryptographic_length {
+                    return Ok(Attribute::CryptographicLength(cryptographic_length))
+                } else if let Some(cryptographic_parameters) = cryptographic_parameters {
+                    return Ok(Attribute::CryptographicParameters(cryptographic_parameters))
+                } else if let Some(cryptographic_domain_parameters) =
+                    cryptographic_domain_parameters
+                {
+                    return Ok(Attribute::CryptographicDomainParameters(
+                        cryptographic_domain_parameters,
+                    ))
+                } else if let Some(cryptographic_usage_mask) = cryptographic_usage_mask {
+                    return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
+                } else if !links.is_empty() {
+                    return Ok(Attribute::Links(links))
+                } else if let Some(state) = state {
+                    return Ok(Attribute::State(state))
+                } else if !vendor_attributes.is_empty() {
+                    return Ok(Attribute::VendorAttributes(vendor_attributes))
+                }
+
+                Ok(Attribute::ActivationDate(0))
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "activation_date",
+            "cryptographic_algorithm",
+            "cryptographic_length",
+            "cryptographic_parameters",
+            "cryptographic_domain_parameters",
+            "cryptographic_usage_mask",
+            "link",
+            "public_key_link",
+            "state",
+            "vendor_attributes",
+        ];
+        deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
     }
 }
 
@@ -1225,7 +1595,7 @@ impl CertificateAttributes {
                 .next()
                 .ok_or_else(|| {
                     KmipError::Default(
-                        "Missing x509 certificate `subject name` identifier".to_string(),
+                        "Missing x509 certificate `subject name` identifier".to_owned(),
                     )
                 })?
                 .trim();
@@ -1242,7 +1612,9 @@ impl CertificateAttributes {
                 "CN" => value.clone_into(&mut certificate_attributes.certificate_subject_cn),
                 "O" => value.clone_into(&mut certificate_attributes.certificate_subject_o),
                 "OU" => value.clone_into(&mut certificate_attributes.certificate_subject_ou),
-                "Email" => value.clone_into(&mut certificate_attributes.certificate_subject_email),
+                "emailAddress" => {
+                    value.clone_into(&mut certificate_attributes.certificate_subject_email);
+                }
                 "C" => value.clone_into(&mut certificate_attributes.certificate_subject_c),
                 "ST" => value.clone_into(&mut certificate_attributes.certificate_subject_st),
                 "L" => value.clone_into(&mut certificate_attributes.certificate_subject_l),
@@ -1284,353 +1656,704 @@ impl AttributeReference {
     #[must_use]
     pub fn tags_reference() -> Self {
         Self::Vendor(VendorAttributeReference {
-            vendor_identification: VENDOR_ID_COSMIAN.to_string(),
-            attribute_name: VENDOR_ATTR_TAG.to_string(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
         })
     }
 }
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_variant_names)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Display,
+    EnumString,
+    EnumIter,
+    Hash,
+    ValueEnum,
+)]
 pub enum Tag {
+    #[value(name = "ActivationDate")]
     ActivationDate = 0x42_0001,
+    #[value(name = "ApplicationData")]
     ApplicationData = 0x42_0002,
+    #[value(name = "ApplicationNamespace")]
     ApplicationNamespace = 0x42_0003,
+    #[value(name = "ApplicationSpecific_Information")]
     ApplicationSpecific_Information = 0x42_0004,
+    #[value(name = "ArchiveDate")]
     ArchiveDate = 0x42_0005,
+    #[value(name = "AsynchronousCorrelation_Value")]
     AsynchronousCorrelation_Value = 0x42_0006,
+    #[value(name = "AsynchronousIndicator")]
     AsynchronousIndicator = 0x42_0007,
+    #[value(name = "Attribute")]
     Attribute = 0x42_0008,
+    #[value(name = "AttributeName")]
     AttributeName = 0x42_000A,
+    #[value(name = "AttributeValue")]
     AttributeValue = 0x42_000B,
+    #[value(name = "Authentication")]
     Authentication = 0x42_000C,
+    #[value(name = "BatchCount")]
     BatchCount = 0x42_000D,
+    #[value(name = "BatchErrorContinuationOption")]
     BatchErrorContinuationOption = 0x42_000E,
+    #[value(name = "BatchItem")]
     BatchItem = 0x42_000F,
+    #[value(name = "BatchOrderOption")]
     BatchOrderOption = 0x42_0010,
+    #[value(name = "BlockCipherMode")]
     BlockCipherMode = 0x42_0011,
+    #[value(name = "CancellationResult")]
     CancellationResult = 0x42_0012,
+    #[value(name = "Certificate")]
     Certificate = 0x42_0013,
+    #[value(name = "CertificateRequest")]
     CertificateRequest = 0x42_0018,
+    #[value(name = "CertificateRequestType")]
     CertificateRequestType = 0x42_0019,
+    #[value(name = "CertificateType")]
     CertificateType = 0x42_001D,
+    #[value(name = "CertificateValue")]
     CertificateValue = 0x42_001E,
+    #[value(name = "CompromiseDate")]
     CompromiseDate = 0x42_0020,
+    #[value(name = "CompromiseOccurrenceDate")]
     CompromiseOccurrenceDate = 0x42_0021,
+    #[value(name = "ContactInformation")]
     ContactInformation = 0x42_0022,
+    #[value(name = "Credential")]
     Credential = 0x42_0023,
+    #[value(name = "CredentialType")]
     CredentialType = 0x42_0024,
+    #[value(name = "CredentialValue")]
     CredentialValue = 0x42_0025,
+    #[value(name = "CriticalityIndicator")]
     CriticalityIndicator = 0x42_0026,
+    #[value(name = "CRTCoefficient")]
     CRTCoefficient = 0x42_0027,
+    #[value(name = "CryptographicAlgorithm")]
     CryptographicAlgorithm = 0x42_0028,
+    #[value(name = "CryptographicDomainParameters")]
     CryptographicDomainParameters = 0x42_0029,
+    #[value(name = "CryptographicLength")]
     CryptographicLength = 0x42_002A,
+    #[value(name = "CryptographicParameters")]
     CryptographicParameters = 0x42_002B,
+    #[value(name = "CryptographicUsageMask")]
     CryptographicUsageMask = 0x42_002C,
+    #[value(name = "D")]
     D = 0x42_002E,
+    #[value(name = "DeactivationDate")]
     DeactivationDate = 0x42_002F,
+    #[value(name = "DerivationData")]
     DerivationData = 0x42_0030,
+    #[value(name = "DerivationMethod")]
     DerivationMethod = 0x42_0031,
+    #[value(name = "DerivationParameters")]
     DerivationParameters = 0x42_0032,
+    #[value(name = "DestroyDate")]
     DestroyDate = 0x42_0033,
+    #[value(name = "Digest")]
     Digest = 0x42_0034,
+    #[value(name = "DigestValue")]
     DigestValue = 0x42_0035,
+    #[value(name = "EncryptionKeyInformation")]
     EncryptionKeyInformation = 0x42_0036,
+    #[value(name = "G")]
     G = 0x42_0037,
+    #[value(name = "HashingAlgorithm")]
     HashingAlgorithm = 0x42_0038,
+    #[value(name = "InitialDate")]
     InitialDate = 0x42_0039,
+    #[value(name = "InitializationVector")]
     InitializationVector = 0x42_003A,
+    #[value(name = "IterationCount")]
     IterationCount = 0x42_003C,
+    #[value(name = "IVCounterNonce")]
     IVCounterNonce = 0x42_003D,
+    #[value(name = "J")]
     J = 0x42_003E,
+    #[value(name = "Key")]
     Key = 0x42_003F,
+    #[value(name = "KeyBlock")]
     KeyBlock = 0x42_0040,
+    #[value(name = "KeyCompressionType")]
     KeyCompressionType = 0x42_0041,
+    #[value(name = "KeyFormatType")]
     KeyFormatType = 0x42_0042,
+    #[value(name = "KeyMaterial")]
     KeyMaterial = 0x42_0043,
+    #[value(name = "KeyPartIdentifier")]
     KeyPartIdentifier = 0x42_0044,
+    #[value(name = "KeyValue")]
     KeyValue = 0x42_0045,
+    #[value(name = "KeyWrappingData")]
     KeyWrappingData = 0x42_0046,
+    #[value(name = "KeyWrappingSpecification")]
     KeyWrappingSpecification = 0x42_0047,
+    #[value(name = "LastChangeDate")]
     LastChangeDate = 0x42_0048,
+    #[value(name = "LeaseTime")]
     LeaseTime = 0x42_0049,
+    #[value(name = "Link")]
     Link = 0x42_004A,
+    #[value(name = "LinkType")]
     LinkType = 0x42_004B,
+    #[value(name = "LinkedObjectIdentifier")]
     LinkedObjectIdentifier = 0x42_004C,
+    #[value(name = "MACSignature")]
     MACSignature = 0x42_004D,
+    #[value(name = "MACSignatureKey_Information")]
     MACSignatureKey_Information = 0x42_004E,
+    #[value(name = "MaximumItems")]
     MaximumItems = 0x42_004F,
+    #[value(name = "MaximumResponseSize")]
     MaximumResponseSize = 0x42_0050,
+    #[value(name = "MessageExtension")]
     MessageExtension = 0x42_0051,
+    #[value(name = "Modulus")]
     Modulus = 0x42_0052,
+    #[value(name = "Name")]
     Name = 0x42_0053,
+    #[value(name = "NameType")]
     NameType = 0x42_0054,
+    #[value(name = "NameValue")]
     NameValue = 0x42_0055,
+    #[value(name = "ObjectGroup")]
     ObjectGroup = 0x42_0056,
+    #[value(name = "ObjectType")]
     ObjectType = 0x42_0057,
+    #[value(name = "Offset")]
     Offset = 0x42_0058,
+    #[value(name = "OpaqueDataType")]
     OpaqueDataType = 0x42_0059,
+    #[value(name = "OpaqueDataValue")]
     OpaqueDataValue = 0x42_005A,
+    #[value(name = "OpaqueObject")]
     OpaqueObject = 0x42_005B,
+    #[value(name = "Operation")]
     Operation = 0x42_005C,
+    #[value(name = "P")]
     P = 0x42_005E,
+    #[value(name = "PaddingMethod")]
     PaddingMethod = 0x42_005F,
+    #[value(name = "PrimeExponentP")]
     PrimeExponentP = 0x42_0060,
+    #[value(name = "PrimeExponentQ")]
     PrimeExponentQ = 0x42_0061,
+    #[value(name = "PrimeFieldSize")]
     PrimeFieldSize = 0x42_0062,
+    #[value(name = "PrivateExponent")]
     PrivateExponent = 0x42_0063,
+    #[value(name = "PrivateKey")]
     PrivateKey = 0x42_0064,
+    #[value(name = "PrivateKeyUniqueIdentifier")]
     PrivateKeyUniqueIdentifier = 0x42_0066,
+    #[value(name = "ProcessStartDate")]
     ProcessStartDate = 0x42_0067,
+    #[value(name = "ProtectStopDate")]
     ProtectStopDate = 0x42_0068,
+    #[value(name = "ProtocolVersion")]
     ProtocolVersion = 0x42_0069,
+    #[value(name = "ProtocolVersionMajor")]
     ProtocolVersionMajor = 0x42_006A,
+    #[value(name = "ProtocolVersionMinor")]
     ProtocolVersionMinor = 0x42_006B,
+    #[value(name = "PublicExponent")]
     PublicExponent = 0x42_006C,
+    #[value(name = "PublicKey")]
     PublicKey = 0x42_006D,
+    #[value(name = "PublicKeyUniqueIdentifier")]
     PublicKeyUniqueIdentifier = 0x42_006F,
+    #[value(name = "PutFunction")]
     PutFunction = 0x42_0070,
+    #[value(name = "Q")]
     Q = 0x42_0071,
+    #[value(name = "QString")]
     QString = 0x42_0072,
+    #[value(name = "Qlength")]
     Qlength = 0x42_0073,
+    #[value(name = "QueryFunction")]
     QueryFunction = 0x42_0074,
+    #[value(name = "RecommendedCurve")]
     RecommendedCurve = 0x42_0075,
+    #[value(name = "ReplacedUniqueIdentifier")]
     ReplacedUniqueIdentifier = 0x42_0076,
+    #[value(name = "RequestHeader")]
     RequestHeader = 0x42_0077,
+    #[value(name = "RequestMessage")]
     RequestMessage = 0x42_0078,
+    #[value(name = "RequestPayload")]
     RequestPayload = 0x42_0079,
+    #[value(name = "ResponseHeader")]
     ResponseHeader = 0x42_007A,
+    #[value(name = "ResponseMessage")]
     ResponseMessage = 0x42_007B,
+    #[value(name = "ResponsePayload")]
     ResponsePayload = 0x42_007C,
+    #[value(name = "ResultMessage")]
     ResultMessage = 0x42_007D,
+    #[value(name = "ResultReason")]
     ResultReason = 0x42_007E,
+    #[value(name = "ResultStatus")]
     ResultStatus = 0x42_007F,
+    #[value(name = "RevocationMessage")]
     RevocationMessage = 0x42_0080,
+    #[value(name = "RevocationReason")]
     RevocationReason = 0x42_0081,
+    #[value(name = "RevocationReasonCode")]
     RevocationReasonCode = 0x42_0082,
+    #[value(name = "KeyRoleType")]
     KeyRoleType = 0x42_0083,
+    #[value(name = "Salt")]
     Salt = 0x42_0084,
+    #[value(name = "SecretData")]
     SecretData = 0x42_0085,
+    #[value(name = "SecretDataType")]
     SecretDataType = 0x42_0086,
+    #[value(name = "ServerInformation")]
     ServerInformation = 0x42_0088,
+    #[value(name = "SplitKey")]
     SplitKey = 0x42_0089,
+    #[value(name = "SplitKeyMethod")]
     SplitKeyMethod = 0x42_008A,
+    #[value(name = "SplitKeyParts")]
     SplitKeyParts = 0x42_008B,
+    #[value(name = "SplitKeyThreshold")]
     SplitKeyThreshold = 0x42_008C,
+    #[value(name = "State")]
     State = 0x42_008D,
+    #[value(name = "StorageStatusMask")]
     StorageStatusMask = 0x42_008E,
+    #[value(name = "SymmetricKey")]
     SymmetricKey = 0x42_008F,
+    #[value(name = "TimeStamp")]
     TimeStamp = 0x42_0092,
+    #[value(name = "UniqueBatchItemID")]
     UniqueBatchItemID = 0x42_0093,
+    #[value(name = "UniqueIdentifier")]
     UniqueIdentifier = 0x42_0094,
+    #[value(name = "UsageLimits")]
     UsageLimits = 0x42_0095,
+    #[value(name = "UsageLimitsCount")]
     UsageLimitsCount = 0x42_0096,
+    #[value(name = "UsageLimitsTotal")]
     UsageLimitsTotal = 0x42_0097,
+    #[value(name = "UsageLimitsUnit")]
     UsageLimitsUnit = 0x42_0098,
+    #[value(name = "Username")]
     Username = 0x42_0099,
+    #[value(name = "ValidityDate")]
     ValidityDate = 0x42_009A,
+    #[value(name = "ValidityIndicator")]
     ValidityIndicator = 0x42_009B,
+    #[value(name = "VendorExtension")]
     VendorExtension = 0x42_009C,
+    #[value(name = "VendorIdentification")]
     VendorIdentification = 0x42_009D,
+    #[value(name = "WrappingMethod")]
     WrappingMethod = 0x42_009E,
+    #[value(name = "X")]
     X = 0x42_009F,
+    #[value(name = "Y")]
     Y = 0x42_00A0,
+    #[value(name = "Password")]
     Password = 0x42_00A1,
+    #[value(name = "DeviceIdentifier")]
     DeviceIdentifier = 0x42_00A2,
+    #[value(name = "EncodingOption")]
     EncodingOption = 0x42_00A3,
+    #[value(name = "ExtensionInformation")]
     ExtensionInformation = 0x42_00A4,
+    #[value(name = "ExtensionName")]
     ExtensionName = 0x42_00A5,
+    #[value(name = "ExtensionTag")]
     ExtensionTag = 0x42_00A6,
+    #[value(name = "ExtensionType")]
     ExtensionType = 0x42_00A7,
+    #[value(name = "Fresh")]
     Fresh = 0x42_00A8,
+    #[value(name = "MachineIdentifier")]
     MachineIdentifier = 0x42_00A9,
+    #[value(name = "MediaIdentifier")]
     MediaIdentifier = 0x42_00AA,
+    #[value(name = "NetworkIdentifier")]
     NetworkIdentifier = 0x42_00AB,
+    #[value(name = "ObjectGroupMember")]
     ObjectGroupMember = 0x42_00AC,
+    #[value(name = "CertificateLength")]
     CertificateLength = 0x42_00AD,
+    #[value(name = "DigitalSignatureAlgorithm")]
     DigitalSignatureAlgorithm = 0x42_00AE,
+    #[value(name = "CertificateSerialNumber")]
     CertificateSerialNumber = 0x42_00AF,
+    #[value(name = "DeviceSerialNumber")]
     DeviceSerialNumber = 0x42_00B0,
+    #[value(name = "IssuerAlternativeName")]
     IssuerAlternativeName = 0x42_00B1,
+    #[value(name = "IssuerDistinguishedName")]
     IssuerDistinguishedName = 0x42_00B2,
+    #[value(name = "SubjectAlternativeName")]
     SubjectAlternativeName = 0x42_00B3,
+    #[value(name = "SubjectDistinguishedName")]
     SubjectDistinguishedName = 0x42_00B4,
+    #[value(name = "X509CertificateIdentifier")]
     X509CertificateIdentifier = 0x42_00B5,
+    #[value(name = "X509CertificateIssuer")]
     X509CertificateIssuer = 0x42_00B6,
+    #[value(name = "X509CertificateSubject")]
     X509CertificateSubject = 0x42_00B7,
+    #[value(name = "KeyValueLocation")]
     KeyValueLocation = 0x42_00B8,
+    #[value(name = "KeyValueLocationValue")]
     KeyValueLocationValue = 0x42_00B9,
+    #[value(name = "KeyValueLocationType")]
     KeyValueLocationType = 0x42_00BA,
+    #[value(name = "KeyValuePresent")]
     KeyValuePresent = 0x42_00BB,
+    #[value(name = "OriginalCreationDate")]
     OriginalCreationDate = 0x42_00BC,
+    #[value(name = "PGPKey")]
     PGPKey = 0x42_00BD,
+    #[value(name = "PGPKeyVersion")]
     PGPKeyVersion = 0x42_00BE,
+    #[value(name = "AlternativeName")]
     AlternativeName = 0x42_00BF,
+    #[value(name = "AlternativeNameValue")]
     AlternativeNameValue = 0x42_00C0,
+    #[value(name = "AlternativeNameType")]
     AlternativeNameType = 0x42_00C1,
+    #[value(name = "Data")]
     Data = 0x42_00C2,
+    #[value(name = "SignatureData")]
     SignatureData = 0x42_00C3,
+    #[value(name = "DataLength")]
     DataLength = 0x42_00C4,
+    #[value(name = "RandomIV")]
     RandomIV = 0x42_00C5,
+    #[value(name = "MACData")]
     MACData = 0x42_00C6,
+    #[value(name = "AttestationType")]
     AttestationType = 0x42_00C7,
+    #[value(name = "Nonce")]
     Nonce = 0x42_00C8,
+    #[value(name = "NonceID")]
     NonceID = 0x42_00C9,
+    #[value(name = "NonceValue")]
     NonceValue = 0x42_00CA,
+    #[value(name = "AttestationMeasurement")]
     AttestationMeasurement = 0x42_00CB,
+    #[value(name = "AttestationAssertion")]
     AttestationAssertion = 0x42_00CC,
+    #[value(name = "IVLength")]
     IVLength = 0x42_00CD,
+    #[value(name = "TagLength")]
     TagLength = 0x42_00CE,
+    #[value(name = "FixedFieldLength")]
     FixedFieldLength = 0x42_00CF,
+    #[value(name = "CounterLength")]
     CounterLength = 0x42_00D0,
+    #[value(name = "InitialCounterValue")]
     InitialCounterValue = 0x42_00D1,
+    #[value(name = "InvocationFieldLength")]
     InvocationFieldLength = 0x42_00D2,
+    #[value(name = "AttestationCapableIndicator")]
     AttestationCapableIndicator = 0x42_00D3,
+    #[value(name = "OffsetItems")]
     OffsetItems = 0x42_00D4,
+    #[value(name = "LocatedItems")]
     LocatedItems = 0x42_00D5,
+    #[value(name = "CorrelationValue")]
     CorrelationValue = 0x42_00D6,
+    #[value(name = "InitIndicator")]
     InitIndicator = 0x42_00D7,
+    #[value(name = "FinalIndicator")]
     FinalIndicator = 0x42_00D8,
+    #[value(name = "RNGParameters")]
     RNGParameters = 0x42_00D9,
+    #[value(name = "RNGAlgorithm")]
     RNGAlgorithm = 0x42_00DA,
+    #[value(name = "DRBGAlgorithm")]
     DRBGAlgorithm = 0x42_00DB,
+    #[value(name = "FIPS186Variation")]
     FIPS186Variation = 0x42_00DC,
+    #[value(name = "PredictionResistance")]
     PredictionResistance = 0x42_00DD,
+    #[value(name = "RandomNumberGenerator")]
     RandomNumberGenerator = 0x42_00DE,
+    #[value(name = "ValidationInformation")]
     ValidationInformation = 0x42_00DF,
+    #[value(name = "ValidationAuthorityType")]
     ValidationAuthorityType = 0x42_00E0,
+    #[value(name = "ValidationAuthorityCountry")]
     ValidationAuthorityCountry = 0x42_00E1,
+    #[value(name = "ValidationAuthorityURI")]
     ValidationAuthorityURI = 0x42_00E2,
+    #[value(name = "ValidationVersionMajor")]
     ValidationVersionMajor = 0x42_00E3,
+    #[value(name = "ValidationVersionMinor")]
     ValidationVersionMinor = 0x42_00E4,
+    #[value(name = "ValidationType")]
     ValidationType = 0x42_00E5,
+    #[value(name = "ValidationLevel")]
     ValidationLevel = 0x42_00E6,
+    #[value(name = "ValidationCertificateIdentifier")]
     ValidationCertificateIdentifier = 0x42_00E7,
+    #[value(name = "ValidationCertificateURI")]
     ValidationCertificateURI = 0x42_00E8,
+    #[value(name = "ValidationVendorURI")]
     ValidationVendorURI = 0x42_00E9,
+    #[value(name = "ValidationProfile")]
     ValidationProfile = 0x42_00EA,
+    #[value(name = "ProfileInformation")]
     ProfileInformation = 0x42_00EB,
+    #[value(name = "ProfileName")]
     ProfileName = 0x42_00EC,
+    #[value(name = "ServerURI")]
     ServerURI = 0x42_00ED,
+    #[value(name = "ServerPort")]
     ServerPort = 0x42_00EE,
+    #[value(name = "StreamingCapability")]
     StreamingCapability = 0x42_00EF,
+    #[value(name = "AsynchronousCapability")]
     AsynchronousCapability = 0x42_00F0,
+    #[value(name = "AttestationCapability")]
     AttestationCapability = 0x42_00F1,
+    #[value(name = "UnwrapMode")]
     UnwrapMode = 0x42_00F2,
+    #[value(name = "DestroyAction")]
     DestroyAction = 0x42_00F3,
+    #[value(name = "ShreddingAlgorithm")]
     ShreddingAlgorithm = 0x42_00F4,
+    #[value(name = "RNGMode")]
     RNGMode = 0x42_00F5,
+    #[value(name = "ClientRegistrationMethod")]
     ClientRegistrationMethod = 0x42_00F6,
+    #[value(name = "CapabilityInformation")]
     CapabilityInformation = 0x42_00F7,
+    #[value(name = "KeyWrapType")]
     KeyWrapType = 0x42_00F8,
+    #[value(name = "BatchUndoCapability")]
     BatchUndoCapability = 0x42_00F9,
+    #[value(name = "BatchContinueCapability")]
     BatchContinueCapability = 0x42_00FA,
+    #[value(name = "PKCS12FriendlyName")]
     PKCS12FriendlyName = 0x42_00FB,
+    #[value(name = "Description")]
     Description = 0x42_00FC,
+    #[value(name = "Comment")]
     Comment = 0x42_00FD,
+    #[value(name = "AuthenticatedEncryptionAdditionalData")]
     AuthenticatedEncryptionAdditionalData = 0x42_00FE,
+    #[value(name = "AuthenticatedEncryptionTag")]
     AuthenticatedEncryptionTag = 0x42_00FF,
+    #[value(name = "SaltLength")]
     SaltLength = 0x42_0100,
+    #[value(name = "MaskGenerator")]
     MaskGenerator = 0x42_0101,
+    #[value(name = "MaskGeneratorHashingAlgorithm")]
     MaskGeneratorHashingAlgorithm = 0x42_0102,
+    #[value(name = "PSource")]
     PSource = 0x42_0103,
+    #[value(name = "TrailerField")]
     TrailerField = 0x42_0104,
+    #[value(name = "ClientCorrelationValue")]
     ClientCorrelationValue = 0x42_0105,
+    #[value(name = "ServerCorrelationValue")]
     ServerCorrelationValue = 0x42_0106,
+    #[value(name = "DigestedData")]
     DigestedData = 0x42_0107,
+    #[value(name = "CertificateSubjectCN")]
     CertificateSubjectCN = 0x42_0108,
+    #[value(name = "CertificateSubjectO")]
     CertificateSubjectO = 0x42_0109,
+    #[value(name = "CertificateSubjectOU")]
     CertificateSubjectOU = 0x42_010A,
+    #[value(name = "CertificateSubjectEmail")]
     CertificateSubjectEmail = 0x42_010B,
+    #[value(name = "CertificateSubjectC")]
     CertificateSubjectC = 0x42_010C,
+    #[value(name = "CertificateSubjectST")]
     CertificateSubjectST = 0x42_010D,
+    #[value(name = "CertificateSubjectL")]
     CertificateSubjectL = 0x42_010E,
+    #[value(name = "CertificateSubjectUID")]
     CertificateSubjectUID = 0x42_010F,
+    #[value(name = "CertificateSubjectSerialNumber")]
     CertificateSubjectSerialNumber = 0x42_0110,
+    #[value(name = "CertificateSubjectTitle")]
     CertificateSubjectTitle = 0x42_0111,
+    #[value(name = "CertificateSubjectDC")]
     CertificateSubjectDC = 0x42_0112,
+    #[value(name = "CertificateSubjectDNQualifier")]
     CertificateSubjectDNQualifier = 0x42_0113,
+    #[value(name = "CertificateIssuerCN")]
     CertificateIssuerCN = 0x42_0114,
+    #[value(name = "CertificateIssuerO")]
     CertificateIssuerO = 0x42_0115,
+    #[value(name = "CertificateIssuerOU")]
     CertificateIssuerOU = 0x42_0116,
+    #[value(name = "CertificateIssuerEmail")]
     CertificateIssuerEmail = 0x42_0117,
+    #[value(name = "CertificateIssuerC")]
     CertificateIssuerC = 0x42_0118,
+    #[value(name = "CertificateIssuerST")]
     CertificateIssuerST = 0x42_0119,
+    #[value(name = "CertificateIssuerL")]
     CertificateIssuerL = 0x42_011A,
+    #[value(name = "CertificateIssuerUID")]
     CertificateIssuerUID = 0x42_011B,
+    #[value(name = "CertificateIssuerSerialNumber")]
     CertificateIssuerSerialNumber = 0x42_011C,
+    #[value(name = "CertificateIssuerTitle")]
     CertificateIssuerTitle = 0x42_011D,
+    #[value(name = "CertificateIssuerDC")]
     CertificateIssuerDC = 0x42_011E,
+    #[value(name = "CertificateIssuerDNQualifier")]
     CertificateIssuerDNQualifier = 0x42_011F,
+    #[value(name = "Sensitive")]
     Sensitive = 0x42_0120,
+    #[value(name = "AlwaysSensitive")]
     AlwaysSensitive = 0x42_0121,
+    #[value(name = "Extractable")]
     Extractable = 0x42_0122,
+    #[value(name = "NeverExtractable")]
     NeverExtractable = 0x42_0123,
+    #[value(name = "ReplaceExisting")]
     ReplaceExisting = 0x42_0124,
+    #[value(name = "Attributes")]
     Attributes = 0x42_0125,
+    #[value(name = "CommonAttributes")]
     CommonAttributes = 0x42_0126,
+    #[value(name = "PrivateKeyAttributes")]
     PrivateKeyAttributes = 0x42_0127,
+    #[value(name = "PublicKeyAttributes")]
     PublicKeyAttributes = 0x42_0128,
+    #[value(name = "ExtensionEnumeration")]
     ExtensionEnumeration = 0x42_0129,
+    #[value(name = "ExtensionAttribute")]
     ExtensionAttribute = 0x42_012A,
+    #[value(name = "ExtensionParentStructureTag")]
     ExtensionParentStructureTag = 0x42_012B,
+    #[value(name = "ExtensionDescription")]
     ExtensionDescription = 0x42_012C,
+    #[value(name = "ServerName")]
     ServerName = 0x42_012D,
+    #[value(name = "ServerSerialNumber")]
     ServerSerialNumber = 0x42_012E,
+    #[value(name = "ServerVersion")]
     ServerVersion = 0x42_012F,
+    #[value(name = "ServerLoad")]
     ServerLoad = 0x42_0130,
+    #[value(name = "ProductName")]
     ProductName = 0x42_0131,
+    #[value(name = "BuildLevel")]
     BuildLevel = 0x42_0132,
+    #[value(name = "BuildDate")]
     BuildDate = 0x42_0133,
+    #[value(name = "ClusterInfo")]
     ClusterInfo = 0x42_0134,
+    #[value(name = "AlternateFailoverEndpoints")]
     AlternateFailoverEndpoints = 0x42_0135,
+    #[value(name = "ShortUniqueIdentifier")]
     ShortUniqueIdentifier = 0x42_0136,
+    #[value(name = "Reserved")]
     Reserved = 0x42_0137,
+    #[value(name = "Tag")]
     Tag = 0x42_0138,
+    #[value(name = "CertificateRequestUniqueIdentifier")]
     CertificateRequestUniqueIdentifier = 0x42_0139,
+    #[value(name = "NISTKeyType")]
     NISTKeyType = 0x42_013A,
+    #[value(name = "AttributeReference")]
     AttributeReference = 0x42_013B,
+    #[value(name = "CurrentAttribute")]
     CurrentAttribute = 0x42_013C,
+    #[value(name = "NewAttribute")]
     NewAttribute = 0x42_013D,
+    #[value(name = "CertificateRequestValue")]
     CertificateRequestValue = 0x42_0140,
+    #[value(name = "LogMessage")]
     LogMessage = 0x42_0141,
+    #[value(name = "ProfileVersion")]
     ProfileVersion = 0x42_0142,
+    #[value(name = "ProfileVersionMajor")]
     ProfileVersionMajor = 0x42_0143,
+    #[value(name = "ProfileVersionMinor")]
     ProfileVersionMinor = 0x42_0144,
+    #[value(name = "ProtectionLevel")]
     ProtectionLevel = 0x42_0145,
+    #[value(name = "ProtectionPeriod")]
     ProtectionPeriod = 0x42_0146,
+    #[value(name = "QuantumSafe")]
     QuantumSafe = 0x42_0147,
+    #[value(name = "QuantumSafeCapability")]
     QuantumSafeCapability = 0x42_0148,
+    #[value(name = "Ticket")]
     Ticket = 0x42_0149,
+    #[value(name = "TicketType")]
     TicketType = 0x42_014A,
+    #[value(name = "TicketValue")]
     TicketValue = 0x42_014B,
+    #[value(name = "RequestCount")]
     RequestCount = 0x42_014C,
+    #[value(name = "Rights")]
     Rights = 0x42_014D,
+    #[value(name = "Objects")]
     Objects = 0x42_014E,
+    #[value(name = "Operations")]
     Operations = 0x42_014F,
+    #[value(name = "Right")]
     Right = 0x42_0150,
+    #[value(name = "EndpointRole")]
     EndpointRole = 0x42_0151,
+    #[value(name = "DefaultsInformation")]
     DefaultsInformation = 0x42_0152,
+    #[value(name = "ObjectDefaults")]
     ObjectDefaults = 0x42_0153,
+    #[value(name = "Ephemeral")]
     Ephemeral = 0x42_0154,
+    #[value(name = "ServerHashedPassword")]
     ServerHashedPassword = 0x42_0155,
+    #[value(name = "OneTimePassword")]
     OneTimePassword = 0x42_0156,
+    #[value(name = "HashedPassword")]
     HashedPassword = 0x42_0157,
+    #[value(name = "AdjustmentType")]
     AdjustmentType = 0x42_0158,
+    #[value(name = "PKCS11Interface")]
     PKCS11Interface = 0x42_0159,
+    #[value(name = "PKCS11Function")]
     PKCS11Function = 0x42_015A,
+    #[value(name = "PKCS11InputParameters")]
     PKCS11InputParameters = 0x42_015B,
+    #[value(name = "PKCS11OutputParameters")]
     PKCS11OutputParameters = 0x42_015C,
+    #[value(name = "PKCS11ReturnCode")]
     PKCS11ReturnCode = 0x42_015D,
+    #[value(name = "ProtectionStorageMask")]
     ProtectionStorageMask = 0x42_015E,
+    #[value(name = "ProtectionStorageMasks")]
     ProtectionStorageMasks = 0x42_015F,
+    #[value(name = "InteropFunction")]
     InteropFunction = 0x42_0160,
+    #[value(name = "InteropIdentifier")]
     InteropIdentifier = 0x42_0161,
+    #[value(name = "AdjustmentValue")]
     AdjustmentValue = 0x42_0162,
+    #[value(name = "CommonProtectionStorageMasks")]
     CommonProtectionStorageMasks = 0x42_0163,
+    #[value(name = "PrivateProtectionStorageMasks")]
     PrivateProtectionStorageMasks = 0x42_0164,
+    #[value(name = "PublicProtectionStorageMasks")]
     PublicProtectionStorageMasks = 0x42_0165,
     // Extensions 540000 – 54FFFF
 }
@@ -1651,25 +2374,47 @@ impl Default for WrappingMethod {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display,
+)]
 pub enum BlockCipherMode {
+    #[value(name = "CBC")]
     CBC = 0x0000_0001,
+    #[value(name = "ECB")]
     ECB = 0x0000_0002,
+    #[value(name = "PCBC")]
     PCBC = 0x0000_0003,
+    #[value(name = "CFB")]
     CFB = 0x0000_0004,
+    #[value(name = "OFB")]
     OFB = 0x0000_0005,
+    #[value(name = "CTR")]
     CTR = 0x0000_0006,
+    #[value(name = "CMAC")]
     CMAC = 0x0000_0007,
+    #[value(name = "CCM")]
     CCM = 0x0000_0008,
+    #[value(name = "GCM")]
     GCM = 0x0000_0009,
+    #[value(name = "CBCMAC")]
     CBCMAC = 0x0000_000A,
+    #[value(name = "XTS")]
     XTS = 0x0000_000B,
+    #[value(name = "X9102AESKW")]
     X9102AESKW = 0x0000_000E,
+    #[value(name = "X9102TDKW")]
     X9102TDKW = 0x0000_000F,
+    #[value(name = "X9102AKW1")]
     X9102AKW1 = 0x0000_0010,
+    #[value(name = "X9102AKW2")]
     X9102AKW2 = 0x0000_0011,
+    #[value(name = "AEAD")]
     AEAD = 0x0000_0012,
+    // Extensions - 8XXXXXXX
+    #[value(name = "NISTKeyWrap")]
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x8000_0001,
 }
 
 #[allow(non_camel_case_types)]
@@ -1709,7 +2454,6 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
-#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for &'static MdRef {
     type Error = KmipError;
 
@@ -1731,7 +2475,6 @@ impl TryFrom<HashingAlgorithm> for &'static MdRef {
     }
 }
 
-#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for MessageDigest {
     type Error = KmipError;
 
@@ -1913,7 +2656,7 @@ pub struct MacSignatureKeyInformation {
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum EncodingOption {
-    /// the wrapped un-encoded value of the Byte String Key Material field in
+    /// the wrapped-encoded value of the Byte String Key Material field in
     /// the Key Value structure
     NoEncoding = 0x0000_0001,
     /// the wrapped TTLV-encoded Key Value structure
@@ -1935,9 +2678,12 @@ pub enum KeyWrapType {
 ///
 /// Note: The states correspond to those described in [SP800-57-1].
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter,
+)]
 pub enum StateEnumeration {
     /// Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
+    #[value(name = "PreActive")]
     PreActive = 0x0000_0001,
     /// Active: The object SHALL be transitioned to the Active state prior to being used for any
     /// cryptographic purpose. The object SHALL only be used for all cryptographic purposes that
@@ -1945,6 +2691,7 @@ pub enum StateEnumeration {
     /// set, then the object SHALL NOT be used for cryptographic purposes prior to the Process
     /// Start Date. If a Protect Stop attribute is set, then the object SHALL NOT be used for
     /// cryptographic purposes after the Process Stop Date.
+    #[value(name = "Active")]
     Active = 0x0000_0002,
     /// Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
     /// encryption, signing, wrapping, `MACing`, deriving) . The object SHALL only be used for
@@ -1952,6 +2699,7 @@ pub enum StateEnumeration {
     /// SHOULD only be used to process cryptographically-protected information (e.g., decryption,
     /// signature verification, unwrapping, MAC verification under extraordinary circumstances and
     /// when special permission is granted.
+    #[value(name = "Deactivated")]
     Deactivated = 0x0000_0003,
     /// Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
     /// encryption, signing, wrapping, `MACing`, deriving). The object SHOULD only be used to process
@@ -1959,11 +2707,14 @@ pub enum StateEnumeration {
     /// unwrapping, MAC verification in a client that is trusted to use managed objects that have
     /// been compromised. The object SHALL only be used for cryptographic purposes permitted by the
     /// Cryptographic Usage Mask attribute.
+    #[value(name = "Compromised")]
     Compromised = 0x0000_0004,
     /// Destroyed: The object SHALL NOT be used for any cryptographic purpose.
+    #[value(name = "Destroyed")]
     Destroyed = 0x0000_0005,
     /// Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
     /// its compromised status SHOULD be retained for audit or security purposes.
+    #[value(name = "Destroyed_Compromised")]
     Destroyed_Compromised = 0x0000_0006,
 }
 
@@ -2022,6 +2773,11 @@ impl UniqueIdentifier {
 }
 
 impl From<LinkedObjectIdentifier> for UniqueIdentifier {
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::as_conversions
+    )]
     fn from(value: LinkedObjectIdentifier) -> Self {
         match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),

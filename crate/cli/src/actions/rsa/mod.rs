@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm},
     kmip::kmip_types::{CryptographicParameters, PaddingMethod},
@@ -43,7 +43,7 @@ impl RsaCommands {
     }
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum EncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
     // a.k.a PKCS#1 v1.5 RSA
@@ -60,12 +60,12 @@ impl Display for EncryptionAlgorithm {
             Self::CkmRsaPkcsOaep => write!(f, "ckm-rsa-pkcs-oaep"),
             Self::CkmRsaAesKeyWrap => write!(f, "ckm-rsa-aes-key-wrap"),
             #[cfg(not(feature = "fips"))]
-            EncryptionAlgorithm::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
+            Self::CkmRsaPkcs => write!(f, "ckm-rsa-pkcs"),
         }
     }
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum HashFn {
     Sha1,
     Sha224,

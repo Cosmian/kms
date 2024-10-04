@@ -237,7 +237,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let ap_to_edit = "Department::MKG".to_owned();
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
+        &RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -312,7 +312,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Prune old keys associated to the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::PruneAccessPolicy(ap_to_edit),
+        &RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -344,14 +344,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::AddAttribute(new_policy_attributes),
+        &RekeyEditAction::AddAttribute(new_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
     rekey_keypair_response.unwrap();
 
     // Encrypt for new attribute
-    let data = "New tech research data".as_bytes();
+    let data = b"New tech research data";
     let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
 
     let request = build_encryption_request(
@@ -376,14 +376,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
+        &RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
     rekey_keypair_response.unwrap();
 
     // Encrypt for renamed attribute
-    let data = "hr data".as_bytes();
+    let data = b"hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
     let request = build_encryption_request(
@@ -405,7 +405,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let disable_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::DisableAttribute(disable_policy_attributes),
+        &RekeyEditAction::DisableAttribute(disable_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -413,7 +413,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Encrypt with disabled ABE attribute will fail
     let authentication_data = b"cc the uid".to_vec();
-    let data = "Will fail".as_bytes();
+    let data = b"Will fail";
     let encryption_policy = "Level::Confidential && Department::MKG";
 
     let request = build_encryption_request(
@@ -435,14 +435,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let remove_policy_attributes = vec![Attribute::from(("Department", "HumanResources"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        RekeyEditAction::RemoveAttribute(remove_policy_attributes),
+        &RekeyEditAction::RemoveAttribute(remove_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
     rekey_keypair_response.unwrap();
 
     // Encrypt for removed attribute will fail
-    let data = "New hr data".as_bytes();
+    let data = b"New hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
     let request = build_encryption_request(

@@ -123,7 +123,7 @@ async fn main() -> KResult<()> {
     // so that we can use the legacy algorithms
     // particularly those used for old PKCS#12 formats
     #[cfg(not(feature = "fips"))]
-    let _provider = if openssl::version::number() >= 0x30000000 {
+    if openssl::version::number() >= 0x30000000 {
         openssl::provider::Provider::try_load(None, "legacy", true)
             .context("export: unable to load the openssl legacy provider")?;
     } else {
@@ -174,42 +174,42 @@ mod tests {
     fn test_toml() {
         let config = ClapConfig {
             db: DBConfig {
-                database_type: Some("[redis-findex, postgresql,...]".to_string()),
-                database_url: Some("[redis urls]".to_string()),
+                database_type: Some("[redis-findex, postgresql,...]".to_owned()),
+                database_url: Some("[redis urls]".to_owned()),
                 sqlite_path: PathBuf::from("[sqlite path]"),
-                redis_master_password: Some("[redis master password]".to_string()),
-                redis_findex_label: Some("[redis findex label]".to_string()),
+                redis_master_password: Some("[redis master password]".to_owned()),
+                redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
             },
             http: HttpConfig {
                 port: 443,
-                hostname: "[hostname]".to_string(),
+                hostname: "[hostname]".to_owned(),
                 https_p12_file: Some(PathBuf::from("[https p12 file]")),
-                https_p12_password: Some("[https p12 password]".to_string()),
+                https_p12_password: Some("[https p12 password]".to_owned()),
                 authority_cert_file: Some(PathBuf::from("[authority cert file]")),
                 api_token_id: None,
             },
             auth: JwtAuthConfig {
                 jwt_issuer_uri: Some(vec![
-                    "[jwt issuer uri 1]".to_string(),
-                    "[jwt issuer uri 2]".to_string(),
+                    "[jwt issuer uri 1]".to_owned(),
+                    "[jwt issuer uri 2]".to_owned(),
                 ]),
-                jwks_uri: Some(vec!["[jwks uri 1]".to_string(), "[jwks uri 2]".to_string()]),
+                jwks_uri: Some(vec!["[jwks uri 1]".to_owned(), "[jwks uri 2]".to_owned()]),
                 jwt_audience: Some(vec![
-                    "[jwt audience 1]".to_string(),
-                    "[jwt audience 2]".to_string(),
+                    "[jwt audience 1]".to_owned(),
+                    "[jwt audience 2]".to_owned(),
                 ]),
             },
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
                 tmp_path: PathBuf::from("[tmp path]"),
             },
-            default_username: "[default username]".to_string(),
+            default_username: "[default username]".to_owned(),
             force_default_username: false,
-            google_cse_kacls_url: Some("[google cse kacls url]".to_string()),
-            ms_dke_service_url: Some("[ms dke service url]".to_string()),
+            google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
+            ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             telemetry: TelemetryConfig {
-                otlp: Some("http://localhost:4317".to_string()),
+                otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
             },
             info: false,

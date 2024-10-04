@@ -134,9 +134,10 @@ impl UserDecryptionKeysHandler {
         attributes.link = Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_id.to_string(),
+                master_private_key_id.to_owned(),
             ),
         }]);
+        let cryptographic_length = Some(i32::try_from(user_decryption_key_len)? * 8);
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -146,7 +147,7 @@ impl UserDecryptionKeysHandler {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(Box::new(attributes)),
                 },
-                cryptographic_length: Some(user_decryption_key_len as i32 * 8),
+                cryptographic_length,
                 key_wrapping_data: None,
             },
         })
@@ -184,8 +185,7 @@ impl UserDecryptionKeysHandler {
                 format!("cover crypt: failed serializing the user key: {e}"),
             )
         })?;
-        let user_decryption_key_len = user_decryption_key_bytes.len() as i32 * 8;
-
+        let cryptographic_length = Some(i32::try_from(user_decryption_key_bytes.len())? * 8);
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -195,7 +195,7 @@ impl UserDecryptionKeysHandler {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(Box::new(usk_attributes)),
                 },
-                cryptographic_length: Some(user_decryption_key_len),
+                cryptographic_length,
                 key_wrapping_data: None,
             },
         })

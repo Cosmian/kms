@@ -2,11 +2,11 @@
 //required to detect generic type in Serializer
 #![feature(min_specialization)]
 
-pub use config::{ClientConf, KMS_CLI_CONF_ENV};
+pub use config::{ClientConf, GmailApiConf, KMS_CLI_CONF_ENV};
 pub use cosmian_kmip::{self, kmip, pad_be_bytes};
 pub use encodings::{der_to_pem, objects_from_pem};
 pub use error::ClientError;
-pub use export_utils::{batch_export_objects, export_object};
+pub use export_utils::{batch_export_objects, export_object, ExportObjectParams};
 pub use file_utils::{
     read_bytes_from_file, read_bytes_from_files_to_bulk, read_from_json_file,
     read_object_from_json_ttlv_bytes, read_object_from_json_ttlv_file, write_bulk_decrypted_data,

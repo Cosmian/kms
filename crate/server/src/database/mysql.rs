@@ -932,16 +932,13 @@ pub(crate) async fn is_migration_in_progress_<'e, E>(executor: E) -> KResult<boo
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    match sqlx::query(get_mysql_query!("select-context"))
+    (sqlx::query(get_mysql_query!("select-context"))
         .fetch_optional(executor)
-        .await?
-    {
-        Some(context_row) => {
+        .await?)
+        .map_or(Ok(false), |context_row| {
             let state = context_row.get::<String, _>(1);
             Ok(state == "upgrading")
-        }
-        None => Ok(false),
-    }
+        })
 }
 
 pub(crate) async fn migrate_(

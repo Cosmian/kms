@@ -68,5 +68,12 @@ pub(crate) fn extract_locate_uids(text: &str) -> Option<Vec<String>> {
 /// Extract the wrapping key from a test.
 #[cfg(not(feature = "fips"))]
 pub(crate) fn extract_wrapping_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Wrapping key")
+    let formatted = r"Wrapping key:\s*(?P<uid>[a-zA-Z0-9+/=]+)";
+    let uid_regex = RegexBuilder::new(formatted)
+        .multi_line(true)
+        .build()
+        .unwrap();
+    uid_regex
+        .captures(text)
+        .and_then(|cap| cap.name("uid").map(|uid| uid.as_str()))
 }

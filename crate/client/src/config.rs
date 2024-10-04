@@ -125,7 +125,7 @@ impl Default for ClientConf {
     fn default() -> Self {
         Self {
             accept_invalid_certs: false,
-            kms_server_url: "http://0.0.0.0:9998".to_string(),
+            kms_server_url: "http://0.0.0.0:9998".to_owned(),
             verified_cert: None,
             kms_access_token: None,
             kms_database_secret: None,
@@ -295,7 +295,7 @@ impl ClientConf {
             print_json,
         )
         .with_context(|| {
-            format!("Unable to instantiate a KMS server REST client {kms_server_url}")
+            format!("Unable to instantiate a KMS REST client to server at {kms_server_url}")
         })?;
 
         Ok(kms_rest_client)

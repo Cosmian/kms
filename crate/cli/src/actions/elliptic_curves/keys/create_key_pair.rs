@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::{
         crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
@@ -12,7 +12,7 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Curve {
     #[cfg(not(feature = "fips"))]
     NistP192,
@@ -34,19 +34,19 @@ impl From<Curve> for RecommendedCurve {
     fn from(curve: Curve) -> Self {
         match curve {
             #[cfg(not(feature = "fips"))]
-            Curve::NistP192 => RecommendedCurve::P192,
+            Curve::NistP192 => Self::P192,
             Curve::NistP224 => Self::P224,
             Curve::NistP256 => Self::P256,
             Curve::NistP384 => Self::P384,
             Curve::NistP521 => Self::P521,
             #[cfg(not(feature = "fips"))]
-            Curve::X25519 => RecommendedCurve::CURVE25519,
+            Curve::X25519 => Self::CURVE25519,
             #[cfg(not(feature = "fips"))]
-            Curve::Ed25519 => RecommendedCurve::CURVEED25519,
+            Curve::Ed25519 => Self::CURVEED25519,
             #[cfg(not(feature = "fips"))]
-            Curve::X448 => RecommendedCurve::CURVE448,
+            Curve::X448 => Self::CURVE448,
             #[cfg(not(feature = "fips"))]
-            Curve::Ed448 => RecommendedCurve::CURVEED448,
+            Curve::Ed448 => Self::CURVEED448,
         }
     }
 }

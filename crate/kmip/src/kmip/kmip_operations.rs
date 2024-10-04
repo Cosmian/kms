@@ -12,7 +12,7 @@ use super::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
     kmip_types::{
-        AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
+        Attribute, AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
         KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
         ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
         UniqueIdentifier, ValidityIndicator,
@@ -121,6 +121,10 @@ pub enum Operation {
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
+    SetAttribute(SetAttribute),
+    SetAttributeResponse(SetAttributeResponse),
+    DeleteAttribute(DeleteAttribute),
+    DeleteAttributeResponse(DeleteAttributeResponse),
     Encrypt(Encrypt),
     EncryptResponse(EncryptResponse),
     Decrypt(Decrypt),
@@ -150,6 +154,8 @@ impl Operation {
             | Self::Export(_)
             | Self::Get(_)
             | Self::GetAttributes(_)
+            | Self::SetAttribute(_)
+            | Self::DeleteAttribute(_)
             | Self::Encrypt(_)
             | Self::Decrypt(_)
             | Self::Locate(_)
@@ -166,6 +172,8 @@ impl Operation {
             | Self::ExportResponse(_)
             | Self::GetResponse(_)
             | Self::GetAttributesResponse(_)
+            | Self::SetAttributeResponse(_)
+            | Self::DeleteAttributeResponse(_)
             | Self::EncryptResponse(_)
             | Self::DecryptResponse(_)
             | Self::LocateResponse(_)
@@ -190,6 +198,12 @@ impl Operation {
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
             Self::GetAttributes(_) | Self::GetAttributesResponse(_) => {
                 OperationEnumeration::GetAttributes
+            }
+            Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
+                OperationEnumeration::SetAttribute
+            }
+            Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
+                OperationEnumeration::DeleteAttribute
             }
             Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
@@ -656,7 +670,7 @@ impl From<&String> for Export {
 impl From<&str> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::from(uid.to_string())
+        Self::from(uid.to_owned())
     }
 }
 
@@ -737,9 +751,10 @@ pub struct Get {
 impl Get {
     /// Create a `GetRequest` for an Object
     /// # Arguments
-    /// * `uid` - The Unique Identifier of the object to be retrieved
+    /// * `unique_identifier` - The Unique Identifier of the object to be retrieved
     /// * `unwrap` - If true, the object is returned unwrapped
-    /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
+    /// * `key_wrapping_specification` - If unwrap is false, this is the key wrapping data to be used
+    /// * `key_format_type` - The key format type to be returned
     /// # Returns
     /// A `GetRequest`
     /// # Example
@@ -747,7 +762,7 @@ impl Get {
     /// use cosmian_kmip::kmip::kmip_operations::Get;
     /// use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
     ///
-    /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_string()), false, None, None);
+    /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_owned()), false, None, None);
     /// ```
     #[must_use]
     pub const fn new(
@@ -803,7 +818,7 @@ impl From<&str> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
         Self::new(
-            UniqueIdentifier::TextString(uid.to_string()),
+            UniqueIdentifier::TextString(uid.to_owned()),
             false,
             None,
             None,
@@ -840,7 +855,10 @@ pub struct GetAttributes {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// Specifies an attribute associated with
     /// the object.
-    #[serde(skip_serializing_if = "Option::is_none", rename = "AttributeReference")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "AttributeReferences"
+    )]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
 impl From<String> for GetAttributes {
@@ -871,7 +889,48 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SetAttribute {
+    /// The Unique Identifier of the object. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Specifies the new value for the attribute associated with the object.
+    pub new_attribute: Attribute,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SetAttributeResponse {
+    /// The Unique Identifier of the object
+    pub unique_identifier: UniqueIdentifier,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeleteAttribute {
+    /// Determines the object whose attributes are being deleted. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Specifies the attribute associated with the object to be deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_attribute: Option<Attribute>,
+    /// Specifies the reference for the attribute associated with the object to be deleted.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "AttributeReferences"
+    )]
+    pub attribute_references: Option<Vec<AttributeReference>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeleteAttributeResponse {
+    /// The Unique Identifier of the object
+    pub unique_identifier: UniqueIdentifier,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     /// The Unique Identifier of the Managed
@@ -955,7 +1014,7 @@ pub struct EncryptResponse {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     /// The Unique Identifier of the Managed
@@ -1244,6 +1303,8 @@ pub struct RevokeResponse {
 
 /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
 ///
+///
+///
 /// As the replacement key takes over the name attribute of the existing key, Re-key SHOULD only be performed once on a given key.
 ///
 /// The server SHALL copy the Unique Identifier of the replacement key returned by this operation into the ID Placeholder variable.
@@ -1403,4 +1464,9 @@ pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
     /// invalid, or unknown.
     pub validity_indicator: ValidityIndicator,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StatusResponse {
+    pub kacls_url: String,
 }

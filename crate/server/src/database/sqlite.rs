@@ -63,7 +63,10 @@ impl SqlitePool {
             .disable_statement_logging();
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(1)
+            .max_connections(
+                u32::try_from(num_cpus::get())
+                    .expect("this conversion cannot fail (or I want that machine)"),
+            )
             .connect_with(options)
             .await?;
 
@@ -950,16 +953,13 @@ pub(crate) async fn is_migration_in_progress_<'e, E>(executor: E) -> KResult<boo
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
-    match sqlx::query(get_sqlite_query!("select-context"))
+    (sqlx::query(get_sqlite_query!("select-context"))
         .fetch_optional(executor)
-        .await?
-    {
-        Some(context_row) => {
+        .await?)
+        .map_or(Ok(false), |context_row| {
             let state = context_row.get::<String, _>(1);
             Ok(state == "upgrading")
-        }
-        None => Ok(false),
-    }
+        })
 }
 
 pub(crate) async fn migrate_(

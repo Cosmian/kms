@@ -13,7 +13,7 @@ use openssl::{
 };
 use tracing::warn;
 
-use crate::{error::KmipError, kmip::kmip_operations::ErrorReason};
+use crate::{error::KmipError, kmip::kmip_operations::ErrorReason, kmip_bail};
 
 /// X509 Extension section parser.
 /// The expected format of file for extensions be like:
@@ -66,215 +66,216 @@ pub fn parse_v3_ca(
 ) -> Result<Vec<X509Extension>, KmipError> {
     let v3_ca = conf.section(Some("v3_ca")).ok_or_else(|| {
         KmipError::NotSupported(
-            "unable to find `v3_ca` parag from X.509 extension content".to_string(),
+            "unable to find `v3_ca` parag from X.509 extension content".to_owned(),
         )
     })?;
 
-    v3_ca
-        .iter()
-        .map(|(key, value)| {
-            Ok(match key {
-                "subjectKeyIdentifier" => {
-                    if value.contains("critical") {
-                        SubjectKeyIdentifier::new().critical().build(x509_context)?
-                    } else {
-                        SubjectKeyIdentifier::new().build(x509_context)?
-                    }
+    let mut extensions = Vec::new();
+    for (key, value) in v3_ca {
+        match key {
+            "subjectKeyIdentifier" => {
+                if value.contains("critical") {
+                    extensions.push(SubjectKeyIdentifier::new().critical().build(x509_context)?);
+                } else {
+                    extensions.push(SubjectKeyIdentifier::new().build(x509_context)?);
                 }
-                "keyUsage" => {
-                    let mut ku = KeyUsage::new();
-                    value.trim().split(',').for_each(|value| {
-                        match value {
-                            "critical" => ku.critical(),
-                            "digitalSignature" => ku.digital_signature(),
-                            "nonRepudiation" => ku.non_repudiation(),
-                            "keyEncipherment" => ku.key_encipherment(),
-                            "dataEncipherment" => ku.data_encipherment(),
-                            "keyAgreement" => ku.key_agreement(),
-                            "keyCertSign" => ku.key_cert_sign(),
-                            "crlSign" => ku.crl_sign(),
-                            "encipherOnly" => ku.encipher_only(),
-                            "decipherOnly" => ku.decipher_only(),
-                            _ => {
-                                warn!("ignored `keyUsage` extension's value: `{value}`");
-                                &mut ku
-                            }
-                        };
-                    });
-                    ku.build()?
+            }
+            "keyUsage" => {
+                let mut ku = KeyUsage::new();
+                for value in value.trim().split(',') {
+                    match value {
+                        "critical" => ku.critical(),
+                        "digitalSignature" => ku.digital_signature(),
+                        "nonRepudiation" => ku.non_repudiation(),
+                        "keyEncipherment" => ku.key_encipherment(),
+                        "dataEncipherment" => ku.data_encipherment(),
+                        "keyAgreement" => ku.key_agreement(),
+                        "keyCertSign" => ku.key_cert_sign(),
+                        "crlSign" => ku.crl_sign(),
+                        "encipherOnly" => ku.encipher_only(),
+                        "decipherOnly" => ku.decipher_only(),
+                        _ => {
+                            kmip_bail!("not supported `keyUsage` extension's value: `{value}`");
+                        }
+                    };
                 }
-                "subjectAltName" => {
-                    let mut san = SubjectAlternativeName::new();
-                    value.trim().split(',').try_for_each(|value| {
-                        match value {
-                            "critical" => san.critical(),
-                            // `email:my@example.com`
-                            _ if value.starts_with("email") => {
-                                san.email(colon_split(value, "email")?)
-                            }
-                            // `URI:http://my.example.com/`
-                            _ if value.starts_with("URI") => san.uri(colon_split(value, "URI")?),
-                            // `DNS:mail.example.com`
-                            _ if value.starts_with("DNS") => san.dns(colon_split(value, "DNS")?),
-                            // `IP:192.168.1.1`
-                            // `IP:13::16`
-                            _ if value.starts_with("IP") => san.ip(colon_split(value, "IP")?),
-                            // `RID:1.2.3.4`
-                            _ if value.starts_with("RID") => san.rid(colon_split(value, "RID")?),
-                            // "otherName" => {
-                            //     // otherName:1.2.3.4
-                            //     let other_name_value = colon_split(value, "otherName")?;
-                            //     // must encode content to DER ASN.1 ...
-                            //     san.other_name2(oid, content)
-                            // }
-                            _ => {
-                                warn!("ignored `subjectAltName` extension's value: {value}");
-                                &mut san
-                            }
-                        };
-                        Ok::<_, KmipError>(())
-                    })?;
-                    san.build(x509_context)?
-                }
-                "privateKeyUsagePeriod" =>
-                {
-                    #[allow(deprecated)]
-                    X509Extension::new_nid(
-                        None,
-                        Some(x509_context),
-                        Nid::PRIVATE_KEY_USAGE_PERIOD,
-                        value,
-                    )?
-                }
-                "issuerAltName" =>
-                {
-                    #[allow(deprecated)]
-                    X509Extension::new_nid(None, Some(x509_context), Nid::ISSUER_ALT_NAME, value)?
-                }
-                "basicConstraints" => {
-                    let mut bc = BasicConstraints::new();
-                    value.trim().split(',').try_for_each(|value| {
-                        match value {
-                            "critical" => bc.critical(),
-                            "CA:true" | "CA:TRUE" => bc.ca(),
-                            _ if value.starts_with("pathlen") => {
-                                let pathlen =
-                                    colon_split(value, "pathlen")?.parse::<u32>().map_err(|e| {
-                                        KmipError::NotSupported(format!(
-                                            "unable to convert Basic Constraints pathlen to `u32` \
-                                             value: `{value}`. Reason: {e}"
-                                        ))
-                                    })?;
-                                bc.pathlen(pathlen)
-                            }
-                            _ => {
-                                warn!("ignored `basicConstraints` extension's value: {value}");
-                                &mut bc
-                            }
-                        };
-                        Ok::<_, KmipError>(())
-                    })?;
-                    bc.build()?
-                }
-                "nameConstraints" =>
-                {
-                    #[allow(deprecated)]
-                    X509Extension::new_nid(None, Some(x509_context), Nid::NAME_CONSTRAINTS, value)?
-                }
-                "crlDistributionPoints" =>
-                {
-                    #[allow(deprecated)]
-                    X509Extension::new_nid(
-                        None,
-                        Some(x509_context),
-                        Nid::CRL_DISTRIBUTION_POINTS,
-                        value,
-                    )?
-                }
-                "certificatePolicies" =>
-                {
-                    #[allow(deprecated)]
-                    X509Extension::new_nid(
-                        None,
-                        Some(x509_context),
-                        Nid::CERTIFICATE_POLICIES,
-                        value,
-                    )?
-                }
-                "extendedKeyUsage" => {
-                    let mut eku = ExtendedKeyUsage::new();
-                    value.trim().split(',').try_for_each(|value| {
-                        match value {
-                            "critical" => eku.critical(),
-                            "serverAuth" => eku.server_auth(),
-                            "clientAuth" => eku.client_auth(),
-                            "codeSigning" => eku.code_signing(),
-                            "emailProtection" => eku.email_protection(),
-                            "timeStamping" => eku.time_stamping(),
-                            "OCSPSigning" => eku.other("OCSPSigning"),
-                            "ipsecIKE" => eku.other("ipsecIKE"),
-                            "msCodeInd" => eku.ms_code_ind(),
-                            "msCodeCom" => eku.ms_code_com(),
-                            "msCTLSign" => eku.ms_ctl_sign(),
-                            "msEFS" => eku.ms_efs(),
-                            "nsSGC" => eku.ns_sgc(),
-                            "msSGC" => eku.ms_sgc(),
-                            _ => {
-                                warn!("ignored `extendedKeyUsage` extension's value: {value}");
-                                &mut eku
-                            }
-                        };
-                        Ok::<_, KmipError>(())
-                    })?;
-                    eku.build()?
-                }
-                "authorityKeyIdentifier" => {
-                    let mut aki = AuthorityKeyIdentifier::new();
-                    value.trim().split(',').try_for_each(|value| {
-                        match value {
-                            "critical" => aki.critical(),
-                            "issuer:always" => aki.issuer(true),
-                            "issuer" => aki.issuer(false),
-                            "keyid:always" => aki.keyid(true),
-                            "keyid" => aki.keyid(false),
-                            _ => {
-                                warn!(
-                                    "ignored `authorityKeyIdentifier` extension's value: {value}"
-                                );
-                                &mut aki
-                            }
-                        };
-                        Ok::<_, KmipError>(())
-                    })?;
-                    aki.build(x509_context)?
-                }
-                // "authorityInfoAccess" => {
-                //     #[allow(deprecated)]
-                //     X509Extension::new_nid(
-                //         None,
-                //         Some(x509_context),
-                //         Nid::????,
-                //         value,
-                //     )?
-                // }
-                // "proxyCertificationInformation" => {
-                //     #[allow(deprecated)]
-                //     X509Extension::new_nid(
-                //         None,
-                //         Some(x509_context),
-                //         Nid::????,
-                //         value,
-                //     )?
-                // }
-                _ => {
-                    return Err(KmipError::InvalidKmipObject(
-                        ErrorReason::Invalid_Attribute,
-                        format!("`{key}` is not a valid X.509 extension key property"),
-                    ))
-                }
-            })
-        })
-        .collect::<Result<Vec<_>, KmipError>>()
+                extensions.push(ku.build()?);
+            }
+            "subjectAltName" => {
+                let mut san = SubjectAlternativeName::new();
+                value.trim().split(',').try_for_each(|value| {
+                    match value {
+                        "critical" => san.critical(),
+                        // `email:my@example.com`
+                        _ if value.starts_with("email") => san.email(colon_split(value, "email")?),
+                        // `URI:http://my.example.com/`
+                        _ if value.starts_with("URI") => san.uri(colon_split(value, "URI")?),
+                        // `DNS:mail.example.com`
+                        _ if value.starts_with("DNS") => san.dns(colon_split(value, "DNS")?),
+                        // `IP:192.168.1.1`
+                        // `IP:13::16`
+                        _ if value.starts_with("IP") => san.ip(colon_split(value, "IP")?),
+                        // `RID:1.2.3.4`
+                        _ if value.starts_with("RID") => san.rid(colon_split(value, "RID")?),
+                        // "otherName" => {
+                        //     // otherName:1.2.3.4
+                        //     let other_name_value = colon_split(value, "otherName")?;
+                        //     // must encode content to DER ASN.1 ...
+                        //     san.other_name2(oid, content)
+                        // }
+                        _ => {
+                            kmip_bail!("not supported `subjectAltName` extension's value: {value}");
+                        }
+                    };
+                    Ok::<_, KmipError>(())
+                })?;
+                extensions.push(san.build(x509_context)?);
+            }
+            "privateKeyUsagePeriod" => {
+                #[allow(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::PRIVATE_KEY_USAGE_PERIOD,
+                    value,
+                )?);
+            }
+            "issuerAltName" => {
+                #[allow(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::ISSUER_ALT_NAME,
+                    value,
+                )?);
+            }
+            "basicConstraints" => {
+                let mut bc = BasicConstraints::new();
+                value.trim().split(',').try_for_each(|value| {
+                    match value {
+                        "critical" => bc.critical(),
+                        "CA:true" | "CA:TRUE" => bc.ca(),
+                        _ if value.starts_with("pathlen") => {
+                            let pathlen =
+                                colon_split(value, "pathlen")?.parse::<u32>().map_err(|e| {
+                                    KmipError::NotSupported(format!(
+                                        "unable to convert Basic Constraints pathlen to `u32` \
+                                         value: `{value}`. Reason: {e}"
+                                    ))
+                                })?;
+                            bc.pathlen(pathlen)
+                        }
+                        _ => {
+                            warn!("ignored `basicConstraints` extension's value: {value}");
+                            &mut bc
+                        }
+                    };
+                    Ok::<_, KmipError>(())
+                })?;
+                extensions.push(bc.build()?);
+            }
+            "nameConstraints" => {
+                #[allow(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::NAME_CONSTRAINTS,
+                    value,
+                )?);
+            }
+            "crlDistributionPoints" => {
+                #[allow(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::CRL_DISTRIBUTION_POINTS,
+                    value,
+                )?);
+            }
+            "certificatePolicies" => {
+                #[allow(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::CERTIFICATE_POLICIES,
+                    value,
+                )?);
+            }
+            "extendedKeyUsage" => {
+                let mut eku = ExtendedKeyUsage::new();
+                value.trim().split(',').try_for_each(|value| {
+                    match value {
+                        "critical" => eku.critical(),
+                        "serverAuth" => eku.server_auth(),
+                        "clientAuth" => eku.client_auth(),
+                        "codeSigning" => eku.code_signing(),
+                        "emailProtection" => eku.email_protection(),
+                        "timeStamping" => eku.time_stamping(),
+                        "OCSPSigning" => eku.other("OCSPSigning"),
+                        "ipsecIKE" => eku.other("ipsecIKE"),
+                        "msCodeInd" => eku.ms_code_ind(),
+                        "msCodeCom" => eku.ms_code_com(),
+                        "msCTLSign" => eku.ms_ctl_sign(),
+                        "msEFS" => eku.ms_efs(),
+                        "nsSGC" => eku.ns_sgc(),
+                        "msSGC" => eku.ms_sgc(),
+                        _ => {
+                            kmip_bail!(
+                                "not supported `extendedKeyUsage` extension's value: {value}"
+                            );
+                        }
+                    };
+                    Ok::<_, KmipError>(())
+                })?;
+                extensions.push(eku.build()?);
+            }
+            "authorityKeyIdentifier" => {
+                let mut aki = AuthorityKeyIdentifier::new();
+                value.trim().split(',').try_for_each(|value| {
+                    match value {
+                        "critical" => aki.critical(),
+                        "issuer:always" => aki.issuer(true),
+                        "issuer" => aki.issuer(false),
+                        "keyid:always" => aki.keyid(true),
+                        "keyid" => aki.keyid(false),
+                        _ => {
+                            kmip_bail!(
+                                "not supported `authorityKeyIdentifier` extension's value: {value}"
+                            );
+                        }
+                    };
+                    Ok::<_, KmipError>(())
+                })?;
+                extensions.push(aki.build(x509_context)?);
+            }
+            // "authorityInfoAccess" => {
+            //     #[allow(deprecated)]
+            //     X509Extension::new_nid(
+            //         None,
+            //         Some(x509_context),
+            //         Nid::????,
+            //         value,
+            //     )?
+            // }
+            // "proxyCertificationInformation" => {
+            //     #[allow(deprecated)]
+            //     X509Extension::new_nid(
+            //         None,
+            //         Some(x509_context),
+            //         Nid::????,
+            //         value,
+            //     )?
+            // }
+            _ => {
+                return Err(KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute,
+                    format!("`{key}` is not a valid X.509 extension key property"),
+                ))
+            }
+        }
+    }
+
+    Ok(extensions)
 }
 
 /// Within a value, there can be properties (ie: `email:test@example.com`).
@@ -290,8 +291,10 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
     Ok(val)
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use cosmian_logger::log_utils::log_init;
     use openssl::{
         conf::{Conf, ConfMethod},
         x509::X509,
@@ -310,12 +313,12 @@ mod tests {
     fn test_split() {
         let split = colon_split("email:dummy@gmail.com", "email").unwrap();
         assert_eq!(split, "dummy@gmail.com");
-        assert!(colon_split("email:dummy@gmail.com", "emails").is_err());
+        colon_split("email:dummy@gmail.com", "emails").unwrap_err();
     }
 
     #[test]
     fn test_parse_ext_file() {
-        // cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+        log_init(Some("info,hyper=info,reqwest=info"));
 
         let ext_file = r"[ v3_ca ]
 basicConstraints=CA:TRUE,pathlen:0
@@ -363,7 +366,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
         let cert_as_txt = x509.as_ref().to_text().unwrap();
         let cert = String::from_utf8_lossy(&cert_as_txt);
 
-        let _cert = r"            X509v3 Basic Constraints: 
+        let cert_ = r"            X509v3 Basic Constraints: 
                 CA:TRUE, pathlen:0
             X509v3 Key Usage: 
                 Digital Signature, Certificate Sign
@@ -376,7 +379,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     Signature Value:
 
 ";
-        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, _cert);
+        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, cert_);
 
         for ext in &exts_with_x509_parser {
             info!("\n\next: {:?}", ext);
@@ -458,7 +461,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     /// see: <https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity>
     #[test]
     fn test_parse_extensions_gmail() {
-        // cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+        log_init(Some("info,hyper=info,reqwest=info"));
 
         let ext_file = r"[ v3_ca ]
 basicConstraints=critical,CA:TRUE,pathlen:0

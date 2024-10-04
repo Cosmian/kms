@@ -1,3 +1,5 @@
+use std::num::TryFromIntError;
+
 use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use thiserror::Error;
 
@@ -103,7 +105,6 @@ impl From<KmipError> for pyo3::PyErr {
     }
 }
 
-#[cfg(feature = "openssl")]
 impl From<openssl::error::ErrorStack> for KmipError {
     fn from(e: openssl::error::ErrorStack) -> Self {
         Self::OpenSSL(format!("Error: {e}. Details: {e:?}"))
@@ -118,6 +119,12 @@ impl From<pkcs8::spki::Error> for KmipError {
 
 impl From<pkcs8::Error> for KmipError {
     fn from(e: pkcs8::Error) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<TryFromIntError> for KmipError {
+    fn from(e: TryFromIntError) -> Self {
         Self::ConversionError(e.to_string())
     }
 }
@@ -172,6 +179,7 @@ macro_rules! kmip_bail {
     };
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::KmipError;

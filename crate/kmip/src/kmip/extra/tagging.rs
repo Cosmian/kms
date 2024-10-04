@@ -25,9 +25,12 @@ impl Attributes {
         tags: T,
     ) -> Result<(), KmipError> {
         let va = self.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-        va.attribute_value = serde_json::to_vec::<HashSet<String>>(&HashSet::from_iter(
-            tags.into_iter().map(|t| t.as_ref().to_owned()),
-        ))?;
+        va.attribute_value = serde_json::to_vec::<HashSet<String>>(
+            &tags
+                .into_iter()
+                .map(|t| t.as_ref().to_owned())
+                .collect::<HashSet<_>>(),
+        )?;
         Ok(())
     }
 

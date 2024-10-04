@@ -1,16 +1,16 @@
 [workspace]
 default-members = ["crate/cli", "crate/server", "crate/pkcs11/provider"]
 members = [
-  "crate/cli",
-  "crate/client",
-  "crate/kmip",
-  "crate/server",
-  "crate/logger",
-  "crate/pyo3",
-  "crate/test_server",
-  "crate/pkcs11/sys",
-  "crate/pkcs11/module",
-  "crate/pkcs11/provider",
+    "crate/cli",
+    "crate/client",
+    "crate/kmip",
+    "crate/server",
+    "crate/logger",
+    "crate/pyo3",
+    "crate/test_server",
+    "crate/pkcs11/sys",
+    "crate/pkcs11/module",
+    "crate/pkcs11/provider",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -18,13 +18,13 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.18.0"
+version = "4.19.0"
 edition = "2021"
 rust-version = "1.71.0"
 authors = [
-  "Bruno Grieder <bruno.grieder@cosmian.com>",
-  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
-  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
+    "Bruno Grieder <bruno.grieder@cosmian.com>",
+    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+    "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -57,22 +57,29 @@ base64 = "0.21"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cloudproof = "3.0"
+der = { version = "0.7", default-features = false }
 env_logger = "0.11"
-hex = "0.4"
+hex = { version = "0.4", default-features = false }
+log = { version = "0.4", default-features = false }
 native-tls = "0.2"
+num_cpus = "1.13"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
+pem = "3.0"
 pyo3 = { version = "0.20", default-features = false }
 reqwest = { version = "0.11", default-features = false }
 rustls = "0.21"
 serde = "1.0"
 serde_json = "1.0"
+sha3 = { version = "0.10", default-features = false}
 strum = { version = "0.25", default-features = false }
 thiserror = "1.0"
 time = "0.3"
 tokio = { version = "1.39", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
 uuid = "1.10"
+x509-cert = { version = "0.2.5", default-features = false }
 x509-parser = "0.16"
-zeroize = "1.8"
+zeroize = { version = "1.8", default-features = false }

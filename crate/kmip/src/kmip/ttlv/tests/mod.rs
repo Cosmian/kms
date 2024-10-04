@@ -1,11 +1,13 @@
+use cosmian_logger::log_utils::log_init;
 use num_bigint_dig::BigUint;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
+use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::secret::SafeBigUint,
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
@@ -15,25 +17,26 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation,
+            LocateResponse, Operation, SetAttribute,
         },
         kmip_types::{
-            AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
-            Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+            AsynchronousIndicator, AttestationType, Attribute, Attributes,
+            BatchErrorContinuationOption, Credential, CryptographicAlgorithm,
+            CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
 };
 
-pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
+fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
         key: Zeroizing::from(key_value.to_vec()),
     }
 }
 
-pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
+fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Box::new(Attributes {
@@ -47,7 +50,7 @@ pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
     }
 }
 
-pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
+fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
@@ -58,52 +61,52 @@ pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     }
 }
 
-pub(crate) fn aes_key(key_value: &[u8]) -> Object {
+fn aes_key(key_value: &[u8]) -> Object {
     Object::SymmetricKey {
         key_block: aes_key_block(key_value),
     }
 }
 
-pub(crate) fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
+fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyMaterial".to_string(),
+        tag: "KeyMaterial".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "Key".to_string(),
+            tag: "Key".to_owned(),
             value: TTLValue::ByteString(key_value.to_vec()),
         }]),
     }
 }
 
-pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
+fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyValue".to_string(),
+        tag: "KeyValue".to_owned(),
         value: TTLValue::Structure(vec![
             aes_key_material_ttlv(key_value),
             TTLV {
-                tag: "Attributes".to_string(),
+                tag: "Attributes".to_owned(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "CryptographicAlgorithm".to_string(),
-                        value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_string())),
+                        tag: "CryptographicAlgorithm".to_owned(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
                     },
                     TTLV {
-                        tag: "CryptographicLength".to_string(),
+                        tag: "CryptographicLength".to_owned(),
                         value: TTLValue::Integer(key_value.len() as i32 * 8),
                     },
                     TTLV {
-                        tag: "CryptographicUsageMask".to_string(),
+                        tag: "CryptographicUsageMask".to_owned(),
                         value: TTLValue::Integer(4),
                     },
                     TTLV {
-                        tag: "KeyFormatType".to_string(),
+                        tag: "KeyFormatType".to_owned(),
                         value: TTLValue::Enumeration(TTLVEnumeration::Name(
-                            "TransparentSymmetricKey".to_string(),
+                            "TransparentSymmetricKey".to_owned(),
                         )),
                     },
                     TTLV {
-                        tag: "ObjectType".to_string(),
+                        tag: "ObjectType".to_owned(),
                         value: TTLValue::Enumeration(TTLVEnumeration::Name(
-                            "SymmetricKey".to_string(),
+                            "SymmetricKey".to_owned(),
                         )),
                     },
                 ]),
@@ -112,39 +115,39 @@ pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub(crate) fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
+fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyBlock".to_string(),
+        tag: "KeyBlock".to_owned(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "KeyFormatType".to_string(),
+                tag: "KeyFormatType".to_owned(),
                 value: TTLValue::Enumeration(TTLVEnumeration::Name(
-                    "TransparentSymmetricKey".to_string(),
+                    "TransparentSymmetricKey".to_owned(),
                 )),
             },
             aes_key_value_ttlv(key_value),
             TTLV {
-                tag: "CryptographicAlgorithm".to_string(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_string())),
+                tag: "CryptographicAlgorithm".to_owned(),
+                value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
             },
             TTLV {
-                tag: "CryptographicLength".to_string(),
+                tag: "CryptographicLength".to_owned(),
                 value: TTLValue::Integer(key_value.len() as i32 * 8),
             },
         ]),
     }
 }
 
-pub(crate) fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
+fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "SymmetricKey".to_string(),
+        tag: "SymmetricKey".to_owned(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
     }
 }
 
 #[test]
 fn test_enumeration() {
-    let es = TTLVEnumeration::Name("blah".to_string());
+    let es = TTLVEnumeration::Name("blah".to_owned());
     let s = serde_json::to_string_pretty(&es).unwrap();
     assert_eq!(es, serde_json::from_str(&s).unwrap());
 
@@ -161,54 +164,54 @@ fn test_enumeration() {
 fn test_serialization_deserialization() {
     let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
-        tag: "Test".to_string(),
+        tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "AnInt".to_string(),
+                tag: "AnInt".to_owned(),
                 value: TTLValue::Integer(42),
             },
             TTLV {
-                tag: "ABitMask".to_string(),
+                tag: "ABitMask".to_owned(),
                 value: TTLValue::BitMask(42),
             },
             TTLV {
-                tag: "ALongInt".to_string(),
+                tag: "ALongInt".to_owned(),
                 value: TTLValue::LongInteger(-42_i64),
             },
             TTLV {
-                tag: "ABigInteger".to_string(),
+                tag: "ABigInteger".to_owned(),
                 value: TTLValue::BigInteger(BigUint::from(2_487_678_887_987_987_798_676_u128)),
             },
             TTLV {
-                tag: "AnEnumeration_1".to_string(),
+                tag: "AnEnumeration_1".to_owned(),
                 value: TTLValue::Enumeration(TTLVEnumeration::Integer(54)),
             },
             TTLV {
-                tag: "AnEnumeration_2".to_string(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("blah".to_string())),
+                tag: "AnEnumeration_2".to_owned(),
+                value: TTLValue::Enumeration(TTLVEnumeration::Name("blah".to_owned())),
             },
             TTLV {
-                tag: "ABoolean".to_string(),
+                tag: "ABoolean".to_owned(),
                 value: TTLValue::Boolean(true),
             },
             TTLV {
-                tag: "ATextString".to_string(),
-                value: TTLValue::TextString("blah".to_string()),
+                tag: "ATextString".to_owned(),
+                value: TTLValue::TextString("blah".to_owned()),
             },
             TTLV {
-                tag: "AnByteString".to_string(),
+                tag: "AnByteString".to_owned(),
                 value: TTLValue::ByteString(b"hello".to_vec()),
             },
             TTLV {
-                tag: "ADateTime".to_string(),
+                tag: "ADateTime".to_owned(),
                 value: TTLValue::DateTime(now),
             },
             TTLV {
-                tag: "AnInterval".to_string(),
+                tag: "AnInterval".to_owned(),
                 value: TTLValue::Interval(27),
             },
             TTLV {
-                tag: "ADateTimeExtended".to_string(),
+                tag: "ADateTimeExtended".to_owned(),
                 value: TTLValue::DateTimeExtended(now),
             },
         ]),
@@ -226,12 +229,12 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         an_int: u32,
     }
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         an_int: 1,
@@ -246,12 +249,12 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         seq: Vec<&'static str>,
     }
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         seq: vec!["a", "b"],
@@ -264,12 +267,12 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    cosmian_logger::log_utils::log_init(Some("info,hyper=info,reqwest=info"));
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         big_int: BigUint,
     }
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         big_int: BigUint::from(0x1111_1111_1222_2222_u128),
@@ -298,7 +301,7 @@ fn test_ser_big_int() {
 
 #[test]
 fn test_ser_aes_key() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -307,24 +310,23 @@ fn test_ser_aes_key() {
 
 #[test]
 fn test_des_int() {
-    cosmian_logger::log_utils::log_init(None);
-
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         an_int: i32,
         another_int: u32,
     }
+    log_init(None);
 
     let ttlv = TTLV {
-        tag: "Test".to_string(),
+        tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "AnInt".to_string(),
+                tag: "AnInt".to_owned(),
                 value: TTLValue::Integer(2),
             },
             TTLV {
-                tag: "AnotherInt".to_string(),
+                tag: "AnotherInt".to_owned(),
                 value: TTLValue::BitMask(4),
             },
         ]),
@@ -342,25 +344,24 @@ fn test_des_int() {
 
 #[test]
 fn test_des_array() {
-    cosmian_logger::log_utils::log_init(None);
-
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         ints: Vec<i32>,
     }
 
+    log_init(None);
     let ttlv = TTLV {
-        tag: "Test".to_string(),
+        tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "Ints".to_string(),
+            tag: "Ints".to_owned(),
             value: TTLValue::Structure(vec![
                 TTLV {
-                    tag: "Ints".to_string(),
+                    tag: "Ints".to_owned(),
                     value: TTLValue::Integer(2),
                 },
                 TTLV {
-                    tag: "Ints".to_string(),
+                    tag: "Ints".to_owned(),
                     value: TTLValue::Integer(4),
                 },
             ]),
@@ -373,19 +374,18 @@ fn test_des_array() {
 
 #[test]
 fn test_des_enum() {
-    cosmian_logger::log_utils::log_init(None);
-
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         crypto_algo: CryptographicAlgorithm,
     }
+    log_init(None);
 
     let ttlv = TTLV {
-        tag: "Test".to_string(),
+        tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "CryptoAlgo".to_string(),
-            value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_string())),
+            tag: "CryptoAlgo".to_owned(),
+            value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
         }]),
     };
 
@@ -400,14 +400,14 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ]);
     let ttlv = TTLV {
-        tag: "KeyMaterial".to_string(),
+        tag: "KeyMaterial".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "Key".to_string(),
+            tag: "Key".to_owned(),
             value: TTLValue::ByteString(bytes.to_vec()),
         }]),
     };
@@ -418,28 +418,28 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ttlv = TTLV {
-        tag: "KeyMaterial".to_string(),
+        tag: "KeyMaterial".to_owned(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "KeyTypeSer".to_string(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("DH".to_string())),
+                tag: "KeyTypeSer".to_owned(),
+                value: TTLValue::Enumeration(TTLVEnumeration::Name("DH".to_owned())),
             },
             TTLV {
-                tag: "P".to_string(),
+                tag: "P".to_owned(),
                 value: TTLValue::BigInteger(BigUint::from(u32::MAX)),
             },
             TTLV {
-                tag: "Q".to_string(),
+                tag: "Q".to_owned(),
                 value: TTLValue::BigInteger(BigUint::from(1_u32)),
             },
             TTLV {
-                tag: "G".to_string(),
+                tag: "G".to_owned(),
                 value: TTLValue::BigInteger(BigUint::from(2_u32)),
             },
             TTLV {
-                tag: "X".to_string(),
+                tag: "X".to_owned(),
                 value: TTLValue::BigInteger(BigUint::from(u128::MAX)),
             },
         ]),
@@ -473,7 +473,7 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
@@ -492,7 +492,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_aes_key_block() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
@@ -506,7 +506,7 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
@@ -520,7 +520,7 @@ fn test_aes_key_value() {
 
 #[test]
 fn test_aes_key_material() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
@@ -529,7 +529,6 @@ fn test_aes_key_material() {
 
 #[test]
 fn test_some_attributes() {
-    cosmian_logger::log_utils::log_init(None);
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
     #[serde(untagged)]
     enum Wrapper {
@@ -541,6 +540,8 @@ fn test_some_attributes() {
             whatever: i32,
         },
     }
+    log_init(None);
+
     let value = Wrapper::Attr {
         attributes: Some(Box::new(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
@@ -557,7 +558,7 @@ fn test_some_attributes() {
 
 #[test]
 fn test_java_import_request() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ir_java = r#"
 {
   "tag" : "Import",
@@ -624,9 +625,9 @@ fn test_java_import_request() {
 
 #[test]
 fn test_java_import_response() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let ir = ImportResponse {
-        unique_identifier: UniqueIdentifier::TextString("blah".to_string()),
+        unique_identifier: UniqueIdentifier::TextString("blah".to_owned()),
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
     let ir_ = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
@@ -635,7 +636,7 @@ fn test_java_import_response() {
 
 #[test]
 fn test_byte_string_key_material() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
@@ -651,7 +652,7 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -664,7 +665,7 @@ fn test_aes_key_full() {
 
 #[test]
 pub(crate) fn test_attributes_with_links() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let _attributes: Attributes = from_ttlv(&ttlv).unwrap();
@@ -672,10 +673,10 @@ pub(crate) fn test_attributes_with_links() {
 
 #[test]
 pub(crate) fn test_import_correct_object() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
-    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.
+    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialization of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let import: Import = from_ttlv(&ttlv).unwrap();
@@ -700,7 +701,7 @@ pub(crate) fn test_create() {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
             link_type: crate::kmip::kmip_types::LinkType::ParentLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_string()),
+            linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_owned()),
         }]),
         ..Attributes::default()
     };
@@ -717,7 +718,7 @@ pub(crate) fn test_create() {
         create_.attributes.cryptographic_algorithm.unwrap()
     );
     assert_eq!(
-        LinkedObjectIdentifier::TextString("SK".to_string()),
+        LinkedObjectIdentifier::TextString("SK".to_owned()),
         create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
@@ -726,18 +727,18 @@ pub(crate) fn test_create() {
 // is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // this works
-    let _: KeyBlock = serialize_deserialize(get_key_block()).unwrap();
-    println!("KeyBlock serialize/deserialize OK");
+    serialize_deserialize(&get_key_block()).unwrap();
+    trace!("KeyBlock serialize/deserialize OK");
 
     // this should work too but does not deserialize
     // because of the empty Attributes in the KeyValue
     let object = Object::SymmetricKey {
         key_block: get_key_block(),
     };
-    let object_: Object = serialize_deserialize(object).unwrap();
+    let object_: Object = serialize_deserialize(&object).unwrap();
     match object_ {
         Object::SymmetricKey { key_block } => {
             assert_eq!(
@@ -749,9 +750,9 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     }
 }
 
-fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: T) -> Result<T, KmipError> {
+fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: &T) -> Result<T, KmipError> {
     // serialize
-    let object_ttlv = to_ttlv(&object)?;
+    let object_ttlv = to_ttlv(object)?;
     let json = serde_json::to_string_pretty(&object_ttlv)?;
     // deserialize
     let ttlv: TTLV = serde_json::from_str(&json)?;
@@ -783,7 +784,7 @@ fn get_key_block() -> KeyBlock {
 
 #[test]
 pub(crate) fn test_message_request() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     let req = Message {
         header: MessageHeader {
@@ -793,8 +794,8 @@ pub(crate) fn test_message_request() {
             },
             maximum_response_size: Some(9999),
             batch_count: 1,
-            client_correlation_value: Some("client_123".to_string()),
-            server_correlation_value: Some("server_234".to_string()),
+            client_correlation_value: Some("client_123".to_owned()),
+            server_correlation_value: Some("server_234".to_owned()),
             asynchronous_indicator: Some(AsynchronousIndicator::Optional),
             attestation_capable_indicator: Some(true),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
@@ -820,7 +821,7 @@ pub(crate) fn test_message_request() {
                 ..Default::default()
             }),
             message_extension: Some(vec![MessageExtension {
-                vendor_identification: "CosmianVendor".to_string(),
+                vendor_identification: "CosmianVendor".to_owned(),
                 criticality_indicator: false,
                 vendor_extension: vec![42_u8],
             }]),
@@ -841,7 +842,7 @@ pub(crate) fn test_message_request() {
 
 #[test]
 pub(crate) fn test_message_response() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     let res = MessageResponse {
         header: MessageResponseHeader {
@@ -850,15 +851,15 @@ pub(crate) fn test_message_response() {
                 protocol_version_minor: 0,
             },
             batch_count: 2,
-            client_correlation_value: Some("client_123".to_string()),
-            server_correlation_value: Some("server_234".to_string()),
+            client_correlation_value: Some("client_123".to_owned()),
+            server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
             timestamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
             }),
-            server_hashed_password: Some("5e8953ab".to_string()),
+            server_hashed_password: Some("5e8953ab".to_owned()),
         },
         items: vec![
             MessageResponseBatchItem {
@@ -867,11 +868,11 @@ pub(crate) fn test_message_response() {
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
                     unique_identifiers: Some(vec![UniqueIdentifier::TextString(
-                        "some_id".to_string(),
+                        "some_id".to_owned(),
                     )]),
                 })),
                 message_extension: Some(MessageExtension {
-                    vendor_identification: "CosmianVendor".to_string(),
+                    vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
                     vendor_extension: vec![42_u8],
                 }),
@@ -884,18 +885,18 @@ pub(crate) fn test_message_response() {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: Some(1235),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
+                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
                     data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
                 message_extension: Some(MessageExtension {
-                    vendor_identification: "CosmianVendor".to_string(),
+                    vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: true,
                     vendor_extension: vec![42_u8],
                 }),
                 result_status: ResultStatusEnumeration::OperationUndone,
                 result_reason: Some(ErrorReason::Response_Too_Large),
-                result_message: Some("oversized data".to_string()),
+                result_message: Some("oversized data".to_owned()),
                 asynchronous_correlation_value: Some(vec![43_u8, 6]),
             },
         ],
@@ -923,14 +924,14 @@ pub(crate) fn test_message_response() {
     );
     assert_eq!(
         decrypt.unique_identifier,
-        UniqueIdentifier::TextString("id_12345".to_string())
+        UniqueIdentifier::TextString("id_12345".to_owned())
     );
     assert_eq!(res, res_);
 }
 
 #[test]
 pub(crate) fn test_message_enforce_enum() {
-    cosmian_logger::log_utils::log_init(None);
+    log_init(None);
 
     // check Message request serializer reinforcement
     let req = Message {
@@ -954,7 +955,7 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
-        "operation enum (`Create`) doesn't correspond to request payload (`Locate`)".to_string()
+        "operation enum (`Create`) doesn't correspond to request payload (`Locate`)".to_owned()
     );
 
     let req = Message {
@@ -972,7 +973,7 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`15`) and items list (`1`)".to_string()
+        "mismatch number of batch items between header (`15`) and items list (`1`)".to_owned()
     );
 
     let req = Message {
@@ -989,7 +990,7 @@ pub(crate) fn test_message_enforce_enum() {
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
         "item's protocol version is greater (`3.0`) than header's protocol version (`2.1`)"
-            .to_string()
+            .to_owned()
     );
 
     let req = Message {
@@ -1007,7 +1008,7 @@ pub(crate) fn test_message_enforce_enum() {
             unique_batch_item_id: None,
             // mismatch operation regarding the enum
             request_payload: Operation::DecryptResponse(DecryptResponse {
-                unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
+                unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
                 data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
                 correlation_value: None,
             }),
@@ -1016,7 +1017,7 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
-        "request payload operation is not a request type operation (`Response`)".to_string()
+        "request payload operation is not a request type operation (`Response`)".to_owned()
     );
 
     // check Message response serializer reinforcement
@@ -1046,7 +1047,7 @@ pub(crate) fn test_message_enforce_enum() {
         to_ttlv(&res).unwrap_err().to_string(),
         "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` is set to \
          `OperationPending`)"
-            .to_string()
+            .to_owned()
     );
 
     let res = MessageResponse {
@@ -1073,7 +1074,7 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "operation enum (`Decrypt`) doesn't correspond to response payload (`Locate`)".to_string()
+        "operation enum (`Decrypt`) doesn't correspond to response payload (`Locate`)".to_owned()
     );
 
     let res = MessageResponse {
@@ -1093,7 +1094,7 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "mismatch number of batch items between header (`22`) and items list (`1`)".to_string()
+        "mismatch number of batch items between header (`22`) and items list (`1`)".to_owned()
     );
 
     let res = MessageResponse {
@@ -1114,7 +1115,7 @@ pub(crate) fn test_message_enforce_enum() {
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
         "item's protocol version is greater (`128.128`) than header's protocol version (`2.1`)"
-            .to_string()
+            .to_owned()
     );
 
     let res = MessageResponse {
@@ -1124,15 +1125,15 @@ pub(crate) fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            client_correlation_value: Some("client_123".to_string()),
-            server_correlation_value: Some("server_234".to_string()),
+            client_correlation_value: Some("client_123".to_owned()),
+            server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
             timestamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
             }),
-            server_hashed_password: Some("5e8953ab".to_string()),
+            server_hashed_password: Some("5e8953ab".to_owned()),
         },
         items: vec![MessageResponseBatchItem {
             operation: Some(OperationEnumeration::Locate),
@@ -1141,7 +1142,7 @@ pub(crate) fn test_message_enforce_enum() {
             // we could only have an `Operation::LocateResponse`
             response_payload: Some(Operation::Locate(Locate::default())),
             message_extension: Some(MessageExtension {
-                vendor_identification: "CosmianVendor".to_string(),
+                vendor_identification: "CosmianVendor".to_owned(),
                 criticality_indicator: false,
                 vendor_extension: vec![42_u8],
             }),
@@ -1153,6 +1154,169 @@ pub(crate) fn test_message_enforce_enum() {
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "response payload operation is not a response type operation (`Request`)".to_string()
+        "response payload operation is not a response type operation (`Request`)".to_owned()
     );
+}
+
+#[test]
+fn test_deserialization_set_attribute() -> KmipResult<()> {
+    log_init(None);
+    let set_attribute_request = r#"
+    {
+      "tag": "SetAttribute",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "173cb39b-c95a-4e98-ae0d-3e8079e145e6"
+        },
+        {
+          "tag": "NewAttribute",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(set_attribute_request)?;
+    let _set_attribute_request: SetAttribute = from_ttlv(&ttlv)?;
+    trace!("ttlv: {:?}", ttlv);
+
+    Ok(())
+}
+
+#[test]
+fn test_deserialization_attribute() -> KmipResult<()> {
+    log_init(None);
+    let attribute_str = r#"
+    {
+          "tag": "NewAttribute",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+            }
+          ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(attribute_str)?;
+    trace!("ttlv: {:?}", ttlv);
+
+    let attribute: Attribute = from_ttlv(&ttlv)?;
+    trace!("attribute: {:?}", attribute);
+
+    Ok(())
+}
+
+#[test]
+fn test_deserialization_link() -> KmipResult<()> {
+    log_init(None);
+    let link_str = r#"
+    {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "LinkType",
+                  "type": "Enumeration",
+                  "value": "PublicKeyLink"
+                },
+                {
+                  "tag": "LinkedObjectIdentifier",
+                  "type": "TextString",
+                  "value": "public_key_id"
+                }
+              ]
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(link_str)?;
+    trace!("ttlv: {:?}", ttlv);
+
+    let link: Link = from_ttlv(&ttlv)?;
+    trace!("attribute: {:?}", link);
+
+    Ok(())
+}
+
+#[test]
+fn test_serialization_set_attribute() -> KmipResult<()> {
+    log_init(None);
+    let set_attribute_request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            "173cb39b-c95a-4e98-ae0d-3e8079e145e6".to_owned(),
+        )),
+        new_attribute: Attribute::Links(vec![
+            Link {
+                link_type: LinkType::PublicKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    "public_key_id".to_owned(),
+                ),
+            },
+            Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    "private_key_id".to_owned(),
+                ),
+            },
+        ]),
+    };
+
+    let set_attribute = to_ttlv(&set_attribute_request)?;
+    trace!("set_attribute: {:#?}", set_attribute);
+
+    let set_attribute_deserialized: SetAttribute = from_ttlv(&set_attribute)?;
+    trace!(
+        "set_attribute_deserialized: {:?}",
+        set_attribute_deserialized
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_serialization_link() -> KmipResult<()> {
+    log_init(None);
+    let link_request = vec![Link {
+        link_type: LinkType::PublicKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString("public_key_id".to_owned()),
+    }];
+
+    let link = to_ttlv(&link_request)?;
+    trace!("link: {:#?}", link);
+
+    let link_deserialized: Vec<Link> = from_ttlv(&link)?;
+    trace!("set_attribute_deserialized: {:?}", link_deserialized);
+
+    Ok(())
 }
