@@ -21,31 +21,31 @@ to be used in various applications, such as in S/MIME encrypted emails.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.18.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0
     ```
 
-    Pre-built binaries, for both the server and CLI (called `ckms`) are available for multiple 
-    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.18.0/).
+    Pre-built binaries, for both the server and CLI (called `ckms`) are available for multiple
+    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.19.0/).
 
-    Using [`ckms`](./cli/cli.md), you can easily manage the server: 
+    Using [`ckms`](./cli/cli.md), you can easily manage the server:
 
     1) Create a 256-bit symmetric key
-    
+
     ```sh
     ckms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
     ...
     The symmetric key was successfully generated.
           Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
     ```
-    
+
     2) Encrypt the `image.png` file with AES GCM using the key
-    
+
     ```sh
     ckms sym encrypt --tag my-file-key --output-file image.enc image.png
     ...
     The encrypted file is available at "image.enc"
     ```
-    
+
     3) Decrypt the `image.enc` file using the key
     ```sh
     ckms sym decrypt --tag my-file-key --output-file image2.png image.enc
@@ -175,7 +175,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.18.0/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.0/)
 
 #### Integrated with OpenTelemetry
 
@@ -201,7 +201,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.18.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.19.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
