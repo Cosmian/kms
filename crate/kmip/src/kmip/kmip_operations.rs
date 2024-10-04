@@ -737,9 +737,10 @@ pub struct Get {
 impl Get {
     /// Create a `GetRequest` for an Object
     /// # Arguments
-    /// * `uid` - The Unique Identifier of the object to be retrieved
+    /// * `unique_identifier` - The Unique Identifier of the object to be retrieved
     /// * `unwrap` - If true, the object is returned unwrapped
-    /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
+    /// * `key_wrapping_specification` - If unwrap is false, this is the key wrapping data to be used
+    /// * `key_format_type` - The key format type to be returned
     /// # Returns
     /// A `GetRequest`
     /// # Example
@@ -1403,4 +1404,9 @@ pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
     /// invalid, or unknown.
     pub validity_indicator: ValidityIndicator,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StatusResponse {
+    pub kacls_url: String,
 }

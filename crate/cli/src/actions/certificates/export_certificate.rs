@@ -4,7 +4,8 @@ use clap::Parser;
 use cosmian_kms_client::{
     export_object,
     kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
-    write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, KmsClient,
+    write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
+    KmsClient,
 };
 use tracing::log::trace;
 
@@ -17,6 +18,7 @@ pub enum CertificateExportFormat {
     Pkcs12,
     #[cfg(not(feature = "fips"))]
     Pkcs12Legacy,
+    Pkcs7,
 }
 
 /// Export a certificate from the KMS
@@ -27,8 +29,9 @@ pub enum CertificateExportFormat {
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
 /// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
 ///    for keystores that do not support the new format
-///    (e.g. Java keystores, `MacOS` Keychain,...)
+///    (e.g. Java keystores, `MacOS` Keychains,...)
 ///    This format is not available in FIPS mode.
+/// - in PKCS7 format including the entire certificates chain (pkcs7)
 ///
 /// When using tags to retrieve rather than the unique id,
 /// an error is returned if multiple objects match the tags.
@@ -104,16 +107,19 @@ impl ExportCertificateAction {
             CertificateExportFormat::Pkcs12Legacy => {
                 (KeyFormatType::Pkcs12Legacy, self.pkcs12_password.as_deref())
             }
+            CertificateExportFormat::Pkcs7 => (KeyFormatType::PKCS7, None),
         };
 
         // export the object
         let (object, export_attributes) = export_object(
             client_connector,
             &object_id,
-            false,
-            wrapping_key_id,
-            self.allow_revoked,
-            Some(key_format_type),
+            ExportObjectParams {
+                wrapping_key_id,
+                allow_revoked: self.allow_revoked,
+                key_format_type: Some(key_format_type),
+                ..ExportObjectParams::default()
+            },
         )
         .await?;
 
@@ -139,6 +145,12 @@ impl ExportCertificateAction {
                     CertificateExportFormat::Pkcs12Legacy => {
                         // PKCS12 is exported as a private key object
                         cli_bail!("PKCS12: invalid object returned by the server.");
+                    }
+                    CertificateExportFormat::Pkcs7 => {
+                        // save the pem to a file
+                        let pem =
+                            pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
+                        write_bytes_to_file(pem.to_string().as_bytes(), &self.certificate_file)?;
                     }
                 }
             }

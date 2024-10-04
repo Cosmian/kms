@@ -12,7 +12,8 @@ use cosmian_kms_client::{
             kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
         },
     },
-    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, ExportObjectParams,
+    KmsClient,
 };
 
 use crate::{
@@ -111,7 +112,7 @@ impl WrapKeyAction {
             );
             symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false, None)
+            export_object(kms_rest_client, key_id, ExportObjectParams::default())
                 .await?
                 .0
         } else if let Some(key_file) = &self.wrap_key_file {

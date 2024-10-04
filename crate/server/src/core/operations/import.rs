@@ -503,7 +503,7 @@ fn process_pkcs12(
         )
     };
 
-    // build the chain if any  (the chain is optional)
+    // build the chain if any (the chain is optional)
     let mut chain: Vec<(String, Object, HashSet<String>, CertificateAttributes)> = Vec::new();
     if let Some(cas) = pkcs12.ca {
         // import the cas
@@ -585,6 +585,11 @@ fn process_pkcs12(
             LinkedObjectIdentifier::TextString(parent_id.clone()),
         );
     }
+
+    debug!(
+        "Importing leaf certificate with attributes: {:?}",
+        leaf_certificate_attributes
+    );
 
     operations.push(single_operation(
         Some(leaf_certificate_tags),

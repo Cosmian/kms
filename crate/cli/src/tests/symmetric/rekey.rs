@@ -9,7 +9,7 @@ use super::SUB_COMMAND;
 use crate::{
     error::{result::CliResult, CliError},
     tests::{
-        shared::export_key,
+        shared::{export_key, ExportKeyParams},
         symmetric::create_key::create_symmetric_key,
         utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
@@ -62,16 +62,13 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     )?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &id,
-        tmp_path.join("aes_sym").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: id.clone(),
+        key_file: tmp_path.join("aes_sym").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
 
     // and refresh it
     let id_2 = rekey_symmetric_key(&ctx.owner_client_conf_path, &id)?;
@@ -79,16 +76,13 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     assert_eq!(id, id_2);
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    export_key(
-        &ctx.owner_client_conf_path,
-        "sym",
-        &id,
-        tmp_path.join("aes_sym_2").to_str().unwrap(),
-        None,
-        false,
-        None,
-        false,
-    )?;
+    export_key(ExportKeyParams {
+        cli_conf_path: ctx.owner_client_conf_path.clone(),
+        sub_command: "sym".to_owned(),
+        key_id: id,
+        key_file: tmp_path.join("aes_sym_2").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })?;
 
     // Compare the symmetric key bytes
     let old_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym"))?;

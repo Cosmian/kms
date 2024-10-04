@@ -28,8 +28,9 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
-    asn1::Asn1Time,
+    asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
+    sha::Sha1,
     x509::{X509Req, X509},
 };
 use tracing::{debug, info, trace};
@@ -79,11 +80,14 @@ pub(crate) async fn certify(
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
     let subject = get_subject(kms, &request, user, params).await?;
+    trace!("Subject name: {:?}", subject.subject_name());
     let issuer = get_issuer(&subject, kms, &request, user, params).await?;
+    trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
+            trace!("Certify X509Req or Certificate:{unique_identifier}");
             (
                 vec![
                     // upsert the certificate
@@ -99,6 +103,10 @@ pub(crate) async fn certify(
             )
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
+            trace!(
+                "Certify PublicKeyAndSubjectName:{unique_identifier} : public key: \
+                 {from_public_key:?}"
+            );
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes;
             public_key_attributes.set_link(
@@ -555,6 +563,19 @@ async fn issuer_for_self_signed_certificate<'a>(
     }
 }
 
+fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer> {
+    let pk = subject.public_key()?;
+    let spki_der = pk.public_key_to_der()?;
+    let mut sha1 = Sha1::default();
+    sha1.update(&spki_der);
+    let serial_number_bytes = sha1.finish().to_vec();
+
+    let serial_number = openssl::asn1::Asn1Integer::from_bn(
+        openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
+    )?;
+    Ok(serial_number)
+}
+
 fn build_and_sign_certificate(
     issuer: &Issuer,
     subject: &Subject,
@@ -620,6 +641,7 @@ fn build_and_sign_certificate(
 
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
+    x509_builder.set_serial_number(create_subject_key_identifier_value(subject)?.as_ref())?;
     x509_builder.sign(issuer.private_key(), MessageDigest::sha256())?;
 
     let x509 = x509_builder.build();

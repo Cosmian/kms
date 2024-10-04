@@ -25,6 +25,16 @@ pub(crate) struct UserClaim {
     pub perimeter_id: Option<String>,
     // Google CSE
     pub kacls_url: Option<String>,
+    // Google CSE
+    pub spki_hash: Option<String>,
+    // Google CSE
+    pub spki_hash_algorithm: Option<String>,
+    // Google CSE
+    pub message_id: Option<String>,
+    // Google CSE
+    pub email_type: Option<String>,
+    // Google CSE
+    pub google_email: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

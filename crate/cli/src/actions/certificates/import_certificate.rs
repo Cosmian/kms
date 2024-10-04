@@ -81,17 +81,17 @@ pub struct ImportCertificateAction {
 
     /// The corresponding private key id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
     /// The corresponding public key id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "public-key-id", short = 'q')]
+    #[clap(long, short = 'q')]
     public_key_id: Option<String>,
 
     /// The issuer certificate id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "issuer-certificate-id", short = 'i')]
+    #[clap(long, short = 'i')]
     issuer_certificate_id: Option<String>,
 
     /// PKCS12 password: only available for PKCS12 format.
@@ -119,7 +119,7 @@ pub struct ImportCertificateAction {
 
 impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        debug!("CLI: entering import certificate");
+        trace!("CLI: entering import certificate: {:?}", self);
 
         //generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = None;
@@ -145,6 +145,10 @@ impl ImportCertificateAction {
             );
         };
 
+        trace!(
+            "CLI: leaf_certificate_attributes: {:?}",
+            leaf_certificate_attributes
+        );
         let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("CLI: import certificate as TTLV JSON file");

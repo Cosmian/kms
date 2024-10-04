@@ -11,7 +11,7 @@ use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult
 pub struct GetIdentitiesAction {
     /// The primary email address associated with the client-side encryption identity configuration
     /// that's retrieved.
-    #[clap(long = "user-id", short = 'u', required = true)]
+    #[clap(required = true)]
     user_id: String,
 }
 

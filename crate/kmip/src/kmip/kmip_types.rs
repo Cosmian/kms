@@ -9,6 +9,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use clap::ValueEnum;
 #[cfg(feature = "openssl")]
 use openssl::{
     hash::MessageDigest,
@@ -32,16 +33,20 @@ use crate::{
         kmip_operations::ErrorReason,
     },
 };
+pub const VENDOR_ATTR_AAD: &str = "aad";
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
+/// The PKCS7 format is a Cosmian extension from KMIP.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::enum_clike_unportable_variant)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
+    PKCS7 = 0x8000_0001,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
@@ -79,6 +84,7 @@ pub enum SplitKeyMethod {
 /// | Type | Default Key Format Type |
 /// |------|-------------------------|
 /// | Certificate | X.509 |
+/// | Certificate | PKCS#7 |
 /// | Certificate Request | PKCS#10 |
 /// | Opaque Object | Opaque |
 /// | PGP Key | Raw |
@@ -130,8 +136,7 @@ pub enum KeyFormatType {
     /// such as Java KeyStores, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
     Pkcs12Legacy = 0x8880_0001,
-    // Available slot 0x8880_0001,
-    // Available slot 0x8880_0002,
+    PKCS7 = 0x8880_0002,
     // Available slot 0x8880_0003,
     // Available slot 0x8880_0004,
     EnclaveECKeyPair = 0x8880_0005,
@@ -1159,6 +1164,29 @@ impl Attributes {
 
         Ok((usage_mask & flag).bits() != 0)
     }
+
+    /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
+    #[must_use]
+    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
+        let aad = self
+            .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)
+            .map(|value: &[u8]| value.to_vec());
+
+        if aad.is_some() {
+            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD);
+        }
+        aad
+    }
+
+    /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
+    pub fn add_aad(&mut self, value: &[u8]) {
+        let va = VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_AAD.to_owned(),
+            attribute_value: value.to_vec(),
+        };
+        self.add_vendor_attribute(va);
+    }
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
@@ -1242,7 +1270,9 @@ impl CertificateAttributes {
                 "CN" => value.clone_into(&mut certificate_attributes.certificate_subject_cn),
                 "O" => value.clone_into(&mut certificate_attributes.certificate_subject_o),
                 "OU" => value.clone_into(&mut certificate_attributes.certificate_subject_ou),
-                "Email" => value.clone_into(&mut certificate_attributes.certificate_subject_email),
+                "emailAddress" => {
+                    value.clone_into(&mut certificate_attributes.certificate_subject_email);
+                }
                 "C" => value.clone_into(&mut certificate_attributes.certificate_subject_c),
                 "ST" => value.clone_into(&mut certificate_attributes.certificate_subject_st),
                 "L" => value.clone_into(&mut certificate_attributes.certificate_subject_l),
@@ -1651,25 +1681,47 @@ impl Default for WrappingMethod {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
+#[derive(
+    ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display,
+)]
 pub enum BlockCipherMode {
+    #[value(name = "CBC")]
     CBC = 0x0000_0001,
+    #[value(name = "ECB")]
     ECB = 0x0000_0002,
+    #[value(name = "PCBC")]
     PCBC = 0x0000_0003,
+    #[value(name = "CFB")]
     CFB = 0x0000_0004,
+    #[value(name = "OFB")]
     OFB = 0x0000_0005,
+    #[value(name = "CTR")]
     CTR = 0x0000_0006,
+    #[value(name = "CMAC")]
     CMAC = 0x0000_0007,
+    #[value(name = "CCM")]
     CCM = 0x0000_0008,
+    #[value(name = "GCM")]
     GCM = 0x0000_0009,
+    #[value(name = "CBCMAC")]
     CBCMAC = 0x0000_000A,
+    #[value(name = "XTS")]
     XTS = 0x0000_000B,
+    #[value(name = "X9102AESKW")]
     X9102AESKW = 0x0000_000E,
+    #[value(name = "X9102TDKW")]
     X9102TDKW = 0x0000_000F,
+    #[value(name = "X9102AKW1")]
     X9102AKW1 = 0x0000_0010,
+    #[value(name = "X9102AKW2")]
     X9102AKW2 = 0x0000_0011,
+    #[value(name = "AEAD")]
     AEAD = 0x0000_0012,
+    // Extensions - 8XXXXXXX
+    #[value(name = "NISTKeyWrap")]
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x8000_0001,
 }
 
 #[allow(non_camel_case_types)]

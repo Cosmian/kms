@@ -16,7 +16,8 @@ use cosmian_kms_client::{
             ttlv::{deserializer::from_ttlv, TTLV},
         },
     },
-    export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file, KmsClient,
+    export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
+    ExportObjectParams, KmsClient,
 };
 
 use crate::{
@@ -152,9 +153,16 @@ async fn recover_policy(
 ) -> CliResult<Policy> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
-        export_object(kms_rest_client, key_id, unwrap, None, false, None)
-            .await?
-            .0
+        export_object(
+            kms_rest_client,
+            key_id,
+            ExportObjectParams {
+                unwrap,
+                ..ExportObjectParams::default()
+            },
+        )
+        .await?
+        .0
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
         from_ttlv(&ttlv)?

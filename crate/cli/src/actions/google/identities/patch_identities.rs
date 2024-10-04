@@ -18,10 +18,10 @@ struct IdentityInfo {
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct PatchIdentitiesAction {
-    /// The keypair id, associated with a given cert/key. You can get the by listing the keypairs
+    /// The key pair id, associated with a given cert/key. You can get the by listing the key pairs
     /// associated with the user-id
     #[clap(required = true)]
-    keypairs_id: String,
+    key_pairs_id: String,
 
     /// The primary email address associated with the client-side encryption identity configuration
     /// that's retrieved.
@@ -36,7 +36,7 @@ impl PatchIdentitiesAction {
 
         // Construct identity_info
         let identity_info = IdentityInfo {
-            primaryKeyPairId: self.keypairs_id.clone(),
+            primaryKeyPairId: self.key_pairs_id.clone(),
             emailAddress: self.user_id.clone(),
         };
         let response = gmail_client

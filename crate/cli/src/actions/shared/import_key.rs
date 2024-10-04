@@ -66,29 +66,24 @@ pub struct ImportKeyAction {
     key_id: Option<String>,
 
     /// The format of the key.
-    #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
+    #[clap(long, short = 'f', default_value = "json-ttlv")]
     key_format: ImportKeyFormat,
 
     /// For a private key: the corresponding public key id if any.
-    #[clap(long = "public-key-id", short = 'p')]
+    #[clap(long, short = 'p')]
     public_key_id: Option<String>,
 
     /// For a public key: the corresponding private key id if any.
-    #[clap(long = "private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
     /// For a public or private key: the corresponding certificate id if any.
-    #[clap(long = "certificate-id", short = 'c')]
+    #[clap(long, short = 'c')]
     certificate_id: Option<String>,
 
     /// In the case of a JSON TTLV key,
     /// unwrap the key if it is wrapped before storing it.
-    #[clap(
-        long = "unwrap",
-        short = 'u',
-        required = false,
-        default_value = "false"
-    )]
+    #[clap(long, short = 'u', required = false, default_value = "false")]
     unwrap: bool,
 
     /// Replace an existing key under the same id.
@@ -106,8 +101,16 @@ pub struct ImportKeyAction {
     tags: Vec<String>,
 
     /// For what operations should the key be used.
-    #[clap(long = "key-usage")]
+    #[clap(long)]
     key_usage: Option<Vec<KeyUsage>>,
+
+    /// Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+    #[clap(
+        long,
+        short = 'd',
+        default_value = None,
+    )]
+    authenticated_additional_data: Option<String>,
 }
 
 impl ImportKeyAction {
@@ -192,6 +195,14 @@ impl ImportKeyAction {
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
         };
+
+        if self.unwrap {
+            if let Some(data) = &self.authenticated_additional_data {
+                // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
+                let aad = data.as_bytes();
+                object.attributes_mut()?.add_aad(aad);
+            }
+        }
 
         // import the key
         let unique_identifier = import_object(
