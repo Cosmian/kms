@@ -2,11 +2,10 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
-use cosmian_kms_server::config::{DBConfig, DEFAULT_SQLITE_PATH};
 use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
-    AuthenticationOptions,
+    AuthenticationOptions, DBConfig, DEFAULT_SQLITE_PATH,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;

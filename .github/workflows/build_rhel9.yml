@@ -81,6 +81,7 @@ jobs:
         run: |
           set -x
 
+          yum -y install python-devel
           yum -y install wget
           yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
 
