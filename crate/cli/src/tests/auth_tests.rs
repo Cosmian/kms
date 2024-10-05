@@ -4,9 +4,10 @@ use std::{path::PathBuf, process::Command};
 use assert_cmd::prelude::*;
 use base64::Engine;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
-use cosmian_kms_server::config::DBConfig;
 use cosmian_logger::log_utils::log_init;
-use kms_test_server::{start_test_server_with_options, AuthenticationOptions, TestsContext};
+use kms_test_server::{
+    start_test_server_with_options, AuthenticationOptions, DBConfig, TestsContext,
+};
 use tempfile::TempDir;
 use tracing::{info, trace};
 

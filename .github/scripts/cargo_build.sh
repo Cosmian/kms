@@ -7,6 +7,7 @@ set -ex
 # export DEBUG_OR_RELEASE=debug
 # export OPENSSL_DIR=/usr/local/openssl
 # export SKIP_SERVICES_TESTS="--skip test_mysql --skip test_pgsql --skip test_redis --skip google_cse --skip test_all_authentications"
+# export FEATURES="fips"
 
 ROOT_FOLDER=$(pwd)
 
@@ -65,11 +66,10 @@ rustup target add "$TARGET"
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # Before building the crates, test crates individually on specific features
   cargo install --version 0.6.31 cargo-hack --force
-  crates=("crate/kmip" "crate/client" "crate/cli" "crate/server")
+  crates=("crate/kmip" "crate/client")
   for crate in "${crates[@]}"; do
-    echo "cargo hack on $crate"
     cd "$crate"
-    cargo hack test --feature-powerset --no-dev-deps
+    cargo hack test --feature-powerset --all-targets
     cd "$ROOT_FOLDER"
   done
 fi

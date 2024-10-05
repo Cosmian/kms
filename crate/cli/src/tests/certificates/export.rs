@@ -419,7 +419,7 @@ async fn test_self_signed_export_loop() -> CliResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // Create a self-signed certificate - the certificate link points to the certificate itself
-    let certificate_id = create_self_signed_cert(ctx).await?;
+    let certificate_id = create_self_signed_cert(ctx)?;
 
     // export
     let tmp_dir = TempDir::new()?;
