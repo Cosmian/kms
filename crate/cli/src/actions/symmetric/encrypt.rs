@@ -375,14 +375,20 @@ fn decrypt_client_side(
     )?;
     let mut output_file = File::create(output_file)?;
     let mut file = File::open(input_file)?;
-    let mut chunk = vec![0; 4096];
+    let mut chunk = vec![0; 2 ^ 20]; //1MB
     loop {
         let bytes_read = file.read(&mut chunk)?;
         if bytes_read == 0 {
             break;
         }
-        let plaintext = stream_cipher.update(&chunk[..bytes_read])?;
-        output_file.write_all(&plaintext)?;
+        let all_bytes = [self.buffer().to_ver(), &chunk[..bytes_read]].concat();
+        // keep at least the tag size in the local buffer
+        let bytes_to_process = if all_bytes.len() > cipher.tag_size() {
+            let output = stream_cipher.update(&chunk[..bytes_read])?;
+            output_file.write_all(&output)?;
+        } else {
+            bytes_read
+        };
     }
     output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
     Ok(())
