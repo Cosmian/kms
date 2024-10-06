@@ -1,12 +1,21 @@
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::{
+    fs::File,
+    io::prelude::*,
+    path::{Path, PathBuf},
+};
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::generic::kmip_requests::build_encryption_request,
+    cosmian_kmip::crypto::{
+        generic::kmip_requests::build_encryption_request,
+        symmetric::symmetric_ciphers::{random_nonce, Mode, SymCipher},
+    },
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
     read_bytes_from_file, KmsClient,
 };
-use cosmian_kms_client::cosmian_kmip::crypto::symmetric::symmetric_ciphers::SymCipher;
+use openssl::rand::rand_bytes;
+use zeroize::Zeroizing;
+
 use crate::{
     actions::console,
     cli_bail,
@@ -173,10 +182,6 @@ pub struct EncryptAction {
 
 impl EncryptAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Read the file to encrypt
-        let data = read_bytes_from_file(&self.input_file)
-            .with_context(|| "Cannot read bytes from the file to encrypt")?;
-
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
@@ -219,7 +224,7 @@ impl EncryptAction {
                     &id,
                     self.data_encryption_algorithm.into(),
                     nonce,
-                    data,
+                    &self.input_file,
                     authentication_data,
                 )
                 .await?;
@@ -248,9 +253,13 @@ impl EncryptAction {
         key_id: &str,
         cryptographic_parameters: CryptographicParameters,
         nonce: Option<Vec<u8>>,
-        data: Vec<u8>,
+        input_file: &Path,
         authenticated_data: Option<Vec<u8>>,
     ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), CliError> {
+        // Read the file to encrypt
+        let data = read_bytes_from_file(input_file)
+            .with_context(|| "Cannot read bytes from the file to encrypt")?;
+
         // Create the kmip query
         let encrypt_request = build_encryption_request(
             key_id,
@@ -286,27 +295,95 @@ impl EncryptAction {
     }
 }
 
+/// Encrypt a file using a symmetric stream cipher
+/// and return the ephemeral key
 fn encrypt_client_side(
     data_encryption_algorithm: DataEncryptionAlgorithm,
-    nonce: Option<Vec<u8>,
-    data: Vec<u8>,
-    authenticated_data: Option<Vec<u8>,
-) -> CliResult<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-    
+    nonce: Option<Vec<u8>>,
+    input_file: &Path,
+    output_file: &Path,
+    authenticated_data: Option<Vec<u8>>,
+) -> CliResult<Zeroizing<Vec<u8>>> {
     let key_size = match data_encryption_algorithm {
-        DataEncryptionAlgorithm::AesGcm | DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => 32,
+        DataEncryptionAlgorithm::AesGcm
+        | DataEncryptionAlgorithm::Chacha20Poly1305
+        | DataEncryptionAlgorithm::AesGcmSiv => 32,
         DataEncryptionAlgorithm::AesXts => 64,
     };
-    
+    let mut key = Zeroizing::new(vec![0; key_size]);
+    rand_bytes(&mut key)?;
+
     let cryptographic_parameters = data_encryption_algorithm.into();
     let cipher = SymCipher::from_algorithm_and_key_size(
-        cryptographic_parameters.cryptographic_algorithm.as_ref().unwrap(),
+        cryptographic_parameters
+            .cryptographic_algorithm
+            .as_ref()
+            .unwrap(),
         cryptographic_parameters.key_block_size.as_ref().unwrap(),
-        key_size
+        key_size,
     )?;
-    
-    cipher.
-    
-    cli_bail!("Client side encryption is not implemented yet")
+    // we need a nonce (or tweak)
+    let nonce = nonce.unwrap_or_else(|| random_nonce(cipher));
+    // instantiate the stream cipher
+    let mut stream_cipher = cipher.stream_cipher(
+        &key,
+        Mode::Encrypt,
+        nonce,
+        authenticated_data.unwrap_or_default(),
+    )?;
+    //open the output file to write to it
+    let mut output_file = File::create(output_file)?;
+    // process the data read from the file by 4096 chunks and write the encrypted data
+    let mut file = File::open(input_file)?;
+    let mut chunk = vec![0; 4096];
+    loop {
+        let bytes_read = file.read(&mut chunk)?;
+        if bytes_read == 0 {
+            break;
+        }
+        let ciphertext = stream_cipher.update(&chunk[..bytes_read])?;
+        output_file.write_all(&ciphertext)?;
+    }
+    let (remaining, tag) = stream_cipher.finalize_encryption()?;
+    output_file.write_all(&remaining)?;
+    output_file.write_all(&tag)?;
+    Ok(key)
 }
 
+fn decrypt_client_side(
+    data_encryption_algorithm: DataEncryptionAlgorithm,
+    key: &[u8],
+    nonce: &[u8],
+    input_file: &Path,
+    output_file: &Path,
+    authenticated_data: Option<Vec<u8>>,
+) -> CliResult<()> {
+    let cryptographic_parameters = data_encryption_algorithm.into();
+    let cipher = SymCipher::from_algorithm_and_key_size(
+        cryptographic_parameters
+            .cryptographic_algorithm
+            .as_ref()
+            .unwrap(),
+        cryptographic_parameters.key_block_size.as_ref().unwrap(),
+        key.len(),
+    )?;
+    let mut stream_cipher = cipher.stream_cipher(
+        key,
+        Mode::Decrypt,
+        nonce,
+        authenticated_data.unwrap_or_default(),
+    )?;
+    let mut output_file = File::create(output_file)?;
+    let mut file = File::open(input_file)?;
+    let mut chunk = vec![0; 4096];
+    loop {
+        let bytes_read = file.read(&mut chunk)?;
+        if bytes_read == 0 {
+            break;
+        }
+        let plaintext = stream_cipher.update(&chunk[..bytes_read])?;
+        output_file.write_all(&plaintext)?;
+    }
+    output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
+    Ok(())
+}

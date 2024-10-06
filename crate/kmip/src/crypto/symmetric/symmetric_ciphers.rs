@@ -1,3 +1,5 @@
+use std::cmp::PartialEq;
+
 use openssl::{
     rand::rand_bytes,
     symm::{
@@ -32,7 +34,9 @@ pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
 /// Chacha20-Poly1305 tag/mac length in bytes.
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
-enum Mode {
+/// The mode of operation for the symmetric stream cipher.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Mode {
     Encrypt,
     Decrypt,
 }
@@ -195,16 +199,16 @@ impl SymCipher {
     }
 }
 
-/// Generate a random nonce for the given AEAD cipher.
-pub fn random_nonce(aead_cipher: SymCipher) -> Result<Vec<u8>, KmipError> {
-    let mut nonce = vec![0; aead_cipher.nonce_size()];
+/// Generate a random nonce for the given symmetric cipher.
+pub fn random_nonce(sym_cipher: SymCipher) -> Result<Vec<u8>, KmipError> {
+    let mut nonce = vec![0; sym_cipher.nonce_size()];
     rand_bytes(&mut nonce)?;
     Ok(nonce)
 }
 
-/// Generate a random key for the given AEAD cipher.
-pub fn random_key(aead_cipher: SymCipher) -> Result<Zeroizing<Vec<u8>>, KmipError> {
-    let mut key = Zeroizing::from(vec![0; aead_cipher.key_size()]);
+/// Generate a random key for the given symmetric cipher.
+pub fn random_key(sym_cipher: SymCipher) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+    let mut key = Zeroizing::from(vec![0; sym_cipher.key_size()]);
     rand_bytes(&mut key)?;
     Ok(key)
 }
@@ -290,10 +294,13 @@ pub enum UnderlyingCipher {
     AesGcmSiv,
 }
 
-/// A stream cipher for encryption or decryption.
+/// A stream cipher for encryption or decryption. /
 pub struct StreamCipher {
     underlying_cipher: UnderlyingCipher,
+    mode: Mode,
     block_size: usize,
+    tag_size: usize,
+    buffer: Vec<u8>,
 }
 
 impl StreamCipher {
@@ -306,49 +313,142 @@ impl StreamCipher {
     ) -> Result<Self, KmipError> {
         match sym_cipher {
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-                todo!()
+                //TODO: the pure Rust crate does not support streaming. When openssl id exposed, this should be fixed
+                Err(KmipError::NotSupported(
+                    "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
+                ))
             }
             _ => {
                 let cipher = sym_cipher.to_openssl_cipher()?;
-                let block_size = cipher.block_size();
-                let mut crypter = Crypter::new(cipher, mode.into(), key, Some(nonce))?;
+                let block_size = match sym_cipher {
+                    // This seems to be a bug in the openssl crate. The block size for AES is 16 bytes.
+                    SymCipher::Aes128Xts => 16,
+                    SymCipher::Aes256Xts => 32,
+                    _ => cipher.block_size(),
+                };
+                let mut crypter = Crypter::new(cipher, mode.clone().into(), key, Some(nonce))?;
                 if !aad.is_empty() {
                     crypter.aad_update(aad)?;
                 }
                 Ok(Self {
                     underlying_cipher: UnderlyingCipher::Openssl(crypter),
+                    mode,
                     block_size,
-                    aad: aad.to_vec(),
+                    tag_size: sym_cipher.tag_size(),
+                    buffer: vec![],
                 })
             }
         }
     }
 
-    pub fn update(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, KmipError> {
+    pub fn update(&mut self, bytes: &[u8]) -> Result<Vec<u8>, KmipError> {
         match self.underlying_cipher {
             UnderlyingCipher::Openssl(ref mut c) => {
-                let mut buffer = vec![0; ciphertext.len() + self.block_size];
-                let len = c.update(ciphertext, &mut buffer)?;
-                buffer.truncate(len);
+                // prepend the remaining bytes from the buffer
+                let bytes_to_update = [self.buffer.clone(), bytes.to_vec()].concat();
+                // we only encrypt or decrypt in block sizes because XTS requires it (not GCM)
+                // but we always want to keep at least one block in the buffer
+                let len_to_update = bytes_to_update.len()
+                    - bytes_to_update.len() % self.block_size
+                    - self.block_size;
+                if len_to_update == 0 {
+                    // all bytes are pushed to the buffer
+                    self.buffer = bytes_to_update;
+                    return Ok(vec![]);
+                }
+                let mut buffer = vec![0; len_to_update + self.block_size];
+                let update_len = c.update(&bytes_to_update[..len_to_update], &mut buffer)?;
+                buffer.truncate(update_len);
+                // store the remaining bytes in the cipher buffer
+                self.buffer = bytes_to_update[len_to_update..].to_vec();
                 Ok(buffer)
             }
-            UnderlyingCipher::AesGcmSiv => {
-                todo!()
-            }
+            UnderlyingCipher::AesGcmSiv => Err(KmipError::NotSupported(
+                "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
+            )),
         }
     }
 
-    pub fn finalize(&mut self) -> Result<Vec<u8>, KmipError> {
+    /// Finalize the encryption and return the ciphertext and the tag.
+    pub fn finalize_encryption(&mut self) -> Result<(Vec<u8>, Vec<u8>), KmipError> {
+        if self.mode != Mode::Encrypt {
+            kmip_bail!(KmipError::Default(
+                "finalize_encryption can only be called in encryption mode".to_owned()
+            ));
+        }
         match self.underlying_cipher {
             UnderlyingCipher::Openssl(ref mut c) => {
+                // if there are remaining bytes in the buffer, we need to update once more
+                // for XTS this may not be a multiple of the block size, but it must be greater than
+                // the block size
+                let mut final_bytes = if !self.buffer.is_empty() {
+                    let mut final_bytes = vec![0; 2 * self.block_size];
+                    let len = c.update(&self.buffer, &mut final_bytes)?;
+                    final_bytes.truncate(len);
+                    final_bytes
+                } else {
+                    vec![]
+                };
+                // finalize
                 let mut buffer = vec![0; self.block_size];
                 let len = c.finalize(&mut buffer)?;
                 buffer.truncate(len);
-                Ok(buffer)
+                final_bytes.extend(buffer);
+                // Append the tag if it exists and we are encrypting.
+                let tag = if self.tag_size > 0 {
+                    let mut tag = vec![0; self.tag_size];
+                    c.get_tag(&mut tag)?;
+                    tag
+                } else {
+                    vec![]
+                };
+                Ok((final_bytes, tag))
             }
-            UnderlyingCipher::AesGcmSiv => {
-                todo!()
+            UnderlyingCipher::AesGcmSiv => Err(KmipError::NotSupported(
+                "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
+            )),
+        }
+    }
+
+    pub fn finalize_decryption(&mut self, tag: &[u8]) -> Result<Vec<u8>, KmipError> {
+        if self.mode != Mode::Decrypt {
+            kmip_bail!(KmipError::Default(
+                "finalize_decryption can only be called in decryption mode".to_owned()
+            ));
+        }
+        match self.underlying_cipher {
+            UnderlyingCipher::Openssl(ref mut c) => {
+                // if there are remaining bytes in the buffer, we need to update once more
+                let mut final_bytes = if !self.buffer.is_empty() {
+                    let mut final_bytes = vec![0; 2 * self.block_size];
+                    let len = c.update(&self.buffer, &mut final_bytes)?;
+                    final_bytes.truncate(len);
+                    final_bytes
+                } else {
+                    vec![]
+                };
+                // Set the tag if it exists and we are decrypting.
+                if self.tag_size > 0 {
+                    if tag.len() != self.tag_size {
+                        kmip_bail!(KmipError::Default(format!(
+                            "tag length mismatch. Expected: {}, got: {}",
+                            self.tag_size,
+                            tag.len()
+                        )));
+                    } else {
+                        c.set_tag(tag)?;
+                    }
+                }
+                // finalize
+                let mut buffer = vec![0; self.block_size];
+                let len = c.finalize(&mut buffer)?;
+                buffer.truncate(len);
+                final_bytes.extend(buffer);
+                Ok(final_bytes)
             }
+            UnderlyingCipher::AesGcmSiv => Err(KmipError::NotSupported(
+                "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
+            )),
         }
     }
 }
