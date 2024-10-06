@@ -13,8 +13,8 @@ use crate::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
         },
         symmetric::{
-            aead::{aead_decrypt, AeadCipher},
             rfc5649::rfc5649_unwrap,
+            symmetric_ciphers::{decrypt, SymCipher},
         },
         wrap::common::rsa_parameters,
         FIPS_MIN_SALT_SIZE,
@@ -160,12 +160,12 @@ pub(crate) fn unwrap(
             if block_cipher_mode == Some(BlockCipherMode::GCM) {
                 // unwrap using aes Gcm
                 let len = ciphertext.len();
-                let aead = AeadCipher::Aes256Gcm;
+                let aead = SymCipher::Aes256Gcm;
                 let nonce = &ciphertext[..NONCE_LENGTH];
                 let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
                 let tag = &ciphertext[len - TAG_LENGTH..];
                 let authenticated_data = aad.unwrap_or_default();
-                let plaintext = aead_decrypt(
+                let plaintext = decrypt(
                     aead,
                     &unwrap_secret,
                     nonce,

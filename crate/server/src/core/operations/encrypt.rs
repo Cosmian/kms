@@ -10,7 +10,7 @@ use cosmian_kmip::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
-        symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
         EncryptionSystem,
     },
     kmip::{
@@ -73,7 +73,7 @@ pub(crate) async fn encrypt(
 
 fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
     match &owm.object {
-        Object::SymmetricKey { .. } => encrypt_with_aead(request, owm),
+        Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
         Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
         Object::Certificate {
             certificate_value, ..
@@ -103,12 +103,18 @@ pub(crate) fn encrypt_bulk(
 
     match &owm.object {
         Object::SymmetricKey { .. } => {
+            let aad = request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .unwrap_or(EMPTY_SLICE);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let (key_bytes, aead) = get_aead_and_key(&request, owm)?;
-                let nonce = random_nonce(aead)?;
-                let (ciphertext, tag) =
-                    aead_encrypt(aead, &key_bytes, &nonce, EMPTY_SLICE, &plaintext)?;
+                let (key_bytes, cipher) = get_cipher_and_key(&request, owm)?;
+                let nonce = request
+                    .iv_counter_nonce
+                    .to_owned()
+                    .unwrap_or(random_nonce(cipher)?);
+                let (ciphertext, tag) = sym_encrypt(cipher, &key_bytes, &nonce, aad, &plaintext)?;
                 // concatenate nonce || ciphertext || tag
                 let nct = [nonce.as_slice(), ciphertext.as_slice(), tag.as_slice()].concat();
                 ciphertexts.push(Zeroizing::new(nct));
@@ -212,8 +218,11 @@ async fn get_key(
     Ok(owm)
 }
 
-fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<EncryptResponse> {
-    let (key_bytes, aead) = get_aead_and_key(request, owm)?;
+fn encrypt_with_symmetric_key(
+    request: &Encrypt,
+    owm: &ObjectWithMetadata,
+) -> KResult<EncryptResponse> {
+    let (key_bytes, aead) = get_cipher_and_key(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
@@ -225,7 +234,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
+    let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         data: Some(ciphertext),
@@ -235,10 +244,10 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
     })
 }
 
-fn get_aead_and_key(
+fn get_cipher_and_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
-) -> KResult<(Zeroizing<Vec<u8>>, AeadCipher)> {
+) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object
@@ -269,7 +278,7 @@ fn get_aead_and_key(
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
-            AeadCipher::from_algorithm_and_key_size(
+            SymCipher::from_algorithm_and_key_size(
                 cryptographic_algorithm,
                 block_cipher_mode,
                 key_bytes.len(),

@@ -10,7 +10,7 @@ use cosmian_kmip::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::aead::{aead_decrypt, AeadCipher},
+        symmetric::symmetric_ciphers::{decrypt, SymCipher},
         DecryptionSystem,
     },
     kmip::{
@@ -196,7 +196,7 @@ fn decrypt_bulk(
                 let ciphertext = &nonce_ciphertext_tag
                     [aead.nonce_size()..nonce_ciphertext_tag.len() - aead.tag_size()];
                 let tag = &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - aead.tag_size()..];
-                let plaintext = aead_decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
+                let plaintext = decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
                 plaintexts.push(plaintext);
             }
         }
@@ -280,7 +280,7 @@ fn decrypt_single_with_symmetric_key(
         .authenticated_encryption_tag
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    let plaintext = decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         data: Some(plaintext),
@@ -291,7 +291,7 @@ fn decrypt_single_with_symmetric_key(
 fn get_aead_and_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
-) -> Result<(Zeroizing<Vec<u8>>, AeadCipher), KmsError> {
+) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
     let key_block = owm.object.key_block()?;
     // recover the cryptographic algorithm from the request or the key block or default to AES
     let cryptographic_algorithm = request
@@ -309,7 +309,7 @@ fn get_aead_and_key(
         .as_ref()
         .and_then(|cp| cp.block_cipher_mode);
     let key_bytes = key_block.key_bytes()?;
-    let aead = AeadCipher::from_algorithm_and_key_size(
+    let aead = SymCipher::from_algorithm_and_key_size(
         cryptographic_algorithm,
         block_cipher_mode,
         key_bytes.len(),

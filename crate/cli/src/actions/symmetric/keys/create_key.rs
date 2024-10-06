@@ -87,7 +87,6 @@ impl CreateKeyAction {
                 512 => CryptographicAlgorithm::SHA3512,
                 _ => cli_bail!("invalid number of bits for sha3 {}", number_of_bits),
             },
-
             SymmetricAlgorithm::Shake => match number_of_bits {
                 128 => CryptographicAlgorithm::SHAKE128,
                 256 => CryptographicAlgorithm::SHAKE256,
