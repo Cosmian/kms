@@ -317,7 +317,7 @@ impl EncryptAction {
         // finalize the encryption and write the remaining bytes
         let (remaining, tag) = stream_cipher.finalize_encryption()?;
         println!("Remaining: {:?}", remaining.len());
-        println!("Tag: {:?}", tag.len());
+        println!("Tag: {} {}", tag.len(), hex::encode(&tag));
         output_file.write_all(&remaining)?;
         // write the tag
         output_file.write_all(&tag)?;

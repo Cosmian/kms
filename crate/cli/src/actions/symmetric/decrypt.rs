@@ -232,6 +232,10 @@ impl DecryptAction {
         output_file: &mut File,
         aad: Option<Vec<u8>>,
     ) -> CliResult<()> {
+        println!(
+            "D: Input file len: {}",
+            std::fs::metadata(input_file_name)?.len()
+        );
         let mut input_file = File::open(input_file_name)?;
 
         // read the encapsulation length as a LEB128 encoded u64
@@ -257,21 +261,25 @@ impl DecryptAction {
             .await?;
         println!("D:  dek: {} {}", dek.len(), hex::encode(&dek));
         // determine the DEM parameters
-        let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
+        let dem_cryptographic_parameters: CryptographicParameters =
+            data_encryption_algorithm.into();
         let cipher = SymCipher::from_algorithm_and_key_size(
-            cryptographic_parameters
+            dem_cryptographic_parameters
                 .cryptographic_algorithm
                 .unwrap_or(CryptographicAlgorithm::AES),
-            cryptographic_parameters.block_cipher_mode,
+            dem_cryptographic_parameters.block_cipher_mode,
             dek.len(),
         )?;
+        println!("D: cipher: {:?}", cipher);
         //read the nonce
         let mut nonce = vec![0; cipher.nonce_size()];
         input_file.read_exact(&mut nonce)?;
+        println!("D: nonce_size: {}", nonce.len());
         // decrypt the file
         let mut stream_cipher =
             cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad.unwrap_or_default())?;
         let tag_size = cipher.tag_size();
+        println!("D: tag_size: {}", tag_size);
         // read the file by chunks
         let mut chunk = vec![0; 2 ^ 20]; //1MB
         let mut read_buffer = vec![];
@@ -280,11 +288,14 @@ impl DecryptAction {
             if bytes_read == 0 {
                 break;
             }
-            let all_bytes = [read_buffer.as_slice(), &chunk[..bytes_read]].concat();
+            chunk.truncate(bytes_read);
+            println!("D: chunk: {}", chunk.len());
+            let all_bytes = [read_buffer.as_slice(), &chunk].concat();
             // keep at least the tag size in the local buffer
             if all_bytes.len() > tag_size {
                 // process all bytes except the tag length last bytes
                 let num_bytes_to_process = all_bytes.len() - tag_size;
+                println!("D: num_bytes_to_process: {}", num_bytes_to_process);
                 let output = stream_cipher.update(&chunk[..num_bytes_to_process])?;
                 output_file.write_all(&output)?;
                 // keep the remaining bytes in the read buffer
@@ -298,13 +309,16 @@ impl DecryptAction {
         if read_buffer.len() < tag_size {
             cli_bail!("The tag is missing from the encrypted file")
         }
+        println!("D: read_buffer: {}", read_buffer.len());
         // write the remaining bytes before the tage
         let remaining = &read_buffer[..read_buffer.len() - cipher.tag_size()];
         if remaining.len() > 0 {
+            println!("D: remaining: {}", remaining.len());
             let output = stream_cipher.update(remaining)?;
             output_file.write_all(&output)?;
         }
         let tag = &read_buffer[read_buffer.len() - cipher.tag_size()..];
+        println!("D: tag: {} {}", tag.len(), hex::encode(tag));
         output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
         Ok(())
     }

@@ -122,7 +122,7 @@ pub(crate) fn run_encrypt_decrypt_test(
     key_id: &str,
     data_encryption_algorithm: DataEncryptionAlgorithm,
     key_encryption_algorithm: Option<KeyEncryptionAlgorithm>,
-) -> CliResult<()> {
+) -> CliResult<(PathBuf, PathBuf, PathBuf)> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -176,7 +176,7 @@ pub(crate) fn run_encrypt_decrypt_test(
         )))
     }
 
-    Ok(())
+    Ok((input_file, output_file, recovered_file))
 }
 
 #[tokio::test]
@@ -189,12 +189,26 @@ async fn test_aes_gcm_server_side() -> CliResult<()> {
         Some("aes"),
         &[],
     )?;
-    run_encrypt_decrypt_test(
+    let (input, output, recovered) = run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
         &dek,
         DataEncryptionAlgorithm::AesGcm,
         None,
-    )
+    )?;
+    let input_len = std::fs::metadata(input)?.len();
+    // Aes GCM encapsulation size is 12 bytes for the nonce, 32 bytes for the DEK, and 16 bytes for the header
+    let encapsulation_size = 12 + 32 + 16;
+    // The encapsulation size is encoded as a LEB128
+    let encapsulation_len_leb128 = 1;
+    // The DEM AEG GCM encryption size is 16 bytes for the tag and 12 bytes for the IV
+    let dem_encryption_size = 12 + input_len + 16;
+    let total_output = encapsulation_size + encapsulation_len_leb128 + dem_encryption_size;
+    let output_len = std::fs::metadata(output)?.len();
+    assert_eq!(total_output, output_len);
+    let recovered_len = std::fs::metadata(recovered)?.len();
+    assert_eq!(input_len, recovered_len);
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -212,7 +226,8 @@ async fn test_aes_xts_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesXts,
         None,
-    )
+    )?;
+    Ok(())
 }
 
 #[tokio::test]
@@ -230,7 +245,8 @@ async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesGcmSiv,
         None,
-    )
+    )?;
+    Ok(())
 }
 
 #[tokio::test]
@@ -248,7 +264,8 @@ async fn test_chacha20_poly1305_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
-    )
+    )?;
+    Ok(())
 }
 
 #[tokio::test]
@@ -328,5 +345,6 @@ async fn test_aes_gcm_aes_gcm_client_side() -> CliResult<()> {
         &kek,
         DataEncryptionAlgorithm::AesGcm,
         Some(KeyEncryptionAlgorithm::AesGcm),
-    )
+    )?;
+    Ok(())
 }

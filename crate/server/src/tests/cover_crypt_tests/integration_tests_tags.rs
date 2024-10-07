@@ -323,8 +323,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
