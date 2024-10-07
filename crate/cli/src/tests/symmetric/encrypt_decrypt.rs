@@ -195,7 +195,7 @@ async fn test_aes_gcm_server_side() -> CliResult<()> {
         DataEncryptionAlgorithm::AesGcm,
         None,
     )?;
-    let input_len = std::fs::metadata(input)?.len();
+    let input_len = fs::metadata(input)?.len();
     // Aes GCM encapsulation size is 12 bytes for the nonce, 32 bytes for the DEK, and 16 bytes for the header
     let encapsulation_size = 12 + 32 + 16;
     // The encapsulation size is encoded as a LEB128

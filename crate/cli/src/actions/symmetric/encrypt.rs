@@ -143,6 +143,10 @@ impl EncryptAction {
         );
 
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
+            println!(
+                "Clear Text file length: {}",
+                self.input_file.metadata()?.len()
+            );
             self.encrypt_client_side(
                 kms_rest_client,
                 &id,
@@ -154,6 +158,7 @@ impl EncryptAction {
                 authentication_data,
             )
             .await?;
+            println!("Encrypted file length: {:?}", output_file.metadata()?.len());
         } else {
             // Read the file to encrypt
             let plaintext = read_bytes_from_file(&self.input_file)
@@ -264,12 +269,16 @@ impl EncryptAction {
             )
             .await?;
         let encapsulation = [kem_nonce, kem_ciphertext, kem_tag].concat();
-        println!("Encapsulation: {:?}", encapsulation.len());
+        println!("E: Encapsulation: {:?}", encapsulation.len());
 
         // write the encapsulation to the output file, starting with the length of the encapsulation
         // as an unsigned LEB128 integer
         leb128::write::unsigned(output_file, encapsulation.len() as u64)?;
         output_file.write_all(&encapsulation)?;
+        println!(
+            "Output file length after encaps: {}",
+            output_file.metadata()?.len()
+        );
 
         // Determine the DEM parameters
         let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
@@ -291,8 +300,9 @@ impl EncryptAction {
             Some(n) => n,
             None => random_nonce(cipher)?,
         };
-        println!("Nonce: {:?}", nonce.len());
-        println!("AAD: {:?}", aad.as_ref().map(|v| v.len()));
+        println!("E: Nonce: {:?}", nonce.len());
+        println!("E: AAD: {:?}", aad.as_ref().map(|v| v.len()));
+        output_file.write_all(&nonce)?;
 
         // instantiate the stream cipher
         let mut stream_cipher = cipher.stream_cipher(
@@ -312,6 +322,7 @@ impl EncryptAction {
             }
             chunk.truncate(bytes_read);
             let ciphertext = stream_cipher.update(&chunk)?;
+            println!("Ciphertext: {:?}", ciphertext.len());
             output_file.write_all(&ciphertext)?;
         }
         // finalize the encryption and write the remaining bytes
