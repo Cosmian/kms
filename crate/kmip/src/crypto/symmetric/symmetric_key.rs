@@ -6,7 +6,10 @@ use crate::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::Create,
-        kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            UniqueIdentifier,
+        },
     },
 };
 
@@ -60,6 +63,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,
     tags: T,
+    key_id: Option<UniqueIdentifier>,
 ) -> Result<Create, KmipError> {
     let cryptographic_length = Some(i32::try_from(key_len_in_bits)?);
     let mut attributes = Attributes {
@@ -75,6 +79,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: key_id,
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;

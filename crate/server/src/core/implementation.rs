@@ -88,7 +88,7 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
         request: &Create,
-    ) -> KResult<(Object, HashSet<String>)> {
+    ) -> KResult<(Object, HashSet<String>, Option<String>)> {
         let attributes = &request.attributes;
 
         // check that the cryptographic algorithm is specified
@@ -103,6 +103,12 @@ impl KMS {
         Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_kk".to_owned());
+
+        // recover uid
+        let uid = attributes
+            .unique_identifier
+            .as_ref()
+            .map(|uid| uid.to_string());
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
@@ -130,7 +136,7 @@ impl KMS {
                         create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm)?;
 
                     //return the object and the tags
-                    Ok((object, tags))
+                    Ok((object, tags, uid))
                 }
                 Some(other) => Err(KmsError::InvalidRequest(format!(
                     "unable to generate a symmetric key for format: {other}"
@@ -153,7 +159,7 @@ impl KMS {
         create_request: &Create,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<(Object, HashSet<String>)> {
+    ) -> KResult<(Object, HashSet<String>, Option<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
 
@@ -170,6 +176,12 @@ impl KMS {
         //update the tags
         tags.insert("_uk".to_owned());
 
+        // recover uid
+        let uid = attributes
+            .unique_identifier
+            .as_ref()
+            .map(|uid| uid.to_string());
+
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {
                 let object = create_user_decryption_key(
@@ -180,7 +192,7 @@ impl KMS {
                     params,
                 )
                 .await?;
-                Ok((object, tags))
+                Ok((object, tags, uid))
             }
             other => Err(KmsError::NotSupported(format!(
                 "the creation of a private key for algorithm: {other:?} is not supported"
