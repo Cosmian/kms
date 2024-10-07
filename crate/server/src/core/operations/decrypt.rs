@@ -10,7 +10,7 @@ use cosmian_kmip::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{decrypt, SymCipher},
+        symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
         DecryptionSystem,
     },
     kmip::{
@@ -196,7 +196,7 @@ fn decrypt_bulk(
                 let ciphertext = &nonce_ciphertext_tag
                     [aead.nonce_size()..nonce_ciphertext_tag.len() - aead.tag_size()];
                 let tag = &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - aead.tag_size()..];
-                let plaintext = decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
+                let plaintext = sym_decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
                 plaintexts.push(plaintext);
             }
         }
@@ -280,7 +280,7 @@ fn decrypt_single_with_symmetric_key(
         .authenticated_encryption_tag
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let plaintext = decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
+    let plaintext = sym_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         data: Some(plaintext),

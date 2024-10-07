@@ -7,6 +7,7 @@ use tracing::trace;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
+    actions::symmetric::DataEncryptionAlgorithm,
     error::{result::CliResult, CliError},
     tests::{
         shared::{destroy, export_key, revoke, ExportKeyParams},
@@ -137,7 +138,12 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     })?;
 
     // the owner can encrypt and decrypt
-    run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)?;
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &key_id,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+    )?;
 
     // the user should not be able to export
     assert!(
@@ -151,7 +157,15 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
         .is_err()
     );
     // the user should not be able to encrypt or decrypt
-    assert!(run_encrypt_decrypt_test(&ctx.user_client_conf_path, &key_id).is_err());
+    assert!(
+        run_encrypt_decrypt_test(
+            &ctx.user_client_conf_path,
+            &key_id,
+            DataEncryptionAlgorithm::AesGcm,
+            None
+        )
+        .is_err()
+    );
     // the user should not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should not be able to destroy the key
@@ -186,7 +200,12 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     );
 
     // the user should now be able to encrypt or decrypt
-    run_encrypt_decrypt_test(&ctx.user_client_conf_path, &key_id)?;
+    run_encrypt_decrypt_test(
+        &ctx.user_client_conf_path,
+        &key_id,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+    )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
@@ -490,7 +509,12 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     })?;
 
     // the owner can encrypt and decrypt
-    run_encrypt_decrypt_test(&ctx.owner_client_conf_path, &key_id)?;
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &key_id,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+    )?;
 
     // the user should not be able to export
     assert!(
@@ -504,7 +528,15 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
         .is_err()
     );
     // the user should not be able to encrypt or decrypt
-    assert!(run_encrypt_decrypt_test(&ctx.user_client_conf_path, &key_id).is_err());
+    assert!(
+        run_encrypt_decrypt_test(
+            &ctx.user_client_conf_path,
+            &key_id,
+            DataEncryptionAlgorithm::AesGcm,
+            None
+        )
+        .is_err()
+    );
     // the user should not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should not be able to destroy the key
@@ -529,7 +561,12 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     );
 
     // the user should now be able to encrypt or decrypt
-    run_encrypt_decrypt_test(&ctx.user_client_conf_path, &key_id)?;
+    run_encrypt_decrypt_test(
+        &ctx.user_client_conf_path,
+        &key_id,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+    )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key

@@ -1320,6 +1320,7 @@ dependencies = [
  "hex",
  "jwt-simple",
  "kms_test_server",
+ "leb128",
  "oauth2",
  "openssl",
  "pem",

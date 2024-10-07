@@ -96,6 +96,7 @@ impl EncryptAction {
             data,
             None,
             None,
+            None,
             Some(to_cryptographic_parameters(
                 self.encryption_algorithm,
                 self.hash_fn,

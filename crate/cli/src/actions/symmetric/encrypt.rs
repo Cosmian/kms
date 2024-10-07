@@ -4,20 +4,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::{
         generic::kmip_requests::build_encryption_request,
-        symmetric::symmetric_ciphers::{random_nonce, Mode, SymCipher},
+        symmetric::symmetric_ciphers::{random_key, random_nonce, Mode, SymCipher},
     },
-    kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
+    kmip::kmip_types::CryptographicParameters,
     read_bytes_from_file, KmsClient,
 };
-use openssl::rand::rand_bytes;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::console,
+    actions::{
+        console,
+        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
+    },
     cli_bail,
     error::{
         result::{CliResult, CliResultHelper},
@@ -25,98 +27,21 @@ use crate::{
     },
 };
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum DataEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
-    Chacha20Poly1305,
-    AesGcm,
-    AesXts,
-    AesGcmSiv,
-}
-
-impl From<DataEncryptionAlgorithm> for CryptographicParameters {
-    fn from(value: DataEncryptionAlgorithm) -> Self {
-        match value {
-            #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::Chacha20Poly1305 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
-                ..Self::default()
-            },
-            DataEncryptionAlgorithm::AesGcm => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCM),
-                ..Self::default()
-            },
-            DataEncryptionAlgorithm::AesXts => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::XTS),
-                ..Self::default()
-            },
-            #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::AesGcmSiv => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCMSIV),
-                ..Self::default()
-            },
-        }
-    }
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum KeyEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
-    Chacha20Poly1305,
-    AesGcm,
-    AesXts,
-    AesGcmSiv,
-    RFC5649,
-}
-
-impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
-    fn from(value: KeyEncryptionAlgorithm) -> Self {
-        match value {
-            #[cfg(not(feature = "fips"))]
-            KeyEncryptionAlgorithm::Chacha20Poly1305 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
-                ..Self::default()
-            },
-            KeyEncryptionAlgorithm::AesGcm => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCM),
-                ..Self::default()
-            },
-            KeyEncryptionAlgorithm::AesXts => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::XTS),
-                ..Self::default()
-            },
-            KeyEncryptionAlgorithm::AesGcmSiv => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCMSIV),
-                ..Self::default()
-            },
-            KeyEncryptionAlgorithm::RFC5649 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
-                ..Self::default()
-            },
-        }
-    }
-}
-
 /// Encrypt a file using a symmetric cipher
 ///
 /// Encryption can happen in two ways:
-///  - server side: the data is sent to the server and encrypted server side
+///  - server side: the data is sent to the server and encrypted server side.
 ///  - client side: the data is encrypted client side using a randomly generated ephemeral key
-///  called the data encryption key (DEK). The DEK is encrypted server side using the key encryption
-/// algorithm and the key encryption key (KEK) identified by the key id. The ephemeral key has
-/// a size of 256 bits (512 bits for XTS).
+///    called the data encryption key (DEK). The DEK is then wrapped (i.e., encrypted) server side
+///    using the key encryption algorithm and the key encryption key (KEK) identified by the key id.
+///    The ephemeral DEK key has a size of 256 bits (512 bits for XTS).
 ///
 /// To encrypt the data server side, do not specify the key encryption algorithm.
 ///
 /// The bytes written to the output file are the concatenation of
-///   - the encapsulated DEK if client side encryption is used
+///   - if client side encryption is used:
+///         - the length of the encapsulated DEK as an unsigned LEB128 integer
+///         - the encapsulated DEK
 ///   - the nonce used for data encryption (or tweak for XTS)
 ///   - the encrypted data (same size as the plaintext)
 ///   - the authentication tag generated by the data encryption algorithm (none, for XTS)
@@ -147,15 +72,14 @@ pub struct EncryptAction {
     )]
     data_encryption_algorithm: DataEncryptionAlgorithm,
 
-    /// The optional key encryption algorithm.
-    /// This is the algorithm used to encrypt the data encryption key.
+    /// The optional key encryption algorithm used to encrypt the data encryption key.
     /// If not specified:
     ///   - the encryption of the data is performed server side.
     ///   - the key id is that of the data encryption key.
     /// If specified:
-    ///  - the data is encrypted client side with the data encryption alogrithm, and using
+    ///  - the data is encrypted client side with the data encryption algorithm, and using
     ///    a randomly generated ephemeral key called the data encryption key (DEK).
-    ///  - the DEK is encrypted server side using the key encryption algorithm and the key
+    ///  - the DEK is wrapped server side using the key encryption algorithm and the key
     ///    identified by the key id.
     #[clap(long = "key-encryption-algorithm", short = 'e', verbatim_doc_comment)]
     key_encryption_algorithm: Option<KeyEncryptionAlgorithm>,
@@ -169,13 +93,14 @@ pub struct EncryptAction {
     #[clap(required = false, long, short = 'o')]
     output_file: Option<PathBuf>,
 
-    /// Optional Nonce/IV (or tweak for XTS) as a hex string.
-    /// If not provided, a random nonce is generated.
-    #[clap(required = false, long, short = 'a')]
+    /// Optional nonce/IV (or tweak for XTS) as a hex string.
+    /// If not provided, a random value is generated.
+    #[clap(required = false, long, short = 'n')]
     nonce: Option<String>,
 
-    /// Optional authentication data as a hex string.
+    /// Optional additional authentication data as a hex string.
     /// This data needs to be provided back for decryption.
+    /// This data is ignored with XTS.
     #[clap(required = false, long, short = 'a')]
     authentication_data: Option<String>,
 }
@@ -205,41 +130,56 @@ impl EncryptAction {
             .transpose()
             .with_context(|| "failed to decode the authentication data")?;
 
-        let output_file = self
+        let output_file_name = self
             .output_file
             .clone()
             .unwrap_or_else(|| self.input_file.with_extension("enc"));
-        let mut buffer =
-            File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
+        let mut output_file = File::create(&output_file_name)
+            .with_context(|| "failed to write the encrypted file")?;
+
+        println!(
+            "key encryption algorithm: {:?}",
+            self.key_encryption_algorithm
+        );
 
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
-            cli_bail!(
-                "Key encryption algorithm {:?} is not supported",
-                key_encryption_algorithm
-            );
+            self.encrypt_client_side(
+                kms_rest_client,
+                &id,
+                key_encryption_algorithm,
+                self.data_encryption_algorithm,
+                nonce,
+                &self.input_file,
+                &mut output_file,
+                authentication_data,
+            )
+            .await?;
         } else {
-            let (nonce, data, authentication_tag) = self
+            // Read the file to encrypt
+            let plaintext = read_bytes_from_file(&self.input_file)
+                .with_context(|| "Cannot read bytes from the file to encrypt")?;
+            let (nonce, data, tag) = self
                 .encrypt_server_side(
                     kms_rest_client,
                     &id,
                     self.data_encryption_algorithm.into(),
                     nonce,
-                    &self.input_file,
+                    plaintext,
                     authentication_data,
                 )
                 .await?;
-            buffer
+            output_file
                 .write_all(&nonce)
                 .with_context(|| "failed to write the nonce")?;
-            buffer
+            output_file
                 .write_all(&data)
                 .context("failed to write the ciphertext")?;
-            buffer
-                .write_all(&authentication_tag)
+            output_file
+                .write_all(&tag)
                 .context("failed to write the authentication tag")?;
         }
 
-        let stdout = format!("The encrypted file is available at {output_file:?}");
+        let stdout = format!("The encrypted file is available at {output_file_name:?}");
         console::Stdout::new(&stdout).write()?;
 
         Ok(())
@@ -253,18 +193,14 @@ impl EncryptAction {
         key_id: &str,
         cryptographic_parameters: CryptographicParameters,
         nonce: Option<Vec<u8>>,
-        input_file: &Path,
+        plaintext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), CliError> {
-        // Read the file to encrypt
-        let data = read_bytes_from_file(input_file)
-            .with_context(|| "Cannot read bytes from the file to encrypt")?;
-
         // Create the kmip query
         let encrypt_request = build_encryption_request(
             key_id,
             None,
-            data,
+            plaintext,
             None,
             nonce,
             authenticated_data,
@@ -293,103 +229,99 @@ impl EncryptAction {
             .context("the authentication tag is empty")?;
         Ok((nonce, data, authentication_tag))
     }
-}
 
-/// Encrypt a file using a symmetric stream cipher
-/// and return the ephemeral key
-fn encrypt_client_side(
-    data_encryption_algorithm: DataEncryptionAlgorithm,
-    nonce: Option<Vec<u8>>,
-    input_file: &Path,
-    output_file: &Path,
-    authenticated_data: Option<Vec<u8>>,
-) -> CliResult<Zeroizing<Vec<u8>>> {
-    let key_size = match data_encryption_algorithm {
-        DataEncryptionAlgorithm::AesGcm
-        | DataEncryptionAlgorithm::Chacha20Poly1305
-        | DataEncryptionAlgorithm::AesGcmSiv => 32,
-        DataEncryptionAlgorithm::AesXts => 64,
-    };
-    let mut key = Zeroizing::new(vec![0; key_size]);
-    rand_bytes(&mut key)?;
-
-    let cryptographic_parameters = data_encryption_algorithm.into();
-    let cipher = SymCipher::from_algorithm_and_key_size(
-        cryptographic_parameters
-            .cryptographic_algorithm
-            .as_ref()
-            .unwrap(),
-        cryptographic_parameters.key_block_size.as_ref().unwrap(),
-        key_size,
-    )?;
-    // we need a nonce (or tweak)
-    let nonce = nonce.unwrap_or_else(|| random_nonce(cipher));
-    // instantiate the stream cipher
-    let mut stream_cipher = cipher.stream_cipher(
-        &key,
-        Mode::Encrypt,
-        nonce,
-        authenticated_data.unwrap_or_default(),
-    )?;
-    //open the output file to write to it
-    let mut output_file = File::create(output_file)?;
-    // process the data read from the file by 4096 chunks and write the encrypted data
-    let mut file = File::open(input_file)?;
-    let mut chunk = vec![0; 4096];
-    loop {
-        let bytes_read = file.read(&mut chunk)?;
-        if bytes_read == 0 {
-            break;
-        }
-        let ciphertext = stream_cipher.update(&chunk[..bytes_read])?;
-        output_file.write_all(&ciphertext)?;
-    }
-    let (remaining, tag) = stream_cipher.finalize_encryption()?;
-    output_file.write_all(&remaining)?;
-    output_file.write_all(&tag)?;
-    Ok(key)
-}
-
-fn decrypt_client_side(
-    data_encryption_algorithm: DataEncryptionAlgorithm,
-    key: &[u8],
-    nonce: &[u8],
-    input_file: &Path,
-    output_file: &Path,
-    authenticated_data: Option<Vec<u8>>,
-) -> CliResult<()> {
-    let cryptographic_parameters = data_encryption_algorithm.into();
-    let cipher = SymCipher::from_algorithm_and_key_size(
-        cryptographic_parameters
-            .cryptographic_algorithm
-            .as_ref()
-            .unwrap(),
-        cryptographic_parameters.key_block_size.as_ref().unwrap(),
-        key.len(),
-    )?;
-    let mut stream_cipher = cipher.stream_cipher(
-        key,
-        Mode::Decrypt,
-        nonce,
-        authenticated_data.unwrap_or_default(),
-    )?;
-    let mut output_file = File::create(output_file)?;
-    let mut file = File::open(input_file)?;
-    let mut chunk = vec![0; 2 ^ 20]; //1MB
-    loop {
-        let bytes_read = file.read(&mut chunk)?;
-        if bytes_read == 0 {
-            break;
-        }
-        let all_bytes = [self.buffer().to_ver(), &chunk[..bytes_read]].concat();
-        // keep at least the tag size in the local buffer
-        let bytes_to_process = if all_bytes.len() > cipher.tag_size() {
-            let output = stream_cipher.update(&chunk[..bytes_read])?;
-            output_file.write_all(&output)?;
-        } else {
-            bytes_read
+    /// Encrypt a file using a symmetric stream cipher
+    /// and return the ephemeral key
+    async fn encrypt_client_side(
+        &self,
+        kms_rest_client: &KmsClient,
+        key_id: &str,
+        key_encryption_algorithm: KeyEncryptionAlgorithm,
+        data_encryption_algorithm: DataEncryptionAlgorithm,
+        nonce: Option<Vec<u8>>,
+        input_file_name: &Path,
+        output_file: &mut File,
+        aad: Option<Vec<u8>>,
+    ) -> CliResult<Zeroizing<Vec<u8>>> {
+        // Generate the ephemeral key (DEK)
+        let dek = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
+            DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
+            DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
+            DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
+        println!("DEK: {} {}", dek.len(), hex::encode(&dek));
+
+        // Wrap the DEK with the KEK
+        let (kem_nonce, kem_ciphertext, kem_tag) = self
+            .encrypt_server_side(
+                kms_rest_client,
+                key_id,
+                key_encryption_algorithm.into(),
+                None,
+                dek.to_vec(),
+                None,
+            )
+            .await?;
+        let encapsulation = [kem_nonce, kem_ciphertext, kem_tag].concat();
+        println!("Encapsulation: {:?}", encapsulation.len());
+
+        // write the encapsulation to the output file, starting with the length of the encapsulation
+        // as an unsigned LEB128 integer
+        leb128::write::unsigned(output_file, encapsulation.len() as u64)?;
+        output_file.write_all(&encapsulation)?;
+
+        // Determine the DEM parameters
+        let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
+        let cipher = SymCipher::from_algorithm_and_key_size(
+            cryptographic_parameters
+                .cryptographic_algorithm
+                .to_owned()
+                .ok_or_else(|| {
+                    CliError::Default(
+                        "No data encryption cryptographic algorithm specified".to_owned(),
+                    )
+                })?,
+            cryptographic_parameters.block_cipher_mode.to_owned(),
+            dek.len(),
+        )?;
+
+        // we need a nonce (or tweak)
+        let nonce = match nonce {
+            Some(n) => n,
+            None => random_nonce(cipher)?,
+        };
+        println!("Nonce: {:?}", nonce.len());
+        println!("AAD: {:?}", aad.as_ref().map(|v| v.len()));
+
+        // instantiate the stream cipher
+        let mut stream_cipher = cipher.stream_cipher(
+            Mode::Encrypt,
+            &dek,
+            &nonce,
+            aad.unwrap_or(vec![]).as_slice(),
+        )?;
+        // process the data read from the file by 4096 chunks and write the encrypted data
+        let mut file = File::open(input_file_name)?;
+        let mut chunk = vec![0; 2 ^ 20];
+        loop {
+            let bytes_read = file.read(&mut chunk)?;
+            println!("Bytes read: {:?}", bytes_read);
+            if bytes_read == 0 {
+                break;
+            }
+            chunk.truncate(bytes_read);
+            let ciphertext = stream_cipher.update(&chunk)?;
+            output_file.write_all(&ciphertext)?;
+        }
+        // finalize the encryption and write the remaining bytes
+        let (remaining, tag) = stream_cipher.finalize_encryption()?;
+        println!("Remaining: {:?}", remaining.len());
+        println!("Tag: {:?}", tag.len());
+        output_file.write_all(&remaining)?;
+        // write the tag
+        output_file.write_all(&tag)?;
+        output_file.flush()?;
+        Ok(dek)
     }
-    output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
-    Ok(())
 }
