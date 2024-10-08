@@ -19,7 +19,7 @@ pub(crate) async fn locate(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<LocateResponse> {
-    trace!("Locate request: {:?}", request);
+    trace!("Locate request: {}", request);
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .db

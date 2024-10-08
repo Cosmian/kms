@@ -245,9 +245,9 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         object: symmetric_key,
     };
 
-    trace!("request: {:?}", request);
+    trace!("request: {}", request);
     let response = kms.import(request, owner, None).await?;
-    trace!("response: {:?}", response);
+    trace!("response: {}", response);
 
     Ok(())
 }
@@ -269,7 +269,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     )
     .unwrap();
 
-    trace!("request: {:?}", request);
+    trace!("request: {}", request);
     let response = kms.create(request, owner, None).await?;
     trace!("response: {:?}", response);
 
@@ -364,7 +364,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    sk_response.unwrap_err();
+    assert!(sk_response.is_err());
 
     let pk_response = kms
         .get(
@@ -378,7 +378,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             None,
         )
         .await;
-    pk_response.unwrap_err();
+    assert!(pk_response.is_err());
 
     Ok(())
 }

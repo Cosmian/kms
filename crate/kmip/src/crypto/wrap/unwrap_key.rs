@@ -125,7 +125,7 @@ pub(crate) fn unwrap(
     aad: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     debug!(
-        "decrypt_bytes: with object: {:?} on ciphertext length: {}",
+        "decrypt_bytes: with object: {} on ciphertext length: {}",
         unwrapping_key,
         ciphertext.len()
     );

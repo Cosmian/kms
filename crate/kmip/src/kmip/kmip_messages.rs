@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 /// The messages in the protocol consist of a message header,
 /// one or more batch items (which contain OPTIONAL message payloads),
 /// and OPTIONAL message extensions. The message headers contain fields whose
@@ -32,13 +34,26 @@ use super::{
     },
 };
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Message {
     /// Header of the request
     pub header: MessageHeader,
     /// Batch items of the request
     pub items: Vec<MessageBatchItem>,
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut temp_str = format!("Message header: {:?}, ", self.header);
+        for (i, item) in self.items.iter().enumerate() {
+            if i > 0 {
+                temp_str.push_str(", ");
+            }
+            temp_str = format!("{temp_str} {item}");
+        }
+        write!(f, "{temp_str}")
+    }
 }
 
 impl Serialize for Message {
@@ -135,7 +150,7 @@ pub struct MessageHeader {
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct MessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
@@ -153,6 +168,20 @@ pub struct MessageBatchItem {
     pub message_extension: Option<Vec<MessageExtension>>,
 }
 
+impl fmt::Display for MessageBatchItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MessageBatchItem {{ operation: {:?}, ephemeral: {:?}, unique_batch_item_id: {:?}, \
+             request_payload: {}, message_extension: {:?} }}",
+            self.operation,
+            self.ephemeral,
+            self.unique_batch_item_id,
+            self.request_payload,
+            self.message_extension
+        )
+    }
+}
 impl MessageBatchItem {
     #[must_use]
     pub const fn new(request: Operation) -> Self {
@@ -320,7 +349,7 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
 
                 let request_payload =
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-                tracing::trace!("MessageBatchItem request payload: {request_payload:?}");
+                tracing::trace!("MessageBatchItem request payload: {request_payload}");
 
                 if operation != request_payload.operation_enum() {
                     return Err(de::Error::custom(format!(
@@ -351,7 +380,7 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageResponse {
     /// Header of the response
@@ -442,7 +471,7 @@ impl Default for MessageResponseHeader {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct MessageResponseBatchItem {
     /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
@@ -735,7 +764,11 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                 }
 
                 tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
-                tracing::trace!("MessageResponseBatchItem response payload: {response_payload:?}");
+                if let Some(response_payload) = &response_payload {
+                    tracing::trace!(
+                        "MessageResponseBatchItem response payload: {response_payload}"
+                    );
+                }
 
                 let result_status =
                     result_status.ok_or_else(|| de::Error::missing_field("result_status"))?;

@@ -29,7 +29,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     trace!("import_object: unique_identifier: {unique_identifier}");
     // cache the object type
     let object_type = object.object_type();
-    trace!("import_object: object: {object:?}");
+    trace!("import_object: object: {object}");
 
     let (key_wrap_type, mut attributes) = if object_type == ObjectType::Certificate {
         // add the tags to the attributes

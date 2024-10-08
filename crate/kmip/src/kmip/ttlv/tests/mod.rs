@@ -413,7 +413,7 @@ fn test_key_material_vec_deserialization() {
     };
     let km_: KeyMaterial = from_ttlv(&ttlv).unwrap();
     let km = KeyMaterial::TransparentSymmetricKey { key: bytes };
-    assert_eq!(km, km_);
+    assert!(km == km_);
 }
 
 #[test]
@@ -454,7 +454,7 @@ fn test_key_material_big_int_deserialization() {
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
     let km_: KeyMaterial = from_ttlv(&ttlv_).unwrap();
-    assert_eq!(km, km_);
+    assert!(km == km_);
 }
 
 #[test]
@@ -468,7 +468,7 @@ fn test_big_int_deserialization() {
     };
     let j = serde_json::to_value(&km).unwrap();
     let km_: KeyMaterial = serde_json::from_value(j).unwrap();
-    assert_eq!(km, km_);
+    assert!(km == km_);
 }
 
 #[test]
@@ -480,14 +480,11 @@ fn test_des_aes_key() {
     let o: Object = serde_json::from_value(json).unwrap();
     // Deserialization cannot make the difference
     // between a `SymmetricKey` or a `PrivateKey`
-    assert_eq!(
-        aes_key(key_bytes),
-        Object::post_fix(ObjectType::SymmetricKey, o)
-    );
+    assert!(aes_key(key_bytes) == Object::post_fix(ObjectType::SymmetricKey, o));
 
     let ttlv = aes_key_ttlv(key_bytes);
     let rec: Object = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key(key_bytes), rec);
+    assert!(aes_key(key_bytes) == rec);
 }
 
 #[test]
@@ -497,11 +494,11 @@ fn test_aes_key_block() {
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
     let kv: KeyBlock = serde_json::from_value(json).unwrap();
-    assert_eq!(aes_key_block(key_bytes), kv);
+    assert!(aes_key_block(key_bytes) == kv);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key_block(key_bytes), rec);
+    assert!(aes_key_block(key_bytes) == rec);
 }
 
 #[test]
@@ -511,11 +508,11 @@ fn test_aes_key_value() {
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
     let kv: KeyValue = serde_json::from_value(json).unwrap();
-    assert_eq!(aes_key_value(key_bytes), kv);
+    assert!(aes_key_value(key_bytes) == kv);
 
     let ttlv = aes_key_value_ttlv(key_bytes);
     let rec: KeyValue = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key_value(key_bytes), rec);
+    assert!(aes_key_value(key_bytes) == rec);
 }
 
 #[test]
@@ -524,7 +521,7 @@ fn test_aes_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key_material(key_bytes), rec);
+    assert!(aes_key_material(key_bytes) == rec);
 }
 
 #[test]
@@ -647,7 +644,7 @@ fn test_byte_string_key_material() {
     };
     let ttlv = to_ttlv(&key_value).unwrap();
     let key_value_: KeyValue = from_ttlv(&ttlv).unwrap();
-    assert_eq!(key_value, key_value_);
+    assert!(key_value == key_value_);
 }
 
 #[test]
@@ -657,10 +654,7 @@ fn test_aes_key_full() {
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
     let aes_key_: Object = from_ttlv(&ttlv).unwrap();
-    assert_eq!(
-        aes_key,
-        Object::post_fix(ObjectType::SymmetricKey, aes_key_)
-    );
+    assert!(aes_key == Object::post_fix(ObjectType::SymmetricKey, aes_key_));
 }
 
 #[test]
@@ -741,10 +735,7 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     let object_: Object = serialize_deserialize(&object).unwrap();
     match object_ {
         Object::SymmetricKey { key_block } => {
-            assert_eq!(
-                get_key_block().key_value.key_material,
-                key_block.key_value.key_material
-            );
+            assert!(get_key_block().key_value.key_material == key_block.key_value.key_material);
         }
         _ => panic!("wrong object type"),
     }
@@ -832,12 +823,12 @@ pub(crate) fn test_message_request() {
     assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
     let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
         panic!(
-            "not an encrypt operation's request payload: {:?}",
+            "not an encrypt operation's request payload: {}",
             req_.items[0]
         );
     };
     assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
-    assert_eq!(req, req_);
+    assert!(req == req_);
 }
 
 #[test]
@@ -926,7 +917,7 @@ pub(crate) fn test_message_response() {
         decrypt.unique_identifier,
         UniqueIdentifier::TextString("id_12345".to_owned())
     );
-    assert_eq!(res, res_);
+    assert!(res == res_);
 }
 
 #[test]
@@ -1296,10 +1287,7 @@ fn test_serialization_set_attribute() -> KmipResult<()> {
     trace!("set_attribute: {:#?}", set_attribute);
 
     let set_attribute_deserialized: SetAttribute = from_ttlv(&set_attribute)?;
-    trace!(
-        "set_attribute_deserialized: {:?}",
-        set_attribute_deserialized
-    );
+    trace!("set_attribute_deserialized: {}", set_attribute_deserialized);
 
     Ok(())
 }

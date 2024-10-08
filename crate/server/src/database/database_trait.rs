@@ -185,7 +185,6 @@ pub(crate) trait Database {
 }
 
 /// An atomic operation on the database
-#[derive(Debug)]
 #[allow(dead_code)]
 pub(crate) enum AtomicOperation {
     /// Create (uid, object, attributes, tags) - the state will be active

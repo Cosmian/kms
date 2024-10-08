@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::ErrorReason,
@@ -12,7 +14,7 @@ use super::{state_from_string, DBObject};
 use crate::{error::KmsError, result::KResultHelper};
 
 /// An object with its metadata such as permissions and state
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 pub(crate) struct ObjectWithMetadata {
     pub(crate) id: String,
     pub(crate) object: Object,
@@ -20,6 +22,17 @@ pub(crate) struct ObjectWithMetadata {
     pub(crate) state: StateEnumeration,
     pub(crate) permissions: Vec<ObjectOperationType>,
     pub(crate) attributes: Attributes,
+}
+
+impl Display for ObjectWithMetadata {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, permissions: {:?}, \
+             attributes: {:?} }}",
+            self.id, self.object, self.owner, self.state, self.permissions, self.attributes
+        )
+    }
 }
 
 impl TryFrom<&PgRow> for ObjectWithMetadata {

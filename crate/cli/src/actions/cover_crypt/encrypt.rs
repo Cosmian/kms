@@ -92,7 +92,7 @@ impl EncryptAction {
             }),
         )?;
 
-        tracing::debug!("{encrypt_request:?}");
+        tracing::debug!("{encrypt_request}");
 
         // Query the KMS with your kmip data and get the key pair ids
         let encrypt_response = kms_rest_client

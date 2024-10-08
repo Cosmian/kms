@@ -1,4 +1,7 @@
-use std::clone::Clone;
+use std::{
+    clone::Clone,
+    fmt::{Display, Formatter},
+};
 
 use num_bigint_dig::BigUint;
 use serde::{
@@ -26,7 +29,7 @@ use crate::{
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
 /// Section 3 of KMIP Reference 2.1
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
@@ -48,6 +51,22 @@ pub struct KeyBlock {
     /// SHALL only be present if the key is wrapped.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<Box<KeyWrappingData>>,
+}
+
+impl Display for KeyBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {}, \
+             cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: {:?} }}",
+            self.key_format_type,
+            self.key_compression_type,
+            self.key_value,
+            self.cryptographic_algorithm,
+            self.cryptographic_length,
+            self.key_wrapping_data
+        )
+    }
 }
 
 impl KeyBlock {
@@ -208,13 +227,23 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
     #[serde(skip_serializing_if = "attributes_is_default_or_none")]
     pub attributes: Option<Box<Attributes>>,
+}
+
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "KeyValue {{ key_material: {}, attributes: {:?} }}",
+            self.key_material, self.attributes
+        )
+    }
 }
 
 // Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
@@ -247,7 +276,7 @@ impl KeyValue {
             KeyMaterial::ByteString(v) => Ok(v),
             other => Err(KmipError::KmipNotSupported(
                 ErrorReason::Invalid_Data_Type,
-                format!("The key has an invalid key material: {other:?}"),
+                format!("The key has an invalid key material: {other}"),
             )),
         }
     }
@@ -361,7 +390,7 @@ impl Default for KeyWrappingSpecification {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 /// Private fields are represented using a Zeroizing object: either array of
 /// bytes, or `SafeBigUint` type.
 pub enum KeyMaterial {
@@ -418,6 +447,41 @@ pub enum KeyMaterial {
         recommended_curve: RecommendedCurve,
         q_string: Vec<u8>,
     },
+}
+
+impl Display for KeyMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ByteString(_) => write!(f, "ByteString. Not displaying key content"),
+            Self::TransparentDHPrivateKey { .. } => {
+                write!(f, "DH Private Key. Not displaying key content")
+            }
+            Self::TransparentDHPublicKey { .. } => {
+                write!(f, "DH Public Key. Not displaying key content")
+            }
+            Self::TransparentDSAPrivateKey { .. } => {
+                write!(f, "DSA Private Key. Not displaying key content")
+            }
+            Self::TransparentDSAPublicKey { .. } => {
+                write!(f, "DSA Public Key. Not displaying key content")
+            }
+            Self::TransparentSymmetricKey { .. } => {
+                write!(f, "Symmetric Key. Not displaying key content")
+            }
+            Self::TransparentRSAPublicKey { .. } => {
+                write!(f, "RSA Public Key. Not displaying key content")
+            }
+            Self::TransparentRSAPrivateKey { .. } => {
+                write!(f, "RSA Private Key. Not displaying key content")
+            }
+            Self::TransparentECPrivateKey { .. } => {
+                write!(f, "EC Private Key. Not displaying key content")
+            }
+            Self::TransparentECPublicKey { .. } => {
+                write!(f, "EC Public Key. Not displaying key content")
+            }
+        }
+    }
 }
 
 #[allow(clippy::upper_case_acronyms)]

@@ -61,7 +61,7 @@ pub(crate) async fn owner<DB: Database>(
         0 => kms_bail!("There should be an object"),
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }
@@ -106,7 +106,7 @@ pub(crate) async fn owner<DB: Database>(
         0 => kms_bail!("There should be an object"),
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }
@@ -172,7 +172,7 @@ pub(crate) async fn owner<DB: Database>(
         0 => kms_bail!("There should be an object"),
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }
@@ -188,7 +188,7 @@ pub(crate) async fn owner<DB: Database>(
         0 => kms_bail!("There should be an object"),
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }

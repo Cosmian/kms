@@ -186,7 +186,10 @@ async fn get_key(
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
-    trace!("operations::encrypt: key owm_s: {:?}", owm_s);
+    trace!(
+        "operations::encrypt: key owm_s: number of results: {}",
+        owm_s.len()
+    );
     // there can only be one key
     let mut owm = owm_s
         .pop()

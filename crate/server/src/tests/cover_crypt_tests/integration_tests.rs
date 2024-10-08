@@ -289,7 +289,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
-    post_ttlv_decrypt.unwrap_err();
+    assert!(post_ttlv_decrypt.is_err());
 
     // decrypt
     let request = build_decryption_request(
@@ -331,7 +331,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
-    post_ttlv_decrypt.unwrap_err();
+    assert!(post_ttlv_decrypt.is_err());
 
     //
     // Add new Attributes
@@ -434,7 +434,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    encrypt_response.unwrap_err();
+    assert!(encrypt_response.is_err());
 
     //
     // Delete attribute
@@ -464,7 +464,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    encrypt_response.unwrap_err();
+    assert!(encrypt_response.is_err());
 
     //
     // Destroy user decryption key

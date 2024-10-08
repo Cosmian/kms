@@ -16,7 +16,7 @@ use crate::{ClientError, KmsClient};
 pub(crate) async fn batch_operations(
     kms_rest_client: &KmsClient,
     operations: Vec<Operation>,
-) -> Result<Vec<Result<Operation, String>>, ClientError> {
+) -> Result<Vec<Operation>, ClientError> {
     let request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
@@ -30,7 +30,7 @@ pub(crate) async fn batch_operations(
         items: operations.into_iter().map(MessageBatchItem::new).collect(),
     };
     let response = kms_rest_client.message(request).await?;
-    Ok(response
+    response
         .items
         .into_iter()
         .map(|item| {
@@ -44,5 +44,8 @@ pub(crate) async fn batch_operations(
                 ))
             }
         })
-        .collect())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| ClientError::Default(e.to_string()))
 }

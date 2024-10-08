@@ -181,7 +181,7 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    trace!("destroy: object: {object:?}");
+    trace!("destroy: object: {object}");
     let attributes = if let Object::Certificate { .. } = object {
         trace!("Certificate destroying");
         Attributes::default()

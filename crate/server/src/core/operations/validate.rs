@@ -74,7 +74,7 @@ pub(crate) async fn validate_operation(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ValidateResponse> {
-    trace!("Validate: {:?}", request);
+    trace!("Validate: {}", request);
 
     debug!("Get input certificates as bytes");
     let (certificates, certificates_number) = match (request.unique_identifier, request.certificate)

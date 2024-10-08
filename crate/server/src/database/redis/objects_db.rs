@@ -48,7 +48,7 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
     keywords
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct RedisDbObject {
     #[serde(rename = "o")]
     pub(crate) object: Object,

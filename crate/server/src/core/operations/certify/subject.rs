@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 use cosmian_kmip::{
     kmip::{
@@ -15,7 +18,6 @@ use openssl::{
 use crate::{database::object_with_metadata::ObjectWithMetadata, kms_error, result::KResult};
 
 /// This holds `KeyPair` information when one is created for the subject
-#[derive(Debug)]
 pub(crate) struct KeyPairData {
     pub(crate) private_key_id: UniqueIdentifier,
     pub(crate) private_key_object: Object,
@@ -23,6 +25,22 @@ pub(crate) struct KeyPairData {
     pub(crate) public_key_id: UniqueIdentifier,
     pub(crate) public_key_object: Object,
     pub(crate) public_key_tags: HashSet<String>,
+}
+
+impl Display for KeyPairData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "KeyPairData {{ private_key_id: {}, private_key_object: {}, private_key_tags: {:?}, \
+             public_key_id: {}, public_key_object: {}, public_key_tags: {:?} }}",
+            self.private_key_id,
+            self.private_key_object,
+            self.private_key_tags,
+            self.public_key_id,
+            self.public_key_object,
+            self.public_key_tags
+        )
+    }
 }
 
 /// The party that gets signed by the issuer and gets the certificate

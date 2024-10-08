@@ -581,7 +581,7 @@ async fn process_symmetric_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
     trace!(
-        "process_symmetric_key: object_with_metadata: {:?}",
+        "process_symmetric_key: object_with_metadata: {}",
         object_with_metadata
     );
     let object_type = object_with_metadata.object.object_type();

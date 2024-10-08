@@ -196,7 +196,7 @@ pub(crate) fn wrap(
         | Object::PrivateKey { key_block }
         | Object::PublicKey { key_block }
         | Object::SymmetricKey { key_block } => {
-            debug!("wrap: key_block: {:?}", key_block);
+            debug!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 kmip_bail!("unable to wrap key: wrapping key is wrapped and that is not supported")

@@ -43,7 +43,7 @@ pub(crate) async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
-    trace!("Entering import KMIP operation: {:?}", request);
+    trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for unique identifier `[tag1]` will
