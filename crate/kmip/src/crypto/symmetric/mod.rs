@@ -35,14 +35,27 @@ pub const AES_256_XTS_MAC_LENGTH: usize = 0;
 pub const AES_128_GCM_SIV_KEY_LENGTH: usize = 16;
 /// AES 128 GCM_SIV nonce length in bytes.
 pub const AES_128_GCM_SIV_IV_LENGTH: usize = 12;
-/// AES 128 GCM_SIV has no authentication.
+/// AES 128 GCM_SIV mac length in bytes.
 pub const AES_128_GCM_SIV_MAC_LENGTH: usize = 16;
 /// AES 256 GCM_SIV key length in bytes.
 pub const AES_256_GCM_SIV_KEY_LENGTH: usize = 32;
 /// AES 256 GCM_SIV nonce length in bytes.
 pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
-/// AES 256 GCM_SIV has no authentication.
+/// AES 256 GCM_SIV mac length in bytes.
 pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
+
+/// RFC 5649 with a 16-byte KEK.
+pub const RFC5649_16_KEY_LENGTH: usize = 16;
+// RFC 5649 IV is actually a fixed overhead
+pub const RFC5649_16_IV_LENGTH: usize = 0;
+/// RFC5649 has no authentication.
+pub const RFC5649_16_MAC_LENGTH: usize = 0;
+/// RFC 5649 with a 32-byte KEK.
+pub const RFC5649_32_KEY_LENGTH: usize = 32;
+// RFC 5649 IV is actually a fixed overhead
+pub const RFC5649_32_IV_LENGTH: usize = 0;
+/// RFC5649 has no authentication.
+pub const RFC5649_32_MAC_LENGTH: usize = 0;
 
 pub mod symmetric_ciphers;
 

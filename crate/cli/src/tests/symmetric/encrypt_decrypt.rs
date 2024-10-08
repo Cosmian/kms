@@ -122,7 +122,8 @@ pub(crate) fn run_encrypt_decrypt_test(
     key_id: &str,
     data_encryption_algorithm: DataEncryptionAlgorithm,
     key_encryption_algorithm: Option<KeyEncryptionAlgorithm>,
-) -> CliResult<(PathBuf, PathBuf, PathBuf)> {
+    encryption_overhead: u64,
+) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -148,6 +149,13 @@ pub(crate) fn run_encrypt_decrypt_test(
         Some(output_file.to_str().unwrap()),
         Some(&hex::encode("myid".as_bytes())),
     )?;
+
+    if encryption_overhead != 0 {
+        assert_eq!(
+            fs::metadata(output_file.clone())?.len(),
+            fs::metadata(input_file.clone())?.len() + encryption_overhead
+        );
+    }
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -176,7 +184,7 @@ pub(crate) fn run_encrypt_decrypt_test(
         )))
     }
 
-    Ok((input_file, output_file, recovered_file))
+    Ok(())
 }
 
 #[tokio::test]
@@ -189,26 +197,13 @@ async fn test_aes_gcm_server_side() -> CliResult<()> {
         Some("aes"),
         &[],
     )?;
-    let (input, output, recovered) = run_encrypt_decrypt_test(
+    run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
         &dek,
         DataEncryptionAlgorithm::AesGcm,
         None,
-    )?;
-    let input_len = fs::metadata(input)?.len();
-    // Aes GCM encapsulation size is 12 bytes for the nonce, 32 bytes for the DEK, and 16 bytes for the header
-    let encapsulation_size = 12 + 32 + 16;
-    // The encapsulation size is encoded as a LEB128
-    let encapsulation_len_leb128 = 1;
-    // The DEM AEG GCM encryption size is 16 bytes for the tag and 12 bytes for the IV
-    let dem_encryption_size = 12 + input_len + 16;
-    let total_output = encapsulation_size + encapsulation_len_leb128 + dem_encryption_size;
-    let output_len = std::fs::metadata(output)?.len();
-    assert_eq!(total_output, output_len);
-    let recovered_len = std::fs::metadata(recovered)?.len();
-    assert_eq!(input_len, recovered_len);
-
-    Ok(())
+        12 /* nonce */  + 16, /* tag */
+    )
 }
 
 #[tokio::test]
@@ -226,8 +221,8 @@ async fn test_aes_xts_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesXts,
         None,
-    )?;
-    Ok(())
+        16, /* tweak */
+    )
 }
 
 #[tokio::test]
@@ -245,8 +240,8 @@ async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::AesGcmSiv,
         None,
-    )?;
-    Ok(())
+        12 /* nonce */ + 16, /* ag */
+    )
 }
 
 #[tokio::test]
@@ -264,8 +259,8 @@ async fn test_chacha20_poly1305_server_side() -> CliResult<()> {
         &dek,
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
-    )?;
-    Ok(())
+        12 /* nonce */ + 16, /* ag */
+    )
 }
 
 #[tokio::test]
@@ -345,6 +340,71 @@ async fn test_aes_gcm_aes_gcm_client_side() -> CliResult<()> {
         &kek,
         DataEncryptionAlgorithm::AesGcm,
         Some(KeyEncryptionAlgorithm::AesGcm),
+        12 + 32 + 16 /* encapsulation size */
+            + 1 /* encapsulation len leb128 */
+            + 12 /* nonce */  + 16, /* ag */
+    )
+}
+
+#[tokio::test]
+async fn test_aes_gcm_aes_xts_client_side() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kek = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        Some(256),
+        None,
+        Some("aes"),
+        &[],
     )?;
-    Ok(())
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &kek,
+        DataEncryptionAlgorithm::AesXts,
+        Some(KeyEncryptionAlgorithm::AesGcm),
+        12 + 32 + 16 /* encapsulation size */
+            + 1 /* encapsulation len leb128 */
+            + 16, /* tweak */
+    )
+}
+
+#[tokio::test]
+async fn test_aes_gcm_chach20_client_side() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kek = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        Some(256),
+        None,
+        Some("aes"),
+        &[],
+    )?;
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &kek,
+        DataEncryptionAlgorithm::Chacha20Poly1305,
+        Some(KeyEncryptionAlgorithm::AesGcm),
+        12 + 32 + 16 /* encapsulation size */
+            + 1 /* encapsulation len leb128 */
+            + 12 /* nonce */  + 16, /* ag */
+    )
+}
+
+#[tokio::test]
+async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kek = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        Some(256),
+        None,
+        Some("aes"),
+        &[],
+    )?;
+    run_encrypt_decrypt_test(
+        &ctx.owner_client_conf_path,
+        &kek,
+        DataEncryptionAlgorithm::AesGcm,
+        Some(KeyEncryptionAlgorithm::RFC5649),
+        8 + 32 /* encapsulation size */
+            + 1 /* encapsulation len leb128 */
+            + 12 /* nonce */ + 16, /* tag */
+    )
 }

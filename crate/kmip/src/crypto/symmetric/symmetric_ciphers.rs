@@ -16,9 +16,12 @@ use super::{
     AES_128_XTS_KEY_LENGTH, AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH,
     AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
     AES_256_GCM_SIV_IV_LENGTH, AES_256_GCM_SIV_KEY_LENGTH, AES_256_GCM_SIV_MAC_LENGTH,
-    AES_256_XTS_KEY_LENGTH, AES_256_XTS_MAC_LENGTH, AES_256_XTS_TWEAK_LENGTH,
+    AES_256_XTS_KEY_LENGTH, AES_256_XTS_MAC_LENGTH, AES_256_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
+    RFC5649_16_KEY_LENGTH, RFC5649_16_MAC_LENGTH, RFC5649_32_IV_LENGTH, RFC5649_32_KEY_LENGTH,
+    RFC5649_32_MAC_LENGTH,
 };
 use crate::{
+    crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     error::KmipError,
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm},
     kmip_bail,
@@ -57,6 +60,8 @@ pub enum SymCipher {
     Aes128Gcm,
     Aes128Xts,
     Aes256Xts,
+    Rfc5649_16,
+    Rfc5649_32,
     #[cfg(not(feature = "fips"))]
     Aes128GcmSiv,
     #[cfg(not(feature = "fips"))]
@@ -73,6 +78,11 @@ impl SymCipher {
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
             Self::Aes256Xts => Ok(Cipher::aes_256_xts()),
+            Self::Rfc5649_16 | SymCipher::Rfc5649_32 => {
+                kmip_bail!(KmipError::NotSupported(
+                    "RFC5649 is not supported in this version of openssl".to_owned()
+                ))
+            }
             #[cfg(not(feature = "fips"))]
             Self::Chacha20Poly1305 => Ok(Cipher::chacha20_poly1305()),
             #[cfg(not(feature = "fips"))]
@@ -93,6 +103,8 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             Self::Aes128Xts => AES_128_XTS_MAC_LENGTH,
             Self::Aes256Xts => AES_256_XTS_MAC_LENGTH,
+            Self::Rfc5649_16 => RFC5649_16_MAC_LENGTH,
+            Self::Rfc5649_32 => RFC5649_32_MAC_LENGTH,
             #[cfg(not(feature = "fips"))]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
             #[cfg(not(feature = "fips"))]
@@ -110,6 +122,8 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             Self::Aes128Xts => AES_128_XTS_TWEAK_LENGTH,
             Self::Aes256Xts => AES_256_XTS_TWEAK_LENGTH,
+            Self::Rfc5649_16 => RFC5649_16_IV_LENGTH,
+            Self::Rfc5649_32 => RFC5649_32_IV_LENGTH,
             #[cfg(not(feature = "fips"))]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
             #[cfg(not(feature = "fips"))]
@@ -127,6 +141,8 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             Self::Aes128Xts => AES_128_XTS_KEY_LENGTH,
             Self::Aes256Xts => AES_256_XTS_KEY_LENGTH,
+            Self::Rfc5649_16 => RFC5649_16_KEY_LENGTH,
+            Self::Rfc5649_32 => RFC5649_32_KEY_LENGTH,
             #[cfg(not(feature = "fips"))]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
             #[cfg(not(feature = "fips"))]
@@ -166,9 +182,16 @@ impl SymCipher {
                             "AES key must be 16 or 32 bytes long for AES GCM SIV".to_owned()
                         )),
                     },
+                    BlockCipherMode::NISTKeyWrap => match key_size {
+                        RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
+                        RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
+                        _ => kmip_bail!(KmipError::NotSupported(
+                            "RFC5649 key must be 16 or 32 bytes long".to_owned()
+                        )),
+                    },
                     mode => {
                         kmip_bail!(KmipError::NotSupported(format!(
-                            "AES is only supported with GCM mode. Got: {mode:?}"
+                            "AES is not supported with mode: {mode:?}"
                         )));
                     }
                 }
@@ -233,6 +256,9 @@ pub fn encrypt(
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
         }
+        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => {
+            Ok((rfc5649_wrap(plaintext, key)?, vec![]))
+        }
         _ => {
             // Create buffer for the tag
             let mut tag = vec![0; sym_cipher.tag_size()];
@@ -275,6 +301,7 @@ pub fn decrypt(
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
         }
+        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => rfc5649_unwrap(ciphertext, key)?,
         _ => {
             // Decryption.
             Zeroizing::from(openssl_decrypt_aead(

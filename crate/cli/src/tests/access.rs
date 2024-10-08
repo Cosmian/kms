@@ -143,6 +143,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
         &key_id,
         DataEncryptionAlgorithm::AesGcm,
         None,
+        0,
     )?;
 
     // the user should not be able to export
@@ -162,7 +163,8 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
             &ctx.user_client_conf_path,
             &key_id,
             DataEncryptionAlgorithm::AesGcm,
-            None
+            None,
+            0
         )
         .is_err()
     );
@@ -205,6 +207,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
         &key_id,
         DataEncryptionAlgorithm::AesGcm,
         None,
+        0,
     )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
@@ -514,6 +517,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
         &key_id,
         DataEncryptionAlgorithm::AesGcm,
         None,
+        0,
     )?;
 
     // the user should not be able to export
@@ -533,7 +537,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
             &ctx.user_client_conf_path,
             &key_id,
             DataEncryptionAlgorithm::AesGcm,
-            None
+            None,
+            0
         )
         .is_err()
     );
@@ -566,6 +571,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
         &key_id,
         DataEncryptionAlgorithm::AesGcm,
         None,
+        0,
     )?;
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());

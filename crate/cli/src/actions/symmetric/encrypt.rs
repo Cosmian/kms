@@ -137,17 +137,8 @@ impl EncryptAction {
         let mut output_file = File::create(&output_file_name)
             .with_context(|| "failed to write the encrypted file")?;
 
-        println!(
-            "key encryption algorithm: {:?}",
-            self.key_encryption_algorithm
-        );
-
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
-            println!(
-                "Clear Text file length: {}",
-                self.input_file.metadata()?.len()
-            );
-            self.encrypt_client_side(
+            self.client_side_encrypt(
                 kms_rest_client,
                 &id,
                 key_encryption_algorithm,
@@ -158,13 +149,12 @@ impl EncryptAction {
                 authentication_data,
             )
             .await?;
-            println!("Encrypted file length: {:?}", output_file.metadata()?.len());
         } else {
             // Read the file to encrypt
             let plaintext = read_bytes_from_file(&self.input_file)
                 .with_context(|| "Cannot read bytes from the file to encrypt")?;
             let (nonce, data, tag) = self
-                .encrypt_server_side(
+                .server_side_encrypt(
                     kms_rest_client,
                     &id,
                     self.data_encryption_algorithm.into(),
@@ -192,7 +182,7 @@ impl EncryptAction {
 
     /// Encrypt the data using the specified key server side
     /// Returns the nonce, the encrypted data, and the authentication tag
-    async fn encrypt_server_side(
+    async fn server_side_encrypt(
         &self,
         kms_rest_client: &KmsClient,
         key_id: &str,
@@ -237,7 +227,7 @@ impl EncryptAction {
 
     /// Encrypt a file using a symmetric stream cipher
     /// and return the ephemeral key
-    async fn encrypt_client_side(
+    async fn client_side_encrypt(
         &self,
         kms_rest_client: &KmsClient,
         key_id: &str,
@@ -258,7 +248,7 @@ impl EncryptAction {
 
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
-            .encrypt_server_side(
+            .server_side_encrypt(
                 kms_rest_client,
                 key_id,
                 key_encryption_algorithm.into(),
@@ -305,7 +295,7 @@ impl EncryptAction {
         )?;
         // process the data read from the file by 4096 chunks and write the encrypted data
         let mut file = File::open(input_file_name)?;
-        let mut chunk = vec![0; 2 ^ 20];
+        let mut chunk = vec![0; 2 ^ 16]; //64K
         loop {
             let bytes_read = file.read(&mut chunk)?;
             if bytes_read == 0 {

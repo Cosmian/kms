@@ -13,7 +13,7 @@ use cosmian_kms_client::{
                 Mode, SymCipher, CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
             },
             AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
-            AES_128_XTS_TWEAK_LENGTH,
+            AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH,
         },
     },
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
@@ -191,6 +191,7 @@ impl DecryptAction {
                     (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
                 }
                 BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
+                BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
                 _ => cli_bail!("Unsupported block cipher mode"),
             },
             CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
@@ -272,7 +273,7 @@ impl DecryptAction {
             cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad.unwrap_or_default())?;
         let tag_size = cipher.tag_size();
         // read the file by chunks
-        let mut chunk = vec![0; 2 ^ 20]; //1MB
+        let mut chunk = vec![0; 2 ^ 16]; //64K
         let mut read_buffer = vec![];
         loop {
             let bytes_read = input_file.read(&mut chunk)?;
