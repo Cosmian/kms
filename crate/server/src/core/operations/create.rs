@@ -23,7 +23,7 @@ pub(crate) async fn create(
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
 
-    let (object, tags) = match &request.object_type {
+    let (unique_identifier, object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => {
             kms.create_private_key_and_tags(&request, owner, params)
@@ -38,7 +38,14 @@ pub(crate) async fn create(
     };
     let uid = kms
         .db
-        .create(None, owner, &object, object.attributes()?, &tags, params)
+        .create(
+            unique_identifier,
+            owner,
+            &object,
+            object.attributes()?,
+            &tags,
+            params,
+        )
         .await?;
     debug!(
         "Created KMS Object of type {:?} with id {uid}",

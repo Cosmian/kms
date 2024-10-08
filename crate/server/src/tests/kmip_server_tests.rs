@@ -43,7 +43,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -261,8 +261,13 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
-    let request =
-        symmetric_key_create_request(256, CryptographicAlgorithm::AES, EMPTY_TAGS).unwrap();
+    let request = symmetric_key_create_request(
+        Some(UniqueIdentifier::TextString("sym_key_id".to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+    )
+    .unwrap();
 
     trace!("request: {:?}", request);
     let response = kms.create(request, owner, None).await?;
@@ -276,6 +281,14 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     assert_eq!(
         KeyFormatType::Raw,
         response.object.key_block()?.key_format_type
+    );
+    // Check key UID has been setup
+    assert_eq!(
+        "sym_key_id".to_owned(),
+        response
+            .unique_identifier
+            .as_str()
+            .context("no string for the unique_identifier")?
     );
 
     //
@@ -306,7 +319,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key

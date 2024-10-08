@@ -723,6 +723,7 @@ impl KmsClient {
             _ => Err(PyException::new_err("invalid algorithm")),
         }?;
         let request = symmetric_key_create_request(
+            None,
             key_len_in_bits,
             cryptographic_algorithm,
             tags.unwrap_or_default(),
