@@ -1,6 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsClient,
+    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
+    kmip::kmip_types::UniqueIdentifier, KmsClient,
 };
 
 use crate::{
@@ -32,11 +33,21 @@ pub struct CreateKeyPairAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// The unique id of the private key; a unique id based
+    /// on the key material is generated if not specified.
+    #[clap(required = false)]
+    private_key_id: Option<String>,
 }
 
 impl CreateKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let create_key_pair_request = create_rsa_key_pair_request(&self.tags, self.key_size)?;
+        let private_key_id = self
+            .private_key_id
+            .as_ref()
+            .map(|id| UniqueIdentifier::TextString(id.clone()));
+        let create_key_pair_request =
+            create_rsa_key_pair_request(&self.tags, self.key_size, private_key_id)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

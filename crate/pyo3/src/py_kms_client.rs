@@ -726,6 +726,7 @@ impl KmsClient {
             key_len_in_bits,
             cryptographic_algorithm,
             tags.unwrap_or_default(),
+            None,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 

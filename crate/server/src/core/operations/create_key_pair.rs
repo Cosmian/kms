@@ -47,7 +47,14 @@ pub(crate) async fn create_key_pair(
     }
 
     // generate uids and create the key pair and tags
-    let sk_uid = Uuid::new_v4().to_string();
+    let sk_uid = request
+        .private_key_attributes
+        .as_ref() // Convert Option to Option reference
+        .and_then(|attrs| attrs.unique_identifier.as_ref()) // Safely access unique_identifier
+        .map_or_else(
+            || Uuid::new_v4().to_string(),
+            std::string::ToString::to_string,
+        );
     let pk_uid = Uuid::new_v4().to_string();
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(request, &sk_uid, &pk_uid)?;
 

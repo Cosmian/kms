@@ -267,7 +267,7 @@ pub(crate) async fn create_rsa_keypair(
     cryptographic_length: usize,
 ) -> (String, String) {
     let create_key_pair_request =
-        create_rsa_key_pair_request(["bench"], cryptographic_length).unwrap();
+        create_rsa_key_pair_request(["bench"], cryptographic_length, None).unwrap();
     // Query the KMS with your kmip data and get the key pair ids
     let response = kms_rest_client
         .create_key_pair(create_key_pair_request)

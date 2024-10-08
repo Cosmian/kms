@@ -108,7 +108,7 @@ impl KMS {
         let uid = attributes
             .unique_identifier
             .as_ref()
-            .map(|uid| uid.to_string());
+            .map(std::string::ToString::to_string);
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
@@ -180,7 +180,7 @@ impl KMS {
         let uid = attributes
             .unique_identifier
             .as_ref()
-            .map(|uid| uid.to_string());
+            .map(std::string::ToString::to_string);
 
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {

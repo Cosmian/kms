@@ -68,6 +68,12 @@ Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping
 This key MUST be created under the `google_cse` ID.
 
 ```sh
+# create it
+
+ckms sym keys create -t google_cse google_cse
+
+# or import an existing key
+
 ckms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
 ```
 

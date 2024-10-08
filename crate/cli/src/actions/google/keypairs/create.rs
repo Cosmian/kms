@@ -146,7 +146,11 @@ impl CreateKeyPairsAction {
             }
             None => {
                 let created_key_pair = kms_rest_client
-                    .create_key_pair(create_rsa_key_pair_request(Vec::<String>::new(), RSA_4096)?)
+                    .create_key_pair(create_rsa_key_pair_request(
+                        Vec::<String>::new(),
+                        RSA_4096,
+                        None,
+                    )?)
                     .await?;
                 (
                     created_key_pair.private_key_unique_identifier.to_string(),

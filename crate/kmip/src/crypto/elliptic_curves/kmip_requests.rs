@@ -93,6 +93,7 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
 pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     recommended_curve: RecommendedCurve,
+    private_key_id: Option<UniqueIdentifier>,
 ) -> Result<CreateKeyPair, KmipError> {
     let private_key_mask = build_mask_from_curve(recommended_curve, true)?;
     let public_key_mask = build_mask_from_curve(recommended_curve, false)?;
@@ -122,6 +123,7 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_usage_mask: Some(private_key_mask),
         key_format_type: Some(KeyFormatType::ECPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
+        unique_identifier: private_key_id,
         ..Attributes::default()
     };
 
