@@ -548,8 +548,8 @@ impl KmsClient {
             Some(access_policy),
             data,
             header_metadata,
-            authentication_data,
             None,
+            authentication_data,
             None,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
