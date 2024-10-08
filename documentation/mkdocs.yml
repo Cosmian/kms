@@ -52,7 +52,7 @@ nav:
       - FIPS 140-3: fips.md
       - Zeroization: zeroization.md
   - Cryptographic algorithms: algorithms.md
-  - High performance encryption and decryption: high_performance_encryption_decryption.md
+  - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
   - Enabling TLS: tls.md
   - Logging and telemetry: logging.md
   - Configuring database: database.md

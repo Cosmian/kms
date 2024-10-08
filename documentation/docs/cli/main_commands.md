@@ -280,7 +280,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap", "GCMSIV"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1027,7 +1027,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap", "GCMSIV"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1487,7 +1487,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap", "GCMSIV"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1706,9 +1706,9 @@ Manage symmetric keys. Encrypt and decrypt data
 
 **`keys`** [[12.1]](#121-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[12.2]](#122-ckms-sym-encrypt)  Encrypt a file using AES GCM
+**`encrypt`** [[12.2]](#122-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
-**`decrypt`** [[12.3]](#123-ckms-sym-decrypt)  Decrypts a file using AES GCM
+**`decrypt`** [[12.3]](#123-ckms-sym-decrypt)  Decrypt a file using a symmetric key.
 
 ---
 
@@ -1815,7 +1815,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--block-cipher-mode [-m] <BLOCK_CIPHER_MODE>` Block cipher mode
 
-Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap"`
+Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GCM", "CBCMAC", "XTS", "X9102AESKW", "X9102TDKW", "X9102AKW1", "X9102AKW2", "AEAD", "NISTKeyWrap", "GCMSIV"`
 
 `--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data
 
@@ -1950,7 +1950,7 @@ Destroy a symmetric key
 
 ## 12.2 ckms sym encrypt
 
-Encrypt a file using AES GCM
+Encrypt a file using a symmetric cipher
 
 ### Usage
 `ckms sym encrypt [options] <FILE>
@@ -1960,11 +1960,21 @@ Encrypt a file using AES GCM
 
 `--key-id [-k] <KEY_ID>` The symmetric key unique identifier. If not specified, tags should be specified
 
+`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
+
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
+
+`--key-encryption-algorithm [-e] <KEY_ENCRYPTION_ALGORITHM>` The optional key encryption algorithm used to encrypt the data encryption key.
+
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rfc5649"`
+
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+`--nonce [-n] <NONCE>` Optional nonce/IV (or tweak for XTS) as a hex string. If not provided, a random value is generated
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional additional authentication data as a hex string. This data needs to be provided back for decryption. This data is ignored with XTS
 
 
 
@@ -1972,7 +1982,7 @@ Encrypt a file using AES GCM
 
 ## 12.3 ckms sym decrypt
 
-Decrypts a file using AES GCM
+Decrypt a file using a symmetric key.
 
 ### Usage
 `ckms sym decrypt [options] <FILE>
@@ -1982,11 +1992,19 @@ Decrypts a file using AES GCM
 
 `--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
 
+`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
+
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
+
+`--key-encryption-algorithm [-e] <KEY_ENCRYPTION_ALGORITHM>` The optional key encryption algorithm used to decrypt the data encryption key.
+
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rfc5649"`
+
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
-`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption as a hex string
 
 
 

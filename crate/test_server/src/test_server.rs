@@ -10,7 +10,7 @@ use actix_server::ServerHandle;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
     client_bail, client_error,
-    cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
+    cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
     write_json_object_to_file, ClientConf, ClientError, GmailApiConf, KmsClient,
 };
 use cosmian_kms_server::{

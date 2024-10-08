@@ -548,6 +548,7 @@ impl KmsClient {
             Some(access_policy),
             data,
             header_metadata,
+            None,
             authentication_data,
             None,
         )
@@ -757,8 +758,9 @@ impl KmsClient {
         key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_encryption_request(&key_identifier.0, None, data, None, None, None)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request =
+            build_encryption_request(&key_identifier.0, None, data, None, None, None, None)
+                .map_err(|e| PyException::new_err(e.to_string()))?;
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {

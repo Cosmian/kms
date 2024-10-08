@@ -2415,6 +2415,9 @@ pub enum BlockCipherMode {
     #[value(name = "NISTKeyWrap")]
     // NISTKeyWrap refers to rfc5649
     NISTKeyWrap = 0x8000_0001,
+    #[value(name = "GCMSIV")]
+    // AES GCM SIV
+    GCMSIV = 0x8000_0002,
 }
 
 #[allow(non_camel_case_types)]

@@ -79,6 +79,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         Some(header_metadata.clone()),
+        None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -137,6 +138,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
+        None,
         None,
         Some(authentication_data.clone()),
         None,
@@ -265,6 +267,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
+        None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -359,6 +362,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
+        None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -391,6 +395,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
+        None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -421,6 +426,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
+        None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -449,6 +455,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
+        None,
         None,
         Some(authentication_data.clone()),
         Some(CryptographicParameters {

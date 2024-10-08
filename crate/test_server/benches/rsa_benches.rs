@@ -292,6 +292,7 @@ pub(crate) async fn encrypt(
         cleartext,
         None,
         None,
+        None,
         Some(cryptographic_parameters.to_owned()),
     )
     .unwrap();

@@ -70,6 +70,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let _encrypted_data = encrypt_response
@@ -130,6 +131,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         Some(header_metadata.clone()),
+        None,
         Some(authentication_data.clone()),
         None,
     )?;
@@ -180,6 +182,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
+        None,
         None,
         Some(authentication_data.clone()),
         None,
@@ -285,6 +288,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
+        None,
         Some(authentication_data.clone()),
         None,
     )?;
@@ -319,8 +323,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());

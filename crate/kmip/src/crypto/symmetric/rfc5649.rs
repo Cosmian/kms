@@ -449,4 +449,28 @@ mod tests {
 
         rfc5649_unwrap(&wrapped_key, kek).unwrap_err();
     }
+
+    #[test]
+    fn test_sizes() {
+        let dek_16 = [1_u8; 16];
+        let kek_16 = [2_u8; 16];
+        let dek_32 = [1_u8; 32];
+        let kek_32 = [2_u8; 32];
+        assert_eq!(
+            rfc5649_wrap(&dek_16, &kek_16).unwrap().len(),
+            dek_16.len() + 8
+        );
+        assert_eq!(
+            rfc5649_wrap(&dek_16, &kek_32).unwrap().len(),
+            dek_16.len() + 8
+        );
+        assert_eq!(
+            rfc5649_wrap(&dek_32, &kek_16).unwrap().len(),
+            dek_32.len() + 8
+        );
+        assert_eq!(
+            rfc5649_wrap(&dek_32, &kek_32).unwrap().len(),
+            dek_32.len() + 8
+        );
+    }
 }

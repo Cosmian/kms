@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use clap::crate_version;
 use cosmian_kmip::{
-    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
+    crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
     kmip::{
         kmip_objects::Object,
         kmip_types::{Attributes, StateEnumeration},

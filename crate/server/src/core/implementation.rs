@@ -4,7 +4,7 @@ use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes
 use cosmian_kmip::{
     crypto::{
         secret::Secret,
-        symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
+        symmetric::{create_symmetric_key_kmip_object, symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
     },
     kmip::{
         kmip_objects::Object,
