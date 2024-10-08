@@ -131,8 +131,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         Some(header_metadata.clone()),
-        Some(authentication_data.clone()),
         None,
+        Some(authentication_data.clone()),
         None,
     )?;
 
@@ -183,8 +183,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
-        Some(authentication_data.clone()),
         None,
+        Some(authentication_data.clone()),
         None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
@@ -288,8 +288,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(encryption_policy.to_owned()),
         data.to_vec(),
         None,
-        Some(authentication_data.clone()),
         None,
+        Some(authentication_data.clone()),
         None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
