@@ -2,19 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.19.0] - 2024-10-04
+## [4.19.0] - 2024-10-09
 
 ### 🚀 Features
 
-- Google Workspace Client-Side-Encryption (CSE) updates ([#319](https://github.com/Cosmian/kms/pull/319))
-  - Generate Google S/MIME key-pairs and identities and upload them to Gmail API from ckms CLI ([#270](https://github.com/Cosmian/kms/issues/270))
+- Google Workspace Client-Side-Encryption (CSE)
+  updates ([#319](https://github.com/Cosmian/kms/pull/319))
+  - Generate Google S/MIME key-pairs and identities and upload them to Gmail API from ckms
+      CLI ([#270](https://github.com/Cosmian/kms/issues/270))
   - Server-side, export cert at PKCS7 format
   - Implement missing CSE endpoints
   - Wrap/unwrap CSE elements with authenticated encryption
   - Export wrapped keys from KMS specifying the cipher mode
   - Handle auth for guest users ([#271](https://github.com/Cosmian/kms/issues/271))
 - Add SetAttribute/DeleteAttribute KMIP operations ([#303](https://github.com/Cosmian/kms/pull/303))
-- Reenable wrap/unwrap on ckms by linking statically on openssl ([#317](https://github.com/Cosmian/kms/pull/317))
+- Re-enable wrap/unwrap on ckms by linking statically on openssl ([#317](https://github.com/Cosmian/kms/pull/317))
+- Added AES GCM-SIV and AES XTS ([#328](https://github.com/Cosmian/kms/pull/328))
+- Added the ability to client side encrypt files with `ckms` and a hybrid scheme ([#328](https://github.com/Cosmian/kms/pull/328))
+- Create Symmetric Key / Private keys with custom unique id ([#326](https://github.com/Cosmian/kms/pull/326))
+- Replace Debug derive trait of KMIP Object by a custom Display impl ([#327](https://github.com/Cosmian/kms/pull/327))
 
 ### Documentation
 

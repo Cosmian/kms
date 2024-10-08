@@ -5,7 +5,9 @@ use cosmian_kms_client::{
         crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
         kmip::kmip_types::CryptographicAlgorithm,
     },
-    import_object, KmsClient,
+    import_object,
+    kmip::kmip_types::UniqueIdentifier,
+    KmsClient,
 };
 
 use crate::{
@@ -60,6 +62,11 @@ pub struct CreateKeyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// The unique id of the key; a unique id based
+    /// on the key material is generated if not specified.
+    #[clap(required = false)]
+    key_id: Option<String>,
 }
 
 impl CreateKeyAction {
@@ -87,7 +94,6 @@ impl CreateKeyAction {
                 512 => CryptographicAlgorithm::SHA3512,
                 _ => cli_bail!("invalid number of bits for sha3 {}", number_of_bits),
             },
-
             SymmetricAlgorithm::Shake => match number_of_bits {
                 128 => CryptographicAlgorithm::SHAKE128,
                 256 => CryptographicAlgorithm::SHAKE256,
@@ -99,7 +105,7 @@ impl CreateKeyAction {
             let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm)?;
             import_object(
                 kms_rest_client,
-                None,
+                self.key_id.clone(),
                 object,
                 None,
                 false,
@@ -108,8 +114,12 @@ impl CreateKeyAction {
             )
             .await?
         } else {
+            let key_id = self
+                .key_id
+                .as_ref()
+                .map(|id| UniqueIdentifier::TextString(id.clone()));
             let create_key_request =
-                symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
+                symmetric_key_create_request(key_id, number_of_bits, algorithm, &self.tags)?;
             kms_rest_client
                 .create(create_key_request)
                 .await

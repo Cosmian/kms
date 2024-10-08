@@ -215,7 +215,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             kms_bail!("The object at uid: {usk_uid} is not a CC user decryption key");
         }
     };
-    debug!("ABE kms_uk: {:?}", recovered_kms_uk_key_block);
+    debug!("ABE kms_uk: {}", recovered_kms_uk_key_block);
 
     Ok(())
 }
@@ -282,6 +282,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
+                None,
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
@@ -305,6 +306,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
+                None,
                 Some(confidential_authentication_data.clone()),
                 None,
             )?,
@@ -312,7 +314,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    er.unwrap_err();
+    assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
     let secret_authentication_data = b"cc the uid secret".to_vec();
@@ -324,6 +326,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 master_public_key_id,
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
+                None,
                 None,
                 Some(secret_authentication_data.clone()),
                 None,
@@ -348,6 +351,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
                 None,
+                None,
                 Some(secret_authentication_data.clone()),
                 None,
             )?,
@@ -355,7 +359,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    er.unwrap_err();
+    assert!(er.is_err());
 
     // Create a user decryption key MKG | FIN + secret
     let secret_mkg_fin_access_policy = "(Department::MKG || Department::FIN) && Level::secret";
@@ -416,7 +420,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    dr.unwrap_err();
+    assert!(dr.is_err());
 
     // decrypt resource FIN + Secret
     let dr = kms
@@ -459,7 +463,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await;
-    dr.unwrap_err();
+    assert!(dr.is_err());
 
     Ok(())
 }
@@ -610,6 +614,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 &pk_uid,
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
+                None,
                 None,
                 Some(confidential_authentication_data.clone()),
                 None,

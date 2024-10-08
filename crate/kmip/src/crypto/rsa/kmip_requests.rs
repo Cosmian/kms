@@ -13,6 +13,7 @@ use crate::{
 
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    private_key_id: Option<UniqueIdentifier>,
     tags: T,
     cryptographic_length: usize,
 ) -> Result<CreateKeyPair, KmipError> {
@@ -52,6 +53,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_usage_mask: Some(private_key_mask),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
+        unique_identifier: private_key_id,
         ..Attributes::default()
     };
 

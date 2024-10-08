@@ -1,74 +1,361 @@
+#![allow(clippy::unwrap_used)]
+
+#[cfg(feature = "fips")]
+use openssl::provider::Provider;
 use openssl::rand::rand_bytes;
 
-use crate::{
-    crypto::{
-        symmetric::{
-            create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_IV_LENGTH,
-            AES_256_GCM_KEY_LENGTH,
-        },
-        DecryptionSystem, EncryptionSystem,
-    },
-    error::result::KmipResult,
-    kmip::{
-        kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
+#[cfg(not(feature = "fips"))]
+use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
+use crate::crypto::symmetric::symmetric_ciphers::{
+    decrypt, encrypt, random_key, random_nonce, Mode, SymCipher, AES_128_GCM_MAC_LENGTH,
+    AES_128_XTS_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, AES_256_XTS_MAC_LENGTH,
 };
 
 #[test]
-pub(crate) fn test_aes() -> KmipResult<()> {
+fn test_encrypt_decrypt_aes_gcm_128() {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+    Provider::load(None, "fips").unwrap();
 
-    let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
-    rand_bytes(&mut symmetric_key).unwrap();
-    let key = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES)?;
-    let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
-    let mut data = zeroize::Zeroizing::from(vec![0_u8; 42]);
-    rand_bytes(&mut data).unwrap();
-    let mut uid = vec![0_u8; 32];
-    rand_bytes(&mut uid).unwrap();
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
 
-    let mut nonce = vec![0_u8; AES_256_GCM_IV_LENGTH];
-    rand_bytes(&mut nonce).unwrap();
+    let key = random_key(SymCipher::Aes128Gcm).unwrap();
+
+    let nonce = random_nonce(SymCipher::Aes128Gcm).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
+
+    let decrypted_data =
+        decrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_gcm_256() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Aes256Gcm).unwrap();
+
+    let nonce = random_nonce(SymCipher::Aes256Gcm).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
+
+    let decrypted_data =
+        decrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_xts_128() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Aes128Xts).unwrap();
+
+    let tweak = random_nonce(SymCipher::Aes128Xts).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_128_XTS_MAC_LENGTH); // always 0
+
+    let decrypted_data =
+        decrypt(SymCipher::Aes128Xts, &key, &tweak, &[], &ciphertext, &tag).unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_xts_256() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Aes256Xts).unwrap();
+
+    let tweak = random_nonce(SymCipher::Aes256Xts).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_256_XTS_MAC_LENGTH); // always 0
+
+    let decrypted_data =
+        decrypt(SymCipher::Aes256Xts, &key, &tweak, &[], &ciphertext, &tag).unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[cfg(not(feature = "fips"))]
+#[test]
+fn test_encrypt_decrypt_chacha20_poly1305() {
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Chacha20Poly1305).unwrap();
+
+    let nonce = random_nonce(SymCipher::Chacha20Poly1305).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    let (ciphertext, tag) =
+        encrypt(SymCipher::Chacha20Poly1305, &key, &nonce, &aad, &message).unwrap();
+
+    let decrypted_data = decrypt(
+        SymCipher::Chacha20Poly1305,
+        key.as_ref(),
+        &nonce,
+        &aad,
+        &ciphertext,
+        &tag,
+    )
+    .unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[cfg(not(feature = "fips"))]
+#[test]
+fn test_encrypt_decrypt_aes_gcm_siv_128() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Aes128GcmSiv).unwrap();
+
+    let nonce = random_nonce(SymCipher::Aes128GcmSiv).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes128GcmSiv, &key, &nonce, &aad, &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_128_GCM_SIV_MAC_LENGTH);
+
+    let decrypted_data = decrypt(
+        SymCipher::Aes128GcmSiv,
+        &key,
+        &nonce,
+        &aad,
+        &ciphertext,
+        &tag,
+    )
+    .unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[cfg(not(feature = "fips"))]
+#[test]
+fn test_encrypt_decrypt_aes_gcm_siv_256() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message = vec![0_u8; 42];
+    rand_bytes(&mut message).unwrap();
+
+    let key = random_key(SymCipher::Aes256GcmSiv).unwrap();
+
+    let nonce = random_nonce(SymCipher::Aes256GcmSiv).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    let (ciphertext, tag) = encrypt(SymCipher::Aes256GcmSiv, &key, &nonce, &aad, &message).unwrap();
+    assert_eq!(ciphertext.len(), message.len());
+    assert_eq!(tag.len(), AES_128_GCM_SIV_MAC_LENGTH);
+
+    let decrypted_data = decrypt(
+        SymCipher::Aes256GcmSiv,
+        &key,
+        &nonce,
+        &aad,
+        &ciphertext,
+        &tag,
+    )
+    .unwrap();
+
+    // `to_vec()` conversion because of Zeroizing<>.
+    assert_eq!(decrypted_data.to_vec(), message);
+}
+
+#[test]
+fn aes_gcm_streaming_test() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message1 = vec![0_u8; 42];
+    rand_bytes(&mut message1).unwrap();
+    let mut message2 = vec![0_u8; 29];
+    rand_bytes(&mut message2).unwrap();
+    let mut message3 = vec![0_u8; 17];
+    rand_bytes(&mut message3).unwrap();
+
+    let key = random_key(SymCipher::Aes256Gcm).unwrap();
+
+    let nonce = random_nonce(SymCipher::Aes256Gcm).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
 
     // encrypt
-    let enc_res = aes
-        .encrypt(&Encrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString("blah".to_owned())),
-            cryptographic_parameters: Some(CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                initial_counter_value: Some(42),
-                ..Default::default()
-            }),
-            data: Some(data.clone()),
-            iv_counter_nonce: Some(nonce),
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
-            authenticated_encryption_additional_data: Some(uid.clone()),
-        })
+    let mut encryption_cipher = SymCipher::Aes256Gcm
+        .stream_cipher(Mode::Encrypt, &key, &nonce, &aad)
         .unwrap();
+    let mut result = Vec::<u8>::new();
+    result.extend(encryption_cipher.update(&message1).unwrap());
+    result.extend(encryption_cipher.update(&message2).unwrap());
+    result.extend(encryption_cipher.update(&message3).unwrap());
+    let (remainder, tag) = encryption_cipher.finalize_encryption().unwrap();
+    result.extend(remainder);
+    assert_eq!(
+        result.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(tag.len(), AES_256_GCM_MAC_LENGTH);
     // decrypt
-    let dec_res = aes
-        .decrypt(&Decrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString("blah".to_owned())),
-            cryptographic_parameters: Some(CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                initial_counter_value: Some(42),
-                ..Default::default()
-            }),
-            data: Some(enc_res.data.unwrap()),
-            iv_counter_nonce: Some(enc_res.iv_counter_nonce.unwrap()),
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
-            authenticated_encryption_additional_data: Some(uid.clone()),
-            authenticated_encryption_tag: Some(enc_res.authenticated_encryption_tag.unwrap()),
-        })
+    let mut decryption_cipher = SymCipher::Aes256Gcm
+        .stream_cipher(Mode::Decrypt, &key, &nonce, &aad)
         .unwrap();
+    let mut decrypted_data = decryption_cipher.update(&result).unwrap();
+    decrypted_data.extend(decryption_cipher.finalize_decryption(&tag).unwrap());
+    assert_eq!(
+        decrypted_data.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(
+        decrypted_data,
+        [&message1[..], &message2[..], &message3[..]].concat()
+    );
+}
 
-    assert_eq!(&data.clone(), &dec_res.data.unwrap());
-    Ok(())
+#[cfg(not(feature = "fips"))]
+#[test]
+fn chacha_streaming_test() {
+    let mut message1 = vec![0_u8; 42];
+    rand_bytes(&mut message1).unwrap();
+    let mut message2 = vec![0_u8; 29];
+    rand_bytes(&mut message2).unwrap();
+    let mut message3 = vec![0_u8; 17];
+    rand_bytes(&mut message3).unwrap();
+
+    let key = random_key(SymCipher::Chacha20Poly1305).unwrap();
+
+    let nonce = random_nonce(SymCipher::Chacha20Poly1305).unwrap();
+
+    let mut aad = vec![0_u8; 24];
+    rand_bytes(&mut aad).unwrap();
+
+    // encrypt
+    let mut encryption_cipher = SymCipher::Chacha20Poly1305
+        .stream_cipher(Mode::Encrypt, &key, &nonce, &aad)
+        .unwrap();
+    let mut result = Vec::<u8>::new();
+    result.extend(encryption_cipher.update(&message1).unwrap());
+    result.extend(encryption_cipher.update(&message2).unwrap());
+    result.extend(encryption_cipher.update(&message3).unwrap());
+    let (remainder, tag) = encryption_cipher.finalize_encryption().unwrap();
+    result.extend(remainder);
+    assert_eq!(
+        result.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(tag.len(), AES_256_GCM_MAC_LENGTH);
+    // decrypt
+    let mut decryption_cipher = SymCipher::Chacha20Poly1305
+        .stream_cipher(Mode::Decrypt, &key, &nonce, &aad)
+        .unwrap();
+    let mut decrypted_data = decryption_cipher.update(&result).unwrap();
+    decrypted_data.extend(decryption_cipher.finalize_decryption(&tag).unwrap());
+    assert_eq!(
+        decrypted_data.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(
+        decrypted_data,
+        [&message1[..], &message2[..], &message3[..]].concat()
+    );
+}
+
+#[test]
+fn aes_xts_streaming_test() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    Provider::load(None, "fips").unwrap();
+
+    let mut message1 = vec![0_u8; 42];
+    rand_bytes(&mut message1).unwrap();
+    let mut message2 = vec![0_u8; 27];
+    rand_bytes(&mut message2).unwrap();
+    let mut message3 = vec![0_u8; 17];
+    rand_bytes(&mut message3).unwrap();
+
+    let key = random_key(SymCipher::Aes256Xts).unwrap();
+
+    let tweak = random_nonce(SymCipher::Aes256Xts).unwrap();
+
+    // encrypt
+    let mut encryption_cipher = SymCipher::Aes256Xts
+        .stream_cipher(Mode::Encrypt, &key, &tweak, &[])
+        .unwrap();
+    let mut result = Vec::<u8>::new();
+    result.extend(encryption_cipher.update(&message1).unwrap());
+    result.extend(encryption_cipher.update(&message2).unwrap());
+    result.extend(encryption_cipher.update(&message3).unwrap());
+    let (remainder, tag) = encryption_cipher.finalize_encryption().unwrap();
+    result.extend(remainder);
+    assert_eq!(
+        result.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(tag.len(), AES_256_XTS_MAC_LENGTH); //0
+    // decrypt
+    let mut decryption_cipher = SymCipher::Aes256Xts
+        .stream_cipher(Mode::Decrypt, &key, &tweak, &[])
+        .unwrap();
+    let mut decrypted_data = decryption_cipher.update(&result).unwrap();
+    decrypted_data.extend(decryption_cipher.finalize_decryption(&tag).unwrap());
+    assert_eq!(
+        decrypted_data.len(),
+        message1.len() + message2.len() + message3.len()
+    );
+    assert_eq!(
+        decrypted_data,
+        [&message1[..], &message2[..], &message3[..]].concat()
+    );
 }

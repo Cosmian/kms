@@ -107,7 +107,7 @@ where
         object,
     };
 
-    tracing::debug!("import request: {import_request:?}");
+    tracing::debug!("import request: {import_request}");
     let response: ImportResponse = test_utils::post(app, import_request).await?;
     tracing::debug!("import response: {response:?}");
 
@@ -322,7 +322,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     // Create RSA key pair for Google GMail
     let created_key_pair = kms
         .create_key_pair(
-            create_rsa_key_pair_request(Vec::<String>::new(), 4096)?,
+            create_rsa_key_pair_request(None, Vec::<String>::new(), 4096)?,
             owner,
             None,
         )

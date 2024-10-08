@@ -78,6 +78,7 @@ pub fn build_encryption_request(
     encryption_policy: Option<String>,
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
+    nonce: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
     cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Result<Encrypt, KmipError> {
@@ -99,7 +100,7 @@ pub fn build_encryption_request(
         )),
         cryptographic_parameters,
         data: Some(data_to_encrypt),
-        iv_counter_nonce: None,
+        iv_counter_nonce: nonce,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

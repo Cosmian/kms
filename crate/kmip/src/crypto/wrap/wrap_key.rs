@@ -17,8 +17,8 @@ use crate::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
         },
         symmetric::{
-            aead::{aead_encrypt, random_nonce, AeadCipher},
             rfc5649::rfc5649_wrap,
+            symmetric_ciphers::{encrypt, random_nonce, SymCipher},
         },
         wrap::common::rsa_parameters,
         FIPS_MIN_SALT_SIZE,
@@ -196,7 +196,7 @@ pub(crate) fn wrap(
         | Object::PrivateKey { key_block }
         | Object::PublicKey { key_block }
         | Object::SymmetricKey { key_block } => {
-            debug!("wrap: key_block: {:?}", key_block);
+            debug!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 kmip_bail!("unable to wrap key: wrapping key is wrapped and that is not supported")
@@ -235,7 +235,7 @@ pub(crate) fn wrap(
                     let aad = additional_data_encryption.unwrap_or_default();
                     if block_cipher_mode == Some(BlockCipherMode::GCM) {
                         // wrap using aes GCM
-                        let aead = AeadCipher::from_algorithm_and_key_size(
+                        let aead = SymCipher::from_algorithm_and_key_size(
                             cryptographic_algorithm,
                             block_cipher_mode,
                             key_bytes.len(),
@@ -244,7 +244,7 @@ pub(crate) fn wrap(
                         let nonce = random_nonce(aead)?;
 
                         let (ct, authenticated_encryption_tag) =
-                            aead_encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
+                            encrypt(aead, &key_bytes, &nonce, aad, key_to_wrap)?;
                         let mut ciphertext = Vec::with_capacity(
                             nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                         );

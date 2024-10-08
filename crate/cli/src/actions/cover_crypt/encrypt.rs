@@ -82,6 +82,7 @@ impl EncryptAction {
             Some(self.encryption_policy.to_string()),
             data,
             None,
+            None,
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
@@ -91,7 +92,7 @@ impl EncryptAction {
             }),
         )?;
 
-        tracing::debug!("{encrypt_request:?}");
+        tracing::debug!("{encrypt_request}");
 
         // Query the KMS with your kmip data and get the key pair ids
         let encrypt_response = kms_rest_client

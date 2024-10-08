@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{
@@ -103,7 +103,7 @@ pub enum Direction {
     Response,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
@@ -141,6 +141,87 @@ pub enum Operation {
     DestroyResponse(DestroyResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
+}
+
+impl Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Import(import) => write!(f, "Import({import})"),
+            Self::ImportResponse(import_response) => {
+                write!(f, "ImportResponse({import_response})")
+            }
+            Self::Certify(certify) => write!(f, "Certify({certify})"),
+            Self::CertifyResponse(certify_response) => {
+                write!(f, "CertifyResponse({certify_response})")
+            }
+            Self::Create(create) => write!(f, "Create({create})"),
+            Self::CreateResponse(create_response) => {
+                write!(f, "CreateResponse({create_response})")
+            }
+            Self::CreateKeyPair(create_key_pair) => {
+                write!(f, "CreateKeyPair({create_key_pair})")
+            }
+            Self::CreateKeyPairResponse(create_key_pair_response) => {
+                write!(f, "CreateKeyPairResponse({create_key_pair_response})")
+            }
+            Self::Export(export) => write!(f, "Export({export})"),
+            Self::ExportResponse(export_response) => {
+                write!(f, "ExportResponse({export_response})")
+            }
+            Self::Get(get) => write!(f, "Get({get})"),
+            Self::GetResponse(get_response) => write!(f, "GetResponse({get_response})"),
+            Self::GetAttributes(get_attributes) => {
+                write!(f, "GetAttributes({get_attributes})")
+            }
+            Self::GetAttributesResponse(get_attributes_response) => {
+                write!(f, "GetAttributesResponse({get_attributes_response})")
+            }
+            Self::SetAttribute(set_attribute) => write!(f, "SetAttribute({set_attribute})"),
+            Self::SetAttributeResponse(set_attribute_response) => {
+                write!(f, "SetAttributeResponse({set_attribute_response})")
+            }
+            Self::DeleteAttribute(delete_attribute) => {
+                write!(f, "DeleteAttribute({delete_attribute})")
+            }
+            Self::DeleteAttributeResponse(delete_attribute_response) => {
+                write!(f, "DeleteAttributeResponse({delete_attribute_response})")
+            }
+            Self::Encrypt(encrypt) => write!(f, "Encrypt({encrypt})"),
+            Self::EncryptResponse(encrypt_response) => {
+                write!(f, "EncryptResponse({encrypt_response})")
+            }
+            Self::Decrypt(decrypt) => write!(f, "Decrypt({decrypt})"),
+            Self::DecryptResponse(decrypt_response) => {
+                write!(f, "DecryptResponse({decrypt_response})")
+            }
+            Self::Locate(locate) => write!(f, "Locate({locate})"),
+            Self::LocateResponse(locate_response) => {
+                write!(f, "LocateResponse({locate_response})")
+            }
+            Self::Revoke(revoke) => write!(f, "Revoke({revoke})"),
+            Self::RevokeResponse(revoke_response) => {
+                write!(f, "RevokeResponse({revoke_response})")
+            }
+            Self::ReKey(re_key) => write!(f, "ReKey({re_key})"),
+            Self::ReKeyResponse(re_key_response) => {
+                write!(f, "ReKeyResponse({re_key_response})")
+            }
+            Self::ReKeyKeyPair(re_key_key_pair) => {
+                write!(f, "ReKeyKeyPair({re_key_key_pair})")
+            }
+            Self::ReKeyKeyPairResponse(re_key_key_pair_response) => {
+                write!(f, "ReKeyKeyPairResponse({re_key_key_pair_response})")
+            }
+            Self::Destroy(destroy) => write!(f, "Destroy({destroy})"),
+            Self::DestroyResponse(destroy_response) => {
+                write!(f, "DestroyResponse({destroy_response})")
+            }
+            Self::Validate(validate) => write!(f, "Validate({validate})"),
+            Self::ValidateResponse(validate_response) => {
+                write!(f, "ValidateResponse({validate_response})")
+            }
+        }
+    }
 }
 
 impl Operation {
@@ -242,7 +323,7 @@ impl Operation {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operations into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Serialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     /// The Unique Identifier of the object to be imported
@@ -264,6 +345,22 @@ pub struct Import {
     pub attributes: Attributes,
     /// The object being imported. The object and attributes MAY be wrapped.
     pub object: Object,
+}
+
+impl Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
+             key_wrap_type: {:?}, attributes: {:?}, object: {} }}",
+            self.unique_identifier,
+            self.object_type,
+            self.replace_existing,
+            self.key_wrap_type,
+            self.attributes,
+            self.object
+        )
+    }
 }
 
 /// Deserialization needs to be handwritten because the
@@ -386,6 +483,16 @@ pub struct ImportResponse {
     pub unique_identifier: UniqueIdentifier,
 }
 
+impl Display for ImportResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ImportResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
 /// This request is used to generate a Certificate object for a public key. This
 /// request supports the certification of a new public key, as well as the
 /// certification of a public key that has already been certified (i.e.,
@@ -413,7 +520,7 @@ pub struct ImportResponse {
 /// into the ID Placeholder variable. If the information in the Certificate
 /// Request conflicts with the attributes specified in the Attributes, then the
 /// information in the Certificate Request takes precedence.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
     // The Unique Identifier of the Public Key or the Certificate Request being certified. If
@@ -437,11 +544,36 @@ pub struct Certify {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Certify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Certify {{ unique_identifier: {:?}, certificate_request_type: {:?}, \
+             certificate_request_value: {:?}, attributes: {:?}, protection_storage_masks: {:?} }}",
+            self.unique_identifier,
+            self.certificate_request_type,
+            self.certificate_request_value,
+            self.attributes,
+            self.protection_storage_masks
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     /// The Unique Identifier of the newly created object.
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for CertifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CertifyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 /// This operation requests the server to generate a new symmetric key or
@@ -451,7 +583,7 @@ pub struct CertifyResponse {
 /// Cryptographic Length, etc.). The response contains the Unique Identifier of
 /// the created object. The server SHALL copy the Unique Identifier returned by
 /// this operation into the ID Placeholder variable.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created.
@@ -464,6 +596,16 @@ pub struct Create {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl Display for Create {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Create {{ object_type: {}, attributes: {:?}, protection_storage_masks: {:?} }}",
+            self.object_type, self.attributes, self.protection_storage_masks
+        )
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
@@ -471,6 +613,16 @@ pub struct CreateResponse {
     pub object_type: ObjectType,
     /// The Unique Identifier of the newly created object.
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for CreateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CreateResponse {{ object_type: {}, unique_identifier: {} }}",
+            self.object_type, self.unique_identifier
+        )
+    }
 }
 
 /// This operation requests the server to generate a new public/private key pair
@@ -487,7 +639,7 @@ pub struct CreateResponse {
 /// Private Key pointing to the Private Key. The response contains the Unique
 /// Identifiers of both created objects. The ID Placeholder value SHALL be set
 /// to the Unique Identifier of the Private Key
-#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Specifies desired attributes to be associated with the new object that
@@ -516,6 +668,23 @@ pub struct CreateKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
+impl Display for CreateKeyPair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CreateKeyPair {{ common_attributes: {:?}, private_key_attributes: {:?}, \
+             public_key_attributes: {:?}, common_protection_storage_masks: {:?}, \
+             private_protection_storage_masks: {:?}, public_protection_storage_masks: {:?} }}",
+            self.common_attributes,
+            self.private_key_attributes,
+            self.public_key_attributes,
+            self.common_protection_storage_masks,
+            self.private_protection_storage_masks,
+            self.public_protection_storage_masks
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
@@ -523,6 +692,17 @@ pub struct CreateKeyPairResponse {
     pub private_key_unique_identifier: UniqueIdentifier,
     /// The Unique Identifier of the newly created public key object.
     pub public_key_unique_identifier: UniqueIdentifier,
+}
+
+impl Display for CreateKeyPairResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CreateKeyPairResponse {{ private_key_unique_identifier: {}, \
+             public_key_unique_identifier: {} }}",
+            self.private_key_unique_identifier, self.public_key_unique_identifier
+        )
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -593,7 +773,7 @@ pub struct DeriveKey {
 /// SHALL not be returned in the response.
 /// The server SHALL copy the Unique Identifier returned by this operations
 /// into the ID Placeholder variable.
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Export {
     /// Determines the object being requested. If omitted, then the ID
@@ -612,6 +792,21 @@ pub struct Export {
     /// Specifies keys and other information for wrapping the returned object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
+}
+
+impl Display for Export {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Export {{ unique_identifier: {:?}, key_format_type: {:?}, key_wrap_type: {:?}, \
+             key_compression_type: {:?}, key_wrapping_specification: {:?} }}",
+            self.unique_identifier,
+            self.key_format_type,
+            self.key_wrap_type,
+            self.key_compression_type,
+            self.key_wrapping_specification
+        )
+    }
 }
 
 impl Export {
@@ -688,13 +883,24 @@ impl From<Get> for Export {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExportResponse {
     pub object_type: ObjectType,
     pub unique_identifier: UniqueIdentifier,
     pub attributes: Attributes,
     pub object: Object,
+}
+
+impl Display for ExportResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ExportResponse {{ object_type: {}, unique_identifier: {}, attributes: {:?}, object: \
+             {} }}",
+            self.object_type, self.unique_identifier, self.attributes, self.object
+        )
+    }
 }
 
 /// This operation requests that the server returns the Managed Object specified by its Unique Identifier.
@@ -746,6 +952,21 @@ pub struct Get {
     /// Specifies keys and other information for wrapping the returned object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_specification: Option<KeyWrappingSpecification>,
+}
+
+impl Display for Get {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Get {{ unique_identifier: {:?}, key_format_type: {:?}, key_wrap_type: {:?}, \
+             key_compression_type: {:?}, key_wrapping_specification: {:?} }}",
+            self.unique_identifier,
+            self.key_format_type,
+            self.key_wrap_type,
+            self.key_compression_type,
+            self.key_wrapping_specification
+        )
+    }
 }
 
 impl Get {
@@ -826,12 +1047,22 @@ impl From<&str> for Get {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
     pub unique_identifier: UniqueIdentifier,
     pub object: Object,
+}
+
+impl Display for GetResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "GetResponse {{ object_type: {}, unique_identifier: {}, object: {} }}",
+            self.object_type, self.unique_identifier, self.object
+        )
+    }
 }
 
 impl From<ExportResponse> for GetResponse {
@@ -844,7 +1075,7 @@ impl From<ExportResponse> for GetResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes
@@ -861,6 +1092,17 @@ pub struct GetAttributes {
     )]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
+
+impl Display for GetAttributes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "GetAttributes {{ unique_identifier: {:?}, attribute_references: {:?} }}",
+            self.unique_identifier, self.attribute_references
+        )
+    }
+}
+
 impl From<String> for GetAttributes {
     fn from(uid: String) -> Self {
         Self {
@@ -880,7 +1122,7 @@ impl From<&str> for GetAttributes {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     /// The Unique Identifier of the object
@@ -889,7 +1131,17 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for GetAttributesResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "GetAttributesResponse {{ unique_identifier: {}, attributes: {:?} }}",
+            self.unique_identifier, self.attributes
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SetAttribute {
     /// The Unique Identifier of the object. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -899,14 +1151,34 @@ pub struct SetAttribute {
     pub new_attribute: Attribute,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for SetAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {} }}",
+            self.unique_identifier, self.new_attribute
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SetAttributeResponse {
     /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for SetAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SetAttributeResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttribute {
     /// Determines the object whose attributes are being deleted. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -923,14 +1195,35 @@ pub struct DeleteAttribute {
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for DeleteAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeleteAttribute {{ unique_identifier: {:?}, current_attribute: {:?}, \
+             attribute_references: {:?} }}",
+            self.unique_identifier, self.current_attribute, self.attribute_references
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
+impl Display for DeleteAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DeleteAttributeResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     /// The Unique Identifier of the Managed
@@ -980,7 +1273,26 @@ pub struct Encrypt {
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Encrypt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
+             final_indicator: {:?}, authenticated_encryption_additional_data: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.iv_counter_nonce,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+            self.authenticated_encryption_additional_data
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     /// The Unique Identifier of the Managed
@@ -1014,7 +1326,22 @@ pub struct EncryptResponse {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
+impl Display for EncryptResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EncryptResponse {{ unique_identifier: {}, data: {:?}, iv_counter_nonce: {:?}, \
+             correlation_value: {:?}, authenticated_encryption_tag: {:?} }}",
+            self.unique_identifier,
+            self.data,
+            self.iv_counter_nonce,
+            self.correlation_value,
+            self.authenticated_encryption_tag
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     /// The Unique Identifier of the Managed
@@ -1073,6 +1400,27 @@ pub struct Decrypt {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
+impl Display for Decrypt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {:?}, \
+             iv_counter_nonce: {:?}, correlation_value: {:?}, init_indicator: {:?}, \
+             final_indicator: {:?}, authenticated_encryption_additional_data: {:?}, \
+             authenticated_encryption_tag: {:?} }}",
+            self.unique_identifier,
+            self.cryptographic_parameters,
+            self.data,
+            self.iv_counter_nonce,
+            self.correlation_value,
+            self.init_indicator,
+            self.final_indicator,
+            self.authenticated_encryption_additional_data,
+            self.authenticated_encryption_tag
+        )
+    }
+}
+
 /// When decrypting data with Cover Crypt we can have some
 /// additional metadata stored inside the header and encrypted
 /// with de DEM. We need to return these data to the user but
@@ -1122,7 +1470,7 @@ impl TryFrom<&[u8]> for DecryptedData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     /// The Unique Identifier of the Managed
@@ -1138,6 +1486,16 @@ pub struct DecryptResponse {
     /// cryptographic operations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for DecryptResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DecryptResponse {{ unique_identifier: {}, data: {:?}, correlation_value: {:?} }}",
+            self.unique_identifier, self.data, self.correlation_value
+        )
+    }
 }
 
 /// This operation requests that the server search for one or more Managed
@@ -1223,7 +1581,7 @@ pub struct DecryptResponse {
 /// Mask field includes the Destroyed Storage indicator. The server SHALL NOT
 /// return unique identifiers for objects that are archived unless the Storage
 /// Status Mask field includes the Archived Storage indicator.
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object
@@ -1248,7 +1606,22 @@ pub struct Locate {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Locate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Locate {{ maximum_items: {:?}, offset_items: {:?}, storage_status_mask: {:?}, \
+             object_group_member: {:?}, attributes: {:?} }}",
+            self.maximum_items,
+            self.offset_items,
+            self.storage_status_mask,
+            self.object_group_member,
+            self.attributes
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocateResponse {
     /// An Integer object that indicates the number of object identifiers that
     /// satisfy the identification criteria specified in the request. A server
@@ -1261,6 +1634,16 @@ pub struct LocateResponse {
     /// The Unique Identifier of the located objects.
     #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
     pub unique_identifiers: Option<Vec<UniqueIdentifier>>,
+}
+
+impl Display for LocateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "LocateResponse {{ located_items: {:?}, unique_identifiers: {:?} }}",
+            self.located_items, self.unique_identifiers
+        )
+    }
 }
 
 /// This operation requests the server to revoke a Managed Cryptographic Object
@@ -1278,7 +1661,7 @@ pub struct LocateResponse {
 /// If the revocation reason is neither "key
 /// compromise" nor "CA compromise", the object is placed into the "deactivated"
 /// state, and the Deactivation Date is set to the current date and time.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
     /// Determines the object being revoked. If omitted, then the ID Placeholder
@@ -1294,11 +1677,32 @@ pub struct Revoke {
     pub compromise_occurrence_date: Option<u64>, // epoch millis
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Revoke {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Revoke {{ unique_identifier: {:?}, revocation_reason: {:?}, \
+             compromise_occurrence_date: {:?} }}",
+            self.unique_identifier, self.revocation_reason, self.compromise_occurrence_date
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     /// The Unique Identifier of the object.
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for RevokeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RevokeResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
@@ -1312,7 +1716,7 @@ pub struct RevokeResponse {
 /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
 ///
 /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKey {
     // Determines the existing Symmetric Key being re-keyed. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -1333,11 +1737,32 @@ pub struct ReKey {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for ReKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ReKey {{ unique_identifier: {:?}, offset: {:?}, attributes: {:?}, \
+             protection_storage_masks: {:?} }}",
+            self.unique_identifier, self.offset, self.attributes, self.protection_storage_masks
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for ReKeyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ReKeyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
 }
 
 /// This request is used to generate a replacement key pair for an existing
@@ -1365,7 +1790,7 @@ pub struct ReKeyResponse {
 /// key pair. If Offset is set and dates exist for the existing key pair, then
 /// the dates of the replacement key pair SHALL be set based on the dates of the
 /// existing key pair as follows
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
     // Determines the existing Asymmetric key pair to be re-keyed.  If omitted, then the ID
@@ -1406,7 +1831,27 @@ pub struct ReKeyKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for ReKeyKeyPair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ReKeyKeyPair {{ private_key_unique_identifier: {:?}, offset: {:?}, \
+             common_attributes: {:?}, private_key_attributes: {:?}, public_key_attributes: {:?}, \
+             common_protection_storage_masks: {:?}, private_protection_storage_masks: {:?}, \
+             public_protection_storage_masks: {:?} }}",
+            self.private_key_unique_identifier,
+            self.offset,
+            self.common_attributes,
+            self.private_key_attributes,
+            self.public_key_attributes,
+            self.common_protection_storage_masks,
+            self.private_protection_storage_masks,
+            self.public_protection_storage_masks
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
@@ -1415,7 +1860,18 @@ pub struct ReKeyKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for ReKeyKeyPairResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ReKeyKeyPairResponse {{ private_key_unique_identifier: {}, \
+             public_key_unique_identifier: {} }}",
+            self.private_key_unique_identifier, self.public_key_unique_identifier
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     /// Determines the object being destroyed. If omitted, then the ID
@@ -1424,12 +1880,33 @@ pub struct Destroy {
     pub unique_identifier: Option<UniqueIdentifier>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Destroy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Destroy {{ unique_identifier: {:?} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     /// The Unique Identifier of the object.
     pub unique_identifier: UniqueIdentifier,
 }
+
+impl Display for DestroyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DestroyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity. Only a single certificate chain SHALL be
 /// included in each request.
@@ -1443,7 +1920,7 @@ pub struct DestroyResponse {
 /// Likewise, the order in which the supplied certificate chain is validated and
 /// the specification of trust anchors used to terminate validation are also
 /// controlled by the server.
-#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Validate {
     /// One or more Certificates.
@@ -1458,12 +1935,32 @@ pub struct Validate {
     pub validity_time: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl Display for Validate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Validate {{ certificate: {:?}, unique_identifier: {:?}, validity_time: {:?} }}",
+            self.certificate, self.unique_identifier, self.validity_time
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
     /// invalid, or unknown.
     pub validity_indicator: ValidityIndicator,
+}
+
+impl Display for ValidateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ValidateResponse {{ validity_indicator: {:?} }}",
+            self.validity_indicator
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

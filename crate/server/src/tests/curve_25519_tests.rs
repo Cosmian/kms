@@ -38,7 +38,11 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(
+        Some(UniqueIdentifier::TextString("ec_sk_uid".to_owned())),
+        EMPTY_TAGS,
+        RecommendedCurve::CURVE25519,
+    )?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -58,6 +62,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .unique_identifier
         .as_str()
         .context("no string for the unique_identifier")?;
+    assert_eq!(sk_uid, "ec_sk_uid".to_owned());
     let sk = &sk_response.object;
     let sk_key_block = match sk {
         Object::PrivateKey { key_block } => key_block.clone(),
@@ -211,6 +216,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
             )?)),
@@ -235,18 +241,22 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                None,
                 EMPTY_TAGS,
                 RecommendedCurve::SECP256K1,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
             )?)),

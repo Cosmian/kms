@@ -19,8 +19,6 @@ test = false
 doctest = false
 
 [features]
-# default is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
-default = []
 fips = ["cosmian_kms_client/fips"]
 
 [dependencies]
@@ -43,6 +41,7 @@ hex = { workspace = true }
 jwt-simple = { version = "0.12", default-features = false, features = [
   "pure-rust",
 ] }
+leb128 = { workspace = true }
 oauth2 = { version = "4.4", features = ["reqwest"] }
 pem = { workspace = true }
 reqwest = { workspace = true }
@@ -62,10 +61,6 @@ actix-rt = { workspace = true }
 actix-server = { workspace = true }
 assert_cmd = "2.0"
 const-oid = { version = "0.9", features = ["db"] }
-cosmian_kms_server = { path = "../server", features = [
-  "insecure",
-], default-features = false }
-cosmian_logger = { path = "../logger" }
 kms_test_server = { path = "../test_server" }
 openssl = { workspace = true }
 predicates = "3.1"

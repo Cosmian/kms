@@ -1328,6 +1328,39 @@ pub enum Attribute {
     VendorAttributes(Vec<VendorAttribute>),
 }
 
+impl Display for Attribute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ActivationDate(activation_date) => {
+                write!(f, "ActivationDate: {activation_date}")
+            }
+            Self::CryptographicAlgorithm(crypto_algorithm) => {
+                write!(f, "CryptographicAlgorithm: {crypto_algorithm}")
+            }
+            Self::CryptographicLength(crypto_length) => {
+                write!(f, "CryptographicLength: {crypto_length}")
+            }
+            Self::CryptographicParameters(crypto_parameters) => {
+                write!(f, "CryptographicParameters: {crypto_parameters:?}")
+            }
+            Self::CryptographicDomainParameters(crypto_domain_parameters) => {
+                write!(
+                    f,
+                    "CryptographicDomainParameters: {crypto_domain_parameters:?}"
+                )
+            }
+            Self::CryptographicUsageMask(crypto_usage_mask) => {
+                write!(f, "CryptographicUsageMask: {crypto_usage_mask:?}")
+            }
+            Self::Links(links) => write!(f, "Links: {links:?}"),
+            Self::State(state) => write!(f, "State: {state}"),
+            Self::VendorAttributes(vendor_attributes) => {
+                write!(f, "VendorAttributes: {vendor_attributes:?}")
+            }
+        }
+    }
+}
+
 impl Serialize for Attribute {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -2415,6 +2448,9 @@ pub enum BlockCipherMode {
     #[value(name = "NISTKeyWrap")]
     // NISTKeyWrap refers to rfc5649
     NISTKeyWrap = 0x8000_0001,
+    #[value(name = "GCMSIV")]
+    // AES GCM SIV
+    GCMSIV = 0x8000_0002,
 }
 
 #[allow(non_camel_case_types)]

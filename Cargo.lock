@@ -302,6 +302,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes-gcm-siv"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae0784134ba9375416d469ec31e7c5f9fa94405049cf08c5ce5b4698be673e0d"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "polyval",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1262,6 +1277,7 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.19.0"
 dependencies = [
+ "aes-gcm-siv",
  "argon2",
  "base64 0.21.7",
  "bitflags 2.6.0",
@@ -1299,12 +1315,12 @@ dependencies = [
  "cloudproof",
  "const-oid",
  "cosmian_kms_client",
- "cosmian_kms_server",
  "cosmian_logger",
  "der",
  "hex",
  "jwt-simple",
  "kms_test_server",
+ "leb128",
  "oauth2",
  "openssl",
  "pem",

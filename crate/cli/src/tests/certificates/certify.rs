@@ -683,7 +683,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
     Ok(())
 }
 
-pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<String> {
+pub(crate) fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<String> {
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
         create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
@@ -709,7 +709,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // create a self signed certificate
-    let certificate_id = create_self_signed_cert(ctx).await?;
+    let certificate_id = create_self_signed_cert(ctx)?;
 
     let (_, attributes, _) = fetch_certificate(ctx, &certificate_id);
     // since the certificate is self signed, the Certificate Link should point back to itself

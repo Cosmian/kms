@@ -53,10 +53,10 @@ use crate::{
 /// * `PKey<Public>` - The openssl Public key
 ///
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, KmipError> {
-    trace!("kmip_public_key_to_openssl: {:?}", public_key);
+    trace!("kmip_public_key_to_openssl: {}", public_key);
     let key_block = match public_key {
         Object::PublicKey { key_block } => key_block,
-        x => kmip_bail!("Invalid Object: {:?}. KMIP Public Key expected", x),
+        x => kmip_bail!("Invalid Object: {}. KMIP Public Key expected", x),
     };
     // Convert the key to the default storage format: SPKI DER (RFC 5480)
     let pk: PKey<Public> = match key_block.key_format_type {
@@ -87,7 +87,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
             }
             invalid_key_material => kmip_bail!(
                 "Invalid Transparent RSA public key material: expected TransparentRSAPublicKey \
-                 but got: {:?} ",
+                 but got: {} ",
                 invalid_key_material
             ),
         },

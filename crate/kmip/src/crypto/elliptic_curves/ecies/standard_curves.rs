@@ -9,7 +9,7 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
+    crypto::symmetric::symmetric_ciphers::{decrypt, encrypt, SymCipher},
     error::{result::KmipResultHelper, KmipError},
     kmip_bail,
 };
@@ -91,7 +91,7 @@ pub(crate) fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<V
     let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
 
     // Encrypt data using the provided.
-    let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, &[], plaintext)?;
+    let (ciphertext, tag) = encrypt(aead, &key, &iv, &[], plaintext)?;
 
     let R_bytes = R
         .public_key()
@@ -145,16 +145,16 @@ pub(crate) fn ecies_decrypt(
     let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
 
     // We could use ou own aead to offer more DEM options.
-    let plaintext = aead_decrypt(aead, &key, &iv, &[], ct, tag)?;
+    let plaintext = decrypt(aead, &key, &iv, &[], ct, tag)?;
 
     Ok(plaintext)
 }
 
-fn aead_and_digest(curve: &EcGroupRef) -> Result<(AeadCipher, MessageDigest), KmipError> {
+fn aead_and_digest(curve: &EcGroupRef) -> Result<(SymCipher, MessageDigest), KmipError> {
     let (aead, md) = match curve.curve_name().context("Unsupported curve")? {
-        Nid::SECP384R1 | Nid::SECP521R1 => (AeadCipher::Aes256Gcm, MessageDigest::shake_256()),
+        Nid::SECP384R1 | Nid::SECP521R1 => (SymCipher::Aes256Gcm, MessageDigest::shake_256()),
         Nid::X9_62_PRIME256V1 | Nid::SECP224R1 | Nid::X9_62_PRIME192V1 => {
-            (AeadCipher::Aes128Gcm, MessageDigest::shake_128())
+            (SymCipher::Aes128Gcm, MessageDigest::shake_128())
         }
         other => kmip_bail!("Unsupported curve: {:?}", other),
     };

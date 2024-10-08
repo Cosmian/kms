@@ -582,7 +582,6 @@ impl Database for RedisWithFindex {
 
         // fetch the corresponding objects
         let redis_db_objects = self.objects_db.objects_get(&uids).await?;
-        trace!("find: redis_db_objects: {:?}", redis_db_objects);
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {

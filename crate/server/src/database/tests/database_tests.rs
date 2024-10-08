@@ -269,7 +269,7 @@ pub(crate) async fn upsert<DB: Database>(
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }
@@ -381,7 +381,7 @@ pub(crate) async fn crud<DB: Database>(
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object. Found {}", objs_.len()),
     }
@@ -437,7 +437,7 @@ pub(crate) async fn crud<DB: Database>(
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Deactivated, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert!(symmetric_key == objs_[0].object);
         }
         _ => kms_bail!("There should be only one object"),
     }

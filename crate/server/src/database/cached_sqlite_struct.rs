@@ -9,7 +9,7 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::reexport::tiny_keccak;
-use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
 use sqlx::{Pool, Sqlite};
 use tracing::{debug, info, trace};
 
@@ -508,7 +508,9 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+    use cosmian_kmip::crypto::{
+        secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+    };
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,

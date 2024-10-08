@@ -5,7 +5,6 @@ use cosmian_kmip::kmip::{
 
 use crate::{
     batch_utils::batch_operations,
-    client_bail,
     cosmian_kmip::kmip::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
@@ -14,6 +13,7 @@ use crate::{
             Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
         },
     },
+    error::result::ClientResult,
     ClientError, ClientResultHelper, KmsClient,
 };
 
@@ -197,7 +197,7 @@ pub async fn batch_export_objects(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     params: ExportObjectParams<'_>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> Result<Vec<(Object, Attributes)>, ClientError> {
     if params.allow_revoked {
         batch_export(
             kms_rest_client,
@@ -231,7 +231,7 @@ async fn batch_get(
     key_format_type: Option<KeyFormatType>,
     block_cipher_mode: Option<BlockCipherMode>,
     authenticated_encryption_additional_data: Option<String>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> ClientResult<Vec<(Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -258,17 +258,22 @@ async fn batch_get(
     for response in responses.chunks(2) {
         match response {
             [
-                Ok(Operation::GetResponse(get)),
-                Ok(Operation::GetAttributesResponse(get_attributes_response)),
+                Operation::GetResponse(get),
+                Operation::GetAttributesResponse(get_attributes_response),
             ] => {
                 let object = Object::post_fix(get.object_type, get.object.clone());
-                results.push(Ok((object, get_attributes_response.attributes.clone())));
+                results.push((object, get_attributes_response.attributes.clone()));
             }
-            [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
-            e => client_bail!(
-                "Unexpected response from KMS, returning a sequence of non matching operations: \
-                 {e:?}"
-            ),
+            operations => {
+                let mut errors = String::new();
+                for op in operations {
+                    errors = format!("{errors}, Unexpected operation {op}\n");
+                }
+                return Err(ClientError::Default(format!(
+                    "Unexpected response from KMS, returning a sequence of non matching \
+                     operations: {errors}",
+                )))
+            }
         }
     }
     Ok(results)
@@ -282,7 +287,7 @@ async fn batch_export(
     key_format_type: Option<KeyFormatType>,
     block_cipher_mode: Option<BlockCipherMode>,
     authenticated_encryption_additional_data: Option<String>,
-) -> Result<Vec<Result<(Object, Attributes), String>>, ClientError> {
+) -> ClientResult<Vec<(Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -309,20 +314,25 @@ async fn batch_export(
     for response in responses.chunks(2) {
         match response {
             [
-                Ok(Operation::ExportResponse(export_response)),
-                Ok(Operation::GetAttributesResponse(get_attributes_response)),
+                Operation::ExportResponse(export_response),
+                Operation::GetAttributesResponse(get_attributes_response),
             ] => {
                 let object =
                     Object::post_fix(export_response.object_type, export_response.object.clone());
                 let mut attributes = export_response.attributes.clone();
                 let _ = attributes.set_tags(get_attributes_response.attributes.get_tags());
-                results.push(Ok((object, get_attributes_response.attributes.clone())));
+                results.push((object, get_attributes_response.attributes.clone()));
             }
-            [Err(e), _] | [_, Err(e)] => results.push(Err(e.to_string())),
-            e => client_bail!(
-                "Unexpected response from KMS, returning a sequence of non matching operations: \
-                 {e:?}"
-            ),
+            operations => {
+                let mut errors = String::new();
+                for op in operations {
+                    errors = format!("{errors}, Unexpected operation {op}\n");
+                }
+                return Err(ClientError::Default(format!(
+                    "Unexpected response from KMS, returning a sequence of non matching \
+                     operations: {errors}",
+                )))
+            }
         }
     }
     Ok(results)

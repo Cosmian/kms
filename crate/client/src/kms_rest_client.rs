@@ -1,5 +1,4 @@
 use std::{
-    fmt::Debug,
     fs::File,
     io::{BufReader, Read},
     sync::Arc,
@@ -641,10 +640,9 @@ impl KmsClient {
 
     pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, ClientError>
     where
-        O: Serialize + Debug,
+        O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        trace!("kmip_request: {:?}", kmip_request);
         let endpoint = "/kmip/2_1";
         let server_url = format!("{}{endpoint}", self.server_url);
         let mut request = self.client.post(&server_url);

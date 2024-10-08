@@ -105,7 +105,7 @@ pub(crate) async fn certify(
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             trace!(
                 "Certify PublicKeyAndSubjectName:{unique_identifier} : public key: \
-                 {from_public_key:?}"
+                 {from_public_key}"
             );
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes;
@@ -146,8 +146,7 @@ pub(crate) async fn certify(
         }
         Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
             trace!(
-                "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: \
-                 {keypair_data:?}"
+                "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: {keypair_data}"
             );
             // update the private key attributes with the public key identifier
             keypair_data.private_key_object.attributes_mut()?.set_link(
