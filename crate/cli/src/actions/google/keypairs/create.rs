@@ -147,9 +147,9 @@ impl CreateKeyPairsAction {
             None => {
                 let created_key_pair = kms_rest_client
                     .create_key_pair(create_rsa_key_pair_request(
+                        None,
                         Vec::<String>::new(),
                         RSA_4096,
-                        None,
                     )?)
                     .await?;
                 (

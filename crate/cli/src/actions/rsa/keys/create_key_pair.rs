@@ -47,7 +47,7 @@ impl CreateKeyPairAction {
             .as_ref()
             .map(|id| UniqueIdentifier::TextString(id.clone()));
         let create_key_pair_request =
-            create_rsa_key_pair_request(&self.tags, self.key_size, private_key_id)?;
+            create_rsa_key_pair_request(private_key_id, &self.tags, self.key_size)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

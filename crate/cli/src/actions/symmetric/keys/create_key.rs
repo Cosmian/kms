@@ -119,7 +119,7 @@ impl CreateKeyAction {
                 .as_ref()
                 .map(|id| UniqueIdentifier::TextString(id.clone()));
             let create_key_request =
-                symmetric_key_create_request(number_of_bits, algorithm, &self.tags, key_id)?;
+                symmetric_key_create_request(key_id, number_of_bits, algorithm, &self.tags)?;
             kms_rest_client
                 .create(create_key_request)
                 .await

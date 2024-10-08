@@ -16,10 +16,9 @@ All notable changes to this project will be documented in this file.
   - Export wrapped keys from KMS specifying the cipher mode
   - Handle auth for guest users ([#271](https://github.com/Cosmian/kms/issues/271))
 - Add SetAttribute/DeleteAttribute KMIP operations ([#303](https://github.com/Cosmian/kms/pull/303))
-- Re-enable wrap/unwrap on ckms by linking statically on openssl ([#317](<https://github>.
-  com/Cosmian/kms/pull/317))
-- Added AES GCM-SIV and AES XTS
-- Added the ability to client side encrypt files with `ckms` and a hybrid scheme
+- Re-enable wrap/unwrap on ckms by linking statically on openssl ([#317](https://github.com/Cosmian/kms/pull/317))
+- Added AES GCM-SIV and AES XTS ([#328](https://github.com/Cosmian/kms/pull/328))
+- Added the ability to client side encrypt files with `ckms` and a hybrid scheme ([#328](https://github.com/Cosmian/kms/pull/328))
 
 ### Documentation
 

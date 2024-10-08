@@ -88,7 +88,7 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
         request: &Create,
-    ) -> KResult<(Object, HashSet<String>, Option<String>)> {
+    ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
 
         // check that the cryptographic algorithm is specified
@@ -136,7 +136,7 @@ impl KMS {
                         create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm)?;
 
                     //return the object and the tags
-                    Ok((object, tags, uid))
+                    Ok((uid, object, tags))
                 }
                 Some(other) => Err(KmsError::InvalidRequest(format!(
                     "unable to generate a symmetric key for format: {other}"
@@ -159,7 +159,7 @@ impl KMS {
         create_request: &Create,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<(Object, HashSet<String>, Option<String>)> {
+    ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
 
@@ -192,7 +192,7 @@ impl KMS {
                     params,
                 )
                 .await?;
-                Ok((object, tags, uid))
+                Ok((uid, object, tags))
             }
             other => Err(KmsError::NotSupported(format!(
                 "the creation of a private key for algorithm: {other:?} is not supported"

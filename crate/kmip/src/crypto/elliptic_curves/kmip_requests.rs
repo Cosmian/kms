@@ -91,9 +91,9 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
 
 /// Build a `CreateKeyPairRequest` for an  elliptic curve
 pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    private_key_id: Option<UniqueIdentifier>,
     tags: T,
     recommended_curve: RecommendedCurve,
-    private_key_id: Option<UniqueIdentifier>,
 ) -> Result<CreateKeyPair, KmipError> {
     let private_key_mask = build_mask_from_curve(recommended_curve, true)?;
     let public_key_mask = build_mask_from_curve(recommended_curve, false)?;

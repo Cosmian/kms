@@ -322,7 +322,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     // Create RSA key pair for Google GMail
     let created_key_pair = kms
         .create_key_pair(
-            create_rsa_key_pair_request(Vec::<String>::new(), 4096, None)?,
+            create_rsa_key_pair_request(None, Vec::<String>::new(), 4096)?,
             owner,
             None,
         )

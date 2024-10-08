@@ -27,7 +27,8 @@ async fn test_kmip_messages() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let ec_create_request = create_ec_key_pair_request(EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let ec_create_request =
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
 
     // prepare and send the single message
     let items = vec![
