@@ -246,6 +246,15 @@ impl EncryptAction {
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
 
+        // Additional authenticated data (AAD) for AEAD ciphers
+        // (empty for XTS)
+        let aad = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesGcm
+            | DataEncryptionAlgorithm::Chacha20Poly1305
+            | DataEncryptionAlgorithm::AesGcmSiv => aad.unwrap_or(vec![]),
+        };
+
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
             .server_side_encrypt(
@@ -287,12 +296,7 @@ impl EncryptAction {
         output_file.write_all(&nonce)?;
 
         // instantiate the stream cipher
-        let mut stream_cipher = cipher.stream_cipher(
-            Mode::Encrypt,
-            &dek,
-            &nonce,
-            aad.unwrap_or(vec![]).as_slice(),
-        )?;
+        let mut stream_cipher = cipher.stream_cipher(Mode::Encrypt, &dek, &nonce, &aad)?;
         // process the data read from the file by 4096 chunks and write the encrypted data
         let mut file = File::open(input_file_name)?;
         let mut chunk = vec![0; 2 ^ 16]; //64K

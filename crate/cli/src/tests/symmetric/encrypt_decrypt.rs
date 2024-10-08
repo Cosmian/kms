@@ -361,14 +361,14 @@ async fn test_aes_gcm_aes_xts_client_side() -> CliResult<()> {
         &kek,
         DataEncryptionAlgorithm::AesXts,
         Some(KeyEncryptionAlgorithm::AesGcm),
-        12 + 32 + 16 /* encapsulation size */
+        12 + 64 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
             + 16, /* tweak */
     )
 }
 
 #[tokio::test]
-async fn test_aes_gcm_chach20_client_side() -> CliResult<()> {
+async fn test_aes_gcm_chacha20_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,

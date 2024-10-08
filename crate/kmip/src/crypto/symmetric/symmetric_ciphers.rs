@@ -372,22 +372,21 @@ impl StreamCipher {
         match self.underlying_cipher {
             UnderlyingCipher::Openssl(ref mut c) => {
                 // prepend the remaining bytes from the buffer
-                let bytes_to_update = [self.buffer.clone(), bytes.to_vec()].concat();
+                let available_bytes = [self.buffer.clone(), bytes.to_vec()].concat();
                 // we only encrypt or decrypt in block sizes because XTS requires it (not GCM)
                 // but we always want to keep at least one block in the buffer
-                let len_to_update = bytes_to_update.len()
-                    - bytes_to_update.len() % self.block_size
-                    - self.block_size;
-                if len_to_update == 0 {
+                let len_to_park = available_bytes.len() % self.block_size + self.block_size;
+                if available_bytes.len() <= len_to_park {
                     // all bytes are pushed to the buffer
-                    self.buffer = bytes_to_update;
+                    self.buffer = available_bytes;
                     return Ok(vec![]);
                 }
+                let len_to_update = available_bytes.len() - len_to_park;
                 let mut buffer = vec![0; len_to_update + self.block_size];
-                let update_len = c.update(&bytes_to_update[..len_to_update], &mut buffer)?;
+                let update_len = c.update(&available_bytes[..len_to_update], &mut buffer)?;
                 buffer.truncate(update_len);
                 // store the remaining bytes in the cipher buffer
-                self.buffer = bytes_to_update[len_to_update..].to_vec();
+                self.buffer = available_bytes[len_to_update..].to_vec();
                 Ok(buffer)
             }
             UnderlyingCipher::AesGcmSiv => Err(KmipError::NotSupported(

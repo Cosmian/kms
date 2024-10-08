@@ -233,6 +233,14 @@ impl DecryptAction {
         output_file: &mut File,
         aad: Option<Vec<u8>>,
     ) -> CliResult<()> {
+        // Additional authenticated data (AAD) for AEAD ciphers
+        // (empty for XTS)
+        let aad = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesGcm
+            | DataEncryptionAlgorithm::Chacha20Poly1305
+            | DataEncryptionAlgorithm::AesGcmSiv => aad.unwrap_or(vec![]),
+        };
         // Open the input file
         let mut input_file = File::open(input_file_name)?;
         // read the encapsulation length as a LEB128 encoded u64
@@ -269,8 +277,7 @@ impl DecryptAction {
         let mut nonce = vec![0; cipher.nonce_size()];
         input_file.read_exact(&mut nonce)?;
         // decrypt the file
-        let mut stream_cipher =
-            cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad.unwrap_or_default())?;
+        let mut stream_cipher = cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad)?;
         let tag_size = cipher.tag_size();
         // read the file by chunks
         let mut chunk = vec![0; 2 ^ 16]; //64K
