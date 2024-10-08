@@ -255,7 +255,6 @@ impl EncryptAction {
             DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
-        println!("DEK: {} {}", dek.len(), hex::encode(&dek));
 
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
@@ -269,16 +268,11 @@ impl EncryptAction {
             )
             .await?;
         let encapsulation = [kem_nonce, kem_ciphertext, kem_tag].concat();
-        println!("E: Encapsulation: {:?}", encapsulation.len());
 
         // write the encapsulation to the output file, starting with the length of the encapsulation
         // as an unsigned LEB128 integer
         leb128::write::unsigned(output_file, encapsulation.len() as u64)?;
         output_file.write_all(&encapsulation)?;
-        println!(
-            "Output file length after encaps: {}",
-            output_file.metadata()?.len()
-        );
 
         // Determine the DEM parameters
         let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
@@ -300,8 +294,6 @@ impl EncryptAction {
             Some(n) => n,
             None => random_nonce(cipher)?,
         };
-        println!("E: Nonce: {:?}", nonce.len());
-        println!("E: AAD: {:?}", aad.as_ref().map(|v| v.len()));
         output_file.write_all(&nonce)?;
 
         // instantiate the stream cipher
@@ -316,19 +308,15 @@ impl EncryptAction {
         let mut chunk = vec![0; 2 ^ 20];
         loop {
             let bytes_read = file.read(&mut chunk)?;
-            println!("Bytes read: {:?}", bytes_read);
             if bytes_read == 0 {
                 break;
             }
             chunk.truncate(bytes_read);
             let ciphertext = stream_cipher.update(&chunk)?;
-            println!("Ciphertext: {:?}", ciphertext.len());
             output_file.write_all(&ciphertext)?;
         }
         // finalize the encryption and write the remaining bytes
         let (remaining, tag) = stream_cipher.finalize_encryption()?;
-        println!("Remaining: {:?}", remaining.len());
-        println!("Tag: {} {}", tag.len(), hex::encode(&tag));
         output_file.write_all(&remaining)?;
         // write the tag
         output_file.write_all(&tag)?;
