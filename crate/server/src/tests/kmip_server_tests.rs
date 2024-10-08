@@ -262,7 +262,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = symmetric_key_create_request(
-        Some(UniqueIdentifier::TextString("sym_key_id".to_string())),
+        Some(UniqueIdentifier::TextString("sym_key_id".to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
@@ -284,7 +284,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     );
     // Check key UID has been setup
     assert_eq!(
-        "sym_key_id".to_string(),
+        "sym_key_id".to_owned(),
         response
             .unique_identifier
             .as_str()

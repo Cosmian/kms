@@ -973,13 +973,16 @@ Create, destroy, import, and export elliptic curve key pairs
 Create an elliptic curve key pair
 
 ### Usage
-`ckms ec keys create [options]`
+`ckms ec keys create [options] [PRIVATE_KEY_ID]
+`
 ### Arguments
 `--curve [-c] <CURVE>` The elliptic curve
 
 Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448"` [default: `"nist-p256"`]
 
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+` <PRIVATE_KEY_ID>` The unique id of the private key; a unique id based on the key material is generated if not specified
 
 
 
@@ -1435,11 +1438,14 @@ Create, destroy, import, and export RSA key pairs
 Create a new RSA key pair
 
 ### Usage
-`ckms rsa keys create [options]`
+`ckms rsa keys create [options] [PRIVATE_KEY_ID]
+`
 ### Arguments
 `--size_in_bits [-s] <SIZE_IN_BITS>` The expected size in bits
 
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+` <PRIVATE_KEY_ID>` The unique id of the private key; a unique id based on the key material is generated if not specified
 
 
 
@@ -1744,7 +1750,8 @@ Create, destroy, import, and export symmetric keys
 Create a new symmetric key
 
 ### Usage
-`ckms sym keys create [options]`
+`ckms sym keys create [options] [KEY_ID]
+`
 ### Arguments
 `--number-of-bits [-l] <NUMBER_OF_BITS>` The length of the generated random key or salt in bits
 
@@ -1755,6 +1762,8 @@ Create a new symmetric key
 Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
 
 
 

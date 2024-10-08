@@ -39,7 +39,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
     // request key pair creation
     let request = create_ec_key_pair_request(
-        Some(UniqueIdentifier::TextString("ec_sk_uid".to_string())),
+        Some(UniqueIdentifier::TextString("ec_sk_uid".to_owned())),
         EMPTY_TAGS,
         RecommendedCurve::CURVE25519,
     )?;
@@ -62,7 +62,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .unique_identifier
         .as_str()
         .context("no string for the unique_identifier")?;
-    assert_eq!(sk_uid, "ec_sk_uid".to_string());
+    assert_eq!(sk_uid, "ec_sk_uid".to_owned());
     let sk = &sk_response.object;
     let sk_key_block = match sk {
         Object::PrivateKey { key_block } => key_block.clone(),
