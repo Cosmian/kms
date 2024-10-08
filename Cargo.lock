@@ -1315,6 +1315,7 @@ dependencies = [
  "cloudproof",
  "const-oid",
  "cosmian_kms_client",
+ "cosmian_kms_server",
  "cosmian_logger",
  "der",
  "hex",
