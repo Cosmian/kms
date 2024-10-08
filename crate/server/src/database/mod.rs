@@ -83,7 +83,7 @@ lazy_static! {
 /// When using JSON serialization, the Object is untagged
 /// and looses its type information, so we have to keep
 /// the `ObjectType`. See `Object` and `post_fix()` for details
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct DBObject {
     pub(crate) object_type: ObjectType,
     pub(crate) object: Object,

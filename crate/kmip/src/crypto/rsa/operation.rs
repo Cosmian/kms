@@ -116,7 +116,7 @@ pub fn to_rsa_public_key(
             key_wrapping_data: None,
         },
     };
-    trace!("to_rsa_public_key: output object: {:?}", output);
+    trace!("to_rsa_public_key: output object: {output}");
     output
 }
 

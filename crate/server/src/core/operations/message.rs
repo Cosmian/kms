@@ -25,7 +25,7 @@ pub(crate) async fn message(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<MessageResponse> {
-    trace!("Entering message KMIP operation: {request:#?}");
+    trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::new();
     for item_request in request.items {

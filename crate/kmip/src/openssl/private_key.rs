@@ -50,7 +50,7 @@ use crate::{
 pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>, KmipError> {
     let key_block = match private_key {
         Object::PrivateKey { key_block } => key_block,
-        x => kmip_bail!("Invalid Object: {:?}. KMIP Private Key expected", x),
+        x => kmip_bail!("Invalid Object: {}. KMIP Private Key expected", x),
     };
     let pk: PKey<Private> = match key_block.key_format_type {
         KeyFormatType::PKCS1 => {
@@ -160,7 +160,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 other => ec_private_key_from_scalar(d, *other)?,
             },
             x => kmip_bail!(
-                "KMIP key to openssl: invalid Transparent EC private key material: {:?}: \
+                "KMIP key to openssl: invalid Transparent EC private key material: {}: \
                  TransparentECPrivateKey expected",
                 x
             ),

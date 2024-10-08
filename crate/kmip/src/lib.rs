@@ -37,6 +37,7 @@
     clippy::unseparated_literal_suffix,
     clippy::map_err_ignore,
     clippy::redundant_clone,
+    // clippy::use_debug,
 )]
 #![allow(
     clippy::module_name_repetitions,

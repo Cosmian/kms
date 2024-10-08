@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use clap::ValueEnum;
 use num_bigint_dig::BigUint;
@@ -34,7 +34,7 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
@@ -128,6 +128,70 @@ pub enum Object {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Certificate {
+                certificate_type,
+                certificate_value,
+            } => write!(
+                f,
+                "Certificate(certificate_type: {certificate_type:?}, certificate_value: \
+                 {certificate_value:?})"
+            ),
+            Self::CertificateRequest {
+                certificate_request_type,
+                certificate_request_value,
+            } => write!(
+                f,
+                "CertificateRequest(certificate_request_type: {certificate_request_type:?}, \
+                 certificate_request_value: {certificate_request_value:?})"
+            ),
+            Self::OpaqueObject {
+                opaque_data_type,
+                opaque_data_value,
+            } => write!(
+                f,
+                "OpaqueObject(opaque_data_type: {opaque_data_type:?}, opaque_data_value: \
+                 {opaque_data_value:?})"
+            ),
+            Self::PGPKey {
+                pgp_key_version,
+                key_block,
+            } => write!(
+                f,
+                "PGPKey(pgp_key_version: {pgp_key_version:?}, key_block: {key_block})"
+            ),
+            Self::SecretData {
+                secret_data_type,
+                key_block,
+            } => write!(
+                f,
+                "SecretData(secret_data_type: {secret_data_type:?}, key_block: {key_block})"
+            ),
+            Self::SplitKey {
+                split_key_parts,
+                key_part_identifier,
+                split_key_threshold,
+                split_key_method,
+                prime_field_size,
+                key_block,
+            } => write!(
+                f,
+                "SplitKey(split_key_parts: {split_key_parts:?}, key_part_identifier: \
+                 {key_part_identifier:?}, split_key_threshold: {split_key_threshold:?}, \
+                 split_key_method: {split_key_method:?}, prime_field_size: {prime_field_size:?}, \
+                 key_block: {key_block})"
+            ),
+            Self::PrivateKey { key_block } => write!(f, "PrivateKey(key_block: {key_block})"),
+            Self::PublicKey { key_block } => write!(f, "PublicKey(key_block: {key_block})"),
+            Self::SymmetricKey { key_block } => {
+                write!(f, "SymmetricKey(key_block: {key_block})")
+            }
+        }
+    }
 }
 
 impl Object {

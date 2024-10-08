@@ -254,10 +254,7 @@ fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(
-            wrapped_private_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
-        );
+        assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
     }
 
     // test the unwrapping on import
@@ -281,19 +278,19 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
-        assert_eq!(
-            re_exported_key.key_block()?.key_value.key_material,
-            private_key.key_block()?.key_value.key_material
+        assert!(
+            re_exported_key.key_block()?.key_value.key_material
+                == private_key.key_block()?.key_value.key_material
         );
-        assert_eq!(
+        assert!(
             re_exported_key
                 .key_block()?
                 .attributes()?
-                .get_link(LinkType::PublicKeyLink),
-            private_key
-                .key_block()?
-                .attributes()?
                 .get_link(LinkType::PublicKeyLink)
+                == private_key
+                    .key_block()?
+                    .attributes()?
+                    .get_link(LinkType::PublicKeyLink)
         );
         assert!(re_exported_key.key_wrapping_data().is_none());
     }
@@ -320,9 +317,8 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
-        assert_eq!(
-            exported_unwrapped_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
+        assert!(
+            exported_unwrapped_key.key_block()?.key_value == private_key.key_block()?.key_value
         );
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
     }

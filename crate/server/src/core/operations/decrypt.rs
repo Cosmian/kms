@@ -123,7 +123,7 @@ async fn get_key(
             true
         })
         .collect::<Vec<ObjectWithMetadata>>();
-    trace!("get_key: owm_s: {:?}", owm_s);
+    trace!("get_key: owm_s: number of results: {}", owm_s.len());
 
     // there can only be one key
     let mut owm = owm_s.pop().ok_or_else(|| {

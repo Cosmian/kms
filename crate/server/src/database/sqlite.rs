@@ -617,7 +617,7 @@ pub(crate) async fn upsert_(
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<()> {
     trace!(
-        "Upserting in DB: {uid}\n   object: {object:?}\n   attributes: {attributes:?}\n    tags: \
+        "Upserting in DB: {uid}\n   object: {object}\n   attributes: {attributes:?}\n    tags: \
          {tags:?}\n    state: {state:?}\n    owner: {owner}"
     );
     let object_json = serde_json::to_value(DBObject {

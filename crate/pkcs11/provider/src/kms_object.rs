@@ -8,14 +8,13 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_client::{batch_export_objects, ClientConf, ExportObjectParams, KmsClient};
 use cosmian_pkcs11_module::traits::EncryptionAlgorithm;
-use tracing::{debug, trace};
+use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::error::Pkcs11Error;
 
 /// A wrapper around a KMS KMIP object.
 #[allow(dead_code)]
-#[derive(Debug)]
 pub(crate) struct KmsObject {
     pub object: Object,
     pub attributes: Attributes,
@@ -72,10 +71,9 @@ pub(crate) async fn get_kms_objects_async(
         },
     )
     .await?;
-    trace!("Found objects: {:?}", responses);
+    // trace!("Found objects: {}", responses);
     let mut results = vec![];
-    for response in responses {
-        let (object, attributes) = response.map_err(Pkcs11Error::ServerError)?;
+    for (object, attributes) in responses {
         let other_tags = attributes
             .get_tags()
             .into_iter()

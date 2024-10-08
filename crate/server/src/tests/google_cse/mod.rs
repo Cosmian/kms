@@ -107,7 +107,7 @@ where
         object,
     };
 
-    tracing::debug!("import request: {import_request:?}");
+    tracing::debug!("import request: {import_request}");
     let response: ImportResponse = test_utils::post(app, import_request).await?;
     tracing::debug!("import response: {response:?}");
 

@@ -153,7 +153,7 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
             other => {
                 return Err(KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Object_Type,
-                    format!("Invalid key material for an CoverCrypt secret key: {other:?}"),
+                    format!("Invalid key material for an CoverCrypt secret key: {other}"),
                 ))
             }
         })

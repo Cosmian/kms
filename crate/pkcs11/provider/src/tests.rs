@@ -9,6 +9,7 @@ use cosmian_kmip::{
 use cosmian_kms_client::{import_object, KmsClient};
 use cosmian_pkcs11_module::traits::Backend;
 use kms_test_server::start_default_test_kms_server;
+use tracing::debug;
 
 use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_objects_async};
 
@@ -59,6 +60,7 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
 
 async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
     let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES)?;
+    debug!("vol1: {}", vol1);
     let _vol1_id = import_object(
         kms_client,
         Some("vol1".to_owned()),
