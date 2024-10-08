@@ -1,4 +1,4 @@
-<h1>Encrypting and decrypting at scale</h1>
+# Encrypting and decrypting at scale
 
 The Cosmian KMS is particularly suited for client-side encryption scenarios which may require
 high-performance encryption and decryption.
@@ -16,8 +16,8 @@ decryption API that can be used to encrypt and decrypt data at scale.
 
 ### Parallelization, concurrency, and batching
 
-Dur to its stateless user session model, the Cosmian KMS is designed to take advantage of modern
-multicore processors and can parallelize encryption and decryption operations across multiple
+Due to its stateless user session model, the Cosmian KMS is designed to take advantage of modern
+multi-core processors and can parallelize encryption and decryption operations across multiple
 cores. Parallelization can be achieved by scaling vertically (increasing the number of cores on a
 single machine) or horizontally (increasing the number of machines in a cluster).
 
@@ -65,11 +65,11 @@ bytes. It works as follows
 - the encoded data starts with the 2-byte fixed sequence `0x87 0x87`
 - followed by the unsigned leb128 encoded number of items in the array
 - followed, for each item, by
-    - the unsigned leb128 encoded byte length of the item
-    - the item itself
+  - the unsigned leb128 encoded byte length of the item
+  - the item itself
 
 ```text
-BulkData = 0x87 0x87 <number of items> <item 1 lengh> <item 1> ... <item n lengh> <item n>
+BulkData = 0x87 0x87 <number of items> <item 1 length> <item 1> ... <item n length> <item n>
 
 number of items = leb128 encoded number of items
 item 1 length = leb128 encoded length of item 1
@@ -121,11 +121,11 @@ Encryption can be performed in two modes:
 ### Server side encryption and decryption
 
 When using server side encryption or decryption, the file content is sent to the server. To use
-this methode use the `encrypt` or `decrypt` command of the `ckms` CLI client WITHOUT specifying a
+this method use the `encrypt` or `decrypt` command of the `ckms` CLI client WITHOUT specifying a
 `--key-encryption-algorithm` option.
 
 Say, the KMS holds a 256-bit AES key with the ID `43d28ec7-7438-4d2c-a1a0-00379fa4fe5d`
-and you want to encrypt a file `impage.png` with AES 256-bit GCM encryption:
+and you want to encrypt a file `image.png` with AES 256-bit GCM encryption:
 
 ```bash
 ckms sym encrypt \
@@ -150,7 +150,7 @@ image.enc
 The following ciphers are available for server-side encryption and decryption:
 
 | Cipher            | Description                | NIST Certified? |
-|-------------------|----------------------------|-----------------|
+| ----------------- | -------------------------- | --------------- |
 | aes-gcm           | AES in Galois Counter Mode | yes             |
 | aes-xts           | AES XTS                    | yes             |
 | aes-gcm-siv       | AES GCM SIV                | no              |
@@ -181,7 +181,7 @@ plaintext.
 The table below shows the size of the IV (tweak for XTS) and the MAC in bytes.
 
 | Cipher            | IV size | MAC size |
-|-------------------|---------|----------|
+| ----------------- | ------- | -------- |
 | aes-gcm           | 12      | 16       |
 | aes-xts           | 16      | 0        |
 | aes-gcm-siv       | 12      | 16       |
@@ -205,8 +205,8 @@ To use this method, use the `encrypt` or `decrypt` command and specify BOTH the
 `--key-encryption-algorithm` and `--data-encryption-algorithm`.
 
 Say, the KMS holds a 256-bit AES KEK (key encryption key) with the ID
-`43d28ec7-7438-4d2c-a1a0-00379fa4fe5d` and you want to client-side encrypt a file `impage.png`
-with AES-GCM encryption, the ephemeral KEK key being wrapped with RFC5649 (a.k.a. NIST keywrap):
+`43d28ec7-7438-4d2c-a1a0-00379fa4fe5d` and you want to client-side encrypt a file `image.png`
+with AES-GCM encryption, the ephemeral KEK key being wrapped with RFC5649 (a.k.a. NIST key wrap):
 
 ```bash
 ckms sym encrypt \
@@ -235,7 +235,7 @@ The following ciphers are available for client-side encryption and decryption:
 * Data Encryption *
 
 | Cipher            | Description                | NIST Certified? |
-|-------------------|----------------------------|-----------------|
+| ----------------- | -------------------------- | --------------- |
 | aes-gcm           | AES in Galois Counter Mode | yes             |
 | aes-xts           | AES XTS                    | yes             |
 | chacha20-poly1305 | ChaCha20 Poly1305          | no              |
@@ -243,7 +243,7 @@ The following ciphers are available for client-side encryption and decryption:
 * Key Wrapping (Encryption) *
 
 | Cipher            | Description                | NIST Certified? |
-|-------------------|----------------------------|-----------------|
+| ----------------- | -------------------------- | --------------- |
 | rfc5649           | NIST Key Wrap              | yes             |
 | aes-gcm           | AES in Galois Counter Mode | yes             |
 | aes-xts           | AES XTS                    | yes             |
@@ -281,11 +281,9 @@ Using AES GCM as a KEM and a DEM, the details will be as follows:
 
 - 1 unsigned LEB 128 byte holding the length of the encapsulation (60)
 - 60 bytes of encapsulation decomposed in :
-    - 12 byte KEM IV
-    - 32 bytes encrypted DEK
-    - 16 byte KEM MAC
+  - 12 byte KEM IV
+  - 32 bytes encrypted DEK
+  - 16 byte KEM MAC
 - 12 bytes of DEM IV
 - x bytes of ciphertext (same size as plaintext)
 - 16 bytes of DEM MAC
-
-  

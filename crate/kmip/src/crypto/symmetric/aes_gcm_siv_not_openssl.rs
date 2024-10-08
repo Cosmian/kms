@@ -34,13 +34,13 @@ pub(crate) fn encrypt(
         Aes128GcmSiv::new(Key::<Aes128GcmSiv>::from_slice(key))
             .encrypt_in_place_detached(nonce, aad, &mut buffer)
             .map_err(|e| {
-                KmipError::Default(format!("Error encrypting data with AES GCM SIV: {}", e))
+                KmipError::Default(format!("Error encrypting data with AES GCM SIV: {e}"))
             })?
     } else if key.len() == AES_256_GCM_SIV_KEY_LENGTH {
         Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key))
             .encrypt_in_place_detached(nonce, aad, &mut buffer)
             .map_err(|e| {
-                KmipError::Default(format!("Error encrypting data with AES GCM SIV: {}", e))
+                KmipError::Default(format!("Error encrypting data with AES GCM SIV: {e}"))
             })?
     } else {
         return Err(KmipError::InvalidSize(format!(
@@ -48,7 +48,7 @@ pub(crate) fn encrypt(
             key.len()
         )));
     };
-    Ok((buffer.to_vec(), tag.to_vec()))
+    Ok((buffer.clone(), tag.to_vec()))
 }
 
 /// Decrypt data using AES GCM SIV.
@@ -77,13 +77,13 @@ pub(crate) fn decrypt(
         Aes128GcmSiv::new(Key::<Aes128GcmSiv>::from_slice(key))
             .decrypt_in_place_detached(nonce, aad, &mut buffer, tag)
             .map_err(|e| {
-                KmipError::Default(format!("Error decrypting data with AES GCM SIV: {}", e))
+                KmipError::Default(format!("Error decrypting data with AES GCM SIV: {e}"))
             })?;
     } else if key.len() == AES_256_GCM_SIV_KEY_LENGTH {
         Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key))
             .decrypt_in_place_detached(nonce, aad, &mut buffer, tag)
             .map_err(|e| {
-                KmipError::Default(format!("Error decrypting data with AES GCM SIV: {}", e))
+                KmipError::Default(format!("Error decrypting data with AES GCM SIV: {e}"))
             })?;
     } else {
         return Err(KmipError::InvalidSize(format!(
@@ -91,5 +91,5 @@ pub(crate) fn decrypt(
             key.len()
         )));
     }
-    Ok(Zeroizing::new(buffer.to_vec()))
+    Ok(Zeroizing::new(buffer.clone()))
 }

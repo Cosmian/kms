@@ -36,10 +36,10 @@ cloudproof = { workspace = true }
 cosmian_logger = { path = "../logger" }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { workspace = true }
 pyo3 = { workspace = true, optional = true }

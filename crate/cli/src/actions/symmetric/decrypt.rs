@@ -45,7 +45,7 @@ use crate::{
 ///
 /// To decrypt the data server side, do not specify the key encryption algorithm.
 ///
-/// The bytes written from the input are expeced to be the concatenation of
+/// The bytes written from the input are expected to be the concatenation of
 ///   - if client side decryption is used:
 ///         - the length of the encapsulated DEK as an unsigned LEB128 integer
 ///         - the encapsulated DEK
@@ -244,7 +244,7 @@ impl DecryptAction {
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
-                aad.unwrap_or(vec![])
+                aad.unwrap_or_default()
             }
         };
         // Open the input file
@@ -312,7 +312,7 @@ impl DecryptAction {
         if read_buffer.len() < tag_size {
             cli_bail!("The tag is missing from the encrypted file")
         }
-        // write the remaining bytes before the tage
+        // write the remaining bytes before the tag
         let remaining = &read_buffer[..read_buffer.len() - cipher.tag_size()];
         if !remaining.is_empty() {
             let output = stream_cipher.update(remaining)?;

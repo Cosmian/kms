@@ -258,7 +258,7 @@ impl EncryptAction {
             DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
             #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
-                aad.unwrap_or(vec![])
+                aad.unwrap_or_default()
             }
         };
 

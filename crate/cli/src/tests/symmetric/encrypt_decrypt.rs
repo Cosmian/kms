@@ -299,7 +299,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
         Some(output_file.to_str().unwrap()),
-        Some(&hex::encode("myid".as_bytes())),
+        Some(&hex::encode(b"myid")),
     )?;
 
     // the user key should be able to decrypt the file
@@ -310,7 +310,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
         DataEncryptionAlgorithm::Chacha20Poly1305,
         None,
         Some(recovered_file.to_str().unwrap()),
-        Some(&hex::encode("myid".as_bytes())),
+        Some(&hex::encode(b"myid")),
     )?;
     if !recovered_file.exists() {
         return Err(CliError::Default(format!(
