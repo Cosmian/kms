@@ -6,7 +6,7 @@ high-performance encryption and decryption.
 The KMS offers two mechanisms for encrypting and decrypting data:
 
 - by calling the `Encrypt` and `Decrypt` operations on the KMS KMIP API and benefiting from its
-  parallelizability, concurrency, and optimized batching capabilities.
+  parallelization, concurrency, and optimized batching capabilities.
 - by using the `ckms` CLI client to encrypt and decrypt data locally, including large files.
 
 ## Calling the KMS API
@@ -16,17 +16,17 @@ decryption API that can be used to encrypt and decrypt data at scale.
 
 ### Parallelization, concurrency, and batching
 
-Dur to its stateless user sesison model, the Cosmian KMS is designed to take advantage of modern
+Dur to its stateless user session model, the Cosmian KMS is designed to take advantage of modern
 multicore processors and can parallelize encryption and decryption operations across multiple
 cores. Parallelization can be achieved by scaling vertically (increasing the number of cores on a
 single machine) or horizontally (increasing the number of machines in a cluster).
 
 The Cosmian KMS can also handle multiple concurrent encryption and decryption requests on a
-single core using (async) concurrency primitivies. The asynchronous model optimizes the use of
-CPU resources by allowing the CPU to perform other tasks while waiting for I/O operations to
-complete.
+single core using (async) concurrency primitives.
+The asynchronous model optimizes the use of CPU resources by allowing the CPU to perform other tasks
+while waiting for I/O operations to complete.
 
-FInally, batching can be used to further optimize the performance of encryption and decryption
+Finally, batching can be used to further optimize the performance of encryption and decryption
 operations. Batching allows multiple encryption or decryption operations to be performed in a
 single request, reducing the overhead of making multiple requests to the KMS.
 
@@ -135,7 +135,7 @@ ckms sym encrypt \
 image.png
 ```
 
-To devrypt the file, use the `decrypt` command:
+To decrypt the file, use the `decrypt` command:
 
 ```bash
 ckms sym decrypt \
@@ -196,9 +196,96 @@ hybrid encryption scheme with key wrapping:
   for AES, where the key size is 512 bits to provide 256 bits of classic security, 128 bits
   post-quantum.
 - the DEK is used to locally encrypt the file content using the specified
-  `--data-encryption-algorithm`.
+  `--data-encryption-algorithm` for the data encryption mechanism (DEM).
 - the DEK is server side encrypted (i.e., wrapped) using the specified
-  `--key-encryption-algorithm` and the KMS key encryption key (KEK) identified by `--key-id`.
+  `--key-encryption-algorithm` for the key encryption mechanism (KEM) and the KMS key encryption
+  key (KEK) identified by `--key-id`.
 
-To use this methode use the `encrypt` or `decrypt`
+To use this method, use the `encrypt` or `decrypt` command and specify BOTH the
+`--key-encryption-algorithm` and `--data-encryption-algorithm`.
 
+Say, the KMS holds a 256-bit AES KEK (key encryption key) with the ID
+`43d28ec7-7438-4d2c-a1a0-00379fa4fe5d` and you want to client-side encrypt a file `impage.png`
+with AES-GCM encryption, the ephemeral KEK key being wrapped with RFC5649 (a.k.a. NIST keywrap):
+
+```bash
+ckms sym encrypt \
+--data-encryption-algorithm aes-gcm \
+--key-encryption-algorithm rfc5649 \
+--key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
+--output-file image.enc \
+image.png
+```
+
+To decrypt the file, use the `decrypt` command:
+
+```bash
+ckms sym decrypt \
+--data-encryption-algorithm aes-gcm \
+--key-encryption-algorithm rfc5649 \
+--key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
+--output-file decrypted-image.png \
+image.enc
+```
+
+#### Available ciphers
+
+The following ciphers are available for client-side encryption and decryption:
+
+* Data Encryption *
+
+| Cipher            | Description                | NIST Certified? |
+|-------------------|----------------------------|-----------------|
+| aes-gcm           | AES in Galois Counter Mode | yes             |
+| aes-xts           | AES XTS                    | yes             |
+| chacha20-poly1305 | ChaCha20 Poly1305          | no              |
+
+* Key Wrapping (Encryption) *
+
+| Cipher            | Description                | NIST Certified? |
+|-------------------|----------------------------|-----------------|
+| rfc5649           | NIST Key Wrap              | yes             |
+| aes-gcm           | AES in Galois Counter Mode | yes             |
+| aes-xts           | AES XTS                    | yes             |
+| aes-gcm-siv       | AES GCM SIV                | no              |
+| chacha20-poly1305 | ChaCha20 Poly1305          | no              |
+
+When in doubt, use the AES GCM data encryption scheme with the AES GCM key encryption scheme (or
+RFC5649) with a 256-bit key. These are the most widely used schemes, and they are NIST-certified.
+
+#### Format of the encrypted file
+
+The encrypted file is the concatenation of
+
+- the length of the key wrapping (a.k.a. encapsulation) in unsigned LEB 128 format
+- the key encapsulation
+- the data encryption mechanism (DEM) IV (or tweak for XTS)
+- the ciphertext (same size as the plaintext)
+- the data encryption mechanism (DEM) MAC
+
+```bash
+encapsulation length || encapsulation || DEM IV || Ciphertext || DEM MAC
+```
+
+The key `encapsulation` is the concatenation of
+
+- the key encryption mechanism (KEM) IV (or tweak for XTS, none for RFC5649)
+- the encrypted DEK (same length as the DEK, +8 bytes for RFC5649)
+- the key encryption mechanism (KEM) MAC (none for XTS and RFC5649)
+
+```bash
+KEM IV || Encrypted DEK || KEM MAC
+```
+
+Using AES GCM as a KEM and a DEM, the details will be as follows:
+
+- 1 unsigned LEB 128 byte holding the length of the encapsulation (60)
+- 60 bytes of encapsulation decomposed in :
+    - 12 byte KEM IV
+    - 32 bytes encrypted DEK
+    - 16 byte KEM MAC
+- 12 bytes of DEM IV
+- x bytes of ciphertext (same size as plaintext)
+- 16 bytes of DEM MAC
+
+  
