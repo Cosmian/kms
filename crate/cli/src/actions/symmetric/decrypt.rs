@@ -5,14 +5,15 @@ use std::{
 };
 
 use clap::Parser;
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_client::cosmian_kmip::crypto::symmetric::symmetric_ciphers::{
+    CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
+};
 use cosmian_kms_client::{
     cosmian_kmip::crypto::{
         generic::kmip_requests::build_decryption_request,
-        symmetric::{
-            symmetric_ciphers::{
-                Mode, SymCipher, CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
-            },
-            AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
+        symmetric::symmetric_ciphers::{
+            Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
             AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH,
         },
     },
@@ -79,9 +80,11 @@ pub struct DecryptAction {
     data_encryption_algorithm: DataEncryptionAlgorithm,
 
     /// The optional key encryption algorithm used to decrypt the data encryption key.
+    ///
     /// If not specified:
     ///   - the decryption of the data is performed server side using the key identified by
     ///     `--key-id`
+    ///
     /// If specified:
     ///  - the data encryption key (DEK) is unwrapped (i.e., decrypted) server side
     ///    using the key encryption algorithm and the key identified by `--key-id`.
@@ -134,7 +137,7 @@ impl DecryptAction {
                 &mut output_file,
                 self.authentication_data
                     .as_deref()
-                    .map(|s| hex::decode(s))
+                    .map(hex::decode)
                     .transpose()?,
             )
             .await?;
@@ -151,7 +154,7 @@ impl DecryptAction {
                     ciphertext,
                     self.authentication_data
                         .as_deref()
-                        .map(|s| hex::decode(s))
+                        .map(hex::decode)
                         .transpose()?,
                 )
                 .await?;
@@ -180,7 +183,6 @@ impl DecryptAction {
         // Extract the nonce, the encrypted data, and the tag
         let (nonce_size, tag_size) = match &cryptographic_parameters
             .cryptographic_algorithm
-            .to_owned()
             .unwrap_or(CryptographicAlgorithm::AES)
         {
             CryptographicAlgorithm::AES => match cryptographic_parameters
@@ -194,6 +196,7 @@ impl DecryptAction {
                 BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
                 _ => cli_bail!("Unsupported block cipher mode"),
             },
+            #[cfg(not(feature = "fips"))]
             CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
                 (CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH)
             }
@@ -223,6 +226,7 @@ impl DecryptAction {
         decrypt_response.data.context("the plain text is empty")
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn client_side_decrypt(
         &self,
         kms_rest_client: &KmsClient,
@@ -237,28 +241,30 @@ impl DecryptAction {
         // (empty for XTS)
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts => vec![],
-            DataEncryptionAlgorithm::AesGcm
-            | DataEncryptionAlgorithm::Chacha20Poly1305
-            | DataEncryptionAlgorithm::AesGcmSiv => aad.unwrap_or(vec![]),
+            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
+                aad.unwrap_or(vec![])
+            }
         };
         // Open the input file
         let mut input_file = File::open(input_file_name)?;
         // read the encapsulation length as a LEB128 encoded u64
         let encaps_length = leb128::read::unsigned(&mut input_file).map_err(|e| {
             CliError::Default(format!(
-                "Failed to read the encapsulation length from the encrypted file: {}",
-                e
+                "Failed to read the encapsulation length from the encrypted file: {e}"
             ))
-        })? as usize;
+        })?;
         // read the encapsulated data
-        let mut encapsulation = vec![0; encaps_length];
+        #[allow(clippy::cast_possible_truncation)]
+        let mut encapsulation = vec![0; encaps_length as usize];
         input_file.read_exact(&mut encapsulation)?;
         // recover the DEK
         let dek = self
             .server_side_decrypt(
                 kms_rest_client,
                 key_encryption_algorithm.into(),
-                &key_id,
+                key_id,
                 encapsulation,
                 None,
             )
@@ -308,7 +314,7 @@ impl DecryptAction {
         }
         // write the remaining bytes before the tage
         let remaining = &read_buffer[..read_buffer.len() - cipher.tag_size()];
-        if remaining.len() > 0 {
+        if !remaining.is_empty() {
             let output = stream_cipher.update(remaining)?;
             output_file.write_all(&output)?;
         }

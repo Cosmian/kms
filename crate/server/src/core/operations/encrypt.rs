@@ -112,7 +112,7 @@ pub(crate) fn encrypt_bulk(
                 let (key_bytes, cipher) = get_cipher_and_key(&request, owm)?;
                 let nonce = request
                     .iv_counter_nonce
-                    .to_owned()
+                    .clone()
                     .unwrap_or(random_nonce(cipher)?);
                 let (ciphertext, tag) = sym_encrypt(cipher, &key_bytes, &nonce, aad, &plaintext)?;
                 // concatenate nonce || ciphertext || tag

@@ -73,9 +73,11 @@ pub struct EncryptAction {
     data_encryption_algorithm: DataEncryptionAlgorithm,
 
     /// The optional key encryption algorithm used to encrypt the data encryption key.
+    ///
     /// If not specified:
     ///   - the encryption of the data is performed server side.
     ///   - the key id is that of the data encryption key.
+    ///
     /// If specified:
     ///  - the data is encrypted client side with the data encryption algorithm, and using
     ///    a randomly generated ephemeral key called the data encryption key (DEK).
@@ -119,14 +121,14 @@ impl EncryptAction {
         let nonce = self
             .nonce
             .as_deref()
-            .map(|s| hex::decode(s))
+            .map(hex::decode)
             .transpose()
             .with_context(|| "failed to decode the nonce")?;
 
         let authentication_data = self
             .authentication_data
             .as_deref()
-            .map(|s| hex::decode(s))
+            .map(hex::decode)
             .transpose()
             .with_context(|| "failed to decode the authentication data")?;
 
@@ -227,6 +229,7 @@ impl EncryptAction {
 
     /// Encrypt a file using a symmetric stream cipher
     /// and return the ephemeral key
+    #[allow(clippy::too_many_arguments)]
     async fn client_side_encrypt(
         &self,
         kms_rest_client: &KmsClient,
@@ -241,7 +244,9 @@ impl EncryptAction {
         // Generate the ephemeral key (DEK)
         let dek = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
+            #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
+            #[cfg(not(feature = "fips"))]
             DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
             DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
         };
@@ -250,9 +255,11 @@ impl EncryptAction {
         // (empty for XTS)
         let aad = match data_encryption_algorithm {
             DataEncryptionAlgorithm::AesXts => vec![],
-            DataEncryptionAlgorithm::AesGcm
-            | DataEncryptionAlgorithm::Chacha20Poly1305
-            | DataEncryptionAlgorithm::AesGcmSiv => aad.unwrap_or(vec![]),
+            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
+                aad.unwrap_or(vec![])
+            }
         };
 
         // Wrap the DEK with the KEK
@@ -266,7 +273,8 @@ impl EncryptAction {
                 None,
             )
             .await?;
-        let encapsulation = [kem_nonce, kem_ciphertext, kem_tag].concat();
+        #[allow(clippy::tuple_array_conversions)]
+        let encapsulation: Vec<u8> = [kem_nonce, kem_ciphertext, kem_tag].concat();
 
         // write the encapsulation to the output file, starting with the length of the encapsulation
         // as an unsigned LEB128 integer
@@ -278,13 +286,12 @@ impl EncryptAction {
         let cipher = SymCipher::from_algorithm_and_key_size(
             cryptographic_parameters
                 .cryptographic_algorithm
-                .to_owned()
                 .ok_or_else(|| {
                     CliError::Default(
                         "No data encryption cryptographic algorithm specified".to_owned(),
                     )
                 })?,
-            cryptographic_parameters.block_cipher_mode.to_owned(),
+            cryptographic_parameters.block_cipher_mode,
             dek.len(),
         )?;
 

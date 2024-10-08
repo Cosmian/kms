@@ -47,6 +47,7 @@ pub(crate) enum DataEncryptionAlgorithm {
     Chacha20Poly1305,
     AesGcm,
     AesXts,
+    #[cfg(not(feature = "fips"))]
     AesGcmSiv,
 }
 
@@ -54,22 +55,22 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
     fn from(value: DataEncryptionAlgorithm) -> Self {
         match value {
             #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::Chacha20Poly1305 => CryptographicParameters {
+            DataEncryptionAlgorithm::Chacha20Poly1305 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                 ..Self::default()
             },
-            DataEncryptionAlgorithm::AesGcm => CryptographicParameters {
+            DataEncryptionAlgorithm::AesGcm => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..Self::default()
             },
-            DataEncryptionAlgorithm::AesXts => CryptographicParameters {
+            DataEncryptionAlgorithm::AesXts => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::XTS),
                 ..Self::default()
             },
             #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::AesGcmSiv => CryptographicParameters {
+            DataEncryptionAlgorithm::AesGcmSiv => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCMSIV),
                 ..Self::default()
@@ -84,6 +85,7 @@ pub(crate) enum KeyEncryptionAlgorithm {
     Chacha20Poly1305,
     AesGcm,
     AesXts,
+    #[cfg(not(feature = "fips"))]
     AesGcmSiv,
     RFC5649,
 }
@@ -92,26 +94,27 @@ impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
     fn from(value: KeyEncryptionAlgorithm) -> Self {
         match value {
             #[cfg(not(feature = "fips"))]
-            KeyEncryptionAlgorithm::Chacha20Poly1305 => CryptographicParameters {
+            KeyEncryptionAlgorithm::Chacha20Poly1305 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                 ..Self::default()
             },
-            KeyEncryptionAlgorithm::AesGcm => CryptographicParameters {
+            KeyEncryptionAlgorithm::AesGcm => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..Self::default()
             },
-            KeyEncryptionAlgorithm::AesXts => CryptographicParameters {
+            KeyEncryptionAlgorithm::AesXts => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::XTS),
                 ..Self::default()
             },
-            KeyEncryptionAlgorithm::AesGcmSiv => CryptographicParameters {
+            #[cfg(not(feature = "fips"))]
+            KeyEncryptionAlgorithm::AesGcmSiv => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCMSIV),
                 ..Self::default()
             },
-            KeyEncryptionAlgorithm::RFC5649 => CryptographicParameters {
+            KeyEncryptionAlgorithm::RFC5649 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
                 ..Self::default()

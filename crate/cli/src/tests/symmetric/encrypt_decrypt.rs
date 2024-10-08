@@ -12,20 +12,24 @@ use crate::{
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
 
-fn dek_algorithm_to_string(alg: DataEncryptionAlgorithm) -> &'static str {
+const fn dek_algorithm_to_string(alg: DataEncryptionAlgorithm) -> &'static str {
     match alg {
+        #[cfg(not(feature = "fips"))]
         DataEncryptionAlgorithm::Chacha20Poly1305 => "chacha20-poly1305",
         DataEncryptionAlgorithm::AesGcm => "aes-gcm",
         DataEncryptionAlgorithm::AesXts => "aes-xts",
+        #[cfg(not(feature = "fips"))]
         DataEncryptionAlgorithm::AesGcmSiv => "aes-gcm-siv",
     }
 }
 
-fn kek_algorithm_to_string(alg: KeyEncryptionAlgorithm) -> &'static str {
+const fn kek_algorithm_to_string(alg: KeyEncryptionAlgorithm) -> &'static str {
     match alg {
+        #[cfg(not(feature = "fips"))]
         KeyEncryptionAlgorithm::Chacha20Poly1305 => "chacha20-poly1305",
         KeyEncryptionAlgorithm::AesGcm => "aes-gcm",
         KeyEncryptionAlgorithm::AesXts => "aes-xts",
+        #[cfg(not(feature = "fips"))]
         KeyEncryptionAlgorithm::AesGcmSiv => "aes-gcm-siv",
         KeyEncryptionAlgorithm::RFC5649 => "rfc5649",
     }
@@ -147,7 +151,7 @@ pub(crate) fn run_encrypt_decrypt_test(
         data_encryption_algorithm,
         key_encryption_algorithm,
         Some(output_file.to_str().unwrap()),
-        Some(&hex::encode("myid".as_bytes())),
+        Some(&hex::encode(b"myid")),
     )?;
 
     if encryption_overhead != 0 {
@@ -165,7 +169,7 @@ pub(crate) fn run_encrypt_decrypt_test(
         data_encryption_algorithm,
         key_encryption_algorithm,
         Some(recovered_file.to_str().unwrap()),
-        Some(&hex::encode("myid".as_bytes())),
+        Some(&hex::encode(b"myid")),
     )?;
     if !recovered_file.exists() {
         return Err(CliError::Default(format!(
@@ -225,6 +229,7 @@ async fn test_aes_xts_server_side() -> CliResult<()> {
     )
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -244,6 +249,7 @@ async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
     )
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_chacha20_poly1305_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -263,6 +269,7 @@ async fn test_chacha20_poly1305_server_side() -> CliResult<()> {
     )
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     // create a temp dir
@@ -367,6 +374,7 @@ async fn test_aes_gcm_aes_xts_client_side() -> CliResult<()> {
     )
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_aes_gcm_chacha20_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;

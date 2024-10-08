@@ -5,7 +5,9 @@ use aes_gcm_siv::{AeadInPlace, Aes128GcmSiv, Aes256GcmSiv, Key, KeyInit, Nonce, 
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::{AES_128_GCM_SIV_KEY_LENGTH, AES_256_GCM_SIV_KEY_LENGTH},
+    crypto::symmetric::symmetric_ciphers::{
+        AES_128_GCM_SIV_KEY_LENGTH, AES_256_GCM_SIV_KEY_LENGTH,
+    },
     KmipError,
 };
 

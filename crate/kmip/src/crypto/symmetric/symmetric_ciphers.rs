@@ -10,22 +10,72 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-use super::{
-    aes_gcm_siv_not_openssl, AES_128_GCM_IV_LENGTH, AES_128_GCM_KEY_LENGTH, AES_128_GCM_MAC_LENGTH,
-    AES_128_GCM_SIV_IV_LENGTH, AES_128_GCM_SIV_KEY_LENGTH, AES_128_GCM_SIV_MAC_LENGTH,
-    AES_128_XTS_KEY_LENGTH, AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH,
-    AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
-    AES_256_GCM_SIV_IV_LENGTH, AES_256_GCM_SIV_KEY_LENGTH, AES_256_GCM_SIV_MAC_LENGTH,
-    AES_256_XTS_KEY_LENGTH, AES_256_XTS_MAC_LENGTH, AES_256_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
-    RFC5649_16_KEY_LENGTH, RFC5649_16_MAC_LENGTH, RFC5649_32_IV_LENGTH, RFC5649_32_KEY_LENGTH,
-    RFC5649_32_MAC_LENGTH,
-};
+#[cfg(not(feature = "fips"))]
+use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     error::KmipError,
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm},
     kmip_bail,
 };
+
+/// AES 128 GCM key length in bytes.
+pub const AES_128_GCM_KEY_LENGTH: usize = 16;
+/// AES 128 GCM nonce length in bytes.
+pub const AES_128_GCM_IV_LENGTH: usize = 12;
+/// AES 128 GCM tag/mac length in bytes.
+pub const AES_128_GCM_MAC_LENGTH: usize = 16;
+
+/// AES 256 GCM key length in bytes.
+pub const AES_256_GCM_KEY_LENGTH: usize = 32;
+/// AES 256 GCM nonce length in bytes.
+pub const AES_256_GCM_IV_LENGTH: usize = 12;
+/// AES 256 GCM tag/mac length in bytes.
+pub const AES_256_GCM_MAC_LENGTH: usize = 16;
+
+/// AES 128 XTS key length in bytes.
+pub const AES_128_XTS_KEY_LENGTH: usize = 32;
+/// AES 128 XTS nonce, actually called a tweak, length in bytes.
+pub const AES_128_XTS_TWEAK_LENGTH: usize = 16;
+/// AES 128 XTS has no authentication.
+pub const AES_128_XTS_MAC_LENGTH: usize = 0;
+/// AES 256 XTS key length in bytes.
+pub const AES_256_XTS_KEY_LENGTH: usize = 64;
+/// AES 256 XTS nonce actually called a tweak,length in bytes.
+pub const AES_256_XTS_TWEAK_LENGTH: usize = 16;
+/// AES 256 XTS has no authentication.
+pub const AES_256_XTS_MAC_LENGTH: usize = 0;
+/// AES 128 `GCM_SIV` key length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_128_GCM_SIV_KEY_LENGTH: usize = 16;
+/// AES 128 `GCM_SIV` nonce length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_128_GCM_SIV_IV_LENGTH: usize = 12;
+/// AES 128 `GCM_SIV` mac length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_128_GCM_SIV_MAC_LENGTH: usize = 16;
+/// AES 256 `GCM_SIV` key length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_256_GCM_SIV_KEY_LENGTH: usize = 32;
+/// AES 256 `GCM_SIV` nonce length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
+/// AES 256 `GCM_SIV` mac length in bytes.
+#[cfg(not(feature = "fips"))]
+pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
+
+/// RFC 5649 with a 16-byte KEK.
+pub const RFC5649_16_KEY_LENGTH: usize = 16;
+// RFC 5649 IV is actually a fixed overhead
+pub const RFC5649_16_IV_LENGTH: usize = 0;
+/// RFC5649 has no authentication.
+pub const RFC5649_16_MAC_LENGTH: usize = 0;
+/// RFC 5649 with a 32-byte KEK.
+pub const RFC5649_32_KEY_LENGTH: usize = 32;
+// RFC 5649 IV is actually a fixed overhead
+pub const RFC5649_32_IV_LENGTH: usize = 0;
+/// RFC5649 has no authentication.
+pub const RFC5649_32_MAC_LENGTH: usize = 0;
 
 #[cfg(not(feature = "fips"))]
 /// Chacha20-Poly1305 key length in bytes.
@@ -38,7 +88,7 @@ pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
 /// The mode of operation for the symmetric stream cipher.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Encrypt,
     Decrypt,
@@ -47,8 +97,8 @@ pub enum Mode {
 impl From<Mode> for OpenSslMode {
     fn from(mode: Mode) -> Self {
         match mode {
-            Mode::Encrypt => OpenSslMode::Encrypt,
-            Mode::Decrypt => OpenSslMode::Decrypt,
+            Mode::Encrypt => Self::Encrypt,
+            Mode::Decrypt => Self::Decrypt,
         }
     }
 }
@@ -78,7 +128,7 @@ impl SymCipher {
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
             Self::Aes256Xts => Ok(Cipher::aes_256_xts()),
-            Self::Rfc5649_16 | SymCipher::Rfc5649_32 => {
+            Self::Rfc5649_16 | Self::Rfc5649_32 => {
                 kmip_bail!(KmipError::NotSupported(
                     "RFC5649 is not supported in this version of openssl".to_owned()
                 ))
@@ -86,7 +136,7 @@ impl SymCipher {
             #[cfg(not(feature = "fips"))]
             Self::Chacha20Poly1305 => Ok(Cipher::chacha20_poly1305()),
             #[cfg(not(feature = "fips"))]
-            SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
+            Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
                 //TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
                 kmip_bail!(KmipError::NotSupported(
                     "AES GCM SIV is not supported in this version of openssl".to_owned()
@@ -175,6 +225,7 @@ impl SymCipher {
                             "AES key must be 32 or 64 bytes long for AES XTS".to_owned()
                         )),
                     },
+                    #[cfg(not(feature = "fips"))]
                     BlockCipherMode::GCMSIV => match key_size {
                         AES_128_GCM_SIV_KEY_LENGTH => Ok(Self::Aes128GcmSiv),
                         AES_256_GCM_SIV_KEY_LENGTH => Ok(Self::Aes256GcmSiv),
@@ -253,6 +304,7 @@ pub fn encrypt(
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
             Ok((ciphertext, vec![]))
         }
+        #[cfg(not(feature = "fips"))]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
         }
@@ -278,7 +330,7 @@ pub fn encrypt(
 
 /// Decrypt the ciphertext using the given symmetric cipher.
 /// Return the decrypted plaintext.
-/// The tag is required for AEAD ciphers (AES GCN, ChaCha Poly1305, ...).
+/// The tag is required for AEAD ciphers (`AES GCN`, `ChaCha20 Poly1305`, ...).
 /// For XTS mode, the nonce is the tweak, the aad and the tag are ignored.
 pub fn decrypt(
     sym_cipher: SymCipher,
@@ -298,6 +350,7 @@ pub fn decrypt(
                 ciphertext,
             )?)
         }
+        #[cfg(not(feature = "fips"))]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
         }
@@ -339,6 +392,7 @@ impl StreamCipher {
         aad: &[u8],
     ) -> Result<Self, KmipError> {
         match sym_cipher {
+            #[cfg(not(feature = "fips"))]
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
                 //TODO: the pure Rust crate does not support streaming. When openssl id exposed, this should be fixed
                 Err(KmipError::NotSupported(
@@ -353,7 +407,7 @@ impl StreamCipher {
                     SymCipher::Aes256Xts => 32,
                     _ => cipher.block_size(),
                 };
-                let mut crypter = Crypter::new(cipher, mode.clone().into(), key, Some(nonce))?;
+                let mut crypter = Crypter::new(cipher, mode.into(), key, Some(nonce))?;
                 if !aad.is_empty() {
                     crypter.aad_update(aad)?;
                 }
@@ -407,13 +461,13 @@ impl StreamCipher {
                 // if there are remaining bytes in the buffer, we need to update once more
                 // for XTS this may not be a multiple of the block size, but it must be greater than
                 // the block size
-                let mut final_bytes = if !self.buffer.is_empty() {
+                let mut final_bytes = if self.buffer.is_empty() {
+                    vec![]
+                } else {
                     let mut final_bytes = vec![0; 2 * self.block_size];
                     let len = c.update(&self.buffer, &mut final_bytes)?;
                     final_bytes.truncate(len);
                     final_bytes
-                } else {
-                    vec![]
                 };
                 // finalize
                 let mut buffer = vec![0; self.block_size];
@@ -445,13 +499,13 @@ impl StreamCipher {
         match self.underlying_cipher {
             UnderlyingCipher::Openssl(ref mut c) => {
                 // if there are remaining bytes in the buffer, we need to update once more
-                let mut final_bytes = if !self.buffer.is_empty() {
+                let mut final_bytes = if self.buffer.is_empty() {
+                    vec![]
+                } else {
                     let mut final_bytes = vec![0; 2 * self.block_size];
                     let len = c.update(&self.buffer, &mut final_bytes)?;
                     final_bytes.truncate(len);
                     final_bytes
-                } else {
-                    vec![]
                 };
                 // Set the tag if it exists and we are decrypting.
                 if self.tag_size > 0 {
@@ -461,9 +515,8 @@ impl StreamCipher {
                             self.tag_size,
                             tag.len()
                         )));
-                    } else {
-                        c.set_tag(tag)?;
                     }
+                    c.set_tag(tag)?;
                 }
                 // finalize
                 let mut buffer = vec![0; self.block_size];
