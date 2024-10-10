@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.xx.xx] - 2024-xx-xx
+
+### 🚀 Features
+
+- `ckms`: merge attributes handling under attributes subcommand
+
+### 🐛 Bug Fixes
+
+- KMIP Attributes: fix deletion on Links and Vendor Attributes
+
 ## [4.19.0] - 2024-10-09
 
 ### 🚀 Features

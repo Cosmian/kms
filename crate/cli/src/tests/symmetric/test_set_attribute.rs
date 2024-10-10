@@ -1,9 +1,6 @@
 use cosmian_kms_client::kmip::{
     extra::VENDOR_ID_COSMIAN,
-    kmip_types::{
-        CryptographicAlgorithm, CryptographicUsageMask, LinkType, StateEnumeration, Tag,
-        VendorAttribute,
-    },
+    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute},
 };
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use strum::IntoEnumIterator;
@@ -155,6 +152,54 @@ fn get_and_check_attributes(
     Ok(())
 }
 
+#[allow(clippy::cognitive_complexity)]
+fn get_and_check_none_attributes(
+    ctx: &TestsContext,
+    uid: &str,
+    requested_attributes: &SetOrDeleteAttributes,
+) -> CliResult<()> {
+    let get_attributes = get_attributes(
+        &ctx.owner_client_conf_path,
+        uid,
+        &get_all_attribute_tags(),
+        &get_all_link_types(),
+    )?;
+    trace!("get_and_check_attributes: {get_attributes:?}");
+
+    if let Some(_activation_date) = requested_attributes.activation_date {
+        assert!(!get_attributes.contains_key(&Tag::ActivationDate.to_string()));
+    }
+    if let Some(_cryptographic_length) = requested_attributes.cryptographic_length {
+        assert!(!get_attributes.contains_key(&Tag::CryptographicLength.to_string()));
+    }
+    if let Some(_cryptographic_algorithm) = requested_attributes.cryptographic_algorithm {
+        assert!(!get_attributes.contains_key(&Tag::CryptographicAlgorithm.to_string()));
+    }
+    if let Some(_key_usage) = &requested_attributes.key_usage {
+        assert!(!get_attributes.contains_key(&Tag::CryptographicUsageMask.to_string()));
+    }
+    if let Some(_public_key_id) = &requested_attributes.public_key_id {
+        assert!(!get_attributes.contains_key(&LinkType::PublicKeyLink.to_string()));
+    }
+    if let Some(_private_key_id) = &requested_attributes.private_key_id {
+        assert!(!get_attributes.contains_key(&LinkType::PrivateKeyLink.to_string()));
+    }
+    if let Some(_certificate_id) = &requested_attributes.certificate_id {
+        assert!(!get_attributes.contains_key(&LinkType::CertificateLink.to_string()));
+    }
+    if let Some(_pkcs12_certificate_id) = &requested_attributes.pkcs12_certificate_id {
+        assert!(!get_attributes.contains_key(&LinkType::PKCS12CertificateLink.to_string()));
+    }
+    if let Some(_pkcs12_password_certificate) = &requested_attributes.pkcs12_password_certificate {
+        assert!(!get_attributes.contains_key(&LinkType::PKCS12PasswordLink.to_string()));
+    }
+    if let Some(_vendor_attributes) = &requested_attributes.vendor_attributes {
+        assert!(!get_attributes.contains_key(&Tag::VendorExtension.to_string()));
+    }
+
+    Ok(())
+}
+
 fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
     let key_usage = Some(vec![KeyUsage::Encrypt, KeyUsage::Decrypt]);
     for activation_date in [None, Some(5)] {
@@ -182,9 +227,10 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
             get_and_check_attributes(ctx, uid, &requested_attributes)?;
             delete_attributes(
                 &ctx.owner_client_conf_path,
-                &Some(requested_attributes),
+                Some(&requested_attributes),
                 None,
             )?;
+            get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
         }
     }
 
@@ -200,9 +246,10 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
         get_and_check_attributes(ctx, uid, &requested_attributes)?;
         delete_attributes(
             &ctx.owner_client_conf_path,
-            &Some(requested_attributes),
+            Some(&requested_attributes),
             None,
         )?;
+        get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
     }
 
     // Test key usage one by one
@@ -216,27 +263,10 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
         get_and_check_attributes(ctx, uid, &requested_attributes)?;
         delete_attributes(
             &ctx.owner_client_conf_path,
-            &Some(requested_attributes),
+            Some(&requested_attributes),
             None,
         )?;
-    }
-
-    // Test state one by one
-    for state in StateEnumeration::iter() {
-        let requested_attributes = SetOrDeleteAttributes {
-            id: Some(uid.to_owned()),
-            state: Some(state),
-            ..SetOrDeleteAttributes::default()
-        };
-
-        set_attributes(&ctx.owner_client_conf_path, &requested_attributes)?;
-        get_and_check_attributes(ctx, uid, &requested_attributes)?;
-        delete_attributes(
-            &ctx.owner_client_conf_path,
-            &Some(requested_attributes),
-            None,
-        )
-        .unwrap_err();
+        get_and_check_none_attributes(ctx, uid, &requested_attributes)?;
     }
 
     trace!("Test delete all attributes by references");
@@ -247,7 +277,7 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
     for tag in Tag::iter() {
         delete_attributes(
             &ctx.owner_client_conf_path,
-            &requested_attributes,
+            requested_attributes.as_ref(),
             Some(vec![tag]),
         )?;
     }
@@ -259,7 +289,7 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
     }
     delete_attributes(
         &ctx.owner_client_conf_path,
-        &requested_attributes,
+        requested_attributes.as_ref(),
         Some(attribute_tags),
     )?;
     Ok(())

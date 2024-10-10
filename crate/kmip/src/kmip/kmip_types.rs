@@ -1324,7 +1324,6 @@ pub enum Attribute {
     CryptographicDomainParameters(CryptographicDomainParameters),
     CryptographicUsageMask(CryptographicUsageMask),
     Links(Vec<Link>),
-    State(StateEnumeration),
     VendorAttributes(Vec<VendorAttribute>),
 }
 
@@ -1353,7 +1352,6 @@ impl Display for Attribute {
                 write!(f, "CryptographicUsageMask: {crypto_usage_mask:?}")
             }
             Self::Links(links) => write!(f, "Links: {links:?}"),
-            Self::State(state) => write!(f, "State: {state}"),
             Self::VendorAttributes(vendor_attributes) => {
                 write!(f, "VendorAttributes: {vendor_attributes:?}")
             }
@@ -1404,11 +1402,6 @@ impl Serialize for Attribute {
                 }
                 st.end()
             }
-            Self::State(state) => {
-                let mut st = serializer.serialize_struct("Attribute", 1)?;
-                st.serialize_field("State", state)?;
-                st.end()
-            }
             Self::VendorAttributes(vendor_attributes) => {
                 let mut st = serializer.serialize_struct("Attribute", vendor_attributes.len())?;
                 for vendor_attribute in vendor_attributes {
@@ -1435,7 +1428,6 @@ impl<'de> Deserialize<'de> for Attribute {
             CryptographicDomainParameters,
             CryptographicUsageMask,
             Link,
-            State,
             VendorAttribute,
         }
 
@@ -1460,7 +1452,6 @@ impl<'de> Deserialize<'de> for Attribute {
                     None;
                 let mut cryptographic_usage_mask: Option<CryptographicUsageMask> = None;
                 let mut links: Vec<Link> = Vec::new();
-                let mut state: Option<StateEnumeration> = None;
                 let mut vendor_attributes: Vec<VendorAttribute> = Vec::new();
 
                 while let Some(key) = map.next_key()? {
@@ -1507,12 +1498,6 @@ impl<'de> Deserialize<'de> for Attribute {
                         Field::Link => {
                             links.push(map.next_value()?);
                         }
-                        Field::State => {
-                            if state.is_some() {
-                                return Err(de::Error::duplicate_field("state"))
-                            }
-                            state = Some(map.next_value()?);
-                        }
                         Field::VendorAttribute => {
                             vendor_attributes.push(map.next_value()?);
                         }
@@ -1538,8 +1523,6 @@ impl<'de> Deserialize<'de> for Attribute {
                     return Ok(Attribute::CryptographicUsageMask(cryptographic_usage_mask))
                 } else if !links.is_empty() {
                     return Ok(Attribute::Links(links))
-                } else if let Some(state) = state {
-                    return Ok(Attribute::State(state))
                 } else if !vendor_attributes.is_empty() {
                     return Ok(Attribute::VendorAttributes(vendor_attributes))
                 }
@@ -1557,7 +1540,6 @@ impl<'de> Deserialize<'de> for Attribute {
             "cryptographic_usage_mask",
             "link",
             "public_key_link",
-            "state",
             "vendor_attributes",
         ];
         deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)

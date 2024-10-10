@@ -117,10 +117,7 @@ impl GetAttributesAction {
             trace!("No attribute tag specified, returning all possible tags");
             let mut all_tags = Vec::new();
             for tag in Tag::iter() {
-                if tag != Tag::VendorExtension {
-                    // Just to avoid the vendor extension tag by default
-                    all_tags.push(tag);
-                }
+                all_tags.push(tag);
             }
             all_tags
         } else {
@@ -325,9 +322,7 @@ impl GetAttributesAction {
                         );
                     }
                 }
-                _x => {
-                    // trace!("Tag {x} not supported");
-                }
+                _x => {}
             }
         }
 

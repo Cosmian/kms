@@ -82,10 +82,6 @@ pub(crate) async fn set_attribute(
                 attributes.set_link(link.link_type, link.linked_object_identifier.clone());
             }
         }
-        Attribute::State(state) => {
-            trace!("Set Attribute: State: {:?}", state);
-            owm.state = state;
-        }
         Attribute::VendorAttributes(vendor_attributes) => {
             trace!("Set Attribute: Vendor Attributes: {:?}", vendor_attributes);
             for vendor_attribute in vendor_attributes {

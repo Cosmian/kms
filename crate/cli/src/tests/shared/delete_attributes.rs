@@ -12,7 +12,7 @@ use crate::{
 
 pub(crate) fn delete_attributes(
     cli_conf_path: &str,
-    requested_attributes: &Option<SetOrDeleteAttributes>,
+    requested_attributes: Option<&SetOrDeleteAttributes>,
     attribute_references: Option<Vec<Tag>>,
 ) -> CliResult<String> {
     let mut args = requested_attributes
