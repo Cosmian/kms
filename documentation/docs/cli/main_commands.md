@@ -1249,7 +1249,7 @@ Set the KMIP object attributes (one or multiple attributes).
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
-`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key
+`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
 
 `--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
 
@@ -1257,7 +1257,7 @@ Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1",
 
 `--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
-`--key-usage [-u] <KEY_USAGE>` The key usage
+`--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
@@ -1275,15 +1275,11 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
 
-`--state [-s] <STATE>` The state of the object
-
-Possible values:  `"PreActive", "Active", "Deactivated", "Compromised", "Destroyed", "Destroyed_Compromised"`
-
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
 `--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
 
-`--attribute-value <ATTRIBUTE_VALUE>` The attribute value
+`--attribute-value <ATTRIBUTE_VALUE>` The attribute value (in hex format)
 
 
 
@@ -1300,7 +1296,7 @@ Delete the KMIP object attributes (one or multiple attributes).
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
-`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key
+`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
 
 `--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
 
@@ -1308,7 +1304,7 @@ Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1",
 
 `--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
-`--key-usage [-u] <KEY_USAGE>` The key usage
+`--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
 
@@ -1326,15 +1322,11 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
 
-`--state [-s] <STATE>` The state of the object
-
-Possible values:  `"PreActive", "Active", "Deactivated", "Compromised", "Destroyed", "Destroyed_Compromised"`
-
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
 `--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
 
-`--attribute-value <ATTRIBUTE_VALUE>` The attribute value
+`--attribute-value <ATTRIBUTE_VALUE>` The attribute value (in hex format)
 
 `--attribute <ATTRIBUTE>` The attributes or tags to retrieve.
 To specify multiple attributes, use the option multiple times.

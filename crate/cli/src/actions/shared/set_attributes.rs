@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
             self, Attribute, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            StateEnumeration, VendorAttribute,
+            VendorAttribute,
         },
     },
     KmsClient,
@@ -30,7 +30,7 @@ pub struct VendorAttributeCli {
     /// The attribute name.
     #[clap(long, short = 'n', requires = "vendor_identification")]
     pub attribute_name: Option<String>,
-    /// The attribute value.
+    /// The attribute value (in hex format).
     #[clap(long, requires = "vendor_identification")]
     pub attribute_value: Option<String>,
 }
@@ -83,7 +83,7 @@ pub struct SetOrDeleteAttributes {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "id-tags")]
     pub(crate) tags: Option<Vec<String>>,
 
-    /// Set the activation date of the key.
+    /// Set the activation date of the key. Epoch time (or Unix time) in milliseconds.
     #[clap(long, short = 'd')]
     pub(crate) activation_date: Option<u64>,
 
@@ -95,7 +95,7 @@ pub struct SetOrDeleteAttributes {
     #[clap(long)]
     pub(crate) cryptographic_length: Option<i32>,
 
-    /// The key usage.
+    /// The key usage. Add multiple times to specify multiple key usages.
     #[clap(long, short = 'u')]
     pub(crate) key_usage: Option<Vec<KeyUsage>>,
 
@@ -126,10 +126,6 @@ pub struct SetOrDeleteAttributes {
     /// The link to the corresponding child id if any.
     #[clap(long)]
     pub(crate) child_id: Option<String>,
-
-    /// The state of the object.
-    #[clap(long, short = 's')]
-    pub(crate) state: Option<StateEnumeration>,
 
     #[clap(flatten)]
     pub vendor_attributes: Option<VendorAttributeCli>,
@@ -226,11 +222,6 @@ impl SetOrDeleteAttributes {
                 link_type: LinkType::ChildLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(child_id.clone()),
             }]);
-            result.push(attribute);
-        }
-
-        if let Some(state) = &self.state {
-            let attribute = Attribute::State(state.to_owned());
             result.push(attribute);
         }
 

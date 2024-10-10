@@ -74,11 +74,6 @@ pub(crate) fn prepare_attributes(
         args.push(child_id.clone());
     }
 
-    if let Some(state) = requested_attributes.state {
-        args.push("--state".to_owned());
-        args.push(state.to_string());
-    }
-
     if let Some(tags) = &requested_attributes.tags {
         for tag in tags {
             args.push("--tag".to_owned());
