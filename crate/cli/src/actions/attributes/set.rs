@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
             self, Attribute, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            StateEnumeration, VendorAttribute,
+            VendorAttribute,
         },
     },
     KmsClient,
@@ -15,9 +15,11 @@ use cosmian_kms_client::{
 use serde::Deserialize;
 use tracing::{info, trace};
 
-use super::utils::KeyUsage;
 use crate::{
-    actions::{console, shared::utils::build_usage_mask_from_key_usage},
+    actions::{
+        console,
+        shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
+    },
     cli_bail,
     error::result::CliResult,
 };
@@ -30,7 +32,7 @@ pub struct VendorAttributeCli {
     /// The attribute name.
     #[clap(long, short = 'n', requires = "vendor_identification")]
     pub attribute_name: Option<String>,
-    /// The attribute value.
+    /// The attribute value (in hex format).
     #[clap(long, requires = "vendor_identification")]
     pub attribute_value: Option<String>,
 }
@@ -83,7 +85,7 @@ pub struct SetOrDeleteAttributes {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "id-tags")]
     pub(crate) tags: Option<Vec<String>>,
 
-    /// Set the activation date of the key.
+    /// Set the activation date of the key. Epoch time (or Unix time) in milliseconds.
     #[clap(long, short = 'd')]
     pub(crate) activation_date: Option<u64>,
 
@@ -95,7 +97,7 @@ pub struct SetOrDeleteAttributes {
     #[clap(long)]
     pub(crate) cryptographic_length: Option<i32>,
 
-    /// The key usage.
+    /// The key usage. Add multiple times to specify multiple key usages.
     #[clap(long, short = 'u')]
     pub(crate) key_usage: Option<Vec<KeyUsage>>,
 
@@ -126,10 +128,6 @@ pub struct SetOrDeleteAttributes {
     /// The link to the corresponding child id if any.
     #[clap(long)]
     pub(crate) child_id: Option<String>,
-
-    /// The state of the object.
-    #[clap(long, short = 's')]
-    pub(crate) state: Option<StateEnumeration>,
 
     #[clap(flatten)]
     pub vendor_attributes: Option<VendorAttributeCli>,
@@ -229,11 +227,6 @@ impl SetOrDeleteAttributes {
             result.push(attribute);
         }
 
-        if let Some(state) = &self.state {
-            let attribute = Attribute::State(state.to_owned());
-            result.push(attribute);
-        }
-
         if let Some(vendor_attributes) = &self.vendor_attributes {
             let attribute = Attribute::try_from(vendor_attributes)?;
             result.push(attribute);
@@ -243,7 +236,7 @@ impl SetOrDeleteAttributes {
     }
 }
 
-/// Set the KMIP object attributes (one or multiple attributes).
+/// Set the KMIP object attributes.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SetAttributesAction {

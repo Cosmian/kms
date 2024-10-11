@@ -23,6 +23,7 @@ pub(crate) fn get_attributes(
 ) -> CliResult<HashMap<String, Value>> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [
+        "get",
         "--id",
         uid,
         "--output-file",
@@ -48,7 +49,7 @@ pub(crate) fn get_attributes(
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
-    cmd.arg("get-attributes").args(args);
+    cmd.arg("attributes").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::fs::read_to_string(temp_file.path())?;

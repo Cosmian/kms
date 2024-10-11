@@ -75,20 +75,18 @@ pub(crate) async fn delete_attribute(
                     attributes.cryptographic_usage_mask = None;
                 }
             }
-            Attribute::Links(links) => {
-                if Some(links) == attributes.link {
-                    attributes.link = None;
+            Attribute::Links(requested_links) => {
+                for requested_link in &requested_links {
+                    attributes.remove_link(requested_link.link_type);
                 }
             }
             Attribute::VendorAttributes(vendor_attributes) => {
-                if Some(vendor_attributes) == attributes.vendor_attributes {
-                    attributes.vendor_attributes = None;
+                for vendor_attribute in &vendor_attributes {
+                    attributes.remove_vendor_attribute(
+                        &vendor_attribute.vendor_identification,
+                        &vendor_attribute.attribute_name,
+                    );
                 }
-            }
-            x @ Attribute::State(_) => {
-                return Err(KmsError::NotSupported(format!(
-                    "Delete Attribute on {x:?} not supported"
-                )));
             }
         }
     };

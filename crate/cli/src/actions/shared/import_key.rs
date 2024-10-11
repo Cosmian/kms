@@ -60,8 +60,8 @@ pub struct ImportKeyAction {
     #[clap(required = true)]
     key_file: PathBuf,
 
-    /// The unique id of the key; a unique id based
-    /// on the key material is generated if not specified.
+    /// The unique id of the key; a random uuid
+    /// is generated if not specified.
     #[clap(required = false)]
     key_id: Option<String>,
 

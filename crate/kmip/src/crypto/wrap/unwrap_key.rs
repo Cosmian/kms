@@ -160,6 +160,9 @@ pub(crate) fn unwrap(
             if block_cipher_mode == Some(BlockCipherMode::GCM) {
                 // unwrap using aes Gcm
                 let len = ciphertext.len();
+                if len < TAG_LENGTH + NONCE_LENGTH {
+                    kmip_bail!("Invalid wrapped key - insufficient length.");
+                }
                 let aead = SymCipher::Aes256Gcm;
                 let nonce = &ciphertext[..NONCE_LENGTH];
                 let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
