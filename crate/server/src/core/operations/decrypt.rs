@@ -189,14 +189,20 @@ fn decrypt_bulk(
         }
 
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-            let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+            let (key_bytes, sym_cipher) = get_aead_and_key(owm, request)?;
             for nonce_ciphertext_tag in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data)
             {
-                let nonce = &nonce_ciphertext_tag[0..aead.nonce_size()];
+                if nonce_ciphertext_tag.len() < sym_cipher.nonce_size() + sym_cipher.tag_size() {
+                    return Err(KmsError::InvalidRequest(
+                        "Decrypt bulk: invalid nonce/ciphertext/tag length".to_owned(),
+                    ))
+                }
+                let nonce = &nonce_ciphertext_tag[0..sym_cipher.nonce_size()];
                 let ciphertext = &nonce_ciphertext_tag
-                    [aead.nonce_size()..nonce_ciphertext_tag.len() - aead.tag_size()];
-                let tag = &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - aead.tag_size()..];
-                let plaintext = sym_decrypt(aead, &key_bytes, nonce, &[], ciphertext, tag)?;
+                    [sym_cipher.nonce_size()..nonce_ciphertext_tag.len() - sym_cipher.tag_size()];
+                let tag =
+                    &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - sym_cipher.tag_size()..];
+                let plaintext = sym_decrypt(sym_cipher, &key_bytes, nonce, &[], ciphertext, tag)?;
                 plaintexts.push(plaintext);
             }
         }
