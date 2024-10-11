@@ -34,8 +34,8 @@ pub struct CreateKeyPairAction {
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
 
-    /// The unique id of the private key; a unique id based
-    /// on the key material is generated if not specified.
+    /// The unique id of the private key; a random uuid
+    /// is generated if not specified.
     #[clap(required = false)]
     private_key_id: Option<String>,
 }

@@ -63,8 +63,8 @@ pub struct CreateKeyAction {
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
 
-    /// The unique id of the key; a unique id based
-    /// on the key material is generated if not specified.
+    /// The unique id of the key; a random uuid
+    /// is generated if not specified.
     #[clap(required = false)]
     key_id: Option<String>,
 }
