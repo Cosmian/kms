@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.xx.xx] - 2024-xx-xx
+
+### 🚀 Features
+
+- Client `ckms`: merge attributes handling (set/get/delete) under `attributes` subcommand ([#329](https://github.com/Cosmian/kms/pull/329))
+
+### 🐛 Bug Fixes
+
+- KMIP Attributes: fix deletion on Links and Vendor Attributes ([#329](https://github.com/Cosmian/kms/pull/329))
+
 ## [4.19.0] - 2024-10-09
 
 ### 🚀 Features

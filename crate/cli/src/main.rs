@@ -5,19 +5,10 @@ use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_kms_cli::actions::cover_crypt::CovercryptCommands;
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction,
-        certificates::CertificatesCommands,
-        elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands,
-        login::LoginAction,
-        logout::LogoutAction,
-        markdown::MarkdownAction,
-        new_database::NewDatabaseAction,
-        rsa::RsaCommands,
-        shared::{
-            DeleteAttributesAction, GetAttributesAction, LocateObjectsAction, SetAttributesAction,
-        },
-        symmetric::SymmetricCommands,
+        access::AccessAction, attributes::AttributesCommands, certificates::CertificatesCommands,
+        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, login::LoginAction,
+        logout::LogoutAction, markdown::MarkdownAction, new_database::NewDatabaseAction,
+        rsa::RsaCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
     error::result::CliResult,
@@ -67,9 +58,8 @@ enum CliCommands {
     Certificates(CertificatesCommands),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
-    GetAttributes(GetAttributesAction),
-    SetAttributes(SetAttributesAction),
-    DeleteAttributes(DeleteAttributesAction),
+    #[command(subcommand)]
+    Attributes(AttributesCommands),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     #[command(subcommand)]
@@ -132,9 +122,7 @@ async fn main_() -> CliResult<()> {
                 CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
                 CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-                CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
-                CliCommands::SetAttributes(action) => action.process(&kms_rest_client).await?,
-                CliCommands::DeleteAttributes(action) => action.process(&kms_rest_client).await?,
+                CliCommands::Attributes(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Google(action) => action.process(&conf_path, &kms_rest_client).await?,
                 _ => {
                     tracing::error!("unexpected command");

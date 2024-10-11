@@ -6,8 +6,8 @@ use crate::{
     actions::certificates::CertificateInputFormat,
     error::result::CliResult,
     tests::{
+        attributes::get_attributes,
         certificates::import::{import_certificate, ImportCertificateInput},
-        shared::get_attributes,
     },
 };
 
