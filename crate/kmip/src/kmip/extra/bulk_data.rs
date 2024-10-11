@@ -23,6 +23,7 @@ impl BulkData {
 
     /// If the data starts with the sequence 0x8787, it MAY be a `BulkData`
     #[must_use]
+    #[allow(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
     pub const fn is_bulk_data(data: &[u8]) -> bool {
         data.len() > 2 && data[0] == 0x87 && data[1] == 0x87
     }
@@ -37,6 +38,7 @@ impl BulkData {
         Ok(Zeroizing::new(se.finalize().to_vec()))
     }
 
+    #[allow(clippy::indexing_slicing)]
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");

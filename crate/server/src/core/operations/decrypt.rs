@@ -197,11 +197,29 @@ fn decrypt_bulk(
                         "Decrypt bulk: invalid nonce/ciphertext/tag length".to_owned(),
                     ))
                 }
-                let nonce = &nonce_ciphertext_tag[0..sym_cipher.nonce_size()];
+                let nonce = &nonce_ciphertext_tag
+                    .get(0..sym_cipher.nonce_size())
+                    .ok_or_else(|| {
+                        KmsError::ServerError(
+                            "Decrypt bulk: indexing slicing failed for nonce".to_owned(),
+                        )
+                    })?;
                 let ciphertext = &nonce_ciphertext_tag
-                    [sym_cipher.nonce_size()..nonce_ciphertext_tag.len() - sym_cipher.tag_size()];
-                let tag =
-                    &nonce_ciphertext_tag[nonce_ciphertext_tag.len() - sym_cipher.tag_size()..];
+                    .get(
+                        sym_cipher.nonce_size()..nonce_ciphertext_tag.len() - sym_cipher.tag_size(),
+                    )
+                    .ok_or_else(|| {
+                        KmsError::ServerError(
+                            "Decrypt bulk: indexing slicing failed for ciphertext".to_owned(),
+                        )
+                    })?;
+                let tag = nonce_ciphertext_tag
+                    .get(nonce_ciphertext_tag.len() - sym_cipher.tag_size()..)
+                    .ok_or_else(|| {
+                        KmsError::ServerError(
+                            "Decrypt bulk: indexing slicing failed for tag".to_owned(),
+                        )
+                    })?;
                 let plaintext = sym_decrypt(sym_cipher, &key_bytes, nonce, &[], ciphertext, tag)?;
                 plaintexts.push(plaintext);
             }
