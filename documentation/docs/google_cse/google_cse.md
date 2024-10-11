@@ -46,7 +46,7 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.1 \
     --jwt-issuer-uri=https://accounts.google.com \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
     --google-cse-kacls-url=https://cse.example.com/google_cse
@@ -98,7 +98,6 @@ Cosmian KMS supports this feature, and to enable it:
 
 - Add the identity provider's information in the server-side [Cosmian KMS configuration](../authentication.md)
 - Ensure that external users can access the Google CSE symmetric key
-
 
 ## User experience
 
