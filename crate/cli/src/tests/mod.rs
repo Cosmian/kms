@@ -1,4 +1,5 @@
 mod access;
+mod attributes;
 mod auth_tests;
 mod certificates;
 #[cfg(not(feature = "fips"))]

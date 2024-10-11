@@ -9,10 +9,10 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use super::set_attributes::SetOrDeleteAttributes;
+use super::set::SetOrDeleteAttributes;
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-/// Delete the KMIP object attributes (one or multiple attributes).
+/// Delete the KMIP object attributes.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct DeleteAttributesAction {

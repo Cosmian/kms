@@ -8,16 +8,14 @@ use tracing::trace;
 
 use crate::{
     actions::{
+        attributes::{SetOrDeleteAttributes, VendorAttributeCli},
         certificates::Algorithm,
-        shared::{
-            utils::{build_usage_mask_from_key_usage, KeyUsage},
-            SetOrDeleteAttributes, VendorAttributeCli,
-        },
+        shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
     },
     error::result::CliResult,
     tests::{
+        attributes::{delete::delete_attributes, get::get_attributes, set::set_attributes},
         certificates::certify::{certify, CertifyOp},
-        shared::{delete_attributes, get_attributes, set_attributes},
         symmetric::create_key::create_symmetric_key,
     },
 };

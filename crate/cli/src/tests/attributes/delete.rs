@@ -3,9 +3,9 @@ use std::process::Command;
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::{kmip::kmip_types::Tag, KMS_CLI_CONF_ENV};
 
-use super::set_attributes::prepare_attributes;
+use super::set::prepare_attributes;
 use crate::{
-    actions::shared::SetOrDeleteAttributes,
+    actions::attributes::SetOrDeleteAttributes,
     error::{result::CliResult, CliError},
     tests::{utils::recover_cmd_logs, PROG_NAME},
 };
@@ -18,7 +18,7 @@ pub(crate) fn delete_attributes(
     let mut args = requested_attributes
         .as_ref()
         .map_or_else(Vec::<String>::new, |requested_attributes| {
-            prepare_attributes(requested_attributes)
+            prepare_attributes("delete", requested_attributes)
         });
 
     if let Some(references) = attribute_references {
@@ -30,7 +30,7 @@ pub(crate) fn delete_attributes(
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
-    cmd.arg("delete-attributes").args(args);
+    cmd.arg("attributes").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let set_attribute_output = std::str::from_utf8(&output.stdout)?;

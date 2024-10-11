@@ -30,29 +30,25 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 **`ec`** [[4]](#4-ckms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
-**`get-attributes`** [[5]](#5-ckms-get-attributes)  Get the KMIP object attributes and tags.
+**`attributes`** [[5]](#5-ckms-attributes)  Get/Set/Delete the KMIP object attributes
 
-**`set-attributes`** [[6]](#6-ckms-set-attributes)  Set the KMIP object attributes (one or multiple attributes).
+**`locate`** [[6]](#6-ckms-locate)  Locate cryptographic objects inside the KMS
 
-**`delete-attributes`** [[7]](#7-ckms-delete-attributes)  Delete the KMIP object attributes (one or multiple attributes).
+**`new-database`** [[7]](#7-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`locate`** [[8]](#8-ckms-locate)  Locate cryptographic objects inside the KMS
+**`rsa`** [[8]](#8-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
-**`new-database`** [[9]](#9-ckms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+**`server-version`** [[9]](#9-ckms-server-version)  Print the version of the server
 
-**`rsa`** [[10]](#10-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
+**`sym`** [[10]](#10-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
-**`server-version`** [[11]](#11-ckms-server-version)  Print the version of the server
+**`login`** [[11]](#11-ckms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
-**`sym`** [[12]](#12-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
+**`logout`** [[12]](#12-ckms-logout)  Logout from the Identity Provider.
 
-**`login`** [[13]](#13-ckms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+**`markdown`** [[13]](#13-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
-**`logout`** [[14]](#14-ckms-logout)  Logout from the Identity Provider.
-
-**`markdown`** [[15]](#15-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
-
-**`google`** [[16]](#16-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
+**`google`** [[14]](#14-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
 ---
 
@@ -1208,12 +1204,29 @@ Decrypts a file with the given private key using ECIES
 
 ---
 
-## 5 ckms get-attributes
+## 5 ckms attributes
+
+Get/Set/Delete the KMIP object attributes
+
+### Usage
+`ckms attributes <subcommand>`
+
+### Subcommands
+
+**`get`** [[5.1]](#51-ckms-attributes-get)  Get the KMIP object attributes and tags.
+
+**`set`** [[5.2]](#52-ckms-attributes-set)  Set the KMIP object attributes.
+
+**`delete`** [[5.3]](#53-ckms-attributes-delete)  Delete the KMIP object attributes.
+
+---
+
+## 5.1 ckms attributes get
 
 Get the KMIP object attributes and tags.
 
 ### Usage
-`ckms get-attributes [options]`
+`ckms attributes get [options]`
 ### Arguments
 `--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
 
@@ -1238,12 +1251,12 @@ The attributes will be in JSON TTLV format.
 
 ---
 
-## 6 ckms set-attributes
+## 5.2 ckms attributes set
 
-Set the KMIP object attributes (one or multiple attributes).
+Set the KMIP object attributes.
 
 ### Usage
-`ckms set-attributes [options]`
+`ckms attributes set [options]`
 ### Arguments
 `--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
 
@@ -1285,12 +1298,12 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 7 ckms delete-attributes
+## 5.3 ckms attributes delete
 
-Delete the KMIP object attributes (one or multiple attributes).
+Delete the KMIP object attributes.
 
 ### Usage
-`ckms delete-attributes [options]`
+`ckms attributes delete [options]`
 ### Arguments
 `--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
 
@@ -1335,9 +1348,10 @@ Possible values:  `"ActivationDate", "ApplicationData", "ApplicationNamespace", 
 
 
 
+
 ---
 
-## 8 ckms locate
+## 6 ckms locate
 
 Locate cryptographic objects inside the KMS
 
@@ -1365,7 +1379,7 @@ To specify multiple tags, use the option multiple times.
 
 ---
 
-## 9 ckms new-database
+## 7 ckms new-database
 
 Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
@@ -1375,7 +1389,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ---
 
-## 10 ckms rsa
+## 8 ckms rsa
 
 Manage RSA keys. Encrypt and decrypt data using RSA keys
 
@@ -1384,15 +1398,15 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Subcommands
 
-**`keys`** [[10.1]](#101-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
+**`keys`** [[8.1]](#81-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[10.2]](#102-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
+**`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`decrypt`** [[10.3]](#103-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
+**`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -1400,7 +1414,7 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ---
 
-## 10.1 ckms rsa keys
+## 8.1 ckms rsa keys
 
 Create, destroy, import, and export RSA key pairs
 
@@ -1409,23 +1423,23 @@ Create, destroy, import, and export RSA key pairs
 
 ### Subcommands
 
-**`create`** [[10.1.1]](#1011-ckms-rsa-keys-create)  Create a new RSA key pair
+**`create`** [[8.1.1]](#811-ckms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[10.1.2]](#1012-ckms-rsa-keys-export)  Export a key from the KMS
+**`export`** [[8.1.2]](#812-ckms-rsa-keys-export)  Export a key from the KMS
 
-**`import`** [[10.1.3]](#1013-ckms-rsa-keys-import)  Import a private or public key in the KMS.
+**`import`** [[8.1.3]](#813-ckms-rsa-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[10.1.4]](#1014-ckms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[8.1.4]](#814-ckms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[10.1.5]](#1015-ckms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[8.1.5]](#815-ckms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[10.1.6]](#1016-ckms-rsa-keys-revoke)  Revoke a public or private key
+**`revoke`** [[8.1.6]](#816-ckms-rsa-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[10.1.7]](#1017-ckms-rsa-keys-destroy)  Destroy a public or private key
+**`destroy`** [[8.1.7]](#817-ckms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 10.1.1 ckms rsa keys create
+## 8.1.1 ckms rsa keys create
 
 Create a new RSA key pair
 
@@ -1443,7 +1457,7 @@ Create a new RSA key pair
 
 ---
 
-## 10.1.2 ckms rsa keys export
+## 8.1.2 ckms rsa keys export
 
 Export a key from the KMS
 
@@ -1493,7 +1507,7 @@ Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GC
 
 ---
 
-## 10.1.3 ckms rsa keys import
+## 8.1.3 ckms rsa keys import
 
 Import a private or public key in the KMS.
 
@@ -1536,7 +1550,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 10.1.4 ckms rsa keys wrap
+## 8.1.4 ckms rsa keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -1561,7 +1575,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 10.1.5 ckms rsa keys unwrap
+## 8.1.5 ckms rsa keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -1584,7 +1598,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 10.1.6 ckms rsa keys revoke
+## 8.1.6 ckms rsa keys revoke
 
 Revoke a public or private key
 
@@ -1602,7 +1616,7 @@ Revoke a public or private key
 
 ---
 
-## 10.1.7 ckms rsa keys destroy
+## 8.1.7 ckms rsa keys destroy
 
 Destroy a public or private key
 
@@ -1618,7 +1632,7 @@ Destroy a public or private key
 
 ---
 
-## 10.2 ckms rsa encrypt
+## 8.2 ckms rsa encrypt
 
 Encrypt a file with the given public key using either
 
@@ -1650,7 +1664,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 10.3 ckms rsa decrypt
+## 8.3 ckms rsa decrypt
 
 Decrypt a file with the given public key using either
 
@@ -1683,7 +1697,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 11 ckms server-version
+## 9 ckms server-version
 
 Print the version of the server
 
@@ -1693,7 +1707,7 @@ Print the version of the server
 
 ---
 
-## 12 ckms sym
+## 10 ckms sym
 
 Manage symmetric keys. Encrypt and decrypt data
 
@@ -1702,15 +1716,15 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[12.1]](#121-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[10.1]](#101-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[12.2]](#122-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
+**`encrypt`** [[10.2]](#102-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
-**`decrypt`** [[12.3]](#123-ckms-sym-decrypt)  Decrypt a file using a symmetric key.
+**`decrypt`** [[10.3]](#103-ckms-sym-decrypt)  Decrypt a file using a symmetric key.
 
 ---
 
-## 12.1 ckms sym keys
+## 10.1 ckms sym keys
 
 Create, destroy, import, and export symmetric keys
 
@@ -1719,25 +1733,25 @@ Create, destroy, import, and export symmetric keys
 
 ### Subcommands
 
-**`create`** [[12.1.1]](#1211-ckms-sym-keys-create)  Create a new symmetric key
+**`create`** [[10.1.1]](#1011-ckms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[12.1.2]](#1212-ckms-sym-keys-re-key)  Refresh an existing symmetric key
+**`re-key`** [[10.1.2]](#1012-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[12.1.3]](#1213-ckms-sym-keys-export)  Export a key from the KMS
+**`export`** [[10.1.3]](#1013-ckms-sym-keys-export)  Export a key from the KMS
 
-**`import`** [[12.1.4]](#1214-ckms-sym-keys-import)  Import a private or public key in the KMS.
+**`import`** [[10.1.4]](#1014-ckms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[12.1.5]](#1215-ckms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[10.1.5]](#1015-ckms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[12.1.6]](#1216-ckms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[10.1.6]](#1016-ckms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[12.1.7]](#1217-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`revoke`** [[10.1.7]](#1017-ckms-sym-keys-revoke)  Revoke a symmetric key
 
-**`destroy`** [[12.1.8]](#1218-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`destroy`** [[10.1.8]](#1018-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
-## 12.1.1 ckms sym keys create
+## 10.1.1 ckms sym keys create
 
 Create a new symmetric key
 
@@ -1761,7 +1775,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ---
 
-## 12.1.2 ckms sym keys re-key
+## 10.1.2 ckms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -1774,7 +1788,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 12.1.3 ckms sym keys export
+## 10.1.3 ckms sym keys export
 
 Export a key from the KMS
 
@@ -1824,7 +1838,7 @@ Possible values:  `"CBC", "ECB", "PCBC", "CFB", "OFB", "CTR", "CMAC", "CCM", "GC
 
 ---
 
-## 12.1.4 ckms sym keys import
+## 10.1.4 ckms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -1867,7 +1881,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 12.1.5 ckms sym keys wrap
+## 10.1.5 ckms sym keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -1892,7 +1906,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 12.1.6 ckms sym keys unwrap
+## 10.1.6 ckms sym keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -1915,7 +1929,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 12.1.7 ckms sym keys revoke
+## 10.1.7 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -1933,7 +1947,7 @@ Revoke a symmetric key
 
 ---
 
-## 12.1.8 ckms sym keys destroy
+## 10.1.8 ckms sym keys destroy
 
 Destroy a symmetric key
 
@@ -1949,7 +1963,7 @@ Destroy a symmetric key
 
 ---
 
-## 12.2 ckms sym encrypt
+## 10.2 ckms sym encrypt
 
 Encrypt a file using a symmetric cipher
 
@@ -1981,7 +1995,7 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rf
 
 ---
 
-## 12.3 ckms sym decrypt
+## 10.3 ckms sym decrypt
 
 Decrypt a file using a symmetric key.
 
@@ -2012,7 +2026,7 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rf
 
 ---
 
-## 13 ckms login
+## 11 ckms login
 
 Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
@@ -2022,7 +2036,7 @@ Login to the Identity Provider of the KMS server using the `OAuth2` authorizatio
 
 ---
 
-## 14 ckms logout
+## 12 ckms logout
 
 Logout from the Identity Provider.
 
@@ -2032,7 +2046,7 @@ Logout from the Identity Provider.
 
 ---
 
-## 15 ckms markdown
+## 13 ckms markdown
 
 Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
@@ -2046,7 +2060,7 @@ Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- mark
 
 ---
 
-## 16 ckms google
+## 14 ckms google
 
 Manage google elements. Handle key pairs and identities from Gmail API
 
@@ -2055,13 +2069,13 @@ Manage google elements. Handle key pairs and identities from Gmail API
 
 ### Subcommands
 
-**`key-pairs`** [[16.1]](#161-ckms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
+**`key-pairs`** [[14.1]](#141-ckms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
-**`identities`** [[16.2]](#162-ckms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
+**`identities`** [[14.2]](#142-ckms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
 
 ---
 
-## 16.1 ckms google key-pairs
+## 14.1 ckms google key-pairs
 
 Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
@@ -2070,30 +2084,30 @@ Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
 ### Subcommands
 
-**`get`** [[16.1.1]](#1611-ckms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
+**`get`** [[14.1.1]](#1411-ckms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
 
-**`list`** [[16.1.2]](#1612-ckms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
+**`list`** [[14.1.2]](#1412-ckms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
 
-**`enable`** [[16.1.3]](#1613-ckms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+**`enable`** [[14.1.3]](#1413-ckms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
-**`disable`** [[16.1.4]](#1614-ckms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+**`disable`** [[14.1.4]](#1414-ckms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
 key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
 by using the key pairs.obliterate method.
 
-**`obliterate`** [[16.1.5]](#1615-ckms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+**`obliterate`** [[14.1.5]](#1415-ckms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
 the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
-**`create`** [[16.1.6]](#1616-ckms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+**`create`** [[14.1.6]](#1416-ckms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
 
 ---
 
-## 16.1.1 ckms google key-pairs get
+## 14.1.1 ckms google key-pairs get
 
 Retrieves an existing client-side encryption key pair.
 
@@ -2109,7 +2123,7 @@ Retrieves an existing client-side encryption key pair.
 
 ---
 
-## 16.1.2 ckms google key-pairs list
+## 14.1.2 ckms google key-pairs list
 
 Lists client-side encryption key pairs for a user.
 
@@ -2123,7 +2137,7 @@ Lists client-side encryption key pairs for a user.
 
 ---
 
-## 16.1.3 ckms google key-pairs enable
+## 14.1.3 ckms google key-pairs enable
 
 Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
@@ -2140,7 +2154,7 @@ again for any associated client-side encryption identities.
 
 ---
 
-## 16.1.4 ckms google key-pairs disable
+## 14.1.4 ckms google key-pairs disable
 
 Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
@@ -2159,7 +2173,7 @@ by using the key pairs.obliterate method.
 
 ---
 
-## 16.1.5 ckms google key-pairs obliterate
+## 14.1.5 ckms google key-pairs obliterate
 
 Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
@@ -2179,7 +2193,7 @@ reading the encrypted messages.
 
 ---
 
-## 16.1.6 ckms google key-pairs create
+## 14.1.6 ckms google key-pairs create
 
 Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
@@ -2208,7 +2222,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 16.2 ckms google identities
+## 14.2 ckms google identities
 
 Insert, get, list, patch and delete identities from Gmail API
 
@@ -2217,24 +2231,24 @@ Insert, get, list, patch and delete identities from Gmail API
 
 ### Subcommands
 
-**`get`** [[16.2.1]](#1621-ckms-google-identities-get)  Retrieves a client-side encryption identity configuration.
+**`get`** [[14.2.1]](#1421-ckms-google-identities-get)  Retrieves a client-side encryption identity configuration.
 
-**`list`** [[16.2.2]](#1622-ckms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
+**`list`** [[14.2.2]](#1422-ckms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
 
-**`insert`** [[16.2.3]](#1623-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
+**`insert`** [[14.2.3]](#1423-ckms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
 people within a Google Workspace organization can encrypt and send mail to the identity.
 
-**`delete`** [[16.2.4]](#1624-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
+**`delete`** [[14.2.4]](#1424-ckms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
 the identities.create method to create another identity with the same configuration.
 
-**`patch`** [[16.2.5]](#1625-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
+**`patch`** [[14.2.5]](#1425-ckms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.
 
 ---
 
-## 16.2.1 ckms google identities get
+## 14.2.1 ckms google identities get
 
 Retrieves a client-side encryption identity configuration.
 
@@ -2248,7 +2262,7 @@ Retrieves a client-side encryption identity configuration.
 
 ---
 
-## 16.2.2 ckms google identities list
+## 14.2.2 ckms google identities list
 
 Lists the client-side encrypted identities for an authenticated user.
 
@@ -2262,7 +2276,7 @@ Lists the client-side encrypted identities for an authenticated user.
 
 ---
 
-## 16.2.3 ckms google identities insert
+## 14.2.3 ckms google identities insert
 
 Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
@@ -2280,7 +2294,7 @@ people within a Google Workspace organization can encrypt and send mail to the i
 
 ---
 
-## 16.2.4 ckms google identities delete
+## 14.2.4 ckms google identities delete
 
 Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
@@ -2296,7 +2310,7 @@ the identities.create method to create another identity with the same configurat
 
 ---
 
-## 16.2.5 ckms google identities patch
+## 14.2.5 ckms google identities patch
 
 Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.

@@ -15,9 +15,11 @@ use cosmian_kms_client::{
 use serde::Deserialize;
 use tracing::{info, trace};
 
-use super::utils::KeyUsage;
 use crate::{
-    actions::{console, shared::utils::build_usage_mask_from_key_usage},
+    actions::{
+        console,
+        shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
+    },
     cli_bail,
     error::result::CliResult,
 };
@@ -234,7 +236,7 @@ impl SetOrDeleteAttributes {
     }
 }
 
-/// Set the KMIP object attributes (one or multiple attributes).
+/// Set the KMIP object attributes.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SetAttributesAction {
