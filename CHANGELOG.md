@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.xx.xx] - 2024-xx-xx
+## [4.19.1] - 2024-10-11
 
 ### 🚀 Features
 
@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- Guard on size of ciphertexts for BulkData ([#330](https://github.com/Cosmian/kms/pull/330))
 - KMIP Attributes: fix deletion on Links and Vendor Attributes ([#329](https://github.com/Cosmian/kms/pull/329))
 
 ## [4.19.0] - 2024-10-09

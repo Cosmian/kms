@@ -22,11 +22,11 @@ to be used in various applications, such as in S/MIME encrypted emails.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.1
     ```
 
     Pre-built binaries, for both the server and CLI (called `ckms`) are available for multiple
-    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.19.0/).
+    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.19.1/).
 
     Using [`ckms`](./cli/cli.md), you can easily manage the server:
 
@@ -180,7 +180,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.0/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.1/)
 
 ## Integrated with OpenTelemetry
 
@@ -206,7 +206,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.19.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.19.1 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the

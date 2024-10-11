@@ -295,7 +295,7 @@ Import a private or public key in the KMS.
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -978,7 +978,7 @@ Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p52
 
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
 
-` <PRIVATE_KEY_ID>` The unique id of the private key; a unique id based on the key material is generated if not specified
+` <PRIVATE_KEY_ID>` The unique id of the private key; a random uuid is generated if not specified
 
 
 
@@ -1045,7 +1045,7 @@ Import a private or public key in the KMS.
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -1451,7 +1451,7 @@ Create a new RSA key pair
 
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
 
-` <PRIVATE_KEY_ID>` The unique id of the private key; a unique id based on the key material is generated if not specified
+` <PRIVATE_KEY_ID>` The unique id of the private key; a random uuid is generated if not specified
 
 
 
@@ -1518,7 +1518,7 @@ Import a private or public key in the KMS.
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -1769,7 +1769,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 
 
@@ -1849,7 +1849,7 @@ Import a private or public key in the KMS.
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
