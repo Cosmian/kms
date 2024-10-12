@@ -315,8 +315,8 @@ pub(crate) async fn validate_tokens(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
-    #![allow(clippy::unwrap_used, unsafe_code)]
     use std::sync::Arc;
 
     use cosmian_logger::log_utils::log_init;

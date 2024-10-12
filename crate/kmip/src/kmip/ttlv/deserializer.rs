@@ -134,16 +134,32 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             self.inputs
         );
         if self.deserializing == Deserializing::ByteString {
-            return visitor.visit_u8(self.get_bytes()?[self.index - 1])
+            return visitor.visit_u8(*self.get_bytes()?.get(self.index - 1).ok_or_else(|| {
+                TtlvError::custom("deserialize_any: Indexing slicing failed for ByteString")
+            })?)
         }
         if self.deserializing == Deserializing::BigInt {
-            return visitor.visit_u32(self.get_bigint()?[self.index - 1])
+            return visitor.visit_u32(*self.get_bigint()?.get(self.index - 1).ok_or_else(|| {
+                TtlvError::custom("deserialize_any: Indexing slicing failed for BigInt")
+            })?)
         }
         if self.deserializing == Deserializing::StructureTag {
-            return visitor.visit_borrowed_str(&self.get_structure()?[self.index - 1].tag)
+            return visitor.visit_borrowed_str(
+                &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_any: Indexing slicing failed for StructureTag",
+                        )
+                    })?
+                    .tag,
+            )
         }
         // deserializing the value of the child of a Structure
-        let child = &self.get_structure()?[self.index - 1];
+        let child = self.get_structure()?.get(self.index - 1).ok_or_else(|| {
+            TtlvError::custom("deserialize_any: Indexing slicing failed when get_structure")
+        })?;
         let child_tag = &child.tag;
         let child_value = &child.value;
         trace!("deserialize_any child value {child_value:?}");
@@ -156,7 +172,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     // start at 0 because the Visit Map is going to increment first
                     index: 0,
                 };
-                if elements.is_empty() || child_tag == &elements[0].tag {
+                if elements.is_empty()
+                    || child_tag
+                        == &elements
+                            .first()
+                            .ok_or_else(|| {
+                                TtlvError::custom("deserialize_any: Failed taking first element")
+                            })?
+                            .tag
+                {
                     // in TTLV when the elements tags are identical to the parent tag,
                     // it is a sequence
                     visitor.visit_seq(ttlv_de)
@@ -205,7 +229,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         // this can only happen for `Deserializing::Value`
-        let child = &self.get_structure()?[self.index - 1].value;
+        let child = &self
+            .get_structure()?
+            .get(self.index - 1)
+            .ok_or_else(|| {
+                TtlvError::custom("deserialize_bool: Indexing slicing failed when get_structure")
+            })?
+            .value;
         visitor.visit_bool(match child {
             TTLValue::Boolean(b) => *b,
             x => return Err(TtlvError::custom(format!("Invalid type for bool: {x:?}"))),
@@ -238,7 +268,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         // this can only happen for `Deserializing::Value`
-        let child = &self.get_structure()?[self.index - 1].value;
+        let child = &self
+            .get_structure()?
+            .get(self.index - 1)
+            .ok_or_else(|| {
+                TtlvError::custom("deserialize_i32: Indexing slicing failed when get_structure")
+            })?
+            .value;
         visitor.visit_i32(match child {
             TTLValue::Integer(v) => *v,
             x => return Err(TtlvError::custom(format!("Invalid type for i32: {x:?}"))),
@@ -251,7 +287,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         // this can only happen for `Deserializing::Value`
-        let child = &self.get_structure()?[self.index - 1].value;
+        let child = &self
+            .get_structure()?
+            .get(self.index - 1)
+            .ok_or_else(|| {
+                TtlvError::custom("deserialize_i64: Indexing slicing failed when get_structure")
+            })?
+            .value;
         visitor.visit_i64(match child {
             TTLValue::LongInteger(v) => *v,
             x => return Err(TtlvError::custom(format!("Invalid type for i64: {x:?}"))),
@@ -265,11 +307,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         match &self.deserializing {
             Deserializing::ByteString => {
-                let u = &self.get_bytes()?[self.index - 1];
+                let u = self.get_bytes()?.get(self.index - 1).ok_or_else(|| {
+                    TtlvError::custom("deserialize_u8: Indexing slicing failed for ByteString")
+                })?;
                 visitor.visit_u8(*u)
             }
             Deserializing::StructureValue => {
-                let child = &self.get_structure()?[self.index - 1];
+                let child = self.get_structure()?.get(self.index - 1).ok_or_else(|| {
+                    TtlvError::custom("deserialize_u8: Indexing slicing failed for StructureValue")
+                })?;
                 trace!("deserialize_u8 child {child:?}");
                 match &child.value {
                     TTLValue::Integer(i) => visitor.visit_i32(*i),
@@ -301,11 +347,21 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         match &self.deserializing {
             Deserializing::BigInt => {
-                let u = &self.get_bigint()?[self.index - 1];
+                let u = self.get_bigint()?.get(self.index - 1).ok_or_else(|| {
+                    TtlvError::custom("deserialize_u32: Indexing slicing failed for BigInt")
+                })?;
                 visitor.visit_u32(*u)
             }
             Deserializing::StructureValue => {
-                let child = &self.get_structure()?[self.index - 1].value;
+                let child = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_u32: Indexing slicing failed for StructureValue",
+                        )
+                    })?
+                    .value;
                 visitor.visit_u32(match child {
                     TTLValue::Integer(v) => (*v)
                         .try_into()
@@ -326,7 +382,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         // this can only happen for `Deserializing::Value`
-        let child = &self.get_structure()?[self.index - 1].value;
+        let child = &self
+            .get_structure()?
+            .get(self.index - 1)
+            .ok_or_else(|| {
+                TtlvError::custom("deserialize_u64: Indexing slicing failed when get_structure")
+            })?
+            .value;
         visitor.visit_u64(match child {
             TTLValue::LongInteger(v) => (*v)
                 .try_into()
@@ -351,7 +413,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         // this can only happen for `Deserializing::Value`
-        let child = &self.get_structure()?[self.index - 1].value;
+        let child = &self
+            .get_structure()?
+            .get(self.index - 1)
+            .ok_or_else(|| {
+                TtlvError::custom("deserialize_f64: Indexing slicing failed when get_structure")
+            })?
+            .value;
         visitor.visit_f64(match child {
             TTLValue::Integer(v) => f64::from(*v),
             x => return Err(TtlvError::custom(format!("Invalid type for f64: {x:?}"))),
@@ -377,11 +445,27 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         match &self.deserializing {
             Deserializing::StructureTag => {
-                let tag = &self.get_structure()?[self.index - 1].tag;
+                let tag = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_str: Indexing slicing failed for StructureTag",
+                        )
+                    })?
+                    .tag;
                 visitor.visit_borrowed_str(tag)
             }
             Deserializing::StructureValue => {
-                let value = &self.get_structure()?[self.index - 1].value;
+                let value = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_str: Indexing slicing failed for StructureValue",
+                        )
+                    })?
+                    .value;
                 match value {
                     TTLValue::TextString(v) => visitor.visit_borrowed_str(v),
                     TTLValue::Enumeration(v) => match v {
@@ -487,7 +571,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     .to_owned(),
             )),
             Deserializing::StructureValue => {
-                let value = &self.get_structure()?[self.index - 1].value;
+                let value = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_seq: Indexing slicing failed for StructureTag",
+                        )
+                    })?
+                    .value;
                 match value {
                     TTLValue::ByteString(array) =>
                     // go down one level by deserializing the inner structure
@@ -563,7 +655,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
     {
         match &self.deserializing {
             Deserializing::StructureValue => {
-                let value = &self.get_structure()?[self.index - 1].value;
+                let value = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_map: Indexing slicing failed for StructureTag",
+                        )
+                    })?
+                    .value;
                 match value {
                     TTLValue::Structure(array) => {
                         // go down one level by deserializing the inner structure
@@ -620,7 +720,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     .to_owned(),
             )),
             Deserializing::StructureValue => {
-                let value = &self.get_structure()?[self.index - 1].value;
+                let value = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_enum: Indexing slicing failed for StructureValue",
+                        )
+                    })?
+                    .value;
                 trace!(
                     "\ndeserialize_enum {}: {:?}, \n[{}]: {:#?}\n",
                     name,
@@ -656,7 +764,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                 self.deserialize_str(visitor)
             }
             Deserializing::StructureValue => {
-                let value = &self.get_structure()?[self.index - 1].value;
+                let value = &self
+                    .get_structure()?
+                    .get(self.index - 1)
+                    .ok_or_else(|| {
+                        TtlvError::custom(
+                            "deserialize_identifier: Indexing slicing failed for StructureValue",
+                        )
+                    })?
+                    .value;
                 match value {
                     TTLValue::Enumeration(v) => match v {
                         TTLVEnumeration::Integer(_i) => self.deserialize_i32(visitor),
@@ -722,7 +838,13 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
 
                 trace!(
                     "next_key_seed : {:#?}",
-                    &self.get_structure()?[self.index - 1].tag
+                    &self
+                        .get_structure()?
+                        .get(self.index - 1)
+                        .ok_or_else(|| TtlvError::custom(
+                            "MapAccess: Indexing slicing failed when get_structure"
+                        ))?
+                        .tag
                 );
 
                 // tell the deserializer that it is now going

@@ -128,12 +128,18 @@ pub(crate) fn ecies_decrypt(
 
     // Ciphertext received is a concatenation of `R | ct | tag` with `R`
     // and `ct` of variable size and `tag` of size 128 bits.
-    let R_bytes = &ciphertext[..pubkey_vec_size];
+    let R_bytes = ciphertext
+        .get(..pubkey_vec_size)
+        .ok_or_else(|| KmipError::IndexingSlicing("ecies_decrypt: R_bytes".to_owned()))?;
 
     let ct_offset = ciphertext.len() - aead.tag_size();
-    let ct = &ciphertext[pubkey_vec_size..ct_offset];
+    let ct = ciphertext
+        .get(pubkey_vec_size..ct_offset)
+        .ok_or_else(|| KmipError::IndexingSlicing("ecies_decrypt: ciphertext".to_owned()))?;
 
-    let tag = &ciphertext[ct_offset..];
+    let tag = ciphertext
+        .get(ct_offset..)
+        .ok_or_else(|| KmipError::IndexingSlicing("ecies_decrypt: tag".to_owned()))?;
 
     let R = EcPoint::from_bytes(curve, R_bytes, &mut ctx)?;
 
