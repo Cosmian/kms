@@ -103,7 +103,15 @@ async fn manage_api_token(kms_server: Arc<KMS>, req: &ServiceRequest) -> KResult
                  {client_token:?}"
             )));
         }
-        let client_token = client_token[1].trim_start().to_lowercase();
+        let client_token = client_token
+            .get(1)
+            .ok_or_else(|| {
+                KmsError::ServerError(
+                    "Missing token after 'Bearer' in Authorization header".to_owned(),
+                )
+            })?
+            .trim_start()
+            .to_lowercase();
 
         trace!("API Token: {api_token}");
         trace!("Client API Token: {client_token}");

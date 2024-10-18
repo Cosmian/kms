@@ -3,6 +3,7 @@ pub use symmetric_key::{create_symmetric_key_kmip_object, symmetric_key_create_r
 
 pub mod symmetric_ciphers;
 
+#[allow(clippy::indexing_slicing)]
 pub mod rfc5649;
 
 #[cfg(not(feature = "fips"))]

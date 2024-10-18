@@ -135,7 +135,10 @@ impl KMSSqliteCache {
             return Ok(false);
         }
 
-        Ok(!sqlites[&id].closed)
+        Ok(!sqlites
+            .get(&id)
+            .ok_or_else(|| KmsError::DatabaseError(format!("Key not found: {id}")))?
+            .closed)
     }
 
     /// Test if a sqlite connection exist in the cache
@@ -311,7 +314,7 @@ impl KMSSqliteCache {
             trace!("CachedSQLCipher: new group_id={id}");
 
             // Book a slot for it
-            let freeable_cache_id = freeable_sqlites.push(id);
+            let freeable_cache_id = freeable_sqlites.push(id)?;
 
             // Add it to the SqliteCache
             // compute the mac
@@ -401,19 +404,22 @@ impl FreeableSqliteCache {
     }
 
     // Add an element at the end of the cache
-    pub(crate) fn push(&mut self, value: u128) -> usize {
+    pub(crate) fn push(&mut self, value: u128) -> KResult<usize> {
         if self.length == 0 {
             self.head = self.size;
             self.entries.push(FSCEntry::singleton(value));
         } else {
             self.entries.push(FSCEntry::last(value, self.tail));
-            self.entries[self.tail].next = FSCNeighborEntry::Chained(self.size);
+            self.entries
+                .get_mut(self.tail)
+                .ok_or_else(|| KmsError::DatabaseError("Tail index out of bounds".to_owned()))?
+                .next = FSCNeighborEntry::Chained(self.size);
         }
         self.tail = self.size;
         self.size += 1;
         self.length += 1;
 
-        self.tail
+        Ok(self.tail)
     }
 
     // Remove the first element from the cache and return its value
@@ -425,19 +431,34 @@ impl FreeableSqliteCache {
         let prev_head = self.head;
         self.length -= 1;
 
-        match self.entries[self.head].next {
+        match self
+            .entries
+            .get(self.head)
+            .ok_or_else(|| KmsError::DatabaseError("Head index out of bounds".to_owned()))?
+            .next
+        {
             FSCNeighborEntry::Nil => {
                 self.head = 0; // Whatever
             }
             FSCNeighborEntry::Chained(next) => {
-                self.entries[next].prev = FSCNeighborEntry::Nil;
+                self.entries
+                    .get_mut(next)
+                    .ok_or_else(|| KmsError::DatabaseError("Next index out of bounds".to_owned()))?
+                    .prev = FSCNeighborEntry::Nil;
                 self.head = next;
             }
         }
 
-        self.entries[prev_head].chained = false;
+        self.entries
+            .get_mut(prev_head)
+            .ok_or_else(|| KmsError::DatabaseError("Head index out of bounds".to_owned()))?
+            .chained = false;
 
-        Ok(self.entries[prev_head].val)
+        Ok(self
+            .entries
+            .get(prev_head)
+            .ok_or_else(|| KmsError::DatabaseError("Head index out of bounds".to_owned()))?
+            .val)
     }
 
     // Remove the given index from the cache
@@ -446,30 +467,63 @@ impl FreeableSqliteCache {
             kms_bail!("Index is too large")
         }
 
-        if !self.entries[index].chained {
+        if !self
+            .entries
+            .get(index)
+            .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+            .chained
+        {
             kms_bail!("Index has already been uncached")
         }
 
         match (
-            self.entries[index].prev.clone(),
-            self.entries[index].next.clone(),
+            self.entries
+                .get(index)
+                .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+                .prev
+                .clone(),
+            self.entries
+                .get(index)
+                .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+                .next
+                .clone(),
         ) {
             (FSCNeighborEntry::Nil, FSCNeighborEntry::Nil) => {}
             (FSCNeighborEntry::Nil, FSCNeighborEntry::Chained(next)) => {
-                self.entries[next].prev = FSCNeighborEntry::Nil;
+                self.entries
+                    .get_mut(next)
+                    .ok_or_else(|| KmsError::DatabaseError("Next index out of bounds".to_owned()))?
+                    .prev = FSCNeighborEntry::Nil;
                 self.head = next;
             }
             (FSCNeighborEntry::Chained(prev), FSCNeighborEntry::Nil) => {
-                self.entries[prev].next = FSCNeighborEntry::Nil;
+                self.entries
+                    .get_mut(prev)
+                    .ok_or_else(|| {
+                        KmsError::DatabaseError("Previous index out of bounds".to_owned())
+                    })?
+                    .next = FSCNeighborEntry::Nil;
                 self.tail = prev;
             }
             (FSCNeighborEntry::Chained(prev), FSCNeighborEntry::Chained(next)) => {
-                self.entries[prev].next = FSCNeighborEntry::Chained(next);
-                self.entries[next].prev = FSCNeighborEntry::Chained(prev);
+                self.entries
+                    .get_mut(prev)
+                    .ok_or_else(|| {
+                        KmsError::DatabaseError("Previous index out of bounds".to_owned())
+                    })?
+                    .next = FSCNeighborEntry::Chained(next);
+                self.entries
+                    .get_mut(next)
+                    .ok_or_else(|| KmsError::DatabaseError("Next index out of bounds".to_owned()))?
+                    .prev = FSCNeighborEntry::Chained(prev);
             }
         };
 
-        self.entries[index].chained = false;
+        self.entries
+            .get_mut(index)
+            .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+            .chained = false;
+
         self.length -= 1;
 
         Ok(())
@@ -481,19 +535,39 @@ impl FreeableSqliteCache {
             kms_bail!("Index is too large")
         }
 
-        if self.entries[index].chained {
+        if self
+            .entries
+            .get(index)
+            .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+            .chained
+        {
             kms_bail!("Index is already cached")
         }
 
-        self.entries[index].chained = true;
-        self.entries[index].next = FSCNeighborEntry::Nil;
+        self.entries
+            .get_mut(index)
+            .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+            .chained = true;
+        self.entries
+            .get_mut(index)
+            .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+            .next = FSCNeighborEntry::Nil;
 
         if self.length == 0 {
-            self.entries[index].prev = FSCNeighborEntry::Nil;
+            self.entries
+                .get_mut(index)
+                .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+                .prev = FSCNeighborEntry::Nil;
             self.head = index;
         } else {
-            self.entries[self.tail].next = FSCNeighborEntry::Chained(index);
-            self.entries[index].prev = FSCNeighborEntry::Chained(self.tail);
+            self.entries
+                .get_mut(self.tail)
+                .ok_or_else(|| KmsError::DatabaseError("Tail index out of bounds".to_owned()))?
+                .next = FSCNeighborEntry::Chained(index);
+            self.entries
+                .get_mut(index)
+                .ok_or_else(|| KmsError::DatabaseError("Index out of bounds".to_owned()))?
+                .prev = FSCNeighborEntry::Chained(self.tail);
         }
 
         self.length += 1;
@@ -504,8 +578,14 @@ impl FreeableSqliteCache {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::panic_in_result_fn
+)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
     use cosmian_kmip::crypto::{
@@ -517,6 +597,7 @@ mod tests {
     };
 
     use super::{FSCNeighborEntry, FreeableSqliteCache, KMSSqliteCache};
+    use crate::result::KResult;
 
     #[test]
     pub(crate) fn test_fsc_new() {
@@ -528,11 +609,11 @@ mod tests {
     }
 
     #[test]
-    pub(crate) fn test_fsc_push() {
+    pub(crate) fn test_fsc_push() -> KResult<()> {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), 0);
-        assert_eq!(fsc.push(2), 1);
-        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(1)?, 0);
+        assert_eq!(fsc.push(2)?, 1);
+        assert_eq!(fsc.push(3)?, 2);
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 2);
@@ -550,14 +631,15 @@ mod tests {
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
         assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(1));
+        Ok(())
     }
 
     #[test]
-    pub(crate) fn test_fsc_pop() {
+    pub(crate) fn test_fsc_pop() -> KResult<()> {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), 0);
-        assert_eq!(fsc.push(2), 1);
-        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(1)?, 0);
+        assert_eq!(fsc.push(2)?, 1);
+        assert_eq!(fsc.push(3)?, 2);
 
         assert_eq!(fsc.pop().unwrap(), 1);
 
@@ -571,7 +653,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert_eq!(fsc.push(4), 3);
+        assert_eq!(fsc.push(4)?, 3);
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -592,7 +674,7 @@ mod tests {
 
         fsc.pop().unwrap_err();
 
-        assert_eq!(fsc.push(5), 4);
+        assert_eq!(fsc.push(5)?, 4);
 
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
@@ -603,19 +685,20 @@ mod tests {
         assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
 
         assert_eq!(fsc.pop().unwrap(), 5);
+        Ok(())
     }
 
     #[test]
-    pub(crate) fn test_fsc_uncache() {
+    pub(crate) fn test_fsc_uncache() -> KResult<()> {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), 0);
-        assert_eq!(fsc.push(2), 1);
-        assert_eq!(fsc.push(3), 2);
-        assert_eq!(fsc.push(4), 3);
+        assert_eq!(fsc.push(1)?, 0);
+        assert_eq!(fsc.push(2)?, 1);
+        assert_eq!(fsc.push(3)?, 2);
+        assert_eq!(fsc.push(4)?, 3);
 
         assert!(fsc.uncache(4).is_err());
 
-        fsc.uncache(2).unwrap();
+        fsc.uncache(2)?;
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 3);
@@ -628,7 +711,7 @@ mod tests {
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
 
-        fsc.uncache(0).unwrap();
+        fsc.uncache(0)?;
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -660,7 +743,7 @@ mod tests {
         assert!(fsc.uncache(1).is_err());
         fsc.pop().unwrap_err();
 
-        assert_eq!(fsc.push(5), 4);
+        assert_eq!(fsc.push(5)?, 4);
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
         assert_eq!(fsc.length, 1);
@@ -669,15 +752,16 @@ mod tests {
         assert!(fsc.entries[4].chained);
         assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
+        Ok(())
     }
 
     #[test]
-    pub(crate) fn test_fsc_recache() {
+    pub(crate) fn test_fsc_recache() -> KResult<()> {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), 0);
-        assert_eq!(fsc.push(2), 1);
-        assert_eq!(fsc.push(3), 2);
-        assert_eq!(fsc.push(4), 3);
+        assert_eq!(fsc.push(1)?, 0);
+        assert_eq!(fsc.push(2)?, 1);
+        assert_eq!(fsc.push(3)?, 2);
+        assert_eq!(fsc.push(4)?, 3);
 
         assert!(fsc.recache(4).is_err());
         assert!(fsc.recache(3).is_err());
@@ -723,6 +807,7 @@ mod tests {
         assert!(fsc.entries[3].chained);
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Nil);
+        Ok(())
     }
 
     #[actix_rt::test]

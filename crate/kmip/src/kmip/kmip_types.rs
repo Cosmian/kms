@@ -432,6 +432,7 @@ pub enum KeyCompressionType {
 pub struct CryptographicUsageMask(u32);
 
 bitflags::bitflags! {
+#[allow(clippy::indexing_slicing)]
     impl CryptographicUsageMask: u32 {
         /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
         const Sign=0x0000_0001;
@@ -550,6 +551,7 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
 pub struct ProtectionStorageMasks(u32);
 
 bitflags::bitflags! {
+#[allow(clippy::indexing_slicing)]
     impl ProtectionStorageMasks: u32 {
         const Software=0x0000_0001;
         const Hardware=0x0000_0002;
@@ -644,6 +646,7 @@ pub enum ObjectGroupMember {
 pub struct StorageStatusMask(u32);
 
 bitflags::bitflags! {
+#[allow(clippy::indexing_slicing)]
     impl StorageStatusMask: u32 {
         const OnlineStorage=0x0000_0001;
         const ArchivalStorage=0x0000_0002;
@@ -1170,6 +1173,7 @@ impl Attributes {
     /// attribute name. If the attribute does not exist, an empty
     /// vendor attribute is created and returned.
     #[must_use]
+    #[allow(clippy::indexing_slicing)]
     pub fn get_vendor_attribute_mut(
         &mut self,
         vendor_identification: &str,

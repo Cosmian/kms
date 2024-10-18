@@ -72,7 +72,12 @@ pub(crate) async fn manage_jwt(
     let mut private_claim = extract_user_claim(&configs, &identity);
     // If no configuration could get the claim, try refreshing them and extract user claim again
     if private_claim.is_err() {
-        configs[0].jwks.refresh().await?;
+        configs
+            .first()
+            .ok_or_else(|| KmsError::ServerError("No config available".to_owned()))?
+            .jwks
+            .refresh()
+            .await?;
         private_claim = extract_user_claim(&configs, &identity);
     }
 

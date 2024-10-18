@@ -495,15 +495,13 @@ pub async fn private_key_decrypt(
     let mut dek = vec![0_u8; allocation_size];
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
-    // if decrypt_size > KEY_LENGTH_BOUND_SIZE {
-    //     return Err(KmsError::CryptographicError(format!(
-    //         "Invalid decrypted key size. Expected less than {KEY_LENGTH_BOUND_SIZE} bytes"
-    //     )));
-    // }
-
     debug!("private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivateKeyDecryptResponse {
-        data_encryption_key: general_purpose::STANDARD.encode(&dek[0..decrypt_size]),
+        data_encryption_key: general_purpose::STANDARD.encode(
+            dek.get(0..decrypt_size).ok_or_else(|| {
+                KmsError::InvalidRequest("Failed to get decrypted data".to_owned())
+            })?,
+        ),
     };
     Ok(response)
 }
@@ -780,7 +778,11 @@ pub async fn privileged_private_key_decrypt(
 
     debug!("privileged_private_key_decrypt: exiting with success: decrypt_size: {decrypt_size}");
     let response = PrivilegedPrivateKeyDecryptResponse {
-        data_encryption_key: general_purpose::STANDARD.encode(&dek[0..decrypt_size]),
+        data_encryption_key: general_purpose::STANDARD.encode(
+            dek.get(0..decrypt_size).ok_or_else(|| {
+                KmsError::InvalidRequest("Failed to get decrypted data".to_owned())
+            })?,
+        ),
     };
     Ok(response)
 }
@@ -923,9 +925,17 @@ async fn cse_wrapped_key_decrypt(
             "Invalid wrapped key - insufficient length.".to_owned(),
         ));
     }
-    let iv_counter_nonce = &wrapped_key_bytes[..NONCE_LENGTH];
-    let ciphertext = &wrapped_key_bytes[NONCE_LENGTH..len - TAG_LENGTH];
-    let authenticated_tag = &wrapped_key_bytes[len - TAG_LENGTH..];
+    let iv_counter_nonce = wrapped_key_bytes.get(..NONCE_LENGTH).ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
+    })?;
+    let ciphertext = wrapped_key_bytes
+        .get(NONCE_LENGTH..len - TAG_LENGTH)
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("Invalid wrapped key - missing ciphertext.".to_owned())
+        })?;
+    let authenticated_tag = wrapped_key_bytes.get(len - TAG_LENGTH..).ok_or_else(|| {
+        KmsError::InvalidRequest("Invalid wrapped key - missing authenticated tag.".to_owned())
+    })?;
 
     trace!(
         "cse_wrapped_key_decrypt: iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
