@@ -41,6 +41,9 @@ markdown_extensions:
   - markdown_katex:
       no_inline_svg: true
       insert_fonts_css: true
+  - markdown_include.include:
+      base_path: docs
+      inheritHeadingDepth: true
 plugins:
   - search
   - mermaid2

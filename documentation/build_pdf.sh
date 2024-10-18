@@ -5,7 +5,7 @@
     # wget https://github.com/jgm/pandoc/releases/download/2.17.1.1/pandoc-2.17.1.1-1-amd64.deb
     # sudo dpkg -i pandoc-2.17.1.1-1-amd64.deb
     # sudo apt-get install fonts-noto-mono fonts-noto pandoc-citeproc librsvg2-bin
-    # pip install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git mkdocs-kroki-plugin mkdocs-material pandoc-latex-admonition install markdown-katex git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
+    # pip install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git mkdocs-kroki-plugin mkdocs-material pandoc-latex-admonition markdown-katex git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
     # cargo install pandoc-katex
 
 set -e

@@ -258,7 +258,7 @@ supervisorctl status cosmian_kms
 
 If a configuration file is provided, parameters are set following this order:
 
-- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/server.toml`)
+- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/kms.toml`)
 - default (set on struct)
 
 Otherwise, the parameters are set following this order:
