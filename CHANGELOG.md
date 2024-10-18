@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - Added AES GCM-SIV and AES XTS ([#328](https://github.com/Cosmian/kms/pull/328))
 - Added the ability to client side encrypt files with `ckms` and a hybrid scheme ([#328](https://github.com/Cosmian/kms/pull/328))
 - Create Symmetric Key / Private keys with custom unique id ([#326](https://github.com/Cosmian/kms/pull/326))
+- Add bulk encrypt / decrypt facility ([#318](https://github.com/Cosmian/kms/pull/318))
 - Replace Debug derive trait of KMIP Object by a custom Display impl ([#327](https://github.com/Cosmian/kms/pull/327))
 
 ### Documentation

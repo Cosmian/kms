@@ -7,11 +7,17 @@ client `ckms_gui`.
 
     Please download the latest versions for your Operating System from
     the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.1/)
+    See below for installation instructions.
+
+## Installation
+
+{!cli/cli_prerequisites.md!}
+
 
 ## Configuring the clients
 
 Both clients - and the PKCS#11 provider library - expect a configuration file to be located
-at `~/.cosmian/kms.json`where `~` is your home folder.
+at `~/.cosmian/kms.json` where `~` is your home folder.
 
 An alternate location can be used by setting the `KMS_CLI_CONF_ENV` environment
 variable.
