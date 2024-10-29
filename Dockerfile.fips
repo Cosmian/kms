@@ -1,6 +1,6 @@
 FROM ubuntu:22.04 AS builder
 
-LABEL version="4.19.1"
+LABEL version="4.19.2"
 LABEL name="Cosmian KMS docker container"
 
 ENV DEBIAN_FRONTEND=noninteractive

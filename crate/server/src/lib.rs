@@ -24,7 +24,8 @@
     clippy::unwrap_used,
     clippy::get_unwrap,
     clippy::expect_used,
-    // clippy::indexing_slicing,
+    clippy::indexing_slicing,
+    clippy::missing_asserts_for_indexing,
     clippy::unwrap_in_result,
     clippy::assertions_on_result_states,
     clippy::panic,
@@ -68,6 +69,12 @@ pub mod telemetry;
 
 pub use database::KMSServer;
 
-#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used, unsafe_code)]
+#[allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    unsafe_code,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests;

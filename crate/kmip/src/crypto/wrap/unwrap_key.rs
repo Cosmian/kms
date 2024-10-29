@@ -164,9 +164,18 @@ pub(crate) fn unwrap(
                     kmip_bail!("Invalid wrapped key - insufficient length.");
                 }
                 let aead = SymCipher::Aes256Gcm;
-                let nonce = &ciphertext[..NONCE_LENGTH];
-                let wrapped_key_bytes = &ciphertext[NONCE_LENGTH..len - TAG_LENGTH];
-                let tag = &ciphertext[len - TAG_LENGTH..];
+                let nonce = ciphertext
+                    .get(..NONCE_LENGTH)
+                    .ok_or_else(|| KmipError::IndexingSlicing("unwrap: nonce".to_owned()))?;
+                let wrapped_key_bytes =
+                    ciphertext
+                        .get(NONCE_LENGTH..len - TAG_LENGTH)
+                        .ok_or_else(|| {
+                            KmipError::IndexingSlicing("unwrap: wrapped_key_bytes".to_owned())
+                        })?;
+                let tag = ciphertext
+                    .get(len - TAG_LENGTH..)
+                    .ok_or_else(|| KmipError::IndexingSlicing("unwrap: tag".to_owned()))?;
                 let authenticated_data = aad.unwrap_or_default();
                 let plaintext = decrypt(
                     aead,

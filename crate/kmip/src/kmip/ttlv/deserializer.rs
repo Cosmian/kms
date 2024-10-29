@@ -1,3 +1,4 @@
+#![allow(clippy::indexing_slicing)]
 use serde::{
     de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,

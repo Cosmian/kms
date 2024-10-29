@@ -49,7 +49,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.19.1/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.19.2/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -58,7 +58,7 @@ Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.1
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.2
 ```
 
 Then, use the CLI to issue commands to the KMS.
@@ -258,7 +258,7 @@ supervisorctl status cosmian_kms
 
 If a configuration file is provided, parameters are set following this order:
 
-- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/server.toml`)
+- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/kms.toml`)
 - default (set on struct)
 
 Otherwise, the parameters are set following this order:

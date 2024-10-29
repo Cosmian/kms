@@ -36,6 +36,9 @@ pub enum KmipError {
     #[error("Conversion Error: {0}")]
     ConversionError(String),
 
+    #[error("Indexing slicing Error: {0}")]
+    IndexingSlicing(String),
+
     #[error("{0}")]
     Default(String),
 

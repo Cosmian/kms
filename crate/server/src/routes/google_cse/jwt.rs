@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use alcoholic_jwt::token_kid;
+use tracing::{debug, trace};
 
 use super::operations::Role;
 use crate::{
@@ -18,7 +19,7 @@ const JWT_ISSUER_URI: &str = "https://accounts.google.com";
 #[cfg(test)]
 const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-static APPLICATIONS: &[&str; 3] = &["meet", "drive", "gmail"];
+static APPLICATIONS: &[&str; 4] = &["meet", "drive", "gmail", "calendar"];
 
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
@@ -82,7 +83,7 @@ pub(crate) fn decode_jwt_authorization_token(
         !token.is_empty(),
         KmsError::Unauthorized("authorization token is empty".to_owned())
     );
-    tracing::trace!(
+    trace!(
         "validating CSE authorization token, expected issuer : {}",
         &jwt_config.jwt_issuer_uri
     );
@@ -113,18 +114,18 @@ pub(crate) fn decode_jwt_authorization_token(
         })?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
-    tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
+    trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
         KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
     })?;
-    tracing::trace!("JWK has been found:\n{jwk:?}");
+    trace!("JWK has been found:\n{jwk:?}");
 
     let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
         .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
-    tracing::trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
-    tracing::trace!("valid_jwt headers: {:?}", valid_jwt.headers);
+    trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
+    trace!("valid_jwt headers: {:?}", valid_jwt.headers);
 
     let user_claims = serde_json::from_value(valid_jwt.claims)
         .map_err(|err| KmsError::Unauthorized(format!("JWT claims are malformed: {err:?}")))?;
@@ -138,7 +139,7 @@ pub(crate) fn decode_jwt_authorization_token(
 /// The configuration for Google CSE:
 ///  - JWT authentication and authorization configurations
 ///  - external KACLS URL of this server configured in Google Workspace client-side encryption something like <https://cse.mydomain.com/google_cse>
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GoogleCseConfig {
     pub authentication: Arc<Vec<JwtConfig>>,
     pub authorization: HashMap<String, Arc<JwtConfig>>,
@@ -200,7 +201,7 @@ pub(crate) async fn validate_cse_authentication_token(
         "admin".to_owned()
     };
 
-    tracing::trace!("authentication token validated for {authentication_email}");
+    trace!("authentication token validated for {authentication_email}");
 
     Ok(authentication_email)
 }
@@ -226,10 +227,11 @@ pub(crate) async fn validate_cse_authorization_token(
             "no JWT config available for application: {application} "
         ))
     })?;
+    trace!("jwt_config: application {application} -> JWT config: {jwt_config:#?}");
     let (authorization_token, jwt_headers) =
         decode_jwt_authorization_token(jwt_config, authorization_token)?;
-    tracing::trace!("authorization token: {authorization_token:?}");
-    tracing::trace!("authorization token headers: {jwt_headers:?}");
+    trace!("authorization token: {authorization_token:?}");
+    trace!("authorization token headers: {jwt_headers:?}");
 
     #[cfg(not(feature = "insecure"))]
     if let Some(roles) = roles {
@@ -304,7 +306,7 @@ pub(crate) async fn validate_tokens(
         )
     );
 
-    tracing::debug!("Google CSE request authorized for user {authentication_email}");
+    debug!("Google CSE request authorized for user {authentication_email}");
 
     let resource_name = authorization_token.resource_name.unwrap_or(String::new());
 
@@ -315,12 +317,12 @@ pub(crate) async fn validate_tokens(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
-    #![allow(clippy::unwrap_used, unsafe_code)]
     use std::sync::Arc;
 
     use cosmian_logger::log_utils::log_init;
-    use tracing::info;
+    use tracing::{debug, info, trace};
 
     use crate::{
         config::JwtAuthConfig,
@@ -351,7 +353,7 @@ mod tests {
         }}
         "#
         );
-        tracing::debug!("wrap_request: {wrap_request:?}");
+        debug!("wrap_request: {wrap_request:?}");
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
         let uris = {
@@ -403,7 +405,7 @@ mod tests {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
         }
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
-        tracing::trace!("{jwt_authorization_config:#?}");
+        trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
             &jwt_authorization_config["drive"],

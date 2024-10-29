@@ -12,9 +12,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-#[cfg(not(feature = "fips"))]
-use tracing::debug;
-use tracing::info;
+use tracing::{debug, info, trace};
 
 use crate::{
     config::{self, JwtAuthConfig, ServerParams},
@@ -253,13 +251,14 @@ pub async fn prepare_kms_server(
     let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
     // Get the Google Client-Side Encryption JWT authorization config
+    debug!("Enable Google CSE JWT Authorization: {enable_google_cse}");
     let google_cse_jwt_config = if enable_google_cse {
         let Some(jwks_manager) = jwks_manager else {
             return Err(KmsError::ServerError(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
         };
-        Some(GoogleCseConfig {
+        let google_cse_config = GoogleCseConfig {
             authentication: jwt_configurations.clone().context(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
@@ -268,7 +267,9 @@ pub async fn prepare_kms_server(
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,
-        })
+        };
+        trace!("Google CSE JWT Config: {:#?}", google_cse_config);
+        Some(google_cse_config)
     } else {
         None
     };

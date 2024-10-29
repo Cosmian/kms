@@ -248,6 +248,7 @@ async fn _decrypt(
     })
 }
 
+#[allow(clippy::indexing_slicing)]
 fn big_uint_to_u32(bu: &BigUint) -> u32 {
     let bytes = bu.to_bytes_be();
     let len = bytes.len();
