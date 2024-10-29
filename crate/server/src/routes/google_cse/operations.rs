@@ -32,7 +32,6 @@ use crate::{
 
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
-// const KEY_LENGTH_BOUND_SIZE: usize = 32;
 pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
 
 #[derive(PartialEq, Eq)]
@@ -153,11 +152,8 @@ pub async fn wrap(
     kms: &Arc<KMSServer>,
 ) -> KResult<WrapResponse> {
     debug!("wrap: entering");
-    let application = if request.reason.contains("Meet") {
-        "meet"
-    } else {
-        "drive"
-    };
+
+    let application = get_application(&request.reason);
 
     // the possible roles to wrap a key
     let roles = &[Role::Writer, Role::Upgrader];
@@ -167,7 +163,7 @@ pub async fn wrap(
         &request.authentication,
         &request.authorization,
         cse_config,
-        application,
+        &application,
         Some(roles),
     )
     .await?;
@@ -222,6 +218,19 @@ pub struct UnwrapResponse {
     pub key: String,
 }
 
+fn get_application(reason: &str) -> String {
+    trace!("get_application: reason: {reason}");
+    let application = if reason.contains("Meet") {
+        "meet".to_owned()
+    } else if reason.contains("calendar") {
+        "calendar".to_owned()
+    } else {
+        "drive".to_owned()
+    };
+    trace!("get_application: application: {application}");
+    application
+}
+
 /// Unwraps a wrapped Data Encryption Key (DEK) using the specified authentication and authorization tokens.
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
@@ -243,11 +252,8 @@ pub async fn unwrap(
     kms: &Arc<KMSServer>,
 ) -> KResult<UnwrapResponse> {
     debug!("unwrap: entering");
-    let application = if request.reason.contains("Meet") {
-        "meet"
-    } else {
-        "drive"
-    };
+
+    let application = get_application(&request.reason);
 
     // the possible roles to unwrap a key
     let roles = &[Role::Writer, Role::Reader];
@@ -257,7 +263,7 @@ pub async fn unwrap(
         &request.authentication,
         &request.authorization,
         cse_config,
-        application,
+        &application,
         Some(roles),
     )
     .await?;
@@ -329,9 +335,7 @@ pub async fn private_key_sign(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeySignResponse> {
-    trace!("private_key_sign: entering: {request:?}");
-
-    debug!("private_key_sign: validate_tokens");
+    debug!("private_key_sign: entering");
     let roles: &[Role; 1] = &[Role::Signer];
 
     let token_extracted_content = validate_tokens(
@@ -436,9 +440,7 @@ pub async fn private_key_decrypt(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<PrivateKeyDecryptResponse> {
-    trace!("private_key_decrypt: entering: {request:?}");
-
-    debug!("private_key_decrypt: validate_tokens");
+    debug!("private_key_decrypt: entering");
     let roles: &[Role; 1] = &[Role::Decrypter];
 
     let token_extracted_content = validate_tokens(
@@ -530,18 +532,15 @@ pub async fn digest(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<DigestResponse> {
-    let application = if request.reason.contains("Meet") {
-        "meet"
-    } else {
-        "drive"
-    };
-    debug!("cse_digest: validate_authorization_token");
+    let application = get_application(&request.reason);
+
+    debug!("digest: validate_authorization_token");
 
     let roles = [Role::Verifier];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         cse_config,
-        application,
+        &application,
         Some(&roles),
     )
     .await?;
@@ -813,18 +812,14 @@ pub async fn rewrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<RewrapResponse> {
-    let application = if request.reason.contains("Meet") {
-        "meet"
-    } else {
-        "drive"
-    };
     debug!("rewrap: entering");
 
+    let application = get_application(&request.reason);
     let roles = [Role::Migrator];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
         cse_config,
-        application,
+        &application,
         Some(&roles),
     )
     .await?;

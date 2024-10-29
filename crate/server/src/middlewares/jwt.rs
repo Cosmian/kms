@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
@@ -81,7 +81,7 @@ impl JwtConfig {
             !token.is_empty(),
             KmsError::Unauthorized("token is empty".to_owned())
         );
-        tracing::trace!(
+        trace!(
             "validating authentication token, expected JWT issuer: {}",
             self.jwt_issuer_uri
         );
@@ -105,14 +105,14 @@ impl JwtConfig {
             .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
             .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
-        tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", self.jwks);
+        trace!("looking for kid `{kid}` JWKS:\n{:?}", self.jwks);
 
         let jwk = self
             .jwks
             .find(&kid)?
             .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_owned()))?;
 
-        tracing::trace!("JWK has been found:\n{jwk:?}");
+        trace!("JWK has been found:\n{jwk:?}");
 
         let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
             .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;

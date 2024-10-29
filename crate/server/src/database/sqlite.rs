@@ -484,7 +484,7 @@ where
     let mut res: HashMap<String, ObjectWithMetadata> = HashMap::new();
     for row in rows {
         let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
-        trace!("row = {:?}", serde_json::to_string(&object_with_metadata));
+        trace!("row = {}", object_with_metadata);
 
         // check if the user, who is not an owner, has the right permissions
         if (user != object_with_metadata.owner)
