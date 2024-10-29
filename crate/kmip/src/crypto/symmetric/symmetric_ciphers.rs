@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::aes_gcm_siv_not_openssl;
 use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
-    error::KmipError,
+    error::{result::KmipResult, KmipError},
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm},
     kmip_bail,
 };
@@ -422,7 +422,7 @@ impl StreamCipher {
         }
     }
 
-    pub fn update(&mut self, bytes: &[u8]) -> Result<Vec<u8>, KmipError> {
+    pub fn update(&mut self, bytes: &[u8]) -> KmipResult<Vec<u8>> {
         match self.underlying_cipher {
             UnderlyingCipher::Openssl(ref mut c) => {
                 // prepend the remaining bytes from the buffer
@@ -437,10 +437,24 @@ impl StreamCipher {
                 }
                 let len_to_update = available_bytes.len() - len_to_park;
                 let mut buffer = vec![0; len_to_update + self.block_size];
-                let update_len = c.update(&available_bytes[..len_to_update], &mut buffer)?;
+                let update_len = c.update(
+                    available_bytes.get(..len_to_update).ok_or_else(|| {
+                        KmipError::IndexingSlicing(
+                            "sym_ciphers: update: ..len_to_update".to_owned(),
+                        )
+                    })?,
+                    &mut buffer,
+                )?;
                 buffer.truncate(update_len);
                 // store the remaining bytes in the cipher buffer
-                self.buffer = available_bytes[len_to_update..].to_vec();
+                self.buffer = available_bytes
+                    .get(len_to_update..)
+                    .ok_or_else(|| {
+                        KmipError::IndexingSlicing(
+                            "sym_ciphers: update: len_to_update..".to_owned(),
+                        )
+                    })?
+                    .to_vec();
                 Ok(buffer)
             }
             UnderlyingCipher::AesGcmSiv => Err(KmipError::NotSupported(

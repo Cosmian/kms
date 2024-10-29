@@ -210,6 +210,7 @@ impl From<KmipError> for KmsError {
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
             | KmipError::ConversionError(s)
+            | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }

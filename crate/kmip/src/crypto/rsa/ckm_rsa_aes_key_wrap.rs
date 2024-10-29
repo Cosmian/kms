@@ -93,8 +93,14 @@ pub fn ckm_rsa_aes_key_unwrap(
     }
 
     // Split ciphertext into encapsulation and wrapped key.
-    let encapsulation = &ciphertext[..encapsulation_bytes_len];
-    let wk = &ciphertext[encapsulation_bytes_len..];
+    let encapsulation = ciphertext.get(..encapsulation_bytes_len).ok_or_else(|| {
+        KmipError::IndexingSlicing(
+            "ckm_rsa_aes_key_unwrap: encapsulation from ciphertext".to_owned(),
+        )
+    })?;
+    let wk = ciphertext
+        .get(encapsulation_bytes_len..)
+        .ok_or_else(|| KmipError::IndexingSlicing("ckm_rsa_aes_key_unwrap: wk".to_owned()))?;
 
     // Unwrap key-encryption-key using RSA-OAEP.
     let kek = ckm_rsa_pkcs_oaep_key_unwrap(p_key, hash_fn, encapsulation)?;

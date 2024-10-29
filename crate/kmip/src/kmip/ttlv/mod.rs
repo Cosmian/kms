@@ -7,7 +7,8 @@ pub mod serializer;
     clippy::cast_possible_wrap,
     clippy::as_conversions,
     clippy::unwrap_used,
-    clippy::panic
+    clippy::panic,
+    clippy::indexing_slicing
 )]
 #[cfg(test)]
 mod tests;
@@ -267,11 +268,16 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
             where
                 E: de::Error,
             {
-                if &v[0..2] != "0x" {
+                if v.get(0..2).ok_or_else(|| {
+                    de::Error::custom(format!("visit_str: indexing slicing failed for 0..2: {v}"))
+                })? != "0x"
+                {
                     return Err(de::Error::custom(format!("Invalid value for Mask: {v}")))
                 }
-                let bytes = hex::decode(&v[2..])
-                    .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?;
+                let bytes = hex::decode(v.get(2..).ok_or_else(|| {
+                    de::Error::custom(format!("visit_str: indexing slicing failed for 2..: {v}"))
+                })?)
+                .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?;
                 let m: u32 = u32::from_be_bytes(
                     bytes
                         .as_slice()
@@ -347,13 +353,27 @@ impl<'de> Deserialize<'de> for TTLV {
                                 }
                                 "LongInteger" => {
                                     let hex: String = map.next_value()?;
-                                    if &hex[0..2] != "0x" {
+                                    if hex.get(0..2).ok_or_else(|| {
+                                        de::Error::custom(
+                                            "visit_map: indexing slicing failed for LongInteger \
+                                             0..2"
+                                                .to_owned(),
+                                        )
+                                    })? != "0x"
+                                    {
                                         return Err(de::Error::custom(format!(
                                             "Invalid value for i64 hex String: {hex} (should \
                                              start with 0x)"
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|e| {
+                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
+                                        de::Error::custom(
+                                            "visit_map: indexing slicing failed for LongInteger \
+                                             2.."
+                                            .to_owned(),
+                                        )
+                                    })?)
+                                    .map_err(|e| {
                                         de::Error::custom(format!(
                                             "Invalid value for i64 hex String: {hex} (not a hex \
                                              string). Error: {e}",
@@ -371,12 +391,24 @@ impl<'de> Deserialize<'de> for TTLV {
                                 }
                                 "BigInteger" => {
                                     let hex: String = map.next_value()?;
-                                    if &hex[0..2] != "0x" {
+                                    if hex.get(0..2).ok_or_else(|| {
+                                        de::Error::custom(format!(
+                                            "visit_map: indexing slicing failed for BigInteger \
+                                             0..2: {hex}"
+                                        ))
+                                    })? != "0x"
+                                    {
                                         return Err(de::Error::custom(format!(
                                             "Invalid value for Mask: {hex}"
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|_e| {
+                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
+                                        de::Error::custom(format!(
+                                            "visit_map: indexing slicing failed for BigInteger \
+                                             2..: {hex}"
+                                        ))
+                                    })?)
+                                    .map_err(|_e| {
                                         de::Error::custom(format!("Invalid value for Mask: {hex}"))
                                     })?;
                                     // build the `BigUint` using the `Vec<u32>` representation.
@@ -425,15 +457,27 @@ impl<'de> Deserialize<'de> for TTLV {
                                 "Interval" => TTLValue::Interval(map.next_value()?),
                                 "DateTimeExtended" => {
                                     let hex: String = map.next_value()?;
-                                    if &hex[0..2] != "0x" {
+                                    if hex.get(0..2).ok_or_else(|| {
+                                        de::Error::custom(format!(
+                                            "visit_map: indexing slicing failed for \
+                                             DateTimeExtended 0..2: {hex}"
+                                        ))
+                                    })? != "0x"
+                                    {
                                         return Err(de::Error::custom(format!(
                                             "Invalid value for i64 hex String: {hex} (should \
-                                             start with 0x)",
+                                             start with 0x)"
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|e| {
+                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
                                         de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {hex} (not an hex \
+                                            "visit_map: indexing slicing failed for \
+                                             DateTimeExtended 2..: {hex}"
+                                        ))
+                                    })?)
+                                    .map_err(|e| {
+                                        de::Error::custom(format!(
+                                            "Invalid value for i64 hex String: {hex} (not a hex \
                                              string). Error: {e}",
                                         ))
                                     })?;

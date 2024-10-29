@@ -62,11 +62,16 @@ impl JwtConfig {
     pub(crate) fn decode_bearer_header(&self, authorization_content: &str) -> KResult<UserClaim> {
         let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
         kms_ensure!(
-            bearer.len() == 2 && bearer[0] == "Bearer",
+            bearer.first().ok_or_else(|| KmsError::Unauthorized(
+                "Bad authorization header content (missing bearer)".to_owned()
+            ))? == &"Bearer"
+                && bearer.get(1).is_some(),
             KmsError::Unauthorized("Bad authorization header content (bad bearer)".to_owned())
         );
 
-        let token: &str = bearer[1];
+        let token: &str = bearer.get(1).ok_or_else(|| {
+            KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
+        })?;
         self.decode_authentication_token(token)
     }
 
