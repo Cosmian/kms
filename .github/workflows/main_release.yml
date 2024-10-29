@@ -134,6 +134,10 @@ jobs:
   python_publish:
     name: python publish
     needs:
+      - cargo-audit
+      - cargo-lint
+      - cargo-doc
+      - build
       - python_and_docker
     runs-on: ubuntu-22.04
     strategy:
