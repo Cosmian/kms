@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.19.2] - 2024-10-29
+
+### 🐛 Bug Fixes
+
+- Launch encrypted GMeet through GCal ([#334](https://github.com/Cosmian/kms/pull/334))
+- **MacOS-maturin**: Upgrade python version from 3.12 to 3.13 ([#333](https://github.com/Cosmian/kms/pull/333))
+- Dont panic on indexing slicing ([#331](https://github.com/Cosmian/kms/pull/331))
+
+### 📚 Documentation
+
+- `ckms` installation - specifically for Windows ([#332](https://github.com/Cosmian/kms/pull/332))
+
 ## [4.19.1] - 2024-10-11
 
 ### 🚀 Features
@@ -34,7 +46,7 @@ All notable changes to this project will be documented in this file.
 - Add bulk encrypt / decrypt facility ([#318](https://github.com/Cosmian/kms/pull/318))
 - Replace Debug derive trait of KMIP Object by a custom Display impl ([#327](https://github.com/Cosmian/kms/pull/327))
 
-### Documentation
+### 📚 Documentation
 
 - Documentation: Migrating emails to Gmail CSE ([#316](https://github.com/Cosmian/kms/pull/316))
 - Update CSE documentation (Gmail S/MIME) ([#316](https://github.com/Cosmian/kms/pull/316))
@@ -168,7 +180,7 @@ All notable changes to this project will be documented in this file.
 - RUSTSEC-2024-0336 ([#244](https://github.com/Cosmian/kms/pull/244))
 - Remove everything related to GCP images build ([#241](https://github.com/Cosmian/kms/pull/241))
 
-### Documentation
+### 📚 Documentation
 
 - Oauth2 OIDC doc fixes
 
@@ -362,7 +374,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.10.1] - 2023-12-12
 
-### Documentation
+### 📚 Documentation
 
 - Fix mkdocs formatting
 
@@ -479,7 +491,7 @@ All notable changes to this project will be documented in this file.
 
 - Filter Locate request by object type
 
-### Documentation
+### 📚 Documentation
 
 - Remove merge leftovers
 
@@ -557,7 +569,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 - Incorrect docker tag
 
-### Documentation
+### 📚 Documentation
 
 - Add description on docker usage
 
@@ -581,7 +593,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 - Removal of global static conf and use of proper injection (was hindering testing)
 - Authorization: re-factor of endpoints and fix delegation issues around revoke and destroy
 
-### Documentation
+### 📚 Documentation
 
 - Add link to package.cosmian.com
 
@@ -623,7 +635,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.3.2] - 2023-02-17
 
-### Documentation
+### 📚 Documentation
 
 - mkdocs-merge could not run with `emoji_index` url
 
@@ -639,7 +651,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.3.0] - 2023-02-15
 
-### Documentation
+### 📚 Documentation
 
 - Improves the installation doc and details the important options
 - Makes wording coherent between doc and code
