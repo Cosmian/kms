@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.19.3] - 2024-10-29
+
+### 🐛 Bug Fixes
+
+- Maturin build on macos arm - force forward compatibility ([#336](https://github.com/Cosmian/kms/pull/336))
+
 ## [4.19.2] - 2024-10-29
 
 ### 🐛 Bug Fixes
