@@ -1,10 +1,11 @@
+use cosmian_kms_client::GmailApiConf;
 use jwt_simple::{
     algorithms::RSAKeyPairLike,
     prelude::{Claims, Duration, RS256KeyPair},
 };
 use serde::{Deserialize, Serialize};
 
-use super::{service_account::ServiceAccount, GoogleApiError};
+use super::GoogleApiError;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct GoogleAuthResponse {
@@ -43,7 +44,7 @@ struct JwtAuth {
 }
 
 pub(crate) fn create_jwt(
-    service_account: &ServiceAccount,
+    service_account: &GmailApiConf,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
     let key_pair = RS256KeyPair::from_pem(&service_account.private_key)?;
@@ -60,7 +61,7 @@ pub(crate) fn create_jwt(
 }
 
 pub(crate) async fn retrieve_token(
-    service_account: &ServiceAccount,
+    service_account: &GmailApiConf,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
     let jwt = create_jwt(service_account, user_email)?;

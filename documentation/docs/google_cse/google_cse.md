@@ -70,22 +70,22 @@ This key MUST be created under the `google_cse` ID.
 ```sh
 # create it
 
-ckms sym keys create -t google_cse google_cse
+cosmian kms sym keys create -t google_cse google_cse
 
 # or import an existing key
 
-ckms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
+cosmian kms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
 ```
 
 Next, you’ll need to assign access rights to each user who requires CSE functionality, whether they are part of your organization or a guest.
 You can also grant wildcard access ('*') to allow all users to use this key in CSE endpoints.
 
 ```sh
-ckms access-rights grant USER_ID google_cse get encrypt decrypt
+cosmian kms access-rights grant USER_ID google_cse get encrypt decrypt
 
 # or give access to everyone
 
-ckms access-rights grant '*' google_cse get encrypt decrypt
+cosmian kms access-rights grant '*' google_cse get encrypt decrypt
 ```
 
 ## Handling Guest identity providers

@@ -27,7 +27,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
     let tmp_path = tmp_dir.path();
     // let tmp_path = std::path::Path::new("./");
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let _recovered_file = tmp_path.join("plain.txt");
 
@@ -40,7 +40,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
     let root_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
+        key_file: &format!("../../test_data/certificates/openssl/{curve_name}-cert.pem"),
         format: &CertificateInputFormat::Pem,
         tags: Some(tags),
         replace_existing: true,
@@ -51,7 +51,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> CliResult<()> {
     let certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
+        key_file: &format!("../../test_data/certificates/openssl/{curve_name}-revoked.crt"),
         format: &CertificateInputFormat::Pem,
         issuer_certificate_id: Some(root_certificate_id),
         tags: Some(tags),
@@ -122,7 +122,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let root_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/chain/ca.cert.pem",
+        key_file: "../../test_data/certificates/chain/ca.cert.pem",
         format: &CertificateInputFormat::Pem,
         replace_existing: true,
         ..Default::default()
@@ -132,7 +132,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let intermediate_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/chain/intermediate.cert.pem",
+        key_file: "../../test_data/certificates/chain/intermediate.cert.pem",
         format: &CertificateInputFormat::Pem,
         issuer_certificate_id: Some(root_certificate_id.clone()),
         replace_existing: true,
@@ -142,7 +142,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let leaf1_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/chain/leaf1.cert.pem",
+        key_file: "../../test_data/certificates/chain/leaf1.cert.pem",
         format: &CertificateInputFormat::Pem,
         issuer_certificate_id: Some(intermediate_certificate_id.clone()),
         replace_existing: true,
@@ -170,7 +170,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let test2_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["test_data/certificates/chain/leaf2.cert.der".to_owned()],
+        vec!["../../test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![
             intermediate_certificate_id.clone(),
             root_certificate_id.clone(),
@@ -186,7 +186,7 @@ async fn test_validate_cli() -> CliResult<()> {
     let test3_res = validate_certificate(
         &ctx.owner_client_conf_path,
         "certificates",
-        vec!["test_data/certificates/chain/leaf2.cert.der".to_owned()],
+        vec!["../../test_data/certificates/chain/leaf2.cert.der".to_owned()],
         vec![intermediate_certificate_id, root_certificate_id.clone()],
         // Date: 15/04/2048
         Some("4804152030Z".to_owned()),

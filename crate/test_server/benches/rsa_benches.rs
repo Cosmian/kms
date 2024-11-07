@@ -1,20 +1,22 @@
 #![allow(dead_code)]
 
-use cosmian_kmip::{
-    crypto::{
-        generic::kmip_requests::{build_decryption_request, build_encryption_request},
-        rsa::kmip_requests::create_rsa_key_pair_request,
-    },
-    kmip::{
-        kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
-        kmip_operations::Operation,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
-            ProtocolVersion,
+use cosmian_kms_client::{
+    reexport::cosmian_kmip::{
+        crypto::{
+            generic::kmip_requests::{build_decryption_request, build_encryption_request},
+            rsa::kmip_requests::create_rsa_key_pair_request,
+        },
+        kmip::{
+            kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+            kmip_operations::Operation,
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+                ProtocolVersion,
+            },
         },
     },
+    KmsClient,
 };
-use cosmian_kms_client::KmsClient;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use kms_test_server::start_default_test_kms_server;
 
@@ -23,9 +25,7 @@ pub(crate) fn bench_rsa_create_keypair(c: &mut Criterion) {
 
     let kms_rest_client = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        ctx.owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap()
+        KmsClient::new(ctx.owner_client_conf.clone()).unwrap()
     });
 
     let mut group = c.benchmark_group("RSA tests");
@@ -213,10 +213,7 @@ pub(crate) fn bench_rsa_encrypt(
 
     let (kms_rest_client, _sk, pk) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let kms_rest_client = ctx
-            .owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap();
+        let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
         (kms_rest_client, sk, pk)
     });
@@ -245,10 +242,7 @@ pub(crate) fn bench_rsa_decrypt(
 
     let (kms_rest_client, sk, _pk, ciphertext) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let kms_rest_client = ctx
-            .owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap();
+        let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
         let ciphertext = encrypt(
             &kms_rest_client,
@@ -420,10 +414,8 @@ pub(crate) fn bench_encrypt_decrypt_parametrized(
         for key_size in [2048, 4096] {
             let (kms_rest_client, sk, pk, ciphertext) = runtime.block_on(async {
                 let ctx = start_default_test_kms_server().await;
-                let kms_rest_client = ctx
-                    .owner_client_conf
-                    .initialize_kms_client(None, None, false)
-                    .unwrap();
+
+                let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
                 let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
                 let ciphertext = encrypt(
                     &kms_rest_client,

@@ -27,13 +27,13 @@ use crate::{
 const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 pub(crate) struct CkmsBackend {
-    kms_client: KmsClient,
+    kms_rest_client: KmsClient,
 }
 
 impl CkmsBackend {
     /// Instantiate a new `CkmsBackend` using the
-    pub(crate) fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
-        Ok(CkmsBackend { kms_client })
+    pub(crate) fn instantiate(kms_rest_client: KmsClient) -> Self {
+        CkmsBackend { kms_rest_client }
     }
 }
 
@@ -80,8 +80,8 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
-            &self.kms_client,
-            &[disk_encryption_tag, "_cert".to_string()],
+            &self.kms_rest_client,
+            &[disk_encryption_tag, "_cert".to_owned()],
             KeyFormatType::X509,
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
@@ -148,9 +148,9 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
-            &self.kms_client,
-            &[disk_encryption_tag, "_kk".to_string()],
-            KeyFormatType::Raw,
+            &self.kms_rest_client,
+            &[disk_encryption_tag, "_kk".to_owned()],
+            Some(KeyFormatType::Raw),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
@@ -180,7 +180,7 @@ impl Backend for CkmsBackend {
             remote_object_id,
             ciphertext.len()
         );
-        kms_decrypt(&self.kms_client, remote_object_id, algorithm, ciphertext).map_err(Into::into)
+        kms_decrypt(&self.kms_rest_client, remote_object_id, algorithm, ciphertext).map_err(Into::into)
     }
 }
 

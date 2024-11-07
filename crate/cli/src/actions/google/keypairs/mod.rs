@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 use create::CreateKeyPairsAction;
@@ -32,14 +30,14 @@ pub enum KeyPairsCommands {
 }
 
 impl KeyPairsCommands {
-    pub async fn process(&self, conf_path: &PathBuf, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::Get(action) => action.run(conf_path).await,
-            Self::List(action) => action.run(conf_path).await,
-            Self::Enable(action) => action.run(conf_path).await,
-            Self::Disable(action) => action.run(conf_path).await,
-            Self::Obliterate(action) => action.run(conf_path).await,
-            Self::Create(action) => action.run(conf_path, kms_rest_client).await,
+            Self::Get(action) => action.run(&kms_rest_client.conf).await,
+            Self::List(action) => action.run(&kms_rest_client.conf).await,
+            Self::Enable(action) => action.run(&kms_rest_client.conf).await,
+            Self::Disable(action) => action.run(&kms_rest_client.conf).await,
+            Self::Obliterate(action) => action.run(&kms_rest_client.conf).await,
+            Self::Create(action) => action.run(kms_rest_client).await,
         }
     }
 }

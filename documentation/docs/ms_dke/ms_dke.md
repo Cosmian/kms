@@ -1,3 +1,5 @@
+# Microsoft Double Key Encryption (DKE)
+
 Microsoft Double Key Encryption (DKE) is a feature of Microsoft 365 that allows you to protect your most sensitive
 data by encrypting data on the client computer before sending it to Microsoft servers.
 One of the keys used to encrypt remains under your control and makes the data unreadable by Microsoft. This key is kept
@@ -61,16 +63,16 @@ corresponding entry in the server TOML configuration file.
 
 !!! important "Running the KMS server in the cloud for DKE"
       It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-      Cosmian VM](../zero_trust.md). However, due to the lack of authentication, and thus the need to firewall the server,
+      Cosmian VM](.././index.md#zero-trust-kms). However, due to the lack of authentication, and thus the need to firewall the server,
       one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
       particularly if running on Azure.
 
 #### Create an RSA key with tag `dke_key`
 
-Using the `ckms` command line tool, create a 2048-bit RSA key with the tag `dke_key`:
+Using the [Cosmian CLI](/cosmian_cli), create a 2048-bit RSA key with the tag `dke_key`:
 
 ```shell
-ckms rsa keys create --tag dke_key --size_in_bits 2048
+cosmian kms rsa keys create --tag dke_key --size_in_bits 2048
 ```
 
 The tag can be changed to any value, but it must be used in the URL of the sensitivity label in the Microsoft Purview
@@ -78,14 +80,13 @@ compliance portal. See [Create a sensitivity label for encryption](#create-a-sen
 
 #### Rotate the DKE key
 
-If later on you need to rotate the DKE key, you can use the `ckms` command line tool to create a new key with a new tag.
+If later on you need to rotate the DKE key, you can use the [Cosmian CLI](/cosmian_cli) to create a new key with a new tag.
 You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
 
 Users should now select the new label when creating new documents.
 As long as the old key is available in the Cosmian KMS, users will still be able to open documents encrypted with the
 old key.
-
 
 ## Configuring Microsoft DKE in Purview
 
@@ -193,7 +194,6 @@ you do not activate co-authoring.
       - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
       - `ms_dke` is the root of REST path for the DKE services.
       - `dke_key` is the tag set for the RSA key pair to use for this label.
-
 
 ![Sensitivity Label](./sensitivity_label.png)
 

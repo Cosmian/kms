@@ -115,7 +115,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -187,7 +187,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -271,7 +271,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -347,7 +347,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 

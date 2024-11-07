@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use clap::Subcommand;
+use cosmian_kms_client::KmsClientConfig;
 
 use self::{
     delete_identities::DeleteIdentitiesAction, get_identities::GetIdentitiesAction,
@@ -28,13 +27,13 @@ pub enum IdentitiesCommands {
 }
 
 impl IdentitiesCommands {
-    pub async fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
+    pub async fn process(&self, conf: &KmsClientConfig) -> CliResult<()> {
         match self {
-            Self::Get(action) => action.run(conf_path).await,
-            Self::List(action) => action.run(conf_path).await,
-            Self::Insert(action) => action.run(conf_path).await,
-            Self::Delete(action) => action.run(conf_path).await,
-            Self::Patch(action) => action.run(conf_path).await,
+            Self::Get(action) => action.run(conf).await,
+            Self::List(action) => action.run(conf).await,
+            Self::Insert(action) => action.run(conf).await,
+            Self::Delete(action) => action.run(conf).await,
+            Self::Patch(action) => action.run(conf).await,
         }
     }
 }

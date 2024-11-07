@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use cosmian_kms_client::{
-    access::{AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse},
     kmip::kmip_types::{Attribute, UniqueIdentifier},
+    reexport::cosmian_kms_access::access::{
+        AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
+    },
 };
 use serde::Serialize;
 use serde_json::Value;

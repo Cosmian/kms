@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
@@ -31,10 +29,10 @@ impl GoogleCommands {
     ///
     /// Returns a `CliResult` indicating the success or failure of the command.
     ///
-    pub async fn process(&self, conf_path: &PathBuf, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::KeyPairs(command) => command.process(conf_path, kms_rest_client).await?,
-            Self::Identities(command) => command.process(conf_path).await?,
+            Self::KeyPairs(command) => command.process(kms_rest_client).await?,
+            Self::Identities(command) => command.process(&kms_rest_client.conf).await?,
         };
         Ok(())
     }

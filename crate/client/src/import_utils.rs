@@ -6,7 +6,7 @@ use crate::{
         kmip_operations::Import,
         kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
     },
-    ClientError, KmsClient,
+    KmsClient, KmsClientError,
 };
 
 /// Import an Object into the KMS
@@ -21,7 +21,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     unwrap: bool,
     replace_existing: bool,
     tags: T,
-) -> Result<String, ClientError> {
+) -> Result<String, KmsClientError> {
     trace!("Entering import_object");
     // an empty uid will have the server generate if for us
     let unique_identifier = object_id.clone().unwrap_or_default();

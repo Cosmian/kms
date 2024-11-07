@@ -107,7 +107,7 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.6"
-cosmian_logger = { path = "../logger" }
+cosmian_logger = { workspace = true }
 pem = { workspace = true }
 tempfile = "3.11"
 

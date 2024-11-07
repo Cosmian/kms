@@ -1,4 +1,4 @@
-## TL;DR
+# TL;DR
 
 The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 

@@ -4,7 +4,7 @@
     future_incompatible,
     keyword_idents,
     let_underscore,
-    rust_2024_compatibility,
+    // rust_2024_compatibility,
     unreachable_pub,
     unused,
     unsafe_code,

@@ -8,7 +8,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::{
         generic::kmip_requests::build_encryption_request,
-        symmetric::symmetric_ciphers::{random_key, random_nonce, Mode, SymCipher},
+        symmetric::symmetric_ciphers::{encrypt, random_key, random_nonce, Mode, SymCipher},
     },
     kmip::kmip_types::CryptographicParameters,
     read_bytes_from_file, KmsClient,
@@ -48,7 +48,7 @@ use crate::{
 ///
 /// Note: server side encryption is not a streaming call:
 /// the data is entirely loaded in memory before being encrypted.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct EncryptAction {
     /// The file to encrypt
@@ -108,7 +108,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub(crate) async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
@@ -140,7 +140,7 @@ impl EncryptAction {
             .with_context(|| "failed to write the encrypted file")?;
 
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
-            self.client_side_encrypt(
+            self.client_side_encrypt_with_file(
                 kms_rest_client,
                 &id,
                 key_encryption_algorithm,
@@ -230,7 +230,7 @@ impl EncryptAction {
     /// Encrypt a file using a symmetric stream cipher
     /// and return the ephemeral key
     #[allow(clippy::too_many_arguments)]
-    async fn client_side_encrypt(
+    async fn client_side_encrypt_with_file(
         &self,
         kms_rest_client: &KmsClient,
         key_id: &str,
@@ -323,5 +323,95 @@ impl EncryptAction {
         output_file.write_all(&tag)?;
         output_file.flush()?;
         Ok(dek)
+    }
+
+    /// Encrypt a buffer using a symmetric stream cipher
+    /// and return the ciphertext. Ciphertext format is:
+    /// | `kem_nonce` | `kem_ciphertext` | `kem_tag` | ciphertext |
+    /// # Errors
+    /// - If the cryptographic algorithm is not specified
+    /// - If the nonce cannot be generated
+    /// - If the ciphertext cannot be generated
+    /// - If the tag cannot be generated
+    #[allow(clippy::too_many_arguments, dead_code)]
+    pub async fn client_side_encrypt_with_buffer(
+        &self,
+        kms_rest_client: &KmsClient,
+        key_encryption_key_id: &str,
+        key_encryption_algorithm: KeyEncryptionAlgorithm,
+        data_encryption_algorithm: DataEncryptionAlgorithm,
+        nonce: Option<Vec<u8>>,
+        plaintext: &[u8],
+        aad: Option<Vec<u8>>,
+    ) -> CliResult<Vec<u8>> {
+        // Generate the ephemeral key (DEK)
+        let dek = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
+            DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
+        };
+
+        // Additional authenticated data (AAD) for AEAD ciphers
+        // (empty for XTS)
+        let aad = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
+                aad.unwrap_or_default()
+            }
+        };
+
+        // Wrap the DEK with the KEK
+        let (kem_nonce, kem_ciphertext, kem_tag) = self
+            .server_side_encrypt(
+                kms_rest_client,
+                key_encryption_key_id,
+                key_encryption_algorithm.into(),
+                None,
+                dek.to_vec(),
+                None,
+            )
+            .await?;
+        #[allow(clippy::tuple_array_conversions)]
+        let encapsulation: Vec<u8> = [kem_nonce, kem_ciphertext, kem_tag].concat();
+
+        // write the encapsulation to the output file, starting with the length of the encapsulation
+        // as an unsigned LEB128 integer
+        let mut output_buffer = Vec::with_capacity(encapsulation.len() + 2 * plaintext.len());
+        let encapsulation_len = u64::try_from(encapsulation.len())?;
+        leb128::write::unsigned(&mut output_buffer, encapsulation_len)?;
+        output_buffer.write_all(&encapsulation)?;
+
+        // Determine the DEM parameters
+        let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
+        let sym_cipher = SymCipher::from_algorithm_and_key_size(
+            cryptographic_parameters
+                .cryptographic_algorithm
+                .ok_or_else(|| {
+                    CliError::Default(
+                        "No data encryption cryptographic algorithm specified".to_owned(),
+                    )
+                })?,
+            cryptographic_parameters.block_cipher_mode,
+            dek.len(),
+        )?;
+
+        // we need a nonce (or tweak)
+        let nonce = match nonce {
+            Some(n) => n,
+            None => random_nonce(sym_cipher)?,
+        };
+        output_buffer.write_all(&nonce)?;
+
+        let ciphertext = encrypt(sym_cipher, &dek, &nonce, &aad, plaintext)?;
+        // write the tag
+        output_buffer.write_all(&ciphertext.0)?;
+        output_buffer.write_all(&ciphertext.1)?;
+        output_buffer.flush()?;
+        Ok(output_buffer)
     }
 }

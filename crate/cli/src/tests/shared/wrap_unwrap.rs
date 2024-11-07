@@ -13,7 +13,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod},
     read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
-use cosmian_logger::log_utils::log_init;
+use cosmian_logger::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use tempfile::TempDir;
 
@@ -139,7 +139,7 @@ pub(crate) async fn test_password_wrap_import() -> CliResult<()> {
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;

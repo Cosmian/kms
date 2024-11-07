@@ -1,0 +1,19 @@
+[package]
+name = "cosmian_kms_access"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+
+[dependencies]
+cosmian_kmip = { path = "../kmip", default-features = true }
+serde = { workspace = true }

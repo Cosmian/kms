@@ -6,7 +6,7 @@ use actix_web::{
     HttpRequest,
 };
 use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
-use cosmian_kms_client::access::{
+use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
 };
 use tracing::{debug, info};

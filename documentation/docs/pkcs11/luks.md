@@ -99,7 +99,7 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
 ## Configuring the access to the KMS
 
 The PKCS#11 module uses the same configuration file as
-the [CLI](../cli/cli.md).
+the [CLI](/cosmian_cli).
 Since it may be run as a system user, the configuration file should be made available
 in `/etc/cosmian/kms.json`.
 
@@ -117,9 +117,9 @@ PKCS#12 file for authentication.
 }
 ```
 
-To use Open ID connect, install the `ckms` CLI from
+To use Open ID connect, install the [Cosmian CLI](/cosmian_cli) from
 [Cosmian packages](https://package.cosmian.com/kms/) and
-use the `ckms login` command to authenticate to the KMS first.
+use the `cosmian kms login` command to authenticate to the KMS first.
 
 ## Creating an RSA key pair using openssl and importing it into the Cosmian KMS
 
@@ -147,7 +147,7 @@ openssl pkcs12 -export -out certificate.p12 -inkey private_key.pem -in cert.pem
 #### 4. Import the PKCS12 file into the Cosmian KMS using a `disk-encryption` tag
 
 ```bash
-ckms certificates import -f pkcs12 -t disk-encryption certificate.p12
+cosmian kms certificates import -f pkcs12 -t disk-encryption certificate.p12
 
 The private key in the PKCS12 file was imported with id: 6fc631...
 Tags:
@@ -388,7 +388,7 @@ Wiped slot 1.
 #### 2. Revoke the old key from the Cosmian KMS
 
 ```bash
-ckms certificates revoke -k 6fc631...  "revoked"
+cosmian kms certificates revoke -k 6fc631...  "revoked"
 
 Successfully revoked: 6fc631....
 ```

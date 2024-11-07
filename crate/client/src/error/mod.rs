@@ -1,5 +1,6 @@
 use std::io;
 
+use cosmian_http_client::HttpClientError;
 use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
@@ -9,10 +10,7 @@ use thiserror::Error;
 pub(crate) mod result;
 
 #[derive(Error, Debug)]
-pub enum ClientError {
-    #[error(transparent)]
-    Base64DecodeError(#[from] base64::DecodeError),
-
+pub enum KmsClientError {
     #[error("Invalid conversion: {0}")]
     Conversion(String),
 
@@ -34,6 +32,9 @@ pub enum ClientError {
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
+    #[error("HTTP Client: {0}")]
+    HttpClient(String),
+
     #[error(transparent)]
     PemError(#[from] pem::PemError),
 
@@ -54,39 +55,42 @@ pub enum ClientError {
 
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
+
+    #[error(transparent)]
+    ConfigUtils(#[from] cosmian_config_utils::ConfigUtilsError),
 }
 
-impl From<TtlvError> for ClientError {
+impl From<TtlvError> for KmsClientError {
     fn from(e: TtlvError) -> Self {
         Self::TtlvError(e.to_string())
     }
 }
 
-impl From<reqwest::Error> for ClientError {
+impl From<reqwest::Error> for KmsClientError {
     fn from(e: reqwest::Error) -> Self {
         Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 
-impl From<reqwest::header::InvalidHeaderValue> for ClientError {
+impl From<reqwest::header::InvalidHeaderValue> for KmsClientError {
     fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<io::Error> for ClientError {
+impl From<io::Error> for KmsClientError {
     fn from(e: io::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<der::Error> for ClientError {
+impl From<der::Error> for KmsClientError {
     fn from(e: der::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<KmipError> for ClientError {
+impl From<KmipError> for KmsClientError {
     fn from(e: KmipError) -> Self {
         match e {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
@@ -102,40 +106,47 @@ impl From<KmipError> for ClientError {
             | KmipError::ConversionError(s)
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
+            KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
         }
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for ClientError {
+impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for KmsClientError {
     fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
         Self::UnexpectedError(e.to_string())
     }
 }
 
+impl From<HttpClientError> for KmsClientError {
+    fn from(e: HttpClientError) -> Self {
+        Self::HttpClient(e.to_string())
+    }
+}
 /// Construct a server error from a string.
 #[macro_export]
-macro_rules! client_error {
+macro_rules! kms_client_error {
     ($msg:literal) => {
-        $crate::ClientError::Default(::core::format_args!($msg).to_string())
+        $crate::KmsClientError::Default(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::ClientError::Default($err.to_string())
+        $crate::KmsClientError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::ClientError::Default(::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::KmsClientError::Default(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
 /// Return early with an error if a condition is not satisfied.
 #[macro_export]
-macro_rules! client_bail {
+macro_rules! kms_client_bail {
     ($msg:literal) => {
-        return ::core::result::Result::Err($crate::client_error!($msg))
+        return ::core::result::Result::Err($crate::kms_client_error!($msg))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::client_error!($fmt, $($arg)*))
+        return ::core::result::Result::Err($crate::kms_client_error!($fmt, $($arg)*))
     };
 }

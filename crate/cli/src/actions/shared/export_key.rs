@@ -12,7 +12,11 @@ use cosmian_kms_client::{
     KmsClient,
 };
 
-use crate::{actions::console, cli_bail, error::result::CliResult};
+use crate::{
+    actions::console,
+    cli_bail,
+    error::result::{CliResult, CliResultHelper},
+};
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {

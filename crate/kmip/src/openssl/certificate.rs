@@ -231,7 +231,7 @@ mod tests {
         use super::CertificateAttributes;
 
         let mut buffer = Vec::new();
-        let pem_filepath = "../cli/test_data/certificates/openssl/rsa-4096-cert.pem";
+        let pem_filepath = "../../test_data/certificates/openssl/rsa-4096-cert.pem";
         File::open(pem_filepath)
             .unwrap()
             .read_to_end(&mut buffer)

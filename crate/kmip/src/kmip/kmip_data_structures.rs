@@ -338,9 +338,18 @@ impl Default for KeyWrappingData {
     }
 }
 
-/// This is a separate structure that is defined for operations that provide the option to return wrapped keys. The Key Wrapping Specification SHALL be included inside the operation request if clients request the server to return a wrapped key. If Cryptographic Parameters are specified in the Encryption Key Information and/or the MAC/Signature Key Information of the Key Wrapping Specification, then the server SHALL verify that they match one of the instances of the Cryptographic Parameters attribute of the corresponding key.. If the corresponding key does not have any Cryptographic Parameters attribute, or if no match is found, then an error is returned.
+/// This is a separate structure that is defined for operations that provide the
+/// option to return wrapped keys.
 ///
+/// The Key Wrapping Specification SHALL be included inside the operation request
+/// if clients request the server to return a wrapped key.
 ///
+/// If Cryptographic Parameters are specified in the Encryption Key Information
+/// and/or the MAC/Signature Key Information of the Key Wrapping Specification,
+/// then the server SHALL verify that they match one of the instances of the
+/// Cryptographic Parameters attribute of the corresponding key..
+///
+/// If the corresponding key does not have any Cryptographic Parameters attribute, or if no match is found, then an error is returned.
 ///
 /// This structure contains:
 ///
