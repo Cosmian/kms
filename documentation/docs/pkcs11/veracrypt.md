@@ -20,7 +20,7 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](../cli/cli.md).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../../cosmian_cli/index.md).
 
 See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
 to learn
@@ -33,14 +33,14 @@ PKCS#12 file for authentication.
 
 ```json
 {
-  "kms_server_url": "https://kms.acme.com:9999",
+  "server_url": "https://kms.acme.com:9999",
   "ssl_client_pkcs12_path": "./certificates/machine123.acme.p12",
   "ssl_client_pkcs12_password": "machine123_pkcs12_password"
 }
 ```
 
-To use Open ID connect, install the `ckms` CLI from https://package.cosmian.com/kms/ and
-use the `ckms login` command to authenticate to the KMS first.
+To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from https://package.cosmian.com/kms/ and
+use the `cosmian kms login` command to authenticate to the KMS first.
 
 ## Creating keys to use with Veracrypt
 
@@ -52,13 +52,13 @@ also be used to identify the key when using Veracrypt CLI.
 To create a key using the CLI, that will be shown as `vol1`to the user, use the following command:
 
 ```sh
-ckms sym keys create -t disk-encryption -t vol1
+cosmian kms sym keys create -t disk-encryption -t vol1
 ```
 
 Do not forget to grant Get access to the key to the machine that will mount the Veracrypt volume.
 
 ```sh
-ckms access-rights grant <MACHINE_CN> <KEY_ID> get
+cosmian kms access-rights grant <MACHINE_CN> <KEY_ID> get
 ```
 
 where `<MACHINE_CN>` is the Common Name of the certificate used to authenticate the machine to the
@@ -91,13 +91,13 @@ To revoke the access to the key, either
 - remove the access to the key <KEY_ID> for the machine <MACHINE_CN> using the following command:
 
 ```bash
-ckms access-rights revoke <MACHINE_CN> <KEY_ID> get
+cosmian kms access-rights revoke <MACHINE_CN> <KEY_ID> get
 ```
 
 - revoke the key itself using the following command:
 
 ```bash
-ckms sym keys revoke <KEY_ID>
+cosmian kms sym keys revoke <KEY_ID>
 ```
 
 _Note_: a revoked key can never be re-used.

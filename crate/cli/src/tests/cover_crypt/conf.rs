@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use cosmian_logger::log_utils::log_init;
+use cosmian_logger::log_init;
 use kms_test_server::{generate_invalid_conf, start_default_test_kms_server};
 use predicates::prelude::*;
 use tracing::info;
@@ -17,7 +17,7 @@ pub(crate) async fn test_bad_conf() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_bad_conf as backend not sqlite-enc");
         return Ok(());
     }
@@ -47,13 +47,13 @@ pub(crate) async fn test_bad_conf() -> CliResult<()> {
     cmd.assert().success();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
+    cmd.env(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.bad.toml");
 
     cmd.arg("ec").args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("missing field `kms_server_url`"));
+        .stderr(predicate::str::contains("missing field `server_url`"));
 
     Ok(())
 }
@@ -63,13 +63,16 @@ pub(crate) async fn test_secrets_group_id_bad() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_secrets_group_id_bad as backend not sqlite-enc");
         return Ok(());
     }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_secret.bad");
+    cmd.env(
+        KMS_CLI_CONF_ENV,
+        "../../test_data/configs/kms_bad_secret.bad",
+    );
 
     cmd.arg("ec").args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);

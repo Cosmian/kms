@@ -294,7 +294,7 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use cosmian_logger::log_utils::log_init;
+    use cosmian_logger::log_init;
     use openssl::{
         conf::{Conf, ConfMethod},
         x509::X509,

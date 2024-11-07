@@ -1,16 +1,17 @@
-use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
+use std::{num::TryFromIntError, str::Utf8Error};
 
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
+use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kms_client::{
     cosmian_kmip::{
         kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
         KmipError,
     },
-    ClientError,
+    reexport::cosmian_http_client::HttpClientError,
+    KmsClientError,
 };
 use hex::FromHexError;
-use pem::PemError;
 use thiserror::Error;
 
 use crate::actions::google::GoogleApiError;
@@ -60,10 +61,6 @@ pub enum CliError {
     #[error("Conversion error: {0}")]
     Conversion(String),
 
-    // When the KMS client returns an error
-    #[error("{0}")]
-    KmsClientError(String),
-
     // Other errors
     #[error("invalid options: {0}")]
     UserError(String),
@@ -76,9 +73,44 @@ pub enum CliError {
     #[error(transparent)]
     UrlParsing(#[from] url::ParseError),
 
+    // Configuration errors
+    #[error(transparent)]
+    ConfigUtilsError(#[from] ConfigUtilsError),
+
     // When an error occurs fetching Gmail API
     #[error("Error interacting with Gmail API: {0}")]
     GmailApiError(String),
+
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    DerError(#[from] der::Error),
+
+    #[error(transparent)]
+    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Utf8Error(#[from] Utf8Error),
+
+    #[error(transparent)]
+    TryFromIntError(#[from] TryFromIntError),
+
+    #[error(transparent)]
+    HttpClientError(#[from] HttpClientError),
+
+    #[error(transparent)]
+    FromHexError(#[from] FromHexError),
+
+    #[error(transparent)]
+    KmsClientError(#[from] KmsClientError),
+
+    #[cfg(test)]
+    #[error(transparent)]
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
 }
 
 impl CliError {
@@ -94,66 +126,6 @@ impl CliError {
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
-    }
-}
-
-impl From<der::Error> for CliError {
-    fn from(e: der::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
-    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<TryFromSliceError> for CliError {
-    fn from(e: TryFromSliceError) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<std::io::Error> for CliError {
-    fn from(e: std::io::Error) -> Self {
-        Self::ServerError(e.to_string())
-    }
-}
-
-impl From<serde_json::Error> for CliError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<Utf8Error> for CliError {
-    fn from(e: Utf8Error) -> Self {
-        Self::Default(e.to_string())
-    }
-}
-
-impl From<std::string::FromUtf8Error> for CliError {
-    fn from(e: std::string::FromUtf8Error) -> Self {
-        Self::Default(e.to_string())
-    }
-}
-
-impl From<reqwest::Error> for CliError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Default(format!("{e}: Details: {e:?}"))
-    }
-}
-
-impl From<TryFromIntError> for CliError {
-    fn from(e: TryFromIntError) -> Self {
-        Self::Default(format!("{e}: Details: {e:?}"))
     }
 }
 
@@ -180,37 +152,9 @@ impl From<KmipError> for CliError {
             | KmipError::ConversionError(s)
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::TryFromSliceError(t) => Self::Conversion(t.to_string()),
+            KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
         }
-    }
-}
-
-impl From<base64::DecodeError> for CliError {
-    fn from(e: base64::DecodeError) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<FromHexError> for CliError {
-    fn from(e: FromHexError) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<ClientError> for CliError {
-    fn from(e: ClientError) -> Self {
-        Self::KmsClientError(e.to_string())
-    }
-}
-
-impl From<PemError> for CliError {
-    fn from(e: PemError) -> Self {
-        Self::Conversion(format!("PEM error: {e}"))
-    }
-}
-
-impl From<std::fmt::Error> for CliError {
-    fn from(e: std::fmt::Error) -> Self {
-        Self::Default(e.to_string())
     }
 }
 

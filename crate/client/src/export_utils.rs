@@ -13,8 +13,8 @@ use crate::{
             Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
         },
     },
-    error::result::ClientResult,
-    ClientError, ClientResultHelper, KmsClient,
+    error::result::{KmsClientResult, KmsClientResultHelper},
+    KmsClient, KmsClientError,
 };
 
 fn export_request(
@@ -139,7 +139,7 @@ pub async fn export_object(
     kms_rest_client: &KmsClient,
     object_id_or_tags: &str,
     params: ExportObjectParams<'_>,
-) -> Result<(UniqueIdentifier, Object, Option<Attributes>), ClientError> {
+) -> Result<(UniqueIdentifier, Object, Option<Attributes>), KmsClientError> {
     let (id, object, object_type, attributes) = if params.allow_revoked {
         //use the KMIP export function to get revoked objects
         let export_response = kms_rest_client
@@ -199,7 +199,7 @@ pub async fn batch_export_objects(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     params: ExportObjectParams<'_>,
-) -> Result<Vec<(UniqueIdentifier, Object, Attributes)>, ClientError> {
+) -> Result<Vec<(UniqueIdentifier, Object, Attributes)>, KmsClientError> {
     if params.allow_revoked {
         batch_export(
             kms_rest_client,
@@ -237,7 +237,7 @@ async fn batch_get(
     encode_to_ttlv: bool,
     wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
-) -> ClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
+) -> KmsClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -280,7 +280,7 @@ async fn batch_get(
                 for op in operations {
                     errors = format!("{errors}, Unexpected operation {op}\n");
                 }
-                return Err(ClientError::Default(format!(
+                return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \
                      operations: {errors}",
                 )))
@@ -300,7 +300,7 @@ async fn batch_export(
     encode_to_ttlv: bool,
     wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
-) -> ClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
+) -> KmsClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -346,7 +346,7 @@ async fn batch_export(
                 for op in operations {
                     errors = format!("{errors}, Unexpected operation {op}\n");
                 }
-                return Err(ClientError::Default(format!(
+                return Err(KmsClientError::Default(format!(
                     "Unexpected response from KMS, returning a sequence of non matching \
                      operations: {errors}",
                 )))

@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
 use clap::Parser;
-use cosmian_kms_client::ClientConf;
+use cosmian_config_utils::ConfigUtils;
+use cosmian_kms_client::KmsClientConfig;
 
-use crate::error::result::CliResult;
+use crate::error::{result::CliResult, CliError};
 
 /// Logout from the Identity Provider.
 ///
@@ -24,12 +23,18 @@ impl LogoutAction {
     /// Returns an error if there is an issue loading or saving the configuration file.
     ///
     #[allow(clippy::print_stdout)]
-    pub fn process(&self, conf_path: &PathBuf) -> CliResult<()> {
-        let mut conf = ClientConf::load(conf_path)?;
-        conf.kms_access_token = None;
-        conf.save(conf_path)?;
+    pub fn process(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let mut config = config.clone();
+        config.http_config.access_token = None;
+        let conf_path = config.conf_path.clone().ok_or_else(|| {
+            CliError::Default("Configuration path `conf_path` must be filled".to_owned())
+        })?;
+        config.to_toml(&conf_path)?;
 
-        println!("\nThe access token was removed from the KMS configuration file: {conf_path:?}");
+        println!(
+            "\nThe access token was removed from the KMS configuration file: {:?}",
+            config.conf_path
+        );
 
         Ok(())
     }

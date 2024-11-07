@@ -15,7 +15,6 @@ name = "cosmian_kms"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }
-openssl = { workspace = true }
 pyo3 = { workspace = true, features = [
   "extension-module",
   "abi3",
@@ -23,7 +22,6 @@ pyo3 = { workspace = true, features = [
   "generate-import-lib",
 ] }
 pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
-rustls = { workspace = true }
 serde_json = { workspace = true }
 
 # Added with build.rs to fix build issues on MacOS

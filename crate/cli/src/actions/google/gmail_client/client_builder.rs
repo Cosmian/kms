@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
+use cosmian_kms_client::{GmailApiConf, KmsClientConfig};
 use reqwest::{Client, Response};
 use serde::Deserialize;
 
-use super::{service_account::ServiceAccount, token::retrieve_token, GoogleApiError};
+use super::{token::retrieve_token, GoogleApiError};
 use crate::{
     actions::console,
     error::{result::CliResult, CliError},
@@ -21,17 +20,16 @@ pub(crate) struct ErrorContent {
 
 #[derive(Debug, Clone)]
 struct GmailClientBuilder {
-    service_account: ServiceAccount,
+    service_account: GmailApiConf,
     user_id: String,
 }
 
 impl GmailClientBuilder {
-    pub(crate) fn new(conf_path: &PathBuf, user_id: String) -> CliResult<Self> {
-        let service_account = ServiceAccount::load_from_config(conf_path)?;
-        Ok(Self {
+    pub(crate) const fn new(service_account: GmailApiConf, user_id: String) -> Self {
+        Self {
             service_account,
             user_id,
-        })
+        }
     }
 
     pub(crate) async fn build(self) -> CliResult<GmailClient> {
@@ -57,8 +55,15 @@ pub(crate) struct GmailClient {
 }
 
 impl GmailClient {
-    pub(crate) async fn new(conf_path: &PathBuf, user_id: &str) -> CliResult<Self> {
-        GmailClientBuilder::new(conf_path, user_id.to_string())?
+    pub(crate) async fn new(config: &KmsClientConfig, user_id: &str) -> CliResult<Self> {
+        let gmail_api_conf = config.gmail_api_conf.clone().ok_or_else(|| {
+            CliError::Default(format!(
+                "No gmail_api_conf object in {:?}",
+                config.conf_path
+            ))
+        })?;
+
+        GmailClientBuilder::new(gmail_api_conf, user_id.to_string())
             .build()
             .await
     }

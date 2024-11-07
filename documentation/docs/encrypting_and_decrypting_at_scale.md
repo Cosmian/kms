@@ -7,7 +7,7 @@ The KMS offers two mechanisms for encrypting and decrypting data:
 
 - by calling the `Encrypt` and `Decrypt` operations on the KMS KMIP API and benefiting from its
   parallelization, concurrency, and optimized batching capabilities.
-- by using the `ckms` CLI client to encrypt and decrypt data locally, including large files.
+- by using the `cosmian` CLI client to encrypt and decrypt data locally, including large files.
 
 ## Calling the KMS API
 
@@ -106,9 +106,9 @@ Hence, to encrypt 5 million messages on 10 core machines, 50 requests of 100,000
 should be sent in parallel. On a standard server CPU, the total processing time should be around 8
 seconds, excluding network latency.
 
-## Using the `ckms` CLI client
+## Using the [Cosmian CLI](../cosmian_cli/index.md) client
 
-The `ckms` CLI client can be used to encrypt and decrypt data locally, including large files.
+The [Cosmian CLI](../cosmian_cli/index.md) client can be used to encrypt and decrypt data locally, including large files.
 
 Encryption can be performed in two modes:
 
@@ -121,14 +121,14 @@ Encryption can be performed in two modes:
 ### Server side encryption and decryption
 
 When using server side encryption or decryption, the file content is sent to the server. To use
-this method use the `encrypt` or `decrypt` command of the `ckms` CLI client WITHOUT specifying a
+this method use the `encrypt` or `decrypt` command of the [Cosmian CLI](../cosmian_cli/index.md) client WITHOUT specifying a
 `--key-encryption-algorithm` option.
 
 Say, the KMS holds a 256-bit AES key with the ID `43d28ec7-7438-4d2c-a1a0-00379fa4fe5d`
 and you want to encrypt a file `image.png` with AES 256-bit GCM encryption:
 
 ```bash
-ckms sym encrypt \
+cosmian kms sym encrypt \
 --data-encryption-algorithm aes-gcm \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
 --output-file image.enc \
@@ -138,7 +138,7 @@ image.png
 To decrypt the file, use the `decrypt` command:
 
 ```bash
-ckms sym decrypt \
+cosmian kms sym decrypt \
 --data-encryption-algorithm aes-gcm \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
 --output-file decrypted-image.png \
@@ -209,7 +209,7 @@ Say, the KMS holds a 256-bit AES KEK (key encryption key) with the ID
 with AES-GCM encryption, the ephemeral KEK key being wrapped with RFC5649 (a.k.a. NIST key wrap):
 
 ```bash
-ckms sym encrypt \
+cosmian kms sym encrypt \
 --data-encryption-algorithm aes-gcm \
 --key-encryption-algorithm rfc5649 \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
@@ -220,7 +220,7 @@ image.png
 To decrypt the file, use the `decrypt` command:
 
 ```bash
-ckms sym decrypt \
+cosmian kms sym decrypt \
 --data-encryption-algorithm aes-gcm \
 --key-encryption-algorithm rfc5649 \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
@@ -232,7 +232,7 @@ image.enc
 
 The following ciphers are available for client-side encryption and decryption:
 
-* Data Encryption *
+- Data Encryption *
 
 | Cipher            | Description                | NIST Certified? |
 | ----------------- | -------------------------- | --------------- |
@@ -240,7 +240,7 @@ The following ciphers are available for client-side encryption and decryption:
 | aes-xts           | AES XTS                    | yes             |
 | chacha20-poly1305 | ChaCha20 Poly1305          | no              |
 
-* Key Wrapping (Encryption) *
+- Key Wrapping (Encryption) *
 
 | Cipher            | Description                | NIST Certified? |
 | ----------------- | -------------------------- | --------------- |

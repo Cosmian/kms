@@ -19,7 +19,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
-    // cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 

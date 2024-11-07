@@ -90,7 +90,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -100,7 +100,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> CliResult<()> {
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;
@@ -166,9 +166,9 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file1 = PathBuf::from("test_data/plain.txt");
-    let input_file2 = PathBuf::from("test_data/plain2.txt");
-    let input_file3 = PathBuf::from("test_data/plain3.txt");
+    let input_file1 = PathBuf::from("../../test_data/plain.txt");
+    let input_file2 = PathBuf::from("../../test_data/plain2.txt");
+    let input_file3 = PathBuf::from("../../test_data/plain3.txt");
 
     let output_file1 = tmp_path.join("plain.enc");
     let output_file2 = tmp_path.join("plain2.enc");
@@ -190,7 +190,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> CliResult<()> {
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;
@@ -300,7 +300,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -310,7 +310,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &["tag"],
         false,
     )?;
@@ -409,9 +409,9 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file1 = PathBuf::from("test_data/plain.txt");
-    let input_file2 = PathBuf::from("test_data/plain2.txt");
-    let input_file3 = PathBuf::from("test_data/plain3.txt");
+    let input_file1 = PathBuf::from("../../test_data/plain.txt");
+    let input_file2 = PathBuf::from("../../test_data/plain2.txt");
+    let input_file3 = PathBuf::from("../../test_data/plain3.txt");
 
     let output_file1 = tmp_path.join("plain.enc");
     let output_file2 = tmp_path.join("plain2.enc");
@@ -433,7 +433,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> CliResult<()> {
     let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &["tag_bulk"],
         false,
     )?;

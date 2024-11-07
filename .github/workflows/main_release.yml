@@ -41,19 +41,6 @@ jobs:
     with:
       platforms: linux/amd64,linux/arm64
 
-  ckms_gui:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags')
-    steps:
-      - name: Build ckms_gui on tags
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: main.yml
-          repo: Cosmian/ckms_gui
-          ref: main
-          token: ${{ secrets.PAT_TOKEN }}
-          inputs: '{ "kms_version": "${{ github.ref_name }}" }'
-
   ##############################################################################
   ### Releases
   ##############################################################################

@@ -16,10 +16,10 @@ This operation can be applied to all [supported objects](./objects.md).
 
 Get the attributes of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms get-attributes -i 027cced1-ff2b-4bd3-a200-db1041583bdc
+  cosmian kms get-attributes -i 027cced1-ff2b-4bd3-a200-db1041583bdc
 ```
 
 The request has an empty `AttributeReference` structure, which means that all
@@ -133,10 +133,10 @@ array with value
 
 Get the attributes of a NIST P-256 private key.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms get-attributes -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
+  cosmian kms get-attributes -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
 ```
 
 The request has an empty `AttributeReference` structure, which means that
@@ -262,10 +262,10 @@ Get the attributes of the certificate imported as part of a PKCS#12 container (s
 reference to the imported PKCS#12 container). The certificate is linked to a private key was signed by an
 intermediate certificate imported as part of the same container.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f
+  cosmian kms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f
 ```
 
 The request has an empty `AttributeReference` structure, which means that all attributes are requested.

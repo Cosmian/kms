@@ -1,14 +1,16 @@
 #![allow(dead_code)]
-use cosmian_kmip::kmip::{
-    extra::BulkData,
-    kmip_objects::ObjectType,
-    kmip_operations::{Create, Decrypt, Encrypt},
-    kmip_types::{
-        Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
-        CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+use cosmian_kms_client::{
+    reexport::cosmian_kmip::kmip::{
+        extra::BulkData,
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, Decrypt, Encrypt},
+        kmip_types::{
+            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
+            CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
+        },
     },
+    KmsClient, KmsClientError,
 };
-use cosmian_kms_client::{ClientError, KmsClient};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use kms_test_server::start_default_test_kms_server;
 use zeroize::Zeroizing;
@@ -18,9 +20,7 @@ pub(crate) fn bench_create_symmetric_key(c: &mut Criterion) {
 
     let kms_rest_client = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        ctx.owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap()
+        KmsClient::new(ctx.owner_client_conf.clone()).unwrap()
     });
 
     let mut group = c.benchmark_group("Symmetric key tests");
@@ -71,7 +71,7 @@ pub(crate) async fn create_symmetric_key(
     kms_rest_client: &KmsClient,
     num_bits: i32,
     cryptographic_parameters: CryptographicParameters,
-) -> Result<UniqueIdentifier, ClientError> {
+) -> Result<UniqueIdentifier, KmsClientError> {
     let create_key_request =
         create_symmetric_key_request(num_bits, cryptographic_parameters, Vec::<String>::new())?;
     // Query the KMS with your kmip data and get the key pair ids
@@ -83,7 +83,7 @@ fn create_symmetric_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     num_bits: i32,
     cryptographic_parameters: CryptographicParameters,
     tags: T,
-) -> Result<Create, ClientError> {
+) -> Result<Create, KmsClientError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(
             cryptographic_parameters
@@ -164,14 +164,12 @@ pub(crate) fn bench_encrypt(
 
     let (kms_rest_client, key_id) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let kms_client = ctx
-            .owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap();
-        let key_id = create_symmetric_key(&kms_client, num_bits, cryptographic_parameters.clone())
-            .await
-            .unwrap();
-        (kms_client, key_id)
+        let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
+        let key_id =
+            create_symmetric_key(&kms_rest_client, num_bits, cryptographic_parameters.clone())
+                .await
+                .unwrap();
+        (kms_rest_client, key_id)
     });
 
     let plaintext = if num_plaintexts == 1 {
@@ -208,7 +206,7 @@ pub(crate) async fn encrypt(
     key_id: UniqueIdentifier,
     cryptographic_parameters: CryptographicParameters,
     plaintext: Zeroizing<Vec<u8>>,
-) -> Result<(Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>), ClientError> {
+) -> Result<(Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>), KmsClientError> {
     // Create the kmip query
     let encrypt_request = encrypt_request(key_id, cryptographic_parameters, plaintext)?;
 
@@ -218,7 +216,7 @@ pub(crate) async fn encrypt(
     let nonce = encrypt_response.iv_counter_nonce;
     let data = encrypt_response
         .data
-        .ok_or_else(|| ClientError::UnexpectedError("No data".to_string()))?;
+        .ok_or_else(|| KmsClientError::UnexpectedError("No data".to_string()))?;
     let mac = encrypt_response.authenticated_encryption_tag;
     Ok((nonce, data, mac))
 }
@@ -227,7 +225,7 @@ fn encrypt_request(
     key_id: UniqueIdentifier,
     cryptographic_parameters: CryptographicParameters,
     data: Zeroizing<Vec<u8>>,
-) -> Result<Encrypt, ClientError> {
+) -> Result<Encrypt, KmsClientError> {
     Ok(Encrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
@@ -293,22 +291,20 @@ pub(crate) fn bench_decrypt(
     };
     let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
         let ctx = start_default_test_kms_server().await;
-        let kms_client = ctx
-            .owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .unwrap();
-        let key_id = create_symmetric_key(&kms_client, num_bits, cryptographic_parameters.clone())
-            .await
-            .unwrap();
+        let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
+        let key_id =
+            create_symmetric_key(&kms_rest_client, num_bits, cryptographic_parameters.clone())
+                .await
+                .unwrap();
         let (nonce, ciphertext, mac) = encrypt(
-            &kms_client,
+            &kms_rest_client,
             key_id.clone(),
             cryptographic_parameters.clone(),
             plaintext.clone(),
         )
         .await
         .unwrap();
-        (kms_client, key_id, (nonce, ciphertext, mac))
+        (kms_rest_client, key_id, (nonce, ciphertext, mac))
     });
 
     let mut group = c.benchmark_group("Symmetric encryption");
@@ -338,7 +334,7 @@ pub(crate) async fn decrypt(
     nonce: Option<Vec<u8>>,
     ciphertext: Vec<u8>,
     mac: Option<Vec<u8>>,
-) -> Result<Zeroizing<Vec<u8>>, ClientError> {
+) -> Result<Zeroizing<Vec<u8>>, KmsClientError> {
     // Create the kmip query
     let decrypt_request =
         decrypt_request(key_id, cryptographic_parameters, nonce, ciphertext, mac)?;
@@ -348,7 +344,7 @@ pub(crate) async fn decrypt(
 
     decrypt_response
         .data
-        .ok_or_else(|| ClientError::UnexpectedError("No data".to_string()))
+        .ok_or_else(|| KmsClientError::UnexpectedError("No data".to_string()))
 }
 
 fn decrypt_request(
@@ -357,7 +353,7 @@ fn decrypt_request(
     nonce: Option<Vec<u8>>,
     data: Vec<u8>,
     mac: Option<Vec<u8>>,
-) -> Result<Decrypt, ClientError> {
+) -> Result<Decrypt, KmsClientError> {
     Ok(Decrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(cryptographic_parameters),
@@ -400,23 +396,23 @@ pub(crate) fn bench_encrypt_parametrized(
 
             let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
                 let ctx = start_default_test_kms_server().await;
-                let kms_client = ctx
-                    .owner_client_conf
-                    .initialize_kms_client(None, None, false)
-                    .unwrap();
-                let key_id =
-                    create_symmetric_key(&kms_client, num_bits, cryptographic_parameters.clone())
-                        .await
-                        .unwrap();
+                let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).unwrap();
+                let key_id = create_symmetric_key(
+                    &kms_rest_client,
+                    num_bits,
+                    cryptographic_parameters.clone(),
+                )
+                .await
+                .unwrap();
                 let (nonce, ciphertext, mac) = encrypt(
-                    &kms_client,
+                    &kms_rest_client,
                     key_id.clone(),
                     cryptographic_parameters.clone(),
                     plaintext.clone(),
                 )
                 .await
                 .unwrap();
-                (kms_client, key_id, (nonce, ciphertext, mac))
+                (kms_rest_client, key_id, (nonce, ciphertext, mac))
             });
 
             let parameter_name = if num_plaintexts == 1 {
