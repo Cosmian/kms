@@ -17,13 +17,11 @@ use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_object
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx
-        .owner_client_conf
-        .initialize_kms_client(None, None, false)?;
-    create_keys(&kms_client).await?;
+    let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
+    create_keys(&kms_rest_client).await?;
 
     let keys = get_kms_objects_async(
-        &kms_client,
+        &kms_rest_client,
         &["disk-encryption".to_owned()],
         KeyFormatType::Raw,
     )
@@ -39,30 +37,28 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    cosmian_logger::log_utils::log_init(Some("fatal,cosmian_kms_client=debug"));
+    cosmian_logger::log_init(Some("fatal,cosmian_kms_client=debug"));
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
 
-        let kms_client = ctx
-            .owner_client_conf
-            .initialize_kms_client(None, None, false)
-            .expect("failed to initialize kms client");
-        create_keys(&kms_client)
+        let kms_rest_client =
+            KmsClient::new(ctx.owner_client_conf.clone()).expect("failed to initialize kms client");
+        create_keys(&kms_rest_client)
             .await
             .expect("failed to create keys");
         load_p12().await.expect("failed to load p12");
         ctx.owner_client_conf.clone()
     });
 
-    CkmsBackend::instantiate(owner_client_conf.initialize_kms_client(None, None, false)?)
+    Ok(CkmsBackend::instantiate(KmsClient::new(owner_client_conf)?))
 }
 
-async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
+async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
     let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
     debug!("vol1: {}", vol1);
     let _vol1_id = import_object(
-        kms_client,
+        kms_rest_client,
         Some("vol1".to_owned()),
         vol1,
         None,
@@ -74,7 +70,7 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
 
     let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
     let _vol2_id = import_object(
-        kms_client,
+        kms_rest_client,
         Some("vol2".to_owned()),
         vol2,
         None,
@@ -90,10 +86,8 @@ async fn create_keys(kms_client: &KmsClient) -> Result<(), Pkcs11Error> {
 async fn load_p12() -> Result<String, Pkcs11Error> {
     let ctx = start_default_test_kms_server().await;
 
-    let kms_client = ctx
-        .owner_client_conf
-        .initialize_kms_client(None, None, false)?;
-    let p12_bytes = include_bytes!("../test_data/certificate.p12");
+    let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
+    let p12_bytes = include_bytes!("../../../../test_data/pkcs11/certificate.p12");
 
     let p12_sk = Object::PrivateKey {
         key_block: KeyBlock {
@@ -114,7 +108,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
     };
 
     let p12_id = import_object(
-        &kms_client,
+        &kms_rest_client,
         Some("test.p12".to_owned()),
         p12_sk,
         None,

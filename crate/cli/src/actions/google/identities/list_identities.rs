@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use clap::Parser;
+use cosmian_kms_client::KmsClientConfig;
 
 use super::IDENTITIES_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
@@ -15,8 +14,8 @@ pub struct ListIdentitiesAction {
 }
 
 impl ListIdentitiesAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id);
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let gmail_client = GmailClient::new(config, &self.user_id);
         let response = gmail_client.await?.get(IDENTITIES_ENDPOINT).await?;
         GmailClient::handle_response(response).await
     }

@@ -1,19 +1,19 @@
 [workspace]
 default-members = ["crate/cli", "crate/server", "crate/pkcs11/provider"]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/interfaces",
-    "crate/kmip",
-    "crate/logger",
-    "crate/pyo3",
-    "crate/server",
-    "crate/server_database",
-    "crate/test_server",
-    "crate/pkcs11/module",
-    "crate/pkcs11/provider",
-    "crate/pkcs11/proteccio",
-    "crate/pkcs11/sys",
+  "crate/access",
+  "crate/cli",
+  "crate/client",
+  "crate/interfaces",
+  "crate/kmip",
+  "crate/pyo3",
+  "crate/pkcs11/module",
+  "crate/pkcs11/provider",
+  "crate/pkcs11/proteccio",
+  "crate/pkcs11/sys",
+  "crate/server",
+  "crate/server_database",
+  "crate/test_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -55,20 +55,23 @@ opt-level = 0
 [workspace.dependencies]
 actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.9.0", default-features = false }
+actix-web = { version = "4.9", default-features = false }
 async-trait = "0.1"
 base64 = "0.21"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cloudproof = "3.0"
+cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
+cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
+cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
 der = { version = "0.7", default-features = false }
 env_logger = "0.11"
 hex = { version = "0.4", default-features = false }
-leb128 = "0.2.5"
+leb128 = "0.2"
 log = { version = "0.4", default-features = false }
 lru = "0.12.5"
 native-tls = "0.2"
-num_cpus = "1.13"
+num_cpus = "1.16"
 num-format = "0.4"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
@@ -82,11 +85,12 @@ sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.25", default-features = false }
 thiserror = "2.0"
 time = "0.3"
-tokio = { version = "1.39", default-features = false }
+tempfile = "3"
+tokio = { version = "1.42", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
-uuid = "1.10"
-x509-cert = { version = "0.2.5", default-features = false }
+uuid = "1.11"
+x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.16"
 zeroize = { version = "1.8", default-features = false }

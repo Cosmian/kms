@@ -23,10 +23,10 @@ A `Revoked` object can be destroyed using the `Destroy` operation.
 
 Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was compromised`.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
+  cosmian kms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
 ```
 
 === "Request"

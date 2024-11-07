@@ -541,7 +541,7 @@ mod tests {
     #[test]
     pub(crate) fn test_policy_bin_from_file() {
         //correct
-        const CORRECT_FILE: &str = "test_data/policy.bin";
+        const CORRECT_FILE: &str = "../../test_data/policy.bin";
         let result = policy_from_binary_file(&PathBuf::from(CORRECT_FILE));
         assert!(result.is_ok(), "The policy should be ok");
 
@@ -557,7 +557,7 @@ mod tests {
         );
 
         // malformed json
-        const MALFORMED_FILE: &str = "test_data/policy.bad";
+        const MALFORMED_FILE: &str = "../../test_data/policy.bad";
         let result = policy_from_binary_file(&PathBuf::from(MALFORMED_FILE));
         assert!(
             result
@@ -568,7 +568,7 @@ mod tests {
         );
 
         // duplicate policies
-        const DUPLICATED_POLICIES: &str = "test_data/policy.bad2";
+        const DUPLICATED_POLICIES: &str = "../../test_data/policy.bad2";
         let result = policy_from_binary_file(&PathBuf::from(DUPLICATED_POLICIES));
         assert!(
             result

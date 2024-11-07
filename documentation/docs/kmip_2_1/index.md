@@ -1,3 +1,9 @@
+The Cosmian KMS server exposes a **KMIP 2.1** REST API on the `/kmip_2_1` endpoint that follows
+the [JSON profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415)
+of
+the
+OASIS-normalized [KMIP 2.1 specifications](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html).
+
 The Cosmian KMS server supports a subset of the KMIP 2.1 protocol.
 
 The Key Management Interoperability Protocol Specification Version 2.1 and Key Management Interoperability Protocol

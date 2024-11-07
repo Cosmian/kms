@@ -39,7 +39,7 @@ use crate::{
 #[tokio::test]
 async fn test_import_export_p12_25519() {
     //load the PKCS#12 file
-    let p12_bytes = include_bytes!("../../../test_data/certificates/another_p12/server.p12");
+    let p12_bytes = include_bytes!("../../../../../test_data/certificates/another_p12/server.p12");
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -50,7 +50,7 @@ async fn test_import_export_p12_25519() {
     let imported_p12_sk = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/another_p12/server.p12",
+        key_file: "../../test_data/certificates/another_p12/server.p12",
         format: &CertificateInputFormat::Pkcs12,
         pkcs12_password: Some("secret"),
         certificate_id: Some(Uuid::new_v4().to_string()),
@@ -215,7 +215,7 @@ async fn test_import_p12_rsa() {
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     //load the PKCS#12 file
-    let p12_bytes = include_bytes!("../../../test_data/certificates/csr/intermediate.p12");
+    let p12_bytes = include_bytes!("../../../../../test_data/certificates/csr/intermediate.p12");
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -226,7 +226,7 @@ async fn test_import_p12_rsa() {
     let imported_p12_sk = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/csr/intermediate.p12",
+        key_file: "../../test_data/certificates/csr/intermediate.p12",
         format: &CertificateInputFormat::Pkcs12,
         pkcs12_password: Some("secret"),
         replace_existing: true,

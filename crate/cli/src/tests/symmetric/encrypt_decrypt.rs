@@ -1,42 +1,20 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{read_bytes_from_file, KmsClient, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
+use strum::IntoEnumIterator;
 use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
     actions::symmetric::{
         keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-        DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
+        DataEncryptionAlgorithm, DecryptAction, EncryptAction, KeyEncryptionAlgorithm,
     },
     error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
-
-const fn dek_algorithm_to_string(alg: DataEncryptionAlgorithm) -> &'static str {
-    match alg {
-        #[cfg(not(feature = "fips"))]
-        DataEncryptionAlgorithm::Chacha20Poly1305 => "chacha20-poly1305",
-        DataEncryptionAlgorithm::AesGcm => "aes-gcm",
-        DataEncryptionAlgorithm::AesXts => "aes-xts",
-        #[cfg(not(feature = "fips"))]
-        DataEncryptionAlgorithm::AesGcmSiv => "aes-gcm-siv",
-    }
-}
-
-const fn kek_algorithm_to_string(alg: KeyEncryptionAlgorithm) -> &'static str {
-    match alg {
-        #[cfg(not(feature = "fips"))]
-        KeyEncryptionAlgorithm::Chacha20Poly1305 => "chacha20-poly1305",
-        KeyEncryptionAlgorithm::AesGcm => "aes-gcm",
-        KeyEncryptionAlgorithm::AesXts => "aes-xts",
-        #[cfg(not(feature = "fips"))]
-        KeyEncryptionAlgorithm::AesGcmSiv => "aes-gcm-siv",
-        KeyEncryptionAlgorithm::RFC5649 => "rfc5649",
-    }
-}
 
 /// Encrypts a file using the given symmetric key and access policy.
 pub(crate) fn encrypt(
@@ -52,24 +30,24 @@ pub(crate) fn encrypt(
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
-        "encrypt",
-        input_file,
-        "--key-id",
-        symmetric_key_id,
-        "-d",
-        dek_algorithm_to_string(data_encryption_algorithm),
+        "encrypt".to_owned(),
+        input_file.to_owned(),
+        "--key-id".to_owned(),
+        symmetric_key_id.to_owned(),
+        "-d".to_owned(),
+        data_encryption_algorithm.to_string(),
     ];
     if let Some(key_encryption_algorithm) = key_encryption_algorithm {
-        args.push("-e");
-        args.push(kek_algorithm_to_string(key_encryption_algorithm));
+        args.push("-e".to_owned());
+        args.push(key_encryption_algorithm.to_string());
     }
     if let Some(output_file) = output_file {
-        args.push("-o");
-        args.push(output_file);
+        args.push("-o".to_owned());
+        args.push(output_file.to_owned());
     }
     if let Some(authentication_data) = authentication_data {
-        args.push("-a");
-        args.push(authentication_data);
+        args.push("-a".to_owned());
+        args.push(authentication_data.to_owned());
     }
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -95,24 +73,24 @@ pub(crate) fn decrypt(
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
-        "decrypt",
-        input_file,
-        "--key-id",
-        symmetric_key_id,
-        "-d",
-        dek_algorithm_to_string(data_encryption_algorithm),
+        "decrypt".to_owned(),
+        input_file.to_owned(),
+        "--key-id".to_owned(),
+        symmetric_key_id.to_owned(),
+        "-d".to_owned(),
+        data_encryption_algorithm.to_string(),
     ];
     if let Some(key_encryption_algorithm) = key_encryption_algorithm {
-        args.push("-e");
-        args.push(kek_algorithm_to_string(key_encryption_algorithm));
+        args.push("-e".to_owned());
+        args.push(key_encryption_algorithm.to_string());
     }
     if let Some(output_file) = output_file {
-        args.push("-o");
-        args.push(output_file);
+        args.push("-o".to_owned());
+        args.push(output_file.to_owned());
     }
     if let Some(authentication_data) = authentication_data {
-        args.push("-a");
-        args.push(authentication_data);
+        args.push("-a".to_owned());
+        args.push(authentication_data.to_owned());
     }
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -135,7 +113,7 @@ pub(crate) fn run_encrypt_decrypt_test(
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -292,7 +270,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
         },
     )?;
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -431,4 +409,59 @@ async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
             + 1 /* encapsulation len leb128 */
             + 12 /* nonce */ + 16, /* tag */
     )
+}
+
+#[tokio::test]
+async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kek = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
+    )?;
+
+    let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
+    // Generate an ephemeral key (DEK) and wrap it with the KEK.
+    let (dek, encapsulation) = EncryptAction::default()
+        .server_side_kem_encapsulation(
+            &kms_rest_client,
+            &kek,
+            KeyEncryptionAlgorithm::RFC5649,
+            DataEncryptionAlgorithm::AesGcm,
+        )
+        .await?;
+
+    for size in [0, 1, 16, 64, 256, 1024, 4096, 16384] {
+        let plaintext: Vec<u8> = vec![0; size];
+        for dea in DataEncryptionAlgorithm::iter() {
+            if dea == DataEncryptionAlgorithm::AesXts {
+                continue;
+            }
+            let ciphertext = EncryptAction::default().client_side_encrypt_with_buffer(
+                &dek,
+                &encapsulation,
+                dea,
+                None,
+                &plaintext,
+                Some(hex::encode(b"my_auth_data").into_bytes()),
+            )?;
+
+            let cleartext = DecryptAction::default()
+                .client_side_decrypt_with_buffer(
+                    &kms_rest_client,
+                    dea,
+                    &kek,
+                    &ciphertext,
+                    Some(hex::encode(b"my_auth_data").into_bytes()),
+                )
+                .await?;
+
+            assert_eq!(cleartext, plaintext);
+        }
+    }
+
+    Ok(())
 }

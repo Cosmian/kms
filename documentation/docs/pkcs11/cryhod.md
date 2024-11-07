@@ -57,7 +57,7 @@ Click `next`
 The configuration file is located in the User home `.cosmian` sub-directory,
 in the `kms.json` file.
 
-See [Authenticating users to the KMS](../authentication.md#using-tls-client-certificates) to learn
+See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates) to learn
 how to configure the
 KMS to use Open ID connect or certificate authentication (please note that the KMS can
 also manage the machines certificates).
@@ -67,7 +67,7 @@ PKCS#12 file for authentication.
 
 ```json
 {
-  "kms_server_url": "https://kms.acme.com:9999",
+  "server_url": "https://kms.acme.com:9999",
   "ssl_client_pkcs12_path": "./certificates/machine123.acme.p12",
   "ssl_client_pkcs12_password": "machine123_pkcs12_password"
 }

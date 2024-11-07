@@ -13,25 +13,137 @@ protected during operation by running the server inside an enclave. Ask Cosmian 
 
 ### Quick start
 
-To run in single server mode, using the defaults, run the container as follows:
+To run in single server mode, using the defaults and a SQLite database will be created. Otherwise, the database can be configured to use [classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis](./database.md).
 
-```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
-```
+=== "Ubuntu 20.04"
 
-The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
-container in the `/root/cosmian-kms/sqlite-data` directory.
+    Download package and install it:
 
-### Persisting data between restarts
+    ```console title="On local machine"
+    sudo apt update && sudo apt install -y wget
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-20.04/cosmian-kms-server_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
 
-To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
-directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+    Or install the FIPS version:
 
-```sh
-docker run --rm -p 9998:9998 \
-  -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.20.0
-```
+    ```console title="FIPS version"
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-20.04/cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
+
+=== "Ubuntu 22.04"
+
+    Download package and install it:
+
+    ```console title="On local machine"
+    sudo apt update && sudo apt install -y wget
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-22.04/cosmian-kms-server_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
+
+    Or install the FIPS version:
+
+    ```console title="FIPS version"
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-22.04/cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
+
+=== "Ubuntu 24.04"
+
+    Download package and install it:
+
+    ```console title="On local machine"
+    sudo apt update && sudo apt install -y wget
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-24.04/cosmian-kms-server_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
+
+    Or install the FIPS version:
+
+    ```console title="FIPS version"
+    wget https://package.cosmian.com/kms/4.20.0/ubuntu-24.04/cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.20.0-1_amd64.deb
+    cosmian --version
+    ```
+
+=== "RHEL 9"
+
+    Download package and install it:
+
+    ```console title="On local machine"
+    sudo dnf update && dnf install -y wget
+    wget https://package.cosmian.com/kms/4.20.0/rhel9/cosmian_kms_server-4.20.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-4.20.0-1.x86_64.rpm
+    cosmian --version
+    ```
+
+=== "MacOS"
+
+    On ARM MacOS, download the build archive and extract it:
+
+    ```console title="On local machine"
+    wget https://package.cosmian.com/kms/4.20.0/macos_arm-release.zip
+    unzip macos_arm-release.zip
+    cp /macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian
+    cosmian --version
+    ```
+
+    On Intel MacOS, download the build archive and extract it:
+
+    ```console title="On local machine"
+    wget https://package.cosmian.com/kms/4.20.0/macos_intel-release.zip
+    unzip macos_intel-release.zip
+    cp /macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian
+    cosmian --version
+    ```
+
+=== "Windows"
+
+    On Windows, download the build archive:
+
+    ```console title="Build archive"
+     https://package.cosmian.com/kms/4.20.0/windows-release.zip
+    ```
+
+    Extract the cosmian from:
+
+    ```console title="cosmian for Windows"
+    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian.exe
+    ```
+
+    Copy it to a folder in your PATH and run it:
+
+    ```console title="On local machine"
+    cosmian --version
+    ```
+
+=== "Docker"
+
+    Run the container as follows:
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
+    ```
+
+    The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
+    container in the `/root/cosmian-kms/sqlite-data` directory.
+
+    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
+    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+
+    ```sh
+    docker run --rm -p 9998:9998 \
+    -v cosmian-kms:/root/cosmian-kms/sqlite-data \
+    --name kms ghcr.io/cosmian/kms:4.20.0
+    ```
 
 ### Using client-side encrypted databases
 
@@ -50,10 +162,10 @@ docker run --rm -p 9998:9998 \
     Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
     The call will return a secret
 
-    === "ckms"
+    === "cosmian"
 
         ```sh
-        ckms new-database
+        cosmian kms new-database
         ```
 
     === "curl"
@@ -64,32 +176,33 @@ docker run --rm -p 9998:9998 \
         ```
         The secret is the value between the quotes `""`.
 
-    :warning: This secret is only displayed **once** and is **not stored** anywhere on the server.
+    Warning:
 
-    :warning: Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
+        - This secret is only displayed **once** and is **not stored** anywhere on the server.
+        - Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
 
 Once an encrypted database is created, the secret must be passed in every subsequent query to the
 KMS server.
 Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
 databases can be used concurrently on the same KMS server.
 
-=== "ckms"
+=== "cosmian"
 
-    The secret must be set in `kms_database_secret` property of the CLI `kms.json` configuration file.
+    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file.
 
-    ```json
-        {
-            "kms_server_url": "https://my-server:9998",
-            "kms_database_secret": "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="
-        }
-    ```
+        ```toml
+        [kms_config.http_config]
+        server_url = "http://127.0.0.1:9990"
+        access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
+        database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
+        ```
 
 === "curl"
 
-    The secret must be passed using a `KmsDatabaseSecret` HTTP header, e.g.
+    The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
 
     ```sh
         curl \
-        -H "KmsDatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
+        -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
         http://localhost:9998/objects/owned
     ```

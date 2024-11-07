@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::{
-    error::{result::KmipResult, KmipError},
+    error::result::KmipResult,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -60,7 +60,7 @@ pub fn create_symmetric_key_kmip_object(
     })
 }
 
-/// Build a `CreateKeyPairRequest` for a symmetric key
+/// Build a `Create` request for a symmetric key
 pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_id: Option<UniqueIdentifier>,
     key_len_in_bits: usize,
@@ -68,7 +68,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     sensitive: bool,
     wrap_key_id: Option<&String>,
-) -> Result<Create, KmipError> {
+) -> KmipResult<Create> {
     let cryptographic_length = Some(i32::try_from(key_len_in_bits)?);
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(cryptographic_algorithm),

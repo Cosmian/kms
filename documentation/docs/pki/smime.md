@@ -74,14 +74,14 @@ This file can directly be imported in your email client.
 If you wish to store it in the KMS, you can import it using the following command:
 
 ```sh
-ckms certificates import --format pkcs12 --pkcs12-password mysecret \
+cosmian kms certificates import --format pkcs12 --pkcs12-password mysecret \
   --replace john_doe.p12 john.doe@acme.com
 ```
 
 To export it as a PEM file, use the following command:
 
 ```sh
-ckms certificates export  --format pem --certificate-id john.doe@acme.com john_doe.pem
+cosmian kms certificates export  --format pem --certificate-id john.doe@acme.com john_doe.pem
 ```
 
 ### Getting an intermediate signer certificate from a public certificate authority
@@ -92,7 +92,7 @@ certificate authority. This intermediate certificate will be used to sign the us
 First, import the intermediate certificate and its private key in the KMS:
 
 ```sh
-ckms certificates import --format pkcs12 --pkcs12-password mysecret \
+cosmian kms certificates import --format pkcs12 --pkcs12-password mysecret \
   --replace intermediate.p12 acme_intermediate_ca
 ```
 
@@ -117,7 +117,7 @@ Let us create a self-signed root certificate with the following details:
 - Key Algorithm: NIST P-256
 
 ```sh
-ckms certificates certify --certificate-id acme_root_ca \
+cosmian kms certificates certify --certificate-id acme_root_ca \
 --generate-key-pair --algorithm nist-p256  \
 --subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
 --days 3650
@@ -150,7 +150,7 @@ Note: these extensions make the intermediate CA compatible with Google CSE for G
 [S/MIME requirements](https://support.google.com/a/answer/7300887?fl=1&sjid=2093401421194266294-NA)
 
 ```shell
-ckms certificates certify --certificate-id acme_intermediate_ca \
+cosmian kms certificates certify --certificate-id acme_intermediate_ca \
  --issuer-certificate-id acme_root_ca \
  --generate-key-pair --algorithm nist-p256  \
  --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
@@ -196,7 +196,7 @@ crlDistributionPoints=URI:https://acme.com/crl.pem
 Issue the following command to generate the certificate:
 
 ```sh
-ckms certificates certify --certificate-id john.doe@acme.com \
+cosmian kms certificates certify --certificate-id john.doe@acme.com \
 --issuer-certificate-id acme_intermediate_ca \
 --generate-key-pair --algorithm nist-p256  \
 --subject-name "CN=john.doe@acme.com,OU=IT,O=ACME,L=San Francisco,ST=California,C=US" --days 365 \
@@ -205,7 +205,7 @@ ckms certificates certify --certificate-id john.doe@acme.com \
 
 ## Exporting and viewing
 
-Use the `ckms certificates export` command to export the certificate and the private key in the
+Use the `cosmian kms certificates export` command to export the certificate and the private key in the
 desired format. Most email clients require the certificate and the private key to be in a PKCS#12
 file.
 
@@ -217,7 +217,7 @@ The `pkcs12-legacy` format is deprecated but is compatible with older versions o
 and some keystores such as the Java keystore or the macOS keychain.
 
 ```sh
-ckms certificates export --certificate-id john.doe@acme.com \
+cosmian kms certificates export --certificate-id john.doe@acme.com \
  --format pkcs12-legacy --pkcs12-password mysecret \
  john_doe.p12
 ```
@@ -305,7 +305,7 @@ KTNop1izftWr73dkLJTofZoYk9fLtiiZK4xvYSG1YfHMq+P3cbVi+hqI
 To export the certificate only, in PEM format, use the following command:
 
 ```sh
-ckms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
+cosmian kms certificates export --certificate-id john.doe@acme.com --format pem john_doe.pem
 ```
 
 You can then view its content, using `openssl` for instance:

@@ -10,10 +10,10 @@ This operation can be applied to all [supported objects](./objects.md). One or m
 
 Delete the links on a certificate object.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms delete-attributes -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+  cosmian kms delete-attributes -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 ```
 
 The request deletes the KMIP links of the public key and the private key of the underlying certificate.

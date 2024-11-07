@@ -1,3 +1,5 @@
+# LUKS
+
 The Cosmian KMS can provision secrets to open
 [Linux LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) encrypted partitions. The
 secret never leaves the KMS and can be used to unlock the partition at boot time.
@@ -24,7 +26,7 @@ default-hierarchy=unified
 Unfortunately, Ubuntu 22.04 does not provide p11-kit support, however the setup works fine for
 Ubuntu 23.10.
 
-#### 1. Install the `p11-kit` package.
+### 1. Install the `p11-kit` package.
 
 *Ubuntu 23.10*
 
@@ -38,13 +40,13 @@ sudo apt install p11-kit
 sudo dnf install p11-kit
 ```
 
-#### 2. Create the PKCS#11 configuration and module directories
+### 2. Create the PKCS#11 configuration and module directories
 
 ```bash
 sudo mkdir -p /etc/pkcs11/modules
 ```
 
-#### 3. Create a configuration file for the PKCS#11 module.
+### 3. Create a configuration file for the PKCS#11 module
 
 ```bash
 sudo tee /etc/pkcs11/pkcs11.conf <<EOF
@@ -57,13 +59,13 @@ user-config: merge
 EOF
 ```
 
-#### 4. Copy the PKCS#11 module to the pkcs11 directory.
+### 4. Copy the PKCS#11 module to the pkcs11 directory
 
 ```bash
 sudo cp libckms_pkcs11.so /usr/local/lib/
 ```
 
-#### 5. Create a configuration file for the ckms PKCS#11 module.
+### 5. Create a configuration file for the ckms PKCS#11 module.
 
 ```bash
 sudo tee /etc/pkcs11/modules/ckms_pkcs11.module <<EOF
@@ -72,7 +74,7 @@ module: /usr/local/lib/libckms_pkcs11.so
 EOF
 ```
 
-#### 6. Check that the module loads correctly.
+### 6. Check that the module loads correctly.
 
 ```bash
 > p11-kit list-modules
@@ -99,7 +101,7 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
 ## Configuring the access to the KMS
 
 The PKCS#11 module uses the same configuration file as
-the [CLI](../cli/cli.md).
+the [CLI](../../cosmian_cli/index.md).
 Since it may be run as a system user, the configuration file should be made available
 in `/etc/cosmian/kms.json`.
 
@@ -111,43 +113,43 @@ PKCS#12 file for authentication.
 
 ```json
 {
-  "kms_server_url": "https://kms.acme.com:9999",
+  "server_url": "https://kms.acme.com:9999",
   "ssl_client_pkcs12_path": "./certificates/machine123.acme.p12",
   "ssl_client_pkcs12_password": "machine123_pkcs12_password"
 }
 ```
 
-To use Open ID connect, install the `ckms` CLI from
+To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from
 [Cosmian packages](https://package.cosmian.com/kms/) and
-use the `ckms login` command to authenticate to the KMS first.
+use the `cosmian kms login` command to authenticate to the KMS first.
 
 ## Creating an RSA key pair using openssl and importing it into the Cosmian KMS
 
 To generate a self-signed certificate with RSA 2048bit key and in PKCS12 format, you can use the
 OpenSSL command-line tool. Here are the steps:
 
-#### 1. Generate a new private key:
+### 1. Generate a new private key:
 
 ```bash
 openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
 ```
 
-#### 2. Create a self-signed certificate:
+### 2. Create a self-signed certificate:
 
 ```bash
 openssl req -new -x509 -key private_key.pem -out cert.pem -days 365
 ```
 
-#### 3. Convert the certificate and private key to PKCS12 format:
+### 3. Convert the certificate and private key to PKCS12 format:
 
 ```bash
 openssl pkcs12 -export -out certificate.p12 -inkey private_key.pem -in cert.pem
 ```
 
-#### 4. Import the PKCS12 file into the Cosmian KMS using a `disk-encryption` tag
+### 4. Import the PKCS12 file into the Cosmian KMS using a `disk-encryption` tag
 
 ```bash
-ckms certificates import -f pkcs12 -t disk-encryption certificate.p12
+cosmian kms certificates import -f pkcs12 -t disk-encryption certificate.p12
 
 The private key in the PKCS12 file was imported with id: 6fc631...
 Tags:
@@ -162,11 +164,11 @@ below).
 
 First allocate some space then create a LUKS partition using `cryptsetup`.
 
-#### 1. Allocating space for the LUKS partition
+### 1. Allocating space for the LUKS partition
 
 LUKS partitions can be created either from disk partitions or from a file.
 
-##### From a file
+#### From a file
 
 Use either `dd` or `fallocate` to create a file that will be used as the LUKS partition.
 
@@ -177,7 +179,7 @@ fallocate -l 1G /path/to/file
 
 Then use `path/to/file` as the device to encrypt.
 
-##### From a disk partition
+#### From a disk partition
 
 Using `parted`, determine or create a partition on the disk that you want to encrypt.
 In this example, we assume the disk is available as `/dev/vda`.
@@ -201,7 +203,7 @@ Make a 4th partition `/dev/vda4` from the free space at the end.
 (parted) mkpart 4 102GB 103GB
 ```
 
-#### 2. Creating a LUKS 2 partition on the allocated space
+### 2. Creating a LUKS 2 partition on the allocated space
 
 Enter a passphrase to protect the partition when prompted.
 The encrypted passphrase will be stored in the LUKS header in key slot 0.
@@ -223,7 +225,7 @@ The RSA key pair is searched opn the KMS using a tag controlled by
 the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable.
 When not set, the default tag searched is `disk-encryption`.
 
-#### 1. Verify that Cosmian-KMS token is available for the partition
+### 1. Verify that Cosmian-KMS token is available for the partition
 
 ```bash
 > sudo systemd-cryptenroll /dev/vda4 --pkcs11-token-uri=list
@@ -232,7 +234,7 @@ URI                                                                        LABEL
 pkcs11:model=software;manufacturer=Cosmian;serial=x.y.z;token=Cosmian-KMS Cosmian-KMS Cosmian      software
 ```
 
-#### 2. Enroll the partition with the Cosmian KMS
+### 2. Enroll the partition with the Cosmian KMS
 
 ```bash
 # this is equivalent to
@@ -245,7 +247,7 @@ Successfully logged into security token 'Cosmian-KMS' via protected authenticati
 New PKCS#11 token enrolled as key slot 1.
 ```
 
-#### 3. Verify the enrollment
+### 3. Verify the enrollment
 
 ```bash
  > sudo cryptsetup luksDump /dev/vda4
@@ -274,7 +276,7 @@ Tokens:
 ...
 ```
 
-#### 4. Test attaching the LUKS partition to `/dev/mapper/myluks` using the Cosmian-KMS token in slot 0
+### 4. Test attaching the LUKS partition to `/dev/mapper/myluks` using the Cosmian-KMS token in slot 0
 
  ```bash
  > sudo cryptsetup open --type luks2  --token-id=0 --token-only /dev/vda4 myluks
@@ -284,20 +286,20 @@ Tokens:
  Successfully decrypted key with security token.
  ```
 
-#### 5. Format the LUKS partition (do this only once)
+### 5. Format the LUKS partition (do this only once)
 
 ```bash
 sudo mkfs.ext4 /dev/mapper/myluks
 ```
 
-#### 6. Mount the partition
+### 6. Mount the partition
 
 ```bash
 sudo mkdir /mnt/myluks #only once
 sudo mount /dev/mapper/myluks /mnt/myluks
 ```
 
-#### 7. Close the LUKS partition
+### 7. Close the LUKS partition
 
 ```bash
 sudo umount /mnt/myluks
@@ -312,7 +314,7 @@ because the network is not available when `systemd-cyptsetup` is run.
 You need to create a systemd service that unlocks the LUKS partition at the right time, after the
 network is available.
 
-#### 1. Create the bash script that unlocks and mounts the partition
+### 1. Create the bash script that unlocks and mounts the partition
 
 ```bash
 sudo tee -a /root/mount_myluks.sh <<EOF
@@ -330,7 +332,7 @@ EOF
 sudo chmod +x /root/mount_myluks.sh
 ```
 
-#### 2. Create the systemd service file
+### 2. Create the systemd service file
 
 ```bash
 sudo tee -a /etc/systemd/system/mount_myluks.service <<EOF
@@ -348,7 +350,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-#### 3. Enable the service
+### 3. Enable the service
 
 ```bash
 > sudo systemctl enable mount_myluks.service
@@ -360,7 +362,7 @@ Created symlink /etc/systemd/system/multi-user.target.wants/mount_myluks.service
 sudo systemctl daemon-reload
 ```
 
-#### 4. Reboot the machine to test the service
+### 4. Reboot the machine to test the service
 
 ```bash
 sudo reboot
@@ -377,7 +379,7 @@ into the Cosmian KMS.
 Then, you can re-enroll the LUKS partition with the new key. You MUST know the passphrase to
 perform this operation.
 
-#### 1. Wipe the old key from the LUKS partition
+### 1. Wipe the old key from the LUKS partition
 
 ```bash
 sudo systemd-cryptenroll /dev/vda4  --wipe-slot=pkcs11
@@ -385,17 +387,17 @@ sudo systemd-cryptenroll /dev/vda4  --wipe-slot=pkcs11
 Wiped slot 1.
 ```
 
-#### 2. Revoke the old key from the Cosmian KMS
+### 2. Revoke the old key from the Cosmian KMS
 
 ```bash
-ckms certificates revoke -k 6fc631...  "revoked"
+cosmian kms certificates revoke -k 6fc631...  "revoked"
 
 Successfully revoked: 6fc631....
 ```
 
-#### 3. Follow the steps to generate a new key pair and import it into the Cosmian KMS.
+### 3. Follow the steps to generate a new key pair and import it into the Cosmian KMS.
 
-#### 4. Enroll the LUKS partition with the new key; you will be prompted for the passphrase
+### 4. Enroll the LUKS partition with the new key; you will be prompted for the passphrase
 
 ## External documentation
 

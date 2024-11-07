@@ -23,13 +23,13 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, RevocationReason},
     },
 };
-use cosmian_kms_client::KmsClient as RustKmsClient;
-use openssl::x509::X509;
+use cosmian_kms_client::{
+    reexport::cosmian_http_client::HttpClientConfig, KmsClient as RustKmsClient, KmsClientConfig,
+};
 use pyo3::{
     exceptions::{PyException, PyTypeError},
     prelude::*,
 };
-use rustls::Certificate;
 
 use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 
@@ -107,34 +107,25 @@ impl KmsClient {
         insecure_mode: bool,
         allowed_tee_tls_cert: Option<&str>,
     ) -> PyResult<Self> {
-        let tee_cert = match allowed_tee_tls_cert {
-            Some(cert_bytes) => Some(Certificate(
-                X509::from_pem(cert_bytes.as_bytes())
-                    .map_err(|_| {
-                        PyException::new_err("Cannot parse TEE certificate as PEM".to_owned())
-                    })?
-                    .to_der()
-                    .map_err(|_| {
-                        PyException::new_err("Cannot convert TEE certificate to DER".to_owned())
-                    })?,
-            )),
-            None => None,
+        let kms_config = KmsClientConfig {
+            http_config: HttpClientConfig {
+                server_url: server_url.to_string(),
+                access_token: api_key.map(|s| s.to_string()),
+                ssl_client_pkcs12_path: client_pkcs12_path.map(|s| s.to_string()),
+                ssl_client_pkcs12_password: client_pkcs12_password.map(|s| s.to_string()),
+                database_secret: database_secret.map(|s| s.to_string()),
+                accept_invalid_certs: insecure_mode,
+                verified_cert: allowed_tee_tls_cert.map(|s| s.to_string()),
+                ..Default::default()
+            },
+            ..KmsClientConfig::default()
         };
-        let kms_connector = RustKmsClient::instantiate(
-            server_url,
-            api_key,
-            client_pkcs12_path,
-            client_pkcs12_password,
-            database_secret,
-            insecure_mode,
-            tee_cert,
-            false,
-        )
-        .map_err(|_| {
+        let kms_connector = RustKmsClient::new(kms_config).map_err(|_| {
             PyException::new_err(format!(
                 "Can't build the query to connect to the kms server {server_url}"
             ))
         })?;
+
         Ok(Self(kms_connector))
     }
 

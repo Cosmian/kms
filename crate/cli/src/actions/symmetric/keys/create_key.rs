@@ -19,7 +19,7 @@ use crate::{
 };
 
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
-pub(crate) enum SymmetricAlgorithm {
+pub enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,
     #[default]
@@ -58,11 +58,11 @@ pub struct CreateKeyAction {
         group = "key",
         default_value = "256"
     )]
-    pub(crate) number_of_bits: Option<usize>,
+    pub number_of_bits: Option<usize>,
 
     /// The symmetric key bytes or salt as a base 64 string
     #[clap(long = "bytes-b64", short = 'k', required = false, group = "key")]
-    pub(crate) wrap_key_b64: Option<String>,
+    pub wrap_key_b64: Option<String>,
 
     /// The algorithm
     #[clap(
@@ -71,21 +71,21 @@ pub struct CreateKeyAction {
         required = false,
         default_value = "aes"
     )]
-    pub(crate) algorithm: SymmetricAlgorithm,
+    pub algorithm: SymmetricAlgorithm,
 
     /// The tag to associate with the key.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
-    pub(crate) tags: Vec<String>,
+    pub tags: Vec<String>,
 
     /// The unique id of the key; a random uuid
     /// is generated if not specified.
     #[clap(required = false)]
-    pub(crate) key_id: Option<String>,
+    pub key_id: Option<String>,
 
     /// Sensitive: if set, the key will not be exportable
     #[clap(long = "sensitive", default_value = "false")]
-    pub(crate) sensitive: bool,
+    pub sensitive: bool,
 
     /// The key to wrap this new key with.
     /// If the wrapping key is:
@@ -98,10 +98,14 @@ pub struct CreateKeyAction {
         required = false,
         verbatim_doc_comment
     )]
-    pub(crate) wrapping_key_id: Option<String>,
+    pub wrapping_key_id: Option<String>,
 }
 
 impl CreateKeyAction {
+    /// Create a new symmetric key
+    ///
+    /// # Errors
+    /// Fail in input key parsing fails
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<UniqueIdentifier> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {

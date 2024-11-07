@@ -8,11 +8,14 @@ use cosmian_kms_client::{
     kmip::kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
     },
-    write_bytes_to_file, write_kmip_object_to_file, ClientResultHelper, ExportObjectParams,
-    KmsClient,
+    write_bytes_to_file, write_kmip_object_to_file, ExportObjectParams, KmsClient,
 };
 
-use crate::{actions::console, cli_bail, error::result::CliResult};
+use crate::{
+    actions::console,
+    cli_bail,
+    error::result::{CliResult, CliResultHelper},
+};
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {

@@ -1,4 +1,4 @@
-## TL;DR
+# TL;DR
 
 The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
@@ -56,28 +56,3 @@ mkdocs serve -a 0.0.0.0:8003
 Open a browser window at `http://[MACHINE_IP / LOCALHOST]:8003`
 
 The doc is live rendered when editing the Markdown files.
-
-### Installing Pandoc to generate PDFs
-
-```sh
-# Pandoc (for pdfs)
-wget https://github.com/jgm/pandoc/releases/download/2.17.1.1/pandoc-2.17.1.1-1-amd64.deb
-sudo dpkg -i pandoc-2.17.1.1-1-amd64.deb
-
-# pandoc-latex - if you want to render Latex content in PDF (requires Latex)
-cargo install pandoc-katex
-```
-
-### Generating a PDF
-
-Run
-Warning: You need a LaTeX installation if some content is written in LaTeX
-
-### Installing Latex
-
-WARNING: This is a BIG installation
-
-```sh
-# LateX
-sudo apt-get install texlive-full
-```

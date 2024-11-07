@@ -34,7 +34,7 @@ impl DataToEncrypt {
             + 1 // for metadata
             + self.plaintext.len();
         if let Some(encryption_policy) = &self.encryption_policy {
-            mem_size += encryption_policy.as_bytes().len();
+            mem_size += encryption_policy.len();
         }
         if let Some(metadata) = &self.header_metadata {
             mem_size += metadata.len();

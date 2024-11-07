@@ -1,5 +1,5 @@
 ---
-site_name: Cosmian Key Management System
+site_name: Key Management System
 site_url: https://docs.cosmian.com/
 copyright: © Copyright 2018-2024 Cosmian. All rights reserved
 dev_addr: localhost:8003
@@ -24,11 +24,12 @@ markdown_extensions:
       permalink: true
       baselevel: 1
   - pymdownx.superfences:
-      # make exceptions to highlighting of code:
+          # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
           class: mermaid
-          # format: !!python/name:mermaid2.fence_mermaid_custom
+                # Uncomment the following line to check mermaid figures
+                # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji
@@ -50,29 +51,44 @@ plugins:
   - kroki
   - meta-descriptions
 nav:
-  - Getting started with the Cosmian KMS: index.md
+  - Getting started: index.md
+  - Use cases:
+      - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
+      - Google workspace Client-Side Encryption (CSE):
+          - Getting started: google_cse/index.md
+          - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
+          - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
+          - Configuring Gmail CSE: google_cse/configuring_gmail_cse.md
+          - Migrating existing email to Gmail CSE: google_cse/migrating.md
+      - Microsoft Double Key Encryption (DKE): ms_dke/index.md
+      - HSM support:
+          - Proteccio: hsm.md
+      - Disk Encryption:
+          - Veracrypt: pkcs11/veracrypt.md
+          - LUKS: pkcs11/luks.md
+          - Cryhod: pkcs11/cryhod.md
+      - API Endpoints: api.md
+  - Server Configuration:
+      - Command Line Interface: server_cli.md
+      - Authenticating users to the server: authentication.md
+      - Authorizing users with access rights: authorization.md
+      - Enabling TLS: tls.md
+      - Logging and telemetry: logging.md
+      - Database: database.md
+      - Deploying email encryption with S/MIME: pki/smime.md
+  - Server Installation:
+      - Single server mode: single_server_mode.md
+      - High-availability: high_availability_mode.md
+      - Deploying in Confidential VM: marketplace_guide.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
+      - Cryptographic algorithms:
+          - Algorithms: algorithms.md
+          - Benchmarks:
+              - Standard algorithms: benchmarks.md
+              - DKE and Google CSE: google_dke_benchmarks.md
       - Zeroization: zeroization.md
-  - Cryptographic algorithms:
-      - Algorithms: algorithms.md
-      - Benchmarks: benchmarks.md
-      - DKE & Google Benchmarks: google_dke_benchmarks.md
-  - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
-  - Proteccio HSM support: hsm.md
-  - Enabling TLS: tls.md
-  - Logging and telemetry: logging.md
-  - Configuring database: database.md
-  - Deploying in single server mode: single_server_mode.md
-  - Deploying for high-availability: high_availability_mode.md
-  - Running in the cloud or any zero-trust environment: zero_trust.md
-  - Authenticating users to the server: authentication.md
-  - Authorizing users with access rights: authorization.md
-  - The ckms and ckms_gui clients:
-      - Getting Started: cli/cli.md
-      - User manual: cli/main_commands.md
-  - Calling the KMS API: api.md
-  - KMIP 2.1:
+  - KMIP 2.1 Support:
       - Introduction: kmip_2_1/index.md
       - Supported Objects: kmip_2_1/objects.md
       - Supported Formats: kmip_2_1/formats.md
@@ -97,14 +113,3 @@ nav:
       - Re-Key: kmip_2_1/_re-key.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
-  - Deploying email encryption with S/MIME: pki/smime.md
-  - Google workspace Client-Side Encryption (CSE):
-      - Getting started with Google Workspace CSE: google_cse/google_cse.md
-      - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
-      - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
-      - Configuring Gmail CSE: google_cse/configuring_gmail_cse.md
-      - Migrating existing email to Gmail CSE: google_cse/migrating.md
-  - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
-  - Disk Encryption:
-      - Veracrypt: pkcs11/veracrypt.md
-      - LUKS: pkcs11/luks.md

@@ -10,10 +10,10 @@ This operation can be applied to all [supported objects](./objects.md). One or m
 
 Set an attribute of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms set-attributes -i 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1 --activation-date 1726211157791
+  cosmian kms attributes set -i 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1 --activation-date 1726211157791
 ```
 
 The request sets the activation date of a symmetric key.
@@ -84,10 +84,10 @@ Attribute set successfully
 
 Set the links on a certificate object. It will set 2 KMIP attributes.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms set-attributes -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+  cosmian kms attributes set -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 ```
 
 The request set the KMIP links of the public key and the private key of the underlying certificate.

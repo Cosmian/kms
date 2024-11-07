@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
@@ -114,12 +112,8 @@ impl CreateKeyPairsAction {
     }
 
     #[allow(clippy::print_stdout)]
-    pub async fn run(
-        &self,
-        conf_path: &PathBuf,
-        kms_rest_client: &KmsClient,
-    ) -> Result<(), CliError> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id);
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
+        let gmail_client = GmailClient::new(&kms_rest_client.config, &self.user_id);
 
         let kacls_url = kms_rest_client.google_cse_status();
 
