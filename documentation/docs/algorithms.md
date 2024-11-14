@@ -1,3 +1,5 @@
+# Cryptographic Algorithms
+
 The Cosmian server supports a large, and growing, list of cryptographic algorithms.
 This page lists the supported algorithms, their details and their reference in various standards.
 FIPS compliant
@@ -23,7 +25,7 @@ retrieved and used.
 The supported key-wrapping algorithms are:
 
 | Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                     |
-|----------------------|--------------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
 | AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).               |
 | CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3               |
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
@@ -45,14 +47,14 @@ Encryption can be performed using a key or a certificate. Decryption can be perf
 The supported encryption algorithms are:
 
 | Algorithm         | Encryption Key Type                                     | FIPS mode           | Description                                                                                                              |
-|-------------------|---------------------------------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------|
+| ----------------- | ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Covercrypt        | Covercrypt                                              | No                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                        |
 | AES GCM           | Symmetric authenticated encryption with additional data | NIST FIPS 197       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf). |
-| AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a dopuble-sixed key)                                                      |
+| AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a double-sized key)                                                       |
 | AES GCM-SIV       | Symmetric, authenticated, synthetic IV                  | No                  | Used for deterministic encryption and encryption of very large data sets.                                                |
-| ChaCha20-Poly1305 | Symmetric authenticated encryption with additional data | No                  | A popular symmetric encryption algorithm standardised in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439)              |
+| ChaCha20-Poly1305 | Symmetric authenticated encryption with additional data | No                  | A popular symmetric encryption algorithm standardized in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439)              |
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
-| CKM_RSA_PKCS_OAEP | RSA encryption with OAEP paddding                       | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
+| CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
 | ECIES             | P-192, P-224, P-256, P-384, P-521                       | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
 
@@ -192,7 +194,7 @@ Signature is only supported via the `Certify` operation, which is used to create
 either by signing a certificate request, or building it from an existing public key.
 
 | Algorithm | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
-|-----------|-------------------------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| --------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA     | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
