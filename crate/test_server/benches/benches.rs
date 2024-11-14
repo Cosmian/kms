@@ -1,6 +1,11 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use rsa_benches::{
+    bench_encrypt_rsa_aes_key_wrap_parametrized, bench_encrypt_rsa_oaep_parametrized,
+    bench_encrypt_rsa_pkcs15_parametrized,
+};
+use symmetric_benches::bench_encrypt_aes_parametrized;
 
 use crate::{
     rsa_benches::{
@@ -26,9 +31,13 @@ mod symmetric_benches;
 criterion_main!(
     // symmetric_key_benches,
     // symmetric_encryption_benches,
-    bulk_symmetric_encryption_benches,
+    // bulk_symmetric_encryption_benches,
     // rsa_keypair_benches,
     // rsa_encryption_benches
+    symmetric_encryption_benches_parametrized,
+    encrypt_rsa_aes_key_wrap_parametrized,
+    encrypt_rsa_pkcs15_parametrized,
+    encrypt_rsa_oaep_parametrized
 );
 
 criterion_group!(
@@ -83,4 +92,36 @@ criterion_group!(
         bench_rsa_key_wrp_encrypt_4096,
         bench_rsa_key_wrp_decrypt_2048,
         bench_rsa_key_wrp_decrypt_4096,
+);
+
+criterion_group!(
+    name = rsa_encryption_parametrized_benches;
+    config = Criterion::default().sample_size(1000).measurement_time(Duration::from_secs(10));
+    targets =
+        bench_rsa_pkcs_v15_encrypt_4096,
+);
+
+criterion_group!(
+    name = symmetric_encryption_benches_parametrized;
+    config = Criterion::default().sample_size(10).measurement_time(Duration::from_secs(10));
+    targets =
+        bench_encrypt_aes_parametrized,
+);
+criterion_group!(
+    name = encrypt_rsa_pkcs15_parametrized;
+    config = Criterion::default().sample_size(10).measurement_time(Duration::from_secs(10));
+    targets =
+        bench_encrypt_rsa_pkcs15_parametrized,
+);
+criterion_group!(
+    name = encrypt_rsa_oaep_parametrized;
+    config = Criterion::default().sample_size(10).measurement_time(Duration::from_secs(10));
+    targets =
+        bench_encrypt_rsa_oaep_parametrized,
+);
+criterion_group!(
+    name = encrypt_rsa_aes_key_wrap_parametrized;
+    config = Criterion::default().sample_size(10).measurement_time(Duration::from_secs(10));
+    targets =
+        bench_encrypt_rsa_aes_key_wrap_parametrized,
 );

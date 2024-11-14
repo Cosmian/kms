@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::{ClientError, KmsClient};
-use criterion::Criterion;
+use criterion::{BenchmarkId, Criterion, Throughput};
 use kms_test_server::start_default_test_kms_server;
 use zeroize::Zeroizing;
 
@@ -369,4 +369,106 @@ fn decrypt_request(
         authenticated_encryption_additional_data: None,
         authenticated_encryption_tag: mac,
     })
+}
+
+pub(crate) fn bench_encrypt_aes_parametrized(c: &mut Criterion) {
+    bench_encrypt_parametrized(
+        c,
+        "AES GCM - plaintext of 64 bytes",
+        aes_cryptographic_parameters(),
+    )
+}
+
+pub(crate) fn bench_encrypt_parametrized(
+    c: &mut Criterion,
+    name: &str,
+    cryptographic_parameters: CryptographicParameters,
+) {
+    let mut group = c.benchmark_group(name);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    for num_plaintexts in [1, 10, 50, 100, 500, 1000] {
+        for num_bits in [128, 256] {
+            // Generate input of an appropriate size...
+            let plaintext = if num_plaintexts == 1 {
+                Zeroizing::new(vec![1_u8; 64])
+            } else {
+                BulkData::new(vec![Zeroizing::new(vec![1_u8; 64]); num_plaintexts])
+                    .serialize()
+                    .unwrap()
+            };
+
+            let (kms_rest_client, key_id, (nonce, ciphertext, mac)) = runtime.block_on(async {
+                let ctx = start_default_test_kms_server().await;
+                let kms_client = ctx
+                    .owner_client_conf
+                    .initialize_kms_client(None, None, false)
+                    .unwrap();
+                let key_id =
+                    create_symmetric_key(&kms_client, num_bits, cryptographic_parameters.clone())
+                        .await
+                        .unwrap();
+                let (nonce, ciphertext, mac) = encrypt(
+                    &kms_client,
+                    key_id.clone(),
+                    cryptographic_parameters.clone(),
+                    plaintext.clone(),
+                )
+                .await
+                .unwrap();
+                (kms_client, key_id, (nonce, ciphertext, mac))
+            });
+
+            let parameter_name = if num_plaintexts == 1 {
+                format!("{num_plaintexts} request")
+            } else {
+                format!("{num_plaintexts} requests")
+            };
+
+            // We can use the throughput function to tell Criterion.rs how large the input is
+            // so it can calculate the overall throughput of the function. If we wanted, we could
+            // even change the benchmark configuration for different inputs (eg. to reduce the
+            // number of samples for extremely large and slow inputs) or even different functions.
+            group.throughput(Throughput::Elements(num_plaintexts as u64));
+            group.bench_with_input(
+                BenchmarkId::new(
+                    format!("{}-bit key encrypt", num_bits),
+                    parameter_name.clone(),
+                ),
+                &plaintext,
+                |b, pt| {
+                    b.to_async(&runtime).iter(|| async {
+                        let _ = encrypt(
+                            &kms_rest_client,
+                            key_id.clone(),
+                            cryptographic_parameters.clone(),
+                            pt.clone(),
+                        )
+                        .await
+                        .unwrap();
+                    });
+                },
+            );
+            group.bench_with_input(
+                BenchmarkId::new(format!("{}-bit key decrypt", num_bits), parameter_name),
+                &ciphertext,
+                |b, ct| {
+                    b.to_async(&runtime).iter(|| async {
+                        let _ = decrypt(
+                            &kms_rest_client,
+                            key_id.clone(),
+                            cryptographic_parameters.clone(),
+                            nonce.clone(),
+                            ct.clone(),
+                            mac.clone(),
+                        )
+                        .await
+                        .unwrap();
+                    });
+                },
+            );
+        }
+    }
+
+    group.finish();
 }
