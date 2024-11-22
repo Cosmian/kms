@@ -1756,8 +1756,7 @@ Create, destroy, import, and export symmetric keys
 Create a new symmetric key
 
 ### Usage
-`ckms sym keys create [options] [KEY_ID]
-`
+`ckms sym keys create [options]`
 ### Arguments
 `--number-of-bits [-l] <NUMBER_OF_BITS>` The length of the generated random key or salt in bits
 
@@ -1769,7 +1768,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
-` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
+`--key-id <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
 
 

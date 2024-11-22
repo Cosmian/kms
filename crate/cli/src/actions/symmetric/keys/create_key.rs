@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use base64::{engine::general_purpose, Engine as _};
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
@@ -16,13 +18,26 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub(crate) enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,
+    #[default]
     Aes,
     Sha3,
     Shake,
+}
+
+impl Display for SymmetricAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(not(feature = "fips"))]
+            Self::Chacha20 => write!(f, "chacha20"),
+            Self::Aes => write!(f, "aes"),
+            Self::Sha3 => write!(f, "sha3"),
+            Self::Shake => write!(f, "shake"),
+        }
+    }
 }
 
 /// Create a new symmetric key
@@ -33,7 +48,7 @@ pub(crate) enum SymmetricAlgorithm {
 /// If no options are specified, a fresh 256-bit AES key will be created.
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.
-#[derive(Parser)]
+#[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyAction {
     /// The length of the generated random key or salt in bits.
@@ -43,11 +58,11 @@ pub struct CreateKeyAction {
         group = "key",
         default_value = "256"
     )]
-    number_of_bits: Option<usize>,
+    pub(crate) number_of_bits: Option<usize>,
 
     /// The symmetric key bytes or salt as a base 64 string
     #[clap(long = "bytes-b64", short = 'k', required = false, group = "key")]
-    wrap_key_b64: Option<String>,
+    pub(crate) wrap_key_b64: Option<String>,
 
     /// The algorithm
     #[clap(
@@ -56,17 +71,17 @@ pub struct CreateKeyAction {
         required = false,
         default_value = "aes"
     )]
-    algorithm: SymmetricAlgorithm,
+    pub(crate) algorithm: SymmetricAlgorithm,
 
     /// The tag to associate with the key.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
-    tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
 
     /// The unique id of the key; a random uuid
     /// is generated if not specified.
-    #[clap(required = false)]
-    key_id: Option<String>,
+    #[clap(long, required = false)]
+    pub(crate) key_id: Option<String>,
 }
 
 impl CreateKeyAction {

@@ -4,6 +4,7 @@ use tempfile::TempDir;
 use tracing::{debug, trace};
 
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
@@ -23,9 +24,9 @@ pub(crate) async fn test_wrap_export_import() -> CliResult<()> {
     let key_file = wrap_key_path.to_str().unwrap().to_string();
 
     let sym_wrapping_key_id =
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+        create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // Export and import the key with different block cipher modes
     for block_cipher_mode in [BlockCipherMode::GCM, BlockCipherMode::NISTKeyWrap] {

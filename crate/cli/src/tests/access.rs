@@ -7,7 +7,7 @@ use tracing::trace;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
-    actions::symmetric::DataEncryptionAlgorithm,
+    actions::symmetric::{keys::create_key::CreateKeyAction, DataEncryptionAlgorithm},
     error::{result::CliResult, CliError},
     tests::{
         shared::{destroy, export_key, revoke, ExportKeyParams},
@@ -20,7 +20,7 @@ pub(crate) const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
 fn gen_key(cli_conf_path: &str) -> CliResult<String> {
-    create_symmetric_key(cli_conf_path, None, None, None, &[])
+    create_symmetric_key(cli_conf_path, CreateKeyAction::default())
 }
 
 /// Grants access to a user

@@ -19,6 +19,7 @@ use tempfile::TempDir;
 
 use super::ExportKeyParams;
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -149,7 +150,7 @@ pub(crate) async fn test_password_wrap_import() -> CliResult<()> {
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // sym
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())

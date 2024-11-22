@@ -15,7 +15,6 @@ use cosmian_kms_client::{
             },
         },
     },
-    kmip::extra::tagging::EMPTY_TAGS,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use kms_test_server::start_default_test_kms_server;
@@ -24,13 +23,13 @@ use tracing::{debug, trace};
 
 use super::ExportKeyParams;
 use crate::{
-    actions::shared::utils::KeyUsage,
+    actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
     error::result::CliResult,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
         shared::{export::export_key, import::import_key, ImportKeyParams},
-        symmetric,
+        symmetric::create_key::create_symmetric_key,
     },
 };
 
@@ -88,13 +87,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     )?;
 
     // test sym
-    let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_client_conf_path,
-        None,
-        None,
-        None,
-        &EMPTY_TAGS,
-    )?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
         "sym",
@@ -178,13 +171,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     )?;
 
     debug!("testing symmetric keys");
-    let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_client_conf_path,
-        None,
-        None,
-        None,
-        &EMPTY_TAGS,
-    )?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
         "sym",

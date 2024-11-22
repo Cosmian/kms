@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::{
     core::{
@@ -40,6 +40,16 @@ pub(crate) async fn revoke_operation(
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("unique identifiers or tags should be strings")?;
+
+    // For demo purposes, make some keys non-revokable (like google cse and ms dke keys)
+    if let Some(non_revokable_key_id) = &kms.params.non_revokable_key_id {
+        if non_revokable_key_id.contains(&uid_or_tags.to_owned()) {
+            trace!("Non revokable keys detected: won't be revoked {non_revokable_key_id:?}");
+            return Ok(RevokeResponse {
+                unique_identifier: UniqueIdentifier::TextString(uid_or_tags.to_owned()),
+            });
+        }
+    }
 
     recursively_revoke_key(
         uid_or_tags,

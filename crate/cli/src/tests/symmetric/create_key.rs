@@ -6,11 +6,12 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kms_client::{kmip::extra::tagging::EMPTY_TAGS, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
+    actions::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
     error::{result::CliResult, CliError},
     tests::{
         utils::{extract_uids::extract_uid, recover_cmd_logs},
@@ -21,29 +22,28 @@ use crate::{
 /// Create a symmetric key via the CLI
 pub(crate) fn create_symmetric_key(
     cli_conf_path: &str,
-    number_of_bits: Option<usize>,
-    wrap_key_b64: Option<&str>,
-    algorithm: Option<&str>,
-    tags: &[&str],
+    action: CreateKeyAction,
 ) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
-    let mut args = vec!["keys", "create"];
+    let mut args = vec!["keys".to_owned(), "create".to_owned()];
     let num_s;
-    if let Some(number_of_bits) = number_of_bits {
+    if let Some(number_of_bits) = action.number_of_bits {
         num_s = number_of_bits.to_string();
-        args.extend(vec!["--number-of-bits", &num_s]);
+        args.extend(vec!["--number-of-bits".to_owned(), num_s]);
     }
-    if let Some(wrap_key_b64) = wrap_key_b64 {
-        args.extend(vec!["--bytes-b64", wrap_key_b64]);
+    if let Some(wrap_key_b64) = action.wrap_key_b64.clone() {
+        args.extend(vec!["--bytes-b64".to_owned(), wrap_key_b64]);
     }
-    if let Some(algorithm) = algorithm {
-        args.extend(vec!["--algorithm", algorithm]);
+    args.extend(vec!["--algorithm".to_owned(), action.algorithm.to_string()]);
+    if let Some(key_id) = action.key_id.clone() {
+        args.extend(vec!["--key-id".to_owned(), key_id]);
     }
+
     // add tags
-    for tag in tags {
-        args.push("--tag");
+    for tag in action.tags {
+        args.push("--tag".to_owned());
         args.push(tag);
     }
     cmd.arg(SUB_COMMAND).args(args);
@@ -71,24 +71,24 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
     // AES
     {
         // AES 256 bit key
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+        create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
         // AES 128 bit key
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(128),
-            None,
-            None,
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(128),
+                ..Default::default()
+            },
         )?;
         //  AES 256 bit key from a base64 encoded key
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            None,
-            Some(&key_b64),
-            None,
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                wrap_key_b64: Some(key_b64),
+                ..Default::default()
+            },
         )?;
     }
 
@@ -97,18 +97,19 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
         // ChaCha20 256 bit key
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            None,
-            None,
-            Some("chacha20"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                algorithm: SymmetricAlgorithm::Chacha20,
+                ..Default::default()
+            },
         )?;
         // ChaCha20 128 bit key
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(128),
-            None,
-            Some("chacha20"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(128),
+                algorithm: SymmetricAlgorithm::Chacha20,
+                ..Default::default()
+            },
         )?;
         //  ChaCha20 256 bit key from a base64 encoded key
         let mut rng = CsRng::from_entropy();
@@ -117,10 +118,11 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
         let key_b64 = general_purpose::STANDARD.encode(&key);
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            None,
-            Some(&key_b64),
-            Some("chacha20"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                wrap_key_b64: Some(key_b64),
+                algorithm: SymmetricAlgorithm::Chacha20,
+                ..Default::default()
+            },
         )?;
     }
 
@@ -129,39 +131,43 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
         // ChaCha20 256 bit salt
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            None,
-            None,
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
         // ChaCha20 salts
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(224),
-            None,
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(224),
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(256),
-            None,
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(256),
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(384),
-            None,
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(384),
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            Some(512),
-            None,
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                number_of_bits: Some(512),
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
         //  ChaCha20 256 bit salt from a base64 encoded salt
         let mut rng = CsRng::from_entropy();
@@ -170,10 +176,11 @@ pub(crate) async fn test_create_symmetric_key() -> CliResult<()> {
         let key_b64 = general_purpose::STANDARD.encode(&salt);
         create_symmetric_key(
             &ctx.owner_client_conf_path,
-            None,
-            Some(&key_b64),
-            Some("sha3"),
-            &EMPTY_TAGS,
+            CreateKeyAction {
+                wrap_key_b64: Some(key_b64),
+                algorithm: SymmetricAlgorithm::Sha3,
+                ..Default::default()
+            },
         )?;
     }
     Ok(())

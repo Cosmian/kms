@@ -11,6 +11,7 @@ use crate::{
         attributes::{SetOrDeleteAttributes, VendorAttributeCli},
         certificates::Algorithm,
         shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
+        symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::CliResult,
     tests::{
@@ -319,7 +320,7 @@ async fn test_set_attribute_ckms() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // AES 256 bit key
-    let uid = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let uid = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     check_set_delete_attributes(&uid, ctx)?;
 
     // Certify the CSR without issuer i.e. self signed

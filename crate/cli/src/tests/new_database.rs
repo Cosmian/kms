@@ -12,6 +12,7 @@ use tempfile::TempDir;
 use tracing::info;
 
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         shared::{export_key, ExportKeyParams},
@@ -134,11 +135,12 @@ async fn test_multiple_databases() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
 
     // create a symmetric key in the default encrypted database
-    let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // export the key 1
     // Export
     export_key(ExportKeyParams {
@@ -163,7 +165,7 @@ async fn test_multiple_databases() -> CliResult<()> {
         .expect("Can't write the new conf");
 
     // create a symmetric key in the default encrypted database
-    let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // export the key 1
     // Export
     export_key(ExportKeyParams {

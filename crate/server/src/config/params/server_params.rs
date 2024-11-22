@@ -57,6 +57,9 @@ pub struct ServerParams {
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
+
+    /// The non-revokable keys ID used for demo purposes
+    pub non_revokable_key_id: Option<Vec<String>>,
 }
 
 /// Represents the server parameters.
@@ -106,6 +109,7 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
+            non_revokable_key_id: conf.non_revokable_key_id,
         })
     }
 
@@ -177,6 +181,7 @@ impl fmt::Debug for ServerParams {
         };
         let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
         let x = x.field("api_token_id", &self.api_token_id);
+        let x = x.field("non_revokable_key_id", &self.non_revokable_key_id);
         x.finish()
     }
 }
@@ -199,6 +204,7 @@ impl Clone for ServerParams {
             api_token_id: self.api_token_id.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
+            non_revokable_key_id: self.non_revokable_key_id.clone(),
         }
     }
 }

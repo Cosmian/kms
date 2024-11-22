@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         shared::{export_key, ExportKeyParams},
@@ -55,10 +56,10 @@ pub(crate) async fn test_rekey_symmetric_key() -> CliResult<()> {
     // AES 256 bit key
     let id = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(AES_KEY_SIZE),
-        None,
-        None,
-        &[],
+        CreateKeyAction {
+            number_of_bits: Some(AES_KEY_SIZE),
+            ..Default::default()
+        },
     )?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)

@@ -11,6 +11,7 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     cli_bail,
     error::{result::CliResult, CliError},
     tests::{
@@ -87,7 +88,7 @@ async fn test_destroy_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // destroy should not work when not revoked
     assert!(destroy(&ctx.owner_client_conf_path, "sym", &key_id).is_err());
