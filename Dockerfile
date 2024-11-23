@@ -29,8 +29,10 @@ COPY . /root/kms
 
 WORKDIR /root/kms
 
-RUN mkdir -p $OPENSSL_DIR \
-    && bash /root/kms/.github/scripts/local_ossl_instl.sh $OPENSSL_DIR
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=amd64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=aarch64; else export ARCHITECTURE=amd64; fi \
+    && mkdir -p $OPENSSL_DIR \
+    && bash /root/kms/.github/scripts/local_ossl_instl.sh "$OPENSSL_DIR"
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features
 

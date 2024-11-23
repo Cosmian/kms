@@ -11,6 +11,8 @@ if [[ ! "${1}" = /* ]]; then
     exit 1
 fi
 
+env
+
 OPENSSL_VERSION=3.2.0
 echo "Setup for OpenSSL version $OPENSSL_VERSION with FIPS module"
 echo "Installing OpenSSL to ${1}..."
@@ -36,9 +38,13 @@ rm ${VERSION}.tar.gz
 cd ${VERSION}/
 if [ "${2}" = "cross-compile-windows" ]; then
     ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" threads enable-fips no-shared enable-weak-ssl-ciphers
+elif [ "${ARCHITECTURE}" = "aarch64" ]; then
+    ./Configure linux-aarch64 --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" threads enable-fips no-shared enable-weak-ssl-ciphers
 else
     ./Configure --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" threads enable-fips no-shared enable-weak-ssl-ciphers
 fi
+
+set +x
 
 # Just in case, clean a previous installation.
 make clean
