@@ -15,7 +15,6 @@ RUN apt-get update \
     libssl-dev \
     ca-certificates \
     libclang-dev \
-    libsodium-dev \
     pkg-config \
     git \
     wget \
@@ -30,7 +29,7 @@ COPY . /root/kms
 WORKDIR /root/kms
 
 ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=amd64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=aarch64; else export ARCHITECTURE=amd64; fi \
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=arm64; else export ARCHITECTURE=x86_64; fi \
     && bash /root/kms/.github/scripts/get_openssl_binaries.sh
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features
@@ -47,7 +46,6 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -qq -y \
     ca-certificates \
     libssl-dev \
-    libsodium-dev \
     && apt-get -y -q upgrade \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
