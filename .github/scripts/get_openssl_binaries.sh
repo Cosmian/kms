@@ -9,8 +9,7 @@ if [ -z "$OPENSSL_DIR" ]; then
 fi
 
 if [ -z "$ARCHITECTURE" ]; then
-    echo "Error: ARCHITECTURE is not set."
-    exit 1
+    export ARCHITECTURE=amd64
 fi
 
 OPENSSL_VERSION=3.2.0
