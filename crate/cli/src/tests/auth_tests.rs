@@ -13,6 +13,7 @@ use tracing::{info, trace};
 
 use super::utils::recover_cmd_logs;
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         access::SUB_COMMAND,
@@ -33,7 +34,8 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
 
 fn create_api_token(ctx: &TestsContext) -> CliResult<(String, String)> {
     // Create and export an API token
-    let api_token_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let api_token_id =
+        create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     trace!("Symmetric key created of unique identifier: {api_token_id:?}");
 
     // Export as default (JsonTTLV with Raw Key Format Type)
@@ -80,6 +82,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -106,6 +109,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -123,6 +127,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -140,6 +145,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: Some("my_bad_token_id".to_owned()),
             api_token: Some("my_bad_token".to_owned()),
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -157,6 +163,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: Some(api_token_id),
             api_token: Some(api_token),
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -179,6 +186,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: None,
                 api_token: None,
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -196,6 +204,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: Some("my_bad_token_id".to_string()),
                 api_token: Some("my_bad_token".to_string()),
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -216,6 +225,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: Some("my_bad_token_id".to_string()),
                 api_token: Some("my_bad_token".to_string()),
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);

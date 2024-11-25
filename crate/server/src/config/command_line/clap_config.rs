@@ -21,6 +21,7 @@ impl Default for ClapConfig {
             ms_dke_service_url: None,
             telemetry: TelemetryConfig::default(),
             info: false,
+            non_revokable_key_id: None,
         }
     }
 }
@@ -73,6 +74,10 @@ pub struct ClapConfig {
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
     pub info: bool,
+
+    /// The non-revokable keys ID used for demo purposes
+    #[clap(long, hide = true)]
+    pub non_revokable_key_id: Option<Vec<String>>,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -98,6 +103,7 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("telemetry", &self.telemetry);
         let x = x.field("info", &self.info);
+        let x = x.field("non_revokable_key_id", &self.non_revokable_key_id);
         x.finish()
     }
 }

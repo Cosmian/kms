@@ -13,6 +13,7 @@ use crate::tests::{
     },
 };
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -305,8 +306,13 @@ pub(crate) async fn test_locate_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new key
-    let key_id =
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &["test_sym"])?;
+    let key_id = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            tags: vec!["test_sym".to_string()],
+            ..Default::default()
+        },
+    )?;
 
     // Locate with Tags
     let ids = locate(

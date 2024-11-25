@@ -29,7 +29,7 @@ use crate::tests::cover_crypt::{
 #[cfg(not(feature = "fips"))]
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
-    actions::shared::ExportKeyFormat,
+    actions::{shared::ExportKeyFormat, symmetric::keys::create_key::CreateKeyAction},
     error::{result::CliResult, CliError},
     tests::{
         rsa::create_key_pair::create_rsa_4096_bits_key_pair,
@@ -119,7 +119,7 @@ pub(crate) async fn test_export_sym() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {
@@ -181,7 +181,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // Export
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -207,7 +207,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
         create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
     // generate a symmetric key
-    let sym_key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let sym_key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // Export wrapped key with symmetric key as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {

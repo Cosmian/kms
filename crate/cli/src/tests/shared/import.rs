@@ -144,6 +144,8 @@ pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_generate_export_import() -> CliResult<()> {
+    use crate::actions::symmetric::keys::create_key::CreateKeyAction;
+
     cosmian_logger::log_utils::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
@@ -172,7 +174,7 @@ pub(crate) async fn test_generate_export_import() -> CliResult<()> {
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     export_import_test(
         &ctx.owner_client_conf_path,
         "sym",

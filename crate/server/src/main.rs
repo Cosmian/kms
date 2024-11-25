@@ -213,6 +213,7 @@ mod tests {
                 quiet: false,
             },
             info: false,
+            non_revokable_key_id: None,
         };
 
         let toml_string = r#"
