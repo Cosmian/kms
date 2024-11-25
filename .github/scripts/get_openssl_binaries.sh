@@ -8,6 +8,12 @@ if [ -z "$OPENSSL_DIR" ]; then
     exit 1
 fi
 
+if [ -z "$OS_NAME" ]; then
+    OS_NAME=ubuntu_22_04
+else
+    OS_NAME=${OS_NAME#fips_}
+fi
+
 if [ -z "$ARCHITECTURE" ]; then
     ARCHITECTURE=$(uname -m)
 fi
@@ -21,7 +27,7 @@ rm -rf "${OPENSSL_DIR}/ssl"
 mkdir -p "${OPENSSL_DIR}/ssl"
 
 # Downloading and installing OpenSSL
-wget "https://package.cosmian.com/openssl/$OPENSSL_VERSION/${ARCHIVE_NAME}/${ARCHITECTURE}/${OPENSSL_VERSION}.tar.gz"
+wget "https://package.cosmian.com/openssl/$OPENSSL_VERSION/${OS_NAME}/${ARCHITECTURE}/${OPENSSL_VERSION}.tar.gz"
 
 mv "${OPENSSL_VERSION}.tar.gz" "${OPENSSL_DIR}"
 echo -n Extracting compressed archive...

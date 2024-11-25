@@ -29,7 +29,7 @@ jobs:
           sudo chown -R $USER:$USER /usr/local
           bash .github/scripts/get_openssl_binaries.sh
         env:
-          ARCHIVE_NAME: ubuntu_22_04
+          OS_NAME: ubuntu_22_04
 
       - uses: dtolnay/rust-toolchain@master
         with:
