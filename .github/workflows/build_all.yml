@@ -84,10 +84,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distribution: macos-12
-            archive-name: macos_intel
-            target: x86_64-apple-darwin
-
           - distribution: macos-14
             archive-name: macos_arm
             target: aarch64-apple-darwin

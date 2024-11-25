@@ -68,22 +68,12 @@
 
 === "MacOS"
 
-    On ARM MacOS, download the build archive and extract it:
+    On ARM MacOS (now the only supported MacOS architecture), download the build archive and extract it:
 
     ```console title="On local machine"
     wget https://package.cosmian.com/kms/4.19.3/macos_arm-release.zip
     unzip macos_arm-release.zip
     cp /macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/ckms /usr/local/bin/
-    chmod u+x /usr/local/bin/ckms
-    ckms --version
-    ```
-
-    On Intel MacOS, download the build archive and extract it:
-
-    ```console title="On local machine"
-    wget https://package.cosmian.com/kms/4.19.3/macos_intel-release.zip
-    unzip macos_intel-release.zip
-    cp /macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/ckms /usr/local/bin/
     chmod u+x /usr/local/bin/ckms
     ckms --version
     ```
