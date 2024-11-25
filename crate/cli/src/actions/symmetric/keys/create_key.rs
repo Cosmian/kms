@@ -80,7 +80,7 @@ pub struct CreateKeyAction {
 
     /// The unique id of the key; a random uuid
     /// is generated if not specified.
-    #[clap(long, required = false)]
+    #[clap(required = false)]
     pub(crate) key_id: Option<String>,
 }
 

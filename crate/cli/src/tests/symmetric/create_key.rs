@@ -38,7 +38,7 @@ pub(crate) fn create_symmetric_key(
     }
     args.extend(vec!["--algorithm".to_owned(), action.algorithm.to_string()]);
     if let Some(key_id) = action.key_id.clone() {
-        args.extend(vec!["--key-id".to_owned(), key_id]);
+        args.extend(vec![key_id]);
     }
 
     // add tags
