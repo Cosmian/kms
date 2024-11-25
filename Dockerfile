@@ -31,8 +31,7 @@ WORKDIR /root/kms
 
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=amd64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=aarch64; else export ARCHITECTURE=amd64; fi \
-    && mkdir -p $OPENSSL_DIR \
-    && bash /root/kms/.github/scripts/local_ossl_instl.sh "$OPENSSL_DIR"
+    && bash /root/kms/.github/scripts/get_openssl_binaries.sh
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features
 
@@ -55,7 +54,7 @@ RUN apt-get update \
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
 COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
-COPY --from=builder $OPENSSL_DIR/lib64/ossl-modules/legacy.so $OPENSSL_DIR/lib64/ossl-modules/legacy.so
+COPY --from=builder $OPENSSL_DIR/lib/ossl-modules/legacy.so     $OPENSSL_DIR/lib/ossl-modules/legacy.so
 
 #
 # Create working directory
