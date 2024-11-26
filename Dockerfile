@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04
 
 LABEL version="4.19.3"
 LABEL name="Cosmian KMS docker container"

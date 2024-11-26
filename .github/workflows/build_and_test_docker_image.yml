@@ -19,7 +19,6 @@ jobs:
       registry-image: ghcr.io/cosmian/kms
 
   fips-image:
-    needs: not-fips-image # force sequential execution
     name: FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
