@@ -72,8 +72,8 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     env:
-      ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos_arm-release windows-release
-        kms_python_linux kms_python_macos_arm kms_python_windows
+      ARCHIVE_NAMES: rhel9-release fips_ubuntu_20_04-release ubuntu_20_04-release ubuntu_22_04-release ubuntu_24_04-release macos_intel-release macos_arm-release
+        windows-release kms_python_linux kms_python_macos_intel kms_python_macos_arm kms_python_windows
 
     steps:
       - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos* rhel9* centos*
@@ -147,6 +147,7 @@ jobs:
       matrix:
         include:
           - archive_name: kms_python_linux
+          - archive_name: kms_python_macos_intel
           - archive_name: kms_python_macos_arm
           - archive_name: kms_python_windows
 
