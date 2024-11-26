@@ -3,6 +3,10 @@ name: Docker main workflow
 
 on:
   workflow_call:
+    inputs:
+      platforms:
+        required: true
+        type: string
 
 jobs:
   pyo3:
@@ -17,6 +21,7 @@ jobs:
       prefix: ''
       dockerfile: Dockerfile
       registry-image: ghcr.io/cosmian/kms
+      platforms: ${{ inputs.platforms }}
 
   fips-image:
     name: FIPS image build and tests
@@ -25,3 +30,4 @@ jobs:
       prefix: FIPS
       dockerfile: Dockerfile.fips
       registry-image: ghcr.io/cosmian/kms-fips
+      platforms: ${{ inputs.platforms }}

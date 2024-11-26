@@ -123,6 +123,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - mac-version: macos-13
+            archive-name: kms_python_macos_intel
+            target: x86_64-apple-darwin
+
           - mac-version: macos-14
             archive-name: kms_python_macos_arm
             target: aarch64-apple-darwin
