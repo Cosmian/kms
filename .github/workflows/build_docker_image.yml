@@ -63,7 +63,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           file: ${{ inputs.dockerfile }}
-          no-cache: true
           network: host
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
