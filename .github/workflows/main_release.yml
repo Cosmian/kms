@@ -38,6 +38,8 @@ jobs:
 
   python_and_docker:
     uses: ./.github/workflows/build_and_test_docker_image.yml
+    with:
+      platforms: linux/amd64,linux/arm64
 
   ckms_gui:
     runs-on: ubuntu-latest
