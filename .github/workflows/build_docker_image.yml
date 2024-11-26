@@ -56,11 +56,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:v0.17.2
-          buildkitd-flags: --debug
-          cleanup: true
 
       - name: Build and tag docker container
         uses: docker/build-push-action@v6
@@ -71,7 +66,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           file: ${{ inputs.dockerfile }}
-          no-cache: true
           network: host
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}

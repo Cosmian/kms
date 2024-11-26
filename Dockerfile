@@ -32,10 +32,9 @@ ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=arm64; else export ARCHITECTURE=x86_64; fi \
     && bash /root/kms/.github/scripts/get_openssl_binaries.sh
 
-RUN /root/.cargo/bin/cargo build --release --no-default-features
-
-COPY /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
-COPY /root/kms/target/release/ckms               /usr/bin/ckms
+RUN /root/.cargo/bin/cargo build --release --no-default-features \
+    && cp /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server \
+    && cp /root/kms/target/release/ckms               /usr/bin/ckms
 
 #
 # Create working directory
