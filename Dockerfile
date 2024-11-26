@@ -34,25 +34,8 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; e
 
 RUN /root/.cargo/bin/cargo build --release --no-default-features
 
-#
-# KMS Server
-#
-FROM ubuntu:22.04 AS kms
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV OPENSSL_DIR=/usr/local/openssl
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends -qq -y \
-    ca-certificates \
-    libssl-dev \
-    && apt-get -y -q upgrade \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
-COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
-COPY --from=builder $OPENSSL_DIR/lib/ossl-modules/legacy.so     $OPENSSL_DIR/lib/ossl-modules/legacy.so
+COPY /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
+COPY /root/kms/target/release/ckms               /usr/bin/ckms
 
 #
 # Create working directory
