@@ -26,7 +26,7 @@ impl Default for ClapConfig {
             hsm_model: "proteccio".to_owned(),
             hsm_slot: vec![],
             hsm_password: vec![],
-            non_revokable_key_id: None,
+            non_revocable_key_id: None,
         }
     }
 }
@@ -107,9 +107,9 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
     pub hsm_password: Vec<String>,
 
-    /// The non-revokable keys ID used for demo purposes
+    /// The non-revocable keys ID used for demo purposes
     #[clap(long, hide = true)]
-    pub non_revokable_key_id: Option<Vec<String>>,
+    pub non_revocable_key_id: Option<Vec<String>>,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -153,7 +153,7 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
-        let x = x.field("non_revokable_key_id", &self.non_revokable_key_id);
+        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         x.finish()
     }
 }

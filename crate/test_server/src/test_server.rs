@@ -31,7 +31,7 @@ use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
-pub(crate) static ONCE_SERVER_WITH_NON_REVOKABLE_KEY: OnceCell<TestsContext> =
+pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 
 fn sqlite_db_config() -> MainDBConfig {
@@ -164,12 +164,12 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
         .await
         .unwrap()
 }
-/// Non revokable key ids
-pub async fn start_default_test_kms_server_with_non_revokable_key_ids(
-    non_revokable_key_id: Option<Vec<String>>,
+/// Non revocable key ids
+pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
+    non_revocable_key_id: Option<Vec<String>>,
 ) -> &'static TestsContext {
-    trace!("Starting test server with non revokable key ids");
-    ONCE_SERVER_WITH_NON_REVOKABLE_KEY
+    trace!("Starting test server with non revocable key ids");
+    ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| {
             start_test_server_with_options(
                 get_db_config(),
@@ -181,7 +181,7 @@ pub async fn start_default_test_kms_server_with_non_revokable_key_ids(
                     api_token_id: None,
                     api_token: None,
                 },
-                non_revokable_key_id,
+                non_revocable_key_id,
             )
         })
         .await
@@ -218,14 +218,14 @@ pub async fn start_test_server_with_options(
     db_config: MainDBConfig,
     port: u16,
     authentication_options: AuthenticationOptions,
-    non_revokable_key_id: Option<Vec<String>>,
+    non_revocable_key_id: Option<Vec<String>>,
 ) -> Result<TestsContext, ClientError> {
     cosmian_logger::log_utils::log_init(None);
     let server_params = generate_server_params(
         db_config.clone(),
         port,
         &authentication_options,
-        non_revokable_key_id,
+        non_revocable_key_id,
     )?;
 
     // Create a (object owner) conf
@@ -360,7 +360,7 @@ fn generate_server_params(
     db_config: MainDBConfig,
     port: u16,
     authentication_options: &AuthenticationOptions,
-    non_revokable_key_id: Option<Vec<String>>,
+    non_revocable_key_id: Option<Vec<String>>,
 ) -> Result<ServerParams, ClientError> {
     // Configure the server
     let clap_config = ClapConfig {
@@ -376,7 +376,7 @@ fn generate_server_params(
             authentication_options.use_client_cert,
             authentication_options.api_token_id.clone(),
         ),
-        non_revokable_key_id,
+        non_revocable_key_id,
         ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
