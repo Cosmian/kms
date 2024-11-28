@@ -20,5 +20,5 @@ zeroize = { workspace = true, default-features = true }
 cosmian_logger = { path = "../logger" }
 tempfile = "3.11"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
-    "env-filter",
+  "env-filter",
 ] }

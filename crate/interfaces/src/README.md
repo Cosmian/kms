@@ -8,4 +8,3 @@ The first support looked at are encryption oracles that provide the ability to p
 systems, such as HSMs, that provide the ability to encrypt and decrypt data.
 
 The second support looked at is the ability to add custom implementations of encryption algorithms.
-

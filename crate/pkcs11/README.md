@@ -7,7 +7,7 @@ This directory provides
 
 1. `sys` crate
 
-The sys crate is generated fron the cryptoki headers files using `bindgen` and provides Linux and Windows bindings for
+The sys crate is generated from the cryptoki headers files using `bindgen` and provides Linux and Windows bindings for
 the
 PKCS#11 API.
 
@@ -36,4 +36,3 @@ The `module` crate is a modified fork of Google native_pkcs11 crate. See its rea
 
 The `sys`crate is a direct clone of the crate with the same name from the `native_pkcs11` crate. Its license is Apache
 2.0.
-
