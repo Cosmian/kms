@@ -109,7 +109,7 @@ impl Session {
                 self.session_handle(),
                 pMechanism,
                 pMutTemplate,
-                u32::try_from(template.len())?,
+                u64::try_from(template.len())?,
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {

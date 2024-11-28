@@ -153,7 +153,7 @@ impl Session {
             let values_ptr: *mut u8 = values.as_mut_ptr();
             let rv = self.hsm.C_GenerateRandom.ok_or_else(|| {
                 PError::Default("C_GenerateRandom not available on library".to_string())
-            })?(self.session_handle, values_ptr, u32::try_from(len)?);
+            })?(self.session_handle, values_ptr, u64::try_from(len)?);
             if rv != CKR_OK {
                 return Err(PError::Default("Failed generating random data".to_string()));
             }
