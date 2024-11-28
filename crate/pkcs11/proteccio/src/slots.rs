@@ -51,12 +51,6 @@ impl ObjectHandlesCache {
     }
 }
 
-impl Default for ObjectHandlesCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct SlotManager {
     hsm_lib: Arc<HsmLib>,
     slot_id: usize,
