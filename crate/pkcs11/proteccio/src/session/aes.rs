@@ -86,7 +86,7 @@ impl Session {
         &self,
         id: &[u8],
         size: AesKeySize,
-        sensititve: bool,
+        sensitive: bool,
     ) -> PResult<CK_OBJECT_HANDLE> {
         unsafe {
             let ck_fn = self.hsm().C_GenerateKey.ok_or_else(|| {
@@ -101,7 +101,7 @@ impl Session {
                 pParameter: ptr::null_mut(),
                 ulParameterLen: 0,
             };
-            let mut template = aes_key_template(id, size, sensititve);
+            let mut template = aes_key_template(id, size, sensitive);
             let pMechanism: CK_MECHANISM_PTR = &mut mechanism;
             let pMutTemplate: CK_ATTRIBUTE_PTR = template.as_mut_ptr();
             let mut aes_key_handle = CK_OBJECT_HANDLE::default();
@@ -109,7 +109,7 @@ impl Session {
                 self.session_handle(),
                 pMechanism,
                 pMutTemplate,
-                template.len() as u64,
+                u32::try_from(template.len())?,
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {

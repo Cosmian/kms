@@ -18,6 +18,9 @@ pub enum PError {
 
     #[error("HSM Error: {0}")]
     Hsm(String),
+
+    #[error(transparent)]
+    TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
 impl From<InterfaceError> for PError {
