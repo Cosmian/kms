@@ -65,16 +65,18 @@ impl KMS {
             kms_bail!("Fatal: Proteccio HSM is only supported on Linux x86_64");
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             {
-                let proteccio: dyn HSM + Send + Sync = Proteccio::instantiate(
-                    "/lib/libnethsm.so",
-                    server_params.slot_passwords.clone(),
-                )
-                .map_err(|e| {
-                    KmsError::InvalidRequest(format!(
-                        "Failed to instantiate the Proteccio HSM: {e}"
-                    ))
-                })?;
-                Some(Arc::new(proteccio))
+                let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
+                    Proteccio::instantiate(
+                        "/lib/libnethsm.so",
+                        server_params.slot_passwords.clone(),
+                    )
+                    .map_err(|e| {
+                        KmsError::InvalidRequest(format!(
+                            "Failed to instantiate the Proteccio HSM: {e}"
+                        ))
+                    })?,
+                );
+                Some(proteccio)
             }
         };
 
