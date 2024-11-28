@@ -142,6 +142,9 @@ impl Database {
     /// This method will fail if an ` uid ` is supplied
     /// and an object with the same id already exists
     ///
+    /// A new UUID will be created if none is supplier.
+    /// This method will fail if an ` uid ` is supplied
+    /// and an object with the same id already exists
     /// # Arguments
     ///
     /// * `uid` - An optional string representing the unique identifier of the object.

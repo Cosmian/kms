@@ -69,8 +69,8 @@ pub struct ServerParams {
     /// HSM slot passwords number
     pub slot_passwords: HashMap<usize, Option<String>>,
 
-    /// The non-revokable keys ID used for demo purposes
-    pub non_revokable_key_id: Option<Vec<String>>,
+    /// The non-revocable keys ID used for demo purposes
+    pub non_revocable_key_id: Option<Vec<String>>,
 }
 
 /// Represents the server parameters.
@@ -141,7 +141,7 @@ impl ServerParams {
                 Some(conf.hsm_model)
             },
             slot_passwords,
-            non_revokable_key_id: conf.non_revokable_key_id,
+            non_revocable_key_id: conf.non_revocable_key_id,
         })
     }
 
@@ -233,7 +233,7 @@ impl fmt::Debug for ServerParams {
                 })
                 .collect::<Vec<String>>(),
         );
-        let x = x.field("non_revokable_key_id", &self.non_revokable_key_id);
+        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         x.finish()
     }
 }
@@ -264,7 +264,7 @@ impl Clone for ServerParams {
                 .into_keys()
                 .map(|s| (s, None))
                 .collect(),
-            non_revokable_key_id: self.non_revokable_key_id.clone(),
+            non_revocable_key_id: self.non_revocable_key_id.clone(),
         }
     }
 }

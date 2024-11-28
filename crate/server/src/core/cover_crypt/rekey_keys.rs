@@ -1,3 +1,5 @@
+#![allow(clippy::large_stack_frames)]
+
 use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
@@ -43,7 +45,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
     let (msk_uid, mpk_uid) = match action {
         RekeyEditAction::RekeyAccessPolicy(ap) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -55,13 +57,14 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::PruneAccessPolicy(ap) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -73,13 +76,14 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::RemoveAttribute(attrs) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -93,13 +97,14 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::DisableAttribute(attrs) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -113,11 +118,12 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::RenameAttribute(pairs_attr_name) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -131,10 +137,11 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::AddAttribute(attrs_properties) => {
-            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+            let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
@@ -150,6 +157,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 },
             ))
             .await?;
+            let (msk_obj, mpk_obj) = res;
 
             (msk_obj.0, mpk_obj.0)
         }

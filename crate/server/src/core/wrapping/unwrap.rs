@@ -187,19 +187,16 @@ async fn unwrap_using_encryption_oracle(
     // determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
-        .map_or(unwrapping_key_uid, |unwrapping_key_uid_no_suffix| {
-            unwrapping_key_uid_no_suffix
-        });
-
+        .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
     //check permissions
     if !kms
         .database
-        .is_object_owned_by(unwrapping_key_uid, user, params)
+        .is_object_owned_by(&unwrapping_key_uid, user, params)
         .await?
     {
         let ops = kms
             .database
-            .list_user_operations_on_object(unwrapping_key_uid, user, false, params)
+            .list_user_operations_on_object(&unwrapping_key_uid, user, false, params)
             .await?;
         if !ops
             .iter()
@@ -220,7 +217,7 @@ async fn unwrap_using_encryption_oracle(
     })?;
     let plaintext = encryption_oracle
         .decrypt(
-            unwrapping_key_uid,
+            &unwrapping_key_uid,
             &wrapped_key.key_bytes,
             None,
             aad.as_deref(),

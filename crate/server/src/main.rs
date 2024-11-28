@@ -217,7 +217,7 @@ mod tests {
             hsm_admin: "".to_string(),
             hsm_slot: vec![],
             hsm_password: vec![],
-            non_revokable_key_id: None,
+            non_revocable_key_id: None,
         };
 
         let toml_string = r#"

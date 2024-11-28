@@ -3,9 +3,10 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{
-    start_default_test_kms_server, start_default_test_kms_server_with_non_revokable_key_ids,
+    start_default_test_kms_server, start_default_test_kms_server_with_non_revocable_key_ids,
 };
 use tempfile::TempDir;
+use uuid::Uuid;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::cover_crypt::{
@@ -307,15 +308,15 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
 }
 
 #[tokio::test]
-async fn test_non_revokable_symmetric_key() -> CliResult<()> {
+async fn test_non_revocable_symmetric_key() -> CliResult<()> {
     //
-    // Check that a non-revokable key cannot be revoked (and then still exportable)
+    // Check that a non-revocable key cannot be revoked (and then still exportable)
     //
-    let google_key_id = "my_google_cse";
+    let non_revocable_key = Uuid::new_v4().to_string();
 
-    // init the test server with the non-revokable key in parameter
-    let ctx = start_default_test_kms_server_with_non_revokable_key_ids(Some(vec![
-        google_key_id.to_owned(),
+    // init the test server with the non-revocable key in the parameter
+    let ctx = start_default_test_kms_server_with_non_revocable_key_ids(Some(vec![
+        non_revocable_key.clone(),
         "my_dke_key".to_owned(),
     ]))
     .await;
@@ -324,12 +325,12 @@ async fn test_non_revokable_symmetric_key() -> CliResult<()> {
     let key_id = create_symmetric_key(
         &ctx.owner_client_conf_path,
         CreateKeyAction {
-            key_id: Some(google_key_id.to_owned()),
+            key_id: Some(non_revocable_key.clone()),
             ..Default::default()
         },
     )?;
 
-    assert_eq!(key_id, google_key_id);
+    assert_eq!(key_id, non_revocable_key);
 
     // revoke
     revoke(
