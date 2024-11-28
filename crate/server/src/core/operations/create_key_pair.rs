@@ -76,7 +76,7 @@ pub(crate) async fn create_key_pair(
     let ids = kms.database.atomic(owner, &operations, params).await?;
 
     let sk_uid = ids
-        .get(0)
+        .first()
         .ok_or_else(|| KmsError::ServerError("Private key id not available".to_owned()))?;
     let pk_uid = ids
         .get(1)

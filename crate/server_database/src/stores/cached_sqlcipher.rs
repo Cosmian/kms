@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     db_bail, db_error,
-    error::DbResultHelper,
+    error::{DbResult, DbResultHelper},
     get_sqlite_query,
     migrate::do_migration,
     stores::{
@@ -41,7 +41,7 @@ use crate::{
         store_traits::{AtomicOperation, ObjectsStore, PermissionsStore},
         SQLITE_QUERIES,
     },
-    DbResult, ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[derive(Clone)]

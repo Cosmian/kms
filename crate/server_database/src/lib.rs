@@ -40,7 +40,7 @@ pub use core::{
     ObjectWithMetadata, UnwrappedCache,
 };
 mod error;
-pub use error::{DbError, DbResult};
+pub use error::DbError;
 mod migrate;
 mod stores;
 pub use stores::{

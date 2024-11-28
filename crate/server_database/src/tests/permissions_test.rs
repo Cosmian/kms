@@ -4,8 +4,8 @@ use cosmian_kmip::kmip::KmipOperation;
 use uuid::Uuid;
 
 use crate::{
+    error::DbResult,
     stores::{ExtraStoreParams, ObjectsStore, PermissionsStore},
-    DbResult,
 };
 
 pub(crate) async fn permissions<DB: ObjectsStore + PermissionsStore>(

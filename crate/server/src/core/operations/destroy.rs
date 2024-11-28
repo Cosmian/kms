@@ -76,9 +76,8 @@ pub(crate) async fn recursively_destroy_key(
         }
 
         //Default database: retrieve the object
-        let mut owm = match kms.database.retrieve_object(&uid, params).await? {
-            Some(owm) => owm,
-            None => continue,
+        let Some(mut owm) = kms.database.retrieve_object(&uid, params).await? else {
+            continue
         };
 
         if user != owm.owner() {

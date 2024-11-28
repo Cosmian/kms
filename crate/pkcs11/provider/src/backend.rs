@@ -26,13 +26,13 @@ use crate::{
 
 const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
-pub struct CkmsBackend {
+pub(crate) struct CkmsBackend {
     kms_client: KmsClient,
 }
 
 impl CkmsBackend {
     /// Instantiate a new `CkmsBackend` using the
-    pub fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
+    pub(crate) fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
         Ok(CkmsBackend { kms_client })
     }
 }

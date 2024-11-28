@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use crate::{
     db_error,
+    error::DbResult,
     stores::{ExtraStoreParams, ObjectsStore, PermissionsStore},
-    DbResult,
 };
 
 pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(

@@ -109,16 +109,14 @@ pub(crate) async fn recursively_revoke_key(
                     uid, user
                 );
                 continue;
-            } else {
-                return Err(KmsError::NotSupported(format!(
-                    "Objects with prefix '{prefix}' cannot be revoked. Destroy them directly."
-                )));
             }
+            return Err(KmsError::NotSupported(format!(
+                "Objects with prefix '{prefix}' cannot be revoked. Destroy them directly."
+            )));
         }
         //retrieve the object
-        let owm = match kms.database.retrieve_object(&uid, params).await? {
-            Some(owm) => owm,
-            None => continue,
+        let Some(owm) = kms.database.retrieve_object(&uid, params).await? else {
+            continue
         };
 
         let object_type = owm.object().object_type();

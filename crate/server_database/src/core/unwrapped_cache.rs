@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use tokio::sync::RwLockReadGuard;
 use tracing::trace;
 
-use crate::DbResult;
+use crate::error::DbResult;
 
 /// This is the object kept in the Main LRU cache
 /// It contains the unwrapped object and the key signature
@@ -122,7 +122,7 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{core::main_db_params::MainDbParams, Database, DbResult};
+    use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
     pub async fn test_lru_cache() -> DbResult<()> {

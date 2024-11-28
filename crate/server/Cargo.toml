@@ -35,7 +35,6 @@ actix-tls = "3.4"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.1"
-async-trait = "0.1"
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
@@ -58,21 +57,18 @@ futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 lazy_static = "1.5"
 log = { workspace = true }
-lru = "0.12.5"
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
     "serde",
     "zeroize",
 ] }
-num_cpus = { workspace = true }
 openssl = { workspace = true }
 opentelemetry = "0.23.0"
 opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
 opentelemetry-semantic-conventions = { version = "0.15.0" }
 opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
 proteccio_pkcs11_loader = { path = "../pkcs11/proteccio" }
-rawsql = "0.1"
 redis = { version = "0.23", features = [
     "aio",
     "ahash",
@@ -106,7 +102,6 @@ tracing-opentelemetry = "0.24.0"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-version-compare = "0.2.0"
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 

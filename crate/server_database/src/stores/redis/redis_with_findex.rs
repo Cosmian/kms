@@ -28,13 +28,13 @@ use super::{
 };
 use crate::{
     db_error,
-    error::DbError,
+    error::{DbError, DbResult},
     stores::{
         redis::objects_db::RedisOperation,
         store_traits::{ObjectsStore, PermissionsStore},
         ExtraStoreParams,
     },
-    AtomicOperation, DbResult, ObjectWithMetadata,
+    AtomicOperation, ObjectWithMetadata,
 };
 
 pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;

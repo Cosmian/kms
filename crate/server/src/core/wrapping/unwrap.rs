@@ -35,16 +35,14 @@ pub(crate) async fn unwrap_key(
     params: Option<&ExtraStoreParams>,
 ) -> KResult<()> {
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_string())
+        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
     })?;
 
     let unwrapping_key_uid = key_wrapping_data
         .encryption_key_information
         .as_ref()
         .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "unwrap_key: encryption key information is missing".to_string(),
-            )
+            KmsError::InvalidRequest("unwrap_key: encryption key information is missing".to_owned())
         })?
         .unique_identifier
         .to_string();
@@ -88,7 +86,7 @@ async fn unwrap_using_kms(
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
-        .retrieve_object(&unwrapping_key_uid, params)
+        .retrieve_object(unwrapping_key_uid, params)
         .await
         .context("wrap using KMS")?;
     let unwrapping_key = unwrapping_key.ok_or_else(|| {
@@ -169,7 +167,7 @@ async fn unwrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracleå
+/// Wrap a key with a wrapping key using an encryption oracle
 async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
@@ -182,25 +180,26 @@ async fn unwrap_using_encryption_oracle(
     let aad = object_key_block.attributes_mut()?.remove_aad();
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_string())
+        KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
     })?;
     // recover the wrapped key
     let wrapped_key = recover_wrapped_key(object_key_block, key_wrapping_data)?;
     // determine the private key if a public key is passed
-    let unwrapping_key_uid = if unwrapping_key_uid.ends_with("_pk") {
-        unwrapping_key_uid[..unwrapping_key_uid.len() - 3].to_string()
-    } else {
-        unwrapping_key_uid.to_string()
-    };
+    let unwrapping_key_uid = unwrapping_key_uid
+        .strip_suffix("_pk")
+        .map_or(unwrapping_key_uid, |unwrapping_key_uid_no_suffix| {
+            unwrapping_key_uid_no_suffix
+        });
+
     //check permissions
     if !kms
         .database
-        .is_object_owned_by(&unwrapping_key_uid, user, params)
+        .is_object_owned_by(unwrapping_key_uid, user, params)
         .await?
     {
         let ops = kms
             .database
-            .list_user_operations_on_object(&unwrapping_key_uid, user, false, params)
+            .list_user_operations_on_object(unwrapping_key_uid, user, false, params)
             .await?;
         if !ops
             .iter()
@@ -221,7 +220,7 @@ async fn unwrap_using_encryption_oracle(
     })?;
     let plaintext = encryption_oracle
         .decrypt(
-            &unwrapping_key_uid,
+            unwrapping_key_uid,
             &wrapped_key.key_bytes,
             None,
             aad.as_deref(),

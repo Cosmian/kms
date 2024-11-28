@@ -333,7 +333,7 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
             let plaintext = session.decrypt(
                 sk,
                 ProteccioEncryptionAlgorithm::RsaOaep,
-                &*encrypted_content.ciphertext,
+                &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);
             Ok::<(), PError>(())

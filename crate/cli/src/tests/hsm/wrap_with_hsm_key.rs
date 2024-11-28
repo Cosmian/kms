@@ -30,7 +30,7 @@ pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-    println!("Wrapping key id: {}", wrapping_key_id);
+    println!("Wrapping key id: {wrapping_key_id}");
     // let wrapping_key_id = "hsm::4::a44cca9e-a02a-49a0-998b-19d0924e9c6f".to_string();
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
@@ -38,7 +38,7 @@ pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: Some("aes".to_string()),
-            wrapping_key_id: Some(wrapping_key_id.clone()),
+            wrapping_key_id: Some(wrapping_key_id),
             ..Default::default()
         },
     )?;
@@ -74,14 +74,14 @@ pub(crate) fn test_wrap_with_rsa_oaep() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-    println!("Wrapping key id: {}", public_key_id);
+    println!("Wrapping key id: {public_key_id}");
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         &SymKeyOptions {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: Some("aes".to_string()),
-            wrapping_key_id: Some(public_key_id.clone()),
+            wrapping_key_id: Some(public_key_id),
             ..Default::default()
         },
     )?;
@@ -118,14 +118,14 @@ pub(crate) fn test_unwrap_on_export() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-    println!("Wrapping key id: {}", public_key_id);
+    println!("Wrapping key id: {public_key_id}");
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         &SymKeyOptions {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: Some("aes".to_string()),
-            wrapping_key_id: Some(public_key_id.clone()),
+            wrapping_key_id: Some(public_key_id),
             ..Default::default()
         },
     )?;

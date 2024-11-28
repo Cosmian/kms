@@ -8,7 +8,7 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject};
 
 /// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
 #[derive(Debug)]
-pub struct Pkcs11DataObject {
+pub(crate) struct Pkcs11DataObject {
     remote_id: String,
     value: Zeroizing<Vec<u8>>,
 }

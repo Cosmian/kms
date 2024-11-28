@@ -55,7 +55,7 @@ type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
 static SESSIONS: Lazy<sync::Mutex<SessionMap>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
-pub struct SignContext {
+pub(crate) struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
     /// Payload stored for multipart `C_SignUpdate` operations.
@@ -64,7 +64,7 @@ pub struct SignContext {
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct DecryptContext {
+pub(crate) struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
     /// Ciphertext stored for multipart `C_DecryptUpdate` operations.
@@ -72,7 +72,7 @@ pub struct DecryptContext {
 }
 
 #[derive(Default)]
-pub struct Session {
+pub(crate) struct Session {
     flags: CK_FLAGS,
     /// The objects found by C_FindObjectsInit
     /// and that have not yet been read by C_FindObjects
@@ -82,7 +82,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn update_find_objects_context(
+    pub(crate) fn update_find_objects_context(
         &mut self,
         object: Arc<Object>,
     ) -> MResult<CK_OBJECT_HANDLE> {
@@ -96,7 +96,7 @@ impl Session {
         Ok(handle)
     }
 
-    pub fn load_find_context(&mut self, template: Attributes) -> MResult<()> {
+    pub(crate) fn load_find_context(&mut self, template: Attributes) -> MResult<()> {
         if template.is_empty() {
             error!("load_find_context: empty template");
             return Err(MError::ArgumentsBad);
@@ -239,7 +239,7 @@ impl Session {
     }
 
     /// Sign the provided data, or stored payload if data is not provided.
-    pub unsafe fn sign(
+    pub(crate) unsafe fn sign(
         &mut self,
         data: Option<&[u8]>,
         pSignature: CK_BYTE_PTR,
@@ -275,7 +275,7 @@ impl Session {
         Ok(())
     }
 
-    pub unsafe fn decrypt(
+    pub(crate) unsafe fn decrypt(
         &mut self,
         ciphertext: Vec<u8>,
         pData: CK_BYTE_PTR,
@@ -310,7 +310,7 @@ fn ignore_sessions() -> bool {
         == "true"
 }
 
-pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
+pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     if ignore_sessions() {
         {
             let mut session_map = SESSIONS.lock().expect("failed locking the sessions map");
@@ -341,14 +341,14 @@ pub fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     }
 }
 
-pub fn exists(handle: CK_SESSION_HANDLE) -> bool {
+pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> bool {
     SESSIONS
         .lock()
         .expect("failed locking the sessions map")
         .contains_key(&handle)
 }
 
-pub fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
+pub(crate) fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
     SESSIONS
         .lock()
         .expect("failed locking the sessions map")
@@ -357,7 +357,7 @@ pub fn flags(handle: CK_SESSION_HANDLE) -> CK_FLAGS {
         .flags
 }
 
-pub fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> MResult<()>
+pub(crate) fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> MResult<()>
 where
     F: FnOnce(&mut Session) -> MResult<()>,
 {
@@ -369,7 +369,7 @@ where
     callback(session)
 }
 
-pub fn close(handle: CK_SESSION_HANDLE) -> bool {
+pub(crate) fn close(handle: CK_SESSION_HANDLE) -> bool {
     if !ignore_sessions() {
         return SESSIONS
             .lock()
@@ -380,7 +380,7 @@ pub fn close(handle: CK_SESSION_HANDLE) -> bool {
     true
 }
 
-pub fn close_all() {
+pub(crate) fn close_all() {
     SESSIONS
         .lock()
         .expect("failed locking the sessions map")

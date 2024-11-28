@@ -66,14 +66,14 @@ pub(crate) async fn rekey_keypair(
         }
         if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
             let action = rekey_edit_action_from_attributes(attributes)?;
-            return rekey_keypair_cover_crypt(
+            return Box::pin(rekey_keypair_cover_crypt(
                 kms,
                 Covercrypt::default(),
                 owm.id().to_owned(),
                 user,
                 action,
                 params,
-            )
+            ))
             .await
         } else if let Some(other) = attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(

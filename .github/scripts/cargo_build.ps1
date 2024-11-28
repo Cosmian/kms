@@ -1,3 +1,7 @@
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+$PSNativeCommandUseErrorActionPreference = $true # might be true by default
+
 function BuildProject
 {
     param (

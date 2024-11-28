@@ -23,7 +23,7 @@ use crate::traits::{
 };
 
 static TRACING_INIT: Once = Once::new();
-pub fn initialize_logging() {
+pub(crate) fn initialize_logging() {
     TRACING_INIT.call_once(|| {
         let subscriber = FmtSubscriber::builder()
             .with_max_level(Level::INFO) // Adjust the level as needed
@@ -120,7 +120,7 @@ cryptoki_fn!(
     }
 );
 
-pub fn test_init() {
+pub(crate) fn test_init() {
     initialize_logging();
     if !INITIALIZED.load(Ordering::SeqCst) {
         let mut func_list: &mut CK_FUNCTION_LIST = &mut CK_FUNCTION_LIST {

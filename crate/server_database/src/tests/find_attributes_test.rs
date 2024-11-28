@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use crate::{
     db_error,
+    error::DbResult,
     stores::{ExtraStoreParams, ObjectsStore},
-    DbResult,
 };
 
 pub(crate) async fn find_attributes<DB: ObjectsStore>(

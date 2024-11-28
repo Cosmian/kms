@@ -1,3 +1,4 @@
+#![allow(clippy::print_stdout)]
 //! These tests are gated behind the HSM feature flag. They require a running KMS-HSM server.
 //! Configure the client file at the location indicated by `KSM_HSM_CLIENT_CONF` with the appropriate content
 //! then run the tests with the following command:

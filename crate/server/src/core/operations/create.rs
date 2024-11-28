@@ -92,7 +92,7 @@ pub(crate) async fn create(
         kms.database
             .unwrapped_cache()
             .insert(
-                uid.to_owned(),
+                uid.clone(),
                 Ok(CachedUnwrappedObject::new(
                     object.key_signature()?,
                     unwrapped_key,

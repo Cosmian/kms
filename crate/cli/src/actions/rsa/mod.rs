@@ -61,22 +61,23 @@ impl Display for RsaEncryptionAlgorithm {
 }
 
 impl RsaEncryptionAlgorithm {
+    #[must_use]
     pub fn to_cryptographic_parameters(self, hash_fn: HashFn) -> CryptographicParameters {
         match self {
             #[cfg(not(feature = "fips"))]
-            RsaEncryptionAlgorithm::CkmRsaPkcs => CryptographicParameters {
+            Self::CkmRsaPkcs => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 padding_method: Some(PaddingMethod::PKCS1v15),
                 hashing_algorithm: None,
                 ..Default::default()
             },
-            RsaEncryptionAlgorithm::CkmRsaPkcsOaep => CryptographicParameters {
+            Self::CkmRsaPkcsOaep => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(hash_fn.into()),
                 ..Default::default()
             },
-            RsaEncryptionAlgorithm::CkmRsaAesKeyWrap => CryptographicParameters {
+            Self::CkmRsaAesKeyWrap => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(hash_fn.into()),
@@ -85,7 +86,8 @@ impl RsaEncryptionAlgorithm {
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::CkmRsaPkcsOaep => "ckm-rsa-pkcs-oaep",
             Self::CkmRsaAesKeyWrap => "ckm-rsa-aes-key-wrap",

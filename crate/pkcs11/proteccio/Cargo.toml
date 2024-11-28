@@ -14,7 +14,6 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 cosmian_kms_interfaces = { path = "../../interfaces" }
-hex = { workspace = true }
 libloading = "0.8.5"
 lru = { workspace = true }
 pkcs11_sys = { path = "../sys" }

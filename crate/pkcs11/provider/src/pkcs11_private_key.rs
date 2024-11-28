@@ -13,7 +13,7 @@ use crate::kms_object::{key_algorithm_from_attributes, KmsObject};
 /// A PKCS11 Private Key implementation that may only hold remote
 /// references to the actual private key
 #[derive(Debug)]
-pub struct Pkcs11PrivateKey {
+pub(crate) struct Pkcs11PrivateKey {
     remote_id: String,
     algorithm: KeyAlgorithm,
     key_size: usize,
@@ -23,7 +23,7 @@ pub struct Pkcs11PrivateKey {
 }
 
 impl Pkcs11PrivateKey {
-    pub fn new(remote_id: String, algorithm: KeyAlgorithm, key_size: usize) -> Self {
+    pub(crate) fn new(remote_id: String, algorithm: KeyAlgorithm, key_size: usize) -> Self {
         Self {
             remote_id,
             der_bytes: Arc::new(RwLock::new(Zeroizing::new(vec![]))),
@@ -32,7 +32,7 @@ impl Pkcs11PrivateKey {
         }
     }
 
-    pub fn try_from_kms_object(remote_id: String, kms_object: KmsObject) -> MResult<Self> {
+    pub(crate) fn try_from_kms_object(remote_id: String, kms_object: KmsObject) -> MResult<Self> {
         let der_bytes = Arc::new(RwLock::new(
             kms_object
                 .object

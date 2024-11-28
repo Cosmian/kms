@@ -90,7 +90,7 @@ async fn wrap_using_kms(
     // fetch the wrapping key
     let wrapping_key = kms
         .database
-        .retrieve_object(&wrapping_key_uid, params)
+        .retrieve_object(wrapping_key_uid, params)
         .await
         .context("wrap using KMS")?;
     let wrapping_key = wrapping_key.ok_or_else(|| {
@@ -105,11 +105,10 @@ async fn wrap_using_kms(
         ObjectType::PrivateKey => {
             let attributes = wrapping_key.attributes();
             let pk_id = attributes.get_link(LinkType::PublicKeyLink);
-            let pk_id = if let Some(pk_id) = pk_id {
-                pk_id.to_string()
-            } else {
-                wrapping_key_uid.to_owned() + "_pk"
-            };
+            let pk_id = pk_id.map_or_else(
+                || wrapping_key_uid.to_owned() + "_pk",
+                |pk_id| pk_id.to_string(),
+            );
             // fetch the private key
             let wrapping_key = kms
                 .database
@@ -173,7 +172,7 @@ async fn wrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracleå
+/// Wrap a key with a wrapping key using an encryption oracle
 async fn wrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
@@ -186,12 +185,12 @@ async fn wrap_using_encryption_oracle(
     //check permissions
     if !kms
         .database
-        .is_object_owned_by(&wrapping_key_uid, user, params)
+        .is_object_owned_by(wrapping_key_uid, user, params)
         .await?
     {
         let ops = kms
             .database
-            .list_user_operations_on_object(&wrapping_key_uid, user, false, params)
+            .list_user_operations_on_object(wrapping_key_uid, user, false, params)
             .await?;
         if !ops
             .iter()
@@ -221,7 +220,7 @@ async fn wrap_using_encryption_oracle(
     let wrapped_key = [
         encrypted_content.iv.clone().unwrap_or_default(),
         encrypted_content.ciphertext.clone(),
-        encrypted_content.tag.clone().unwrap_or_default(),
+        encrypted_content.tag.unwrap_or_default(),
     ]
     .concat();
     update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, wrapped_key);

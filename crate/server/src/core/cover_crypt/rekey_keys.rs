@@ -43,74 +43,103 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
     let (msk_uid, mpk_uid) = match action {
         RekeyEditAction::RekeyAccessPolicy(ap) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, mpk| {
                     let ap = deserialize_access_policy(&ap)?;
                     cover_crypt.rekey_master_keys(&ap, policy, msk, mpk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::PruneAccessPolicy(ap) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, _mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, _mpk| {
                     let ap = deserialize_access_policy(&ap)?;
                     cover_crypt.prune_master_secret_key(&ap, policy, msk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::RemoveAttribute(attrs) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, mpk| {
                     attrs
                         .iter()
                         .try_for_each(|attr| policy.remove_attribute(attr))?;
                     cover_crypt.update_master_keys(policy, msk, mpk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
 
             update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::DisableAttribute(attrs) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, mpk| {
                     attrs
                         .iter()
                         .try_for_each(|attr| policy.disable_attribute(attr))?;
                     cover_crypt.update_master_keys(policy, msk, mpk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
 
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::RenameAttribute(pairs_attr_name) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, mpk| {
                     pairs_attr_name.iter().try_for_each(|(attr, new_name)| {
                         policy.rename_attribute(attr, new_name.clone())
                     })?;
                     cover_crypt.update_master_keys(policy, msk, mpk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
             (msk_obj.0, mpk_obj.0)
         }
         RekeyEditAction::AddAttribute(attrs_properties) => {
-            let (msk_obj, mpk_obj) =
-                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+            let (msk_obj, mpk_obj) = Box::pin(update_master_keys(
+                kmip_server,
+                owner,
+                params,
+                msk_uid,
+                |policy, msk, mpk| {
                     attrs_properties
                         .iter()
                         .try_for_each(|(attr, encryption_hint)| {
@@ -118,8 +147,9 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         })?;
                     cover_crypt.update_master_keys(policy, msk, mpk)?;
                     Ok(())
-                })
-                .await?;
+                },
+            ))
+            .await?;
 
             (msk_obj.0, mpk_obj.0)
         }

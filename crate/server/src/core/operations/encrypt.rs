@@ -212,7 +212,7 @@ async fn encrypt_using_encryption_oracle(
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(encrypted_content.ciphertext.to_owned()),
+        data: Some(encrypted_content.ciphertext.clone()),
         iv_counter_nonce: encrypted_content.iv,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: encrypted_content.tag,

@@ -21,12 +21,12 @@ use redis::aio::ConnectionManager;
 use tracing::trace;
 
 use crate::{
+    error::DbResult,
     stores::redis::{
         objects_db::{ObjectsDB, RedisDbObject},
         permissions::PermissionsDB,
     },
     tests::get_redis_url,
-    DbResult,
 };
 
 struct DummyDB;

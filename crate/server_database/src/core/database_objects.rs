@@ -138,6 +138,9 @@ impl Database {
     }
 
     /// Create the given Object in the database.
+    /// A new UUID will be created if none is supplier.
+    /// This method will fail if an ` uid ` is supplied
+    /// and an object with the same id already exists
     ///
     /// # Arguments
     ///
@@ -151,11 +154,6 @@ impl Database {
     /// # Returns
     ///
     /// * `DbResult<String>` - A result containing the unique identifier of the created object.
-    /// Create the given Object in the database.
-    ///
-    /// A new UUID will be created if none is supplier.
-    /// This method will fail if an ` uid ` is supplied
-    /// and an object with the same id already exists
     pub async fn create(
         &self,
         uid: Option<String>,

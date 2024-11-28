@@ -15,13 +15,13 @@ use self::{
     tagging_tests::tags,
 };
 use crate::{
+    error::DbResult,
     stores::{
         additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
         CachedSqlCipher, ExtraStoreParams, MySqlPool, PgPool, RedisWithFindex, SqlitePool,
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     },
     tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
-    DbResult,
 };
 
 mod database_tests;

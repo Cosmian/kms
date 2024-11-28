@@ -12,7 +12,7 @@ use crate::{error::Pkcs11Error, kms_object::KmsObject, pkcs11_public_key::Pkcs11
 
 /// A PKCS11 Certificate is a Certificate that wraps data from a KMS object
 #[derive(Debug)]
-pub struct Pkcs11Certificate {
+pub(crate) struct Pkcs11Certificate {
     /// The remote id
     pub remote_id: String,
     /// The certificate

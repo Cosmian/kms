@@ -15,9 +15,9 @@ use uuid::Uuid;
 
 use crate::{
     db_bail,
-    error::DbError,
+    error::{DbError, DbResult},
     stores::{ExtraStoreParams, ObjectsStore},
-    AtomicOperation, DbResult,
+    AtomicOperation,
 };
 
 pub(crate) async fn tx_and_list<DB: ObjectsStore>(

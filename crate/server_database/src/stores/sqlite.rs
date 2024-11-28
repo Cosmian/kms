@@ -21,14 +21,14 @@ use uuid::Uuid;
 
 use crate::{
     db_bail, db_error,
-    error::DbResultHelper,
+    error::{DbResult, DbResultHelper},
     migrate::do_migration,
     stores::{
         locate_query::{query_from_attributes, SqlitePlaceholder},
         store_traits::{ObjectsStore, PermissionsStore},
         DBObject, ExtraStoreParams, SQLITE_QUERIES,
     },
-    AtomicOperation, DbError, DbResult, ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    AtomicOperation, DbError, ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[macro_export]
@@ -425,7 +425,7 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     let row: Option<SqliteRow> = sqlx::query(get_sqlite_query!("select-object"))
-        .bind(&uid)
+        .bind(uid)
         .fetch_optional(executor)
         .await?;
     if let Some(row) = row {

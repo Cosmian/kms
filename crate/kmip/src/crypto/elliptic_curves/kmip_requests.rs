@@ -65,6 +65,7 @@ fn build_mask_from_curve(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 #[cfg(not(feature = "fips"))]
+#[allow(clippy::unnecessary_wraps)]
 const fn build_mask_from_curve(
     _curve: RecommendedCurve,
     _is_private_mask: bool,

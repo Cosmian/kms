@@ -10,7 +10,7 @@ use cosmian_kmip::crypto::secret::Secret;
 use cosmian_kms_interfaces::HSM;
 use tokio::sync::RwLock;
 
-use crate::stores::HsmStore;
+use crate::{error::DbResult, stores::HsmStore};
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
@@ -19,12 +19,9 @@ mod unwrapped_cache;
 pub use object_with_metadata::ObjectWithMetadata;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
-use crate::{
-    stores::{
-        CachedSqlCipher, MySqlPool, ObjectsStore, PermissionsStore, PgPool, RedisWithFindex,
-        SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-    },
-    DbResult,
+use crate::stores::{
+    CachedSqlCipher, MySqlPool, ObjectsStore, PermissionsStore, PgPool, RedisWithFindex,
+    SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
 };
 
 /// The `Database` struct represents the core database functionalities, including object management,
@@ -34,7 +31,7 @@ pub struct Database {
     /// The "no-prefix" DB is registered under the empty string
     objects: RwLock<HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>>,
     /// The permissions store is used to check if a user has the right to perform an operation
-    //TODO use this store to check permissions in retrive, update, delete, etc.
+    //TODO use this store to check permissions in retrieve, update, delete, etc.
     permissions: Arc<dyn PermissionsStore + Sync + Send>,
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
@@ -70,7 +67,7 @@ impl Database {
                 Database::new(db.clone(), db)
             }
             MainDbParams::SqliteEnc(db_path) => {
-                let db = Arc::new(CachedSqlCipher::instantiate(&*db_path, clear_db_on_start)?);
+                let db = Arc::new(CachedSqlCipher::instantiate(db_path, clear_db_on_start)?);
                 Database::new(db.clone(), db)
             }
             MainDbParams::Postgres(url) => {
@@ -91,8 +88,8 @@ impl Database {
                     );
                 // `master_key` implements ZeroizeOnDrop so there is no need
                 // to manually zeroize.
-                let db = Arc::new(
-                    RedisWithFindex::instantiate(url.as_str(), new_master_key, &*label).await?,
+                let db: Arc<RedisWithFindex> = Arc::new(
+                    RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
                 );
                 Database::new(db.clone(), db)
             }

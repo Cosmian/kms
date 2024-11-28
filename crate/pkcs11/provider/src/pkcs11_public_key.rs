@@ -10,7 +10,7 @@ use sha3::Digest;
 use tracing::error;
 use x509_cert::{der::Encode, spki::SubjectPublicKeyInfoOwned};
 
-pub struct Pkcs11PublicKey {
+pub(crate) struct Pkcs11PublicKey {
     remote_id: String,
     /// DER bytes of the public key
     der_bytes: Vec<u8>,
@@ -21,7 +21,7 @@ pub struct Pkcs11PublicKey {
 }
 
 impl Pkcs11PublicKey {
-    pub fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> MResult<Self> {
+    pub(crate) fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> MResult<Self> {
         let algorithm = &spki.algorithm;
         let algorithm =
             KeyAlgorithm::from_oid(&algorithm.oid).ok_or_else(|| MError::ArgumentsBad)?;

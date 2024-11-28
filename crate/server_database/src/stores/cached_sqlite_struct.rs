@@ -12,7 +12,10 @@ use cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256
 use sqlx::{Pool, Sqlite};
 use tracing::{debug, info, trace};
 
-use crate::{db_bail, db_error, error::DbError, DbResult};
+use crate::{
+    db_bail, db_error,
+    error::{DbError, DbResult},
+};
 
 macro_rules! mac {
     ($res: expr, $key:expr, $($bytes: expr),+) => {

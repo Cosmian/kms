@@ -17,21 +17,21 @@ use crate::error::Pkcs11Error;
 
 /// A wrapper around a KMS KMIP object.
 #[allow(dead_code)]
-pub struct KmsObject {
+pub(crate) struct KmsObject {
     pub remote_id: String,
     pub object: Object,
     pub attributes: Attributes,
     pub other_tags: Vec<String>,
 }
 
-pub fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
+pub(crate) fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
     let conf_path = ClientConf::location(None)?;
     let conf = ClientConf::load(&conf_path)?;
     let kms_client = conf.initialize_kms_client(None, None, false)?;
     Ok(kms_client)
 }
 
-pub fn locate_kms_objects(
+pub(crate) fn locate_kms_objects(
     kms_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<String>, Pkcs11Error> {
@@ -45,7 +45,7 @@ pub(crate) async fn locate_kms_objects_async(
     locate_objects(kms_client, tags).await
 }
 
-pub fn get_kms_objects(
+pub(crate) fn get_kms_objects(
     kms_client: &KmsClient,
     tags: &[String],
     key_format_type: KeyFormatType,
@@ -87,7 +87,7 @@ pub(crate) async fn get_kms_objects_async(
     Ok(results)
 }
 
-pub fn get_kms_object(
+pub(crate) fn get_kms_object(
     kms_client: &KmsClient,
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
@@ -156,7 +156,7 @@ async fn locate_objects(
     Ok(uniques_identifiers)
 }
 
-pub fn kms_decrypt(
+pub(crate) fn kms_decrypt(
     kms_client: &KmsClient,
     key_id: String,
     encryption_algorithm: EncryptionAlgorithm,
@@ -195,7 +195,7 @@ pub(crate) async fn kms_decrypt_async(
     })
 }
 
-pub fn get_kms_object_attributes(
+pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
 ) -> Result<Attributes, Pkcs11Error> {
@@ -215,7 +215,9 @@ pub(crate) async fn get_kms_object_attributes_async(
     Ok(response.attributes)
 }
 
-pub fn key_algorithm_from_attributes(attributes: &Attributes) -> Result<KeyAlgorithm, Pkcs11Error> {
+pub(crate) fn key_algorithm_from_attributes(
+    attributes: &Attributes,
+) -> Result<KeyAlgorithm, Pkcs11Error> {
     let algorithm = match attributes.cryptographic_algorithm.ok_or_else(|| {
         Pkcs11Error::Default("missing cryptographic algorithm in attributes".to_string())
     })? {

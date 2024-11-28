@@ -22,7 +22,7 @@ use cosmian_kmip::{
 use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::{db_bail, DbError, DbResult};
+use crate::{db_bail, error::DbResult, DbError};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {

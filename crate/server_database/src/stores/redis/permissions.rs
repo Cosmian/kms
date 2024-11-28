@@ -12,7 +12,7 @@ use cloudproof_findex::{
 };
 use cosmian_kmip::kmip::KmipOperation;
 
-use crate::{DbError, DbResult};
+use crate::{error::DbResult, DbError};
 
 /// The struct we store for each permission
 /// We store the permission itself as a Location

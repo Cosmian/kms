@@ -44,7 +44,7 @@ pub struct DecryptCertificateAction {
 
     /// Optional encryption algorithm.
     /// This is only available for RSA keys for now.
-    /// The default for RSA is PKCS_OAEP.
+    /// The default for RSA is `PKCS_OAEP`.
     #[clap(long, short = 'e', verbatim_doc_comment)]
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 }

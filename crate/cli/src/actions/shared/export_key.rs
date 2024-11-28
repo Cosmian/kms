@@ -39,13 +39,13 @@ pub(crate) enum WrappingAlgorithm {
 }
 
 impl WrappingAlgorithm {
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub(crate) const fn as_str(&self) -> &'static str {
         match self {
-            WrappingAlgorithm::NistKeyWrap => "nist-key-wrap",
-            WrappingAlgorithm::AesGCM => "aes-gcm",
-            WrappingAlgorithm::RsaPkcsV15 => "rsa-pkcs-v15",
-            WrappingAlgorithm::RsaOaep => "rsa-oaep",
-            WrappingAlgorithm::RsaAesKeyWrap => "rsa-aes-key-wrap",
+            Self::NistKeyWrap => "nist-key-wrap",
+            Self::AesGCM => "aes-gcm",
+            Self::RsaPkcsV15 => "rsa-pkcs-v15",
+            Self::RsaOaep => "rsa-oaep",
+            Self::RsaAesKeyWrap => "rsa-aes-key-wrap",
         }
     }
 }
@@ -198,8 +198,9 @@ impl ExportKeyAction {
         let encode_to_ttlv = self.key_format == ExportKeyFormat::JsonTtlv;
 
         let wrapping_cryptographic_parameters =
-            if let Some(wrapping_algorithm) = &self.wrapping_algorithm {
-                Some(match wrapping_algorithm {
+            self.wrapping_algorithm
+                .as_ref()
+                .map(|wrapping_algorithm| match wrapping_algorithm {
                     WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
@@ -228,10 +229,7 @@ impl ExportKeyAction {
                         hashing_algorithm: Some(HashingAlgorithm::SHA256),
                         ..CryptographicParameters::default()
                     },
-                })
-            } else {
-                None
-            };
+                });
 
         // export the object
         let (id, object, _) = export_object(

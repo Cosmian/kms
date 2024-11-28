@@ -23,11 +23,11 @@ pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
 /// Determine the list of possible UIDs from a Unique Identifier,
 /// that may contain tags
 /// # Arguments
-/// * `unique_identifier` - A UniqueIdentifier object
+/// * `unique_identifier` - A `UniqueIdentifier` object
 /// * `kms` - A reference to the KMS object
-/// * `params` - An optional reference to the ExtraStoreParams object
+/// * `params` - An optional reference to the `ExtraStoreParams` object
 /// # Returns
-/// * `KResult` - A HashSet of strings representing the possible UIDs
+/// * `KResult` - A `HashSet` of strings representing the possible UIDs
 pub(crate) async fn uids_from_unique_identifier(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,

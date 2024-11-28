@@ -74,5 +74,5 @@ pub(crate) async fn user_has_permission(
         .database
         .list_user_operations_on_object(owm.id(), user, false, params)
         .await?;
-    Ok(permissions.contains(&operation_type) || permissions.contains(&KmipOperation::Get))
+    Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
 }

@@ -25,7 +25,7 @@ use tracing::debug;
 use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    db_bail, stores::ObjectsStore, AtomicOperation, DbError, DbResult, ExtraStoreParams,
+    db_bail, error::DbResult, stores::ObjectsStore, AtomicOperation, DbError, ExtraStoreParams,
     ObjectWithMetadata,
 };
 
@@ -122,7 +122,7 @@ impl ObjectsStore for HsmStore {
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
                 // Convert the HSM object into an ObjectWithMetadata
-                let owm = to_object_with_metadate(&hsm_object, uid, self.hsm_admin.as_str())?;
+                let owm = to_object_with_metadata(&hsm_object, uid, self.hsm_admin.as_str())?;
                 Some(owm)
             } else {
                 None
@@ -296,7 +296,7 @@ fn parse_uid(uid: &str) -> Result<(usize, String), DbError> {
     Ok((slot_id, key_id.to_owned()))
 }
 
-fn to_object_with_metadate(
+fn to_object_with_metadata(
     hsm_object: &HsmObject,
     uid: &str,
     user: &str,

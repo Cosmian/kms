@@ -10,8 +10,8 @@ use cosmian_kmip::{
 use uuid::Uuid;
 
 use crate::{
+    error::DbResult,
     stores::{ExtraStoreParams, ObjectsStore, PermissionsStore},
-    DbResult,
 };
 
 pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(

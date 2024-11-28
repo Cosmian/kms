@@ -23,7 +23,7 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
 
     // revoke
     match revoke(KMS_HSM_CLIENT_CONF, "sym", &key_id, "revocation test") {
-        Ok(_) => {
+        Ok(()) => {
             debug!("revocation successful");
         }
         Err(_) => {
@@ -36,7 +36,7 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
     let res = export_key(ExportKeyParams {
         cli_conf_path: KMS_HSM_CLIENT_CONF.to_owned(),
         sub_command: "sym".to_string(),
-        key_id: key_id.clone(),
+        key_id,
         key_file: "/tmp/key".to_string(),
         ..Default::default()
     });
