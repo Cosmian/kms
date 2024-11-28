@@ -1815,7 +1815,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
-`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key to wrap this new key with.    
+`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key to wrap this new key with.
 If the wrapping key is:
 
 -  a symmetric key, AES-GCM will be used

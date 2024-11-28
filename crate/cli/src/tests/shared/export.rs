@@ -27,12 +27,15 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
-    actions::{shared::{export_key::WrappingAlgorithm, ExportKeyFormat}, symmetric::keys::create_key::CreateKeyAction},
+    actions::{
+        shared::{export_key::WrappingAlgorithm, ExportKeyFormat},
+        symmetric::keys::create_key::CreateKeyAction,
+    },
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
     },
@@ -597,7 +600,7 @@ pub(crate) async fn test_sensitive_sym() -> CliResult<()> {
     // generate a symmetric key
     let key_id = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        &SymKeyOptions {
+        CreateKeyAction {
             sensitive: true,
             ..Default::default()
         },

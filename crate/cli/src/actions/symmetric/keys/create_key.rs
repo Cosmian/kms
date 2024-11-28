@@ -85,9 +85,9 @@ pub struct CreateKeyAction {
 
     /// Sensitive: if set, the key will not be exportable
     #[clap(long = "sensitive", default_value = "false")]
-    sensitive: bool,
+    pub(crate) sensitive: bool,
 
-    /// The key to wrap this new key with.    
+    /// The key to wrap this new key with.
     /// If the wrapping key is:
     /// -  a symmetric key, AES-GCM will be used
     /// -  a RSA key, RSA-OAEP will be used
@@ -98,7 +98,7 @@ pub struct CreateKeyAction {
         required = false,
         verbatim_doc_comment
     )]
-    wrapping_key_id: Option<String>,
+    pub(crate) wrapping_key_id: Option<String>,
 }
 
 impl CreateKeyAction {

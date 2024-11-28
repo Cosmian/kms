@@ -16,7 +16,7 @@ use crate::{
     error::result::CliResult,
     tests::{
         shared::{export_key, ExportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
     },

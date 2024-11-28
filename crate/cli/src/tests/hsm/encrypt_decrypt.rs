@@ -8,7 +8,10 @@ use uuid::Uuid;
 use crate::{
     actions::{
         rsa::{HashFn, RsaEncryptionAlgorithm},
-        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
+        symmetric::{
+            keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+            DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
+        },
     },
     error::result::CliResult,
     tests::{
@@ -17,10 +20,7 @@ use crate::{
             create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
             encrypt_decrypt::{decrypt, encrypt},
         },
-        symmetric::{
-            create_key::{create_symmetric_key, SymKeyOptions},
-            encrypt_decrypt::run_encrypt_decrypt_test,
-        },
+        symmetric::{create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test},
     },
 };
 
@@ -28,10 +28,10 @@ use crate::{
 pub(crate) fn test_aes_gcm() -> CliResult<()> {
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
-            algorithm: Some("aes".to_string()),
+            algorithm: SymmetricAlgorithm::Aes,
             ..Default::default()
         },
     )?;

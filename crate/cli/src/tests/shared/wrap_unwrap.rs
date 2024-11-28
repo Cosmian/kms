@@ -25,7 +25,7 @@ use crate::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::{extract_uids::extract_wrapping_key, recover_cmd_logs},
         PROG_NAME,
     },

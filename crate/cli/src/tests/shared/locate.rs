@@ -1,4 +1,4 @@
-use std::{collections::HashSet, process::Command};
+use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
@@ -17,7 +17,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::{extract_uids::extract_locate_uids, recover_cmd_logs},
         PROG_NAME,
     },

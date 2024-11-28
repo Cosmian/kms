@@ -149,14 +149,14 @@ impl ObjectsDB {
             return Err(DbError::CryptographicError("invalid ciphertext".to_owned()))
         }
         let nonce_bytes = &ciphertext.get(..Aes256Gcm::NONCE_LENGTH).ok_or_else(|| {
-            KmsError::ServerError("decrypt_object: indexing slicing failed for nonce".to_owned())
+            DbError::ServerError("decrypt_object: indexing slicing failed for nonce".to_owned())
         })?;
         let plaintext = self
             .dem
             .decrypt(
                 &Nonce::try_from(*nonce_bytes)?,
                 ciphertext.get(Aes256Gcm::NONCE_LENGTH..).ok_or_else(|| {
-                    KmsError::CryptographicError(
+                    DbError::CryptographicError(
                         "decrypt_object: indexing slicing failed for plaintext".to_owned(),
                     )
                 })?,

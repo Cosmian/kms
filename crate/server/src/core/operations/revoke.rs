@@ -42,10 +42,10 @@ pub(crate) async fn revoke_operation(
 
     // For demo purposes, make some keys non-revokable (like google cse and ms dke keys)
     if let Some(non_revokable_key_id) = &kms.params.non_revokable_key_id {
-        if non_revokable_key_id.contains(&uid_or_tags.to_owned()) {
+        if non_revokable_key_id.contains(&unique_identifier.to_string()) {
             trace!("Non revokable keys detected: won't be revoked {non_revokable_key_id:?}");
             return Ok(RevokeResponse {
-                unique_identifier: UniqueIdentifier::TextString(uid_or_tags.to_owned()),
+                unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_string()),
             });
         }
     }

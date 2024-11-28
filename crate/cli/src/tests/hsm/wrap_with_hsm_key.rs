@@ -4,17 +4,17 @@ use uuid::Uuid;
 use crate::{
     actions::{
         shared::ExportKeyFormat,
-        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
+        symmetric::{
+            keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+            DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
+        },
     },
     error::result::CliResult,
     tests::{
         hsm::KMS_HSM_CLIENT_CONF,
         rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
         shared::{export_key, ExportKeyParams},
-        symmetric::{
-            create_key::{create_symmetric_key, SymKeyOptions},
-            encrypt_decrypt::run_encrypt_decrypt_test,
-        },
+        symmetric::{create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test},
     },
 };
 
@@ -22,10 +22,10 @@ use crate::{
 pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
     let wrapping_key_id = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
-            algorithm: Some("aes".to_string()),
+            algorithm: SymmetricAlgorithm::Aes,
             sensitive: true,
             ..Default::default()
         },
@@ -34,10 +34,10 @@ pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
     // let wrapping_key_id = "hsm::4::a44cca9e-a02a-49a0-998b-19d0924e9c6f".to_string();
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
-            algorithm: Some("aes".to_string()),
+            algorithm: SymmetricAlgorithm::Aes,
             wrapping_key_id: Some(wrapping_key_id),
             ..Default::default()
         },
@@ -77,10 +77,10 @@ pub(crate) fn test_wrap_with_rsa_oaep() -> CliResult<()> {
     println!("Wrapping key id: {public_key_id}");
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
-            algorithm: Some("aes".to_string()),
+            algorithm: SymmetricAlgorithm::Aes,
             wrapping_key_id: Some(public_key_id),
             ..Default::default()
         },
@@ -121,10 +121,10 @@ pub(crate) fn test_unwrap_on_export() -> CliResult<()> {
     println!("Wrapping key id: {public_key_id}");
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some(Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
-            algorithm: Some("aes".to_string()),
+            algorithm: SymmetricAlgorithm::Aes,
             wrapping_key_id: Some(public_key_id),
             ..Default::default()
         },

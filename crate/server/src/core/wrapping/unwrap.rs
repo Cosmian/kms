@@ -107,8 +107,8 @@ async fn unwrap_using_kms(
             let private_key_uid = attributes.get_link(LinkType::PrivateKeyLink);
             let sk_id = if let Some(private_key_uid) = private_key_uid {
                 private_key_uid.to_string()
-            } else if unwrapping_key_uid.ends_with("_pk") {
-                unwrapping_key_uid[..unwrapping_key_uid.len() - 3].to_string()
+            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix("_pk") {
+                stripped.to_owned()
             } else {
                 kms_bail!(
                     "unwrap_key: no corresponding private key link found for the public key \

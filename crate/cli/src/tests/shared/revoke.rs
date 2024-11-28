@@ -17,7 +17,7 @@ use crate::{
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export_key, ExportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
     },

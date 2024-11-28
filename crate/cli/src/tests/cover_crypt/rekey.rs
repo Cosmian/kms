@@ -16,7 +16,7 @@ use crate::{
             SUB_COMMAND,
         },
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         utils::recover_cmd_logs,
         PROG_NAME,
     },

@@ -176,6 +176,7 @@ impl From<KmipError> for DbError {
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
             | KmipError::ConversionError(s)
+            | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
         }
     }

@@ -43,6 +43,7 @@ impl KMS {
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
     /// # Returns
     /// A new KMS instance.
+    #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: ServerParams) -> KResult<Self> {
         //TODO once the Store traits can be move to the `Interfaces` crate, the single HSM instantiation can be
         // de-hardcoded.  The underlying code allows the ise of multiple Stores and Encryption Oracles
@@ -67,8 +68,7 @@ impl KMS {
                 Proteccio::instantiate("/lib/libnethsm.so", server_params.slot_passwords.clone())
                     .map_err(|e| {
                     KmsError::InvalidRequest(format!(
-                        "Failed to instantiate the Proteccio HSM: {}",
-                        e
+                        "Failed to instantiate the Proteccio HSM: {e}"
                     ))
                 })?,
             ) as Arc<dyn HSM + Send + Sync>)

@@ -9,8 +9,6 @@ use cosmian_kms_client::{
 use kms_test_server::start_default_test_kms_server;
 
 #[cfg(not(feature = "fips"))]
-use crate::tests::symmetric::create_key::SymKeyOptions;
-#[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
     elliptic_curve::create_key_pair::create_ec_key_pair,

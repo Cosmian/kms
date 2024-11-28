@@ -2,11 +2,12 @@ use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         hsm::KMS_HSM_CLIENT_CONF,
         shared::{destroy, export_key, revoke, ExportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
     },
 };
 
@@ -15,7 +16,7 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
     // syn
     let key_id = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
-        &SymKeyOptions {
+        CreateKeyAction {
             key_id: Some("hsm::4::".to_string() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },

@@ -3,11 +3,13 @@ use tempfile::TempDir;
 use tracing::{debug, trace};
 
 use crate::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
+    actions::{
+        shared::export_key::WrappingAlgorithm, symmetric::keys::create_key::CreateKeyAction,
+    },
     error::result::CliResult,
     tests::{
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
     },
 };
 

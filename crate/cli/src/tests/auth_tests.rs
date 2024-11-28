@@ -18,7 +18,7 @@ use crate::{
     tests::{
         access::SUB_COMMAND,
         shared::{export_key, ExportKeyParams},
-        symmetric::create_key::{create_symmetric_key, SymKeyOptions},
+        symmetric::create_key::create_symmetric_key,
         PROG_NAME,
     },
 };

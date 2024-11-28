@@ -11,7 +11,7 @@ use crate::{
     error::{result::CliResult, CliError},
     tests::{
         shared::{destroy, export_key, revoke, ExportKeyParams},
-        symmetric::{create_key::SymKeyOptions, encrypt_decrypt::run_encrypt_decrypt_test},
+        symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
         PROG_NAME,
     },
 };
