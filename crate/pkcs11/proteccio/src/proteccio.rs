@@ -230,7 +230,7 @@ impl From<CK_INFO> for Info {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            flags: flags,
+            flags,
             libraryDescription: CStr::from_bytes_until_nul(&info.libraryDescription)
                 .unwrap_or_default()
                 .to_string_lossy()
