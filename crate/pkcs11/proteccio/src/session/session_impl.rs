@@ -151,9 +151,13 @@ impl Session {
         unsafe {
             let mut values = vec![0u8; len];
             let values_ptr: *mut u8 = values.as_mut_ptr();
+            #[cfg(target_os = "windows")]
+            let len = u32::try_from(len)?;
+            #[cfg(not(target_os = "windows"))]
+            let len = u64::try_from(len)?;
             let rv = self.hsm.C_GenerateRandom.ok_or_else(|| {
                 PError::Default("C_GenerateRandom not available on library".to_string())
-            })?(self.session_handle, values_ptr, u64::try_from(len)?);
+            })?(self.session_handle, values_ptr, len);
             if rv != CKR_OK {
                 return Err(PError::Default("Failed generating random data".to_string()));
             }

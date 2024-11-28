@@ -220,13 +220,17 @@ pub struct Info {
 
 impl From<CK_INFO> for Info {
     fn from(info: CK_INFO) -> Self {
+        #[cfg(target_os = "windows")]
+        let flags = u64::from(info.flags);
+        #[cfg(not(target_os = "windows"))]
+        let flags = info.flags;
         Info {
             cryptokiVersion: (info.cryptokiVersion.major, info.cryptokiVersion.minor),
             manufacturerID: CStr::from_bytes_until_nul(&info.manufacturerID)
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            flags: info.flags,
+            flags: flags,
             libraryDescription: CStr::from_bytes_until_nul(&info.libraryDescription)
                 .unwrap_or_default()
                 .to_string_lossy()

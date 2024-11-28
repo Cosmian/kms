@@ -105,11 +105,15 @@ impl Session {
             let pMechanism: CK_MECHANISM_PTR = &mut mechanism;
             let pMutTemplate: CK_ATTRIBUTE_PTR = template.as_mut_ptr();
             let mut aes_key_handle = CK_OBJECT_HANDLE::default();
+            #[cfg(target_os = "windows")]
+            let len = u32::try_from(template.len())?;
+            #[cfg(not(target_os = "windows"))]
+            let len = u64::try_from(template.len())?;
             let rv = ck_fn(
                 self.session_handle(),
                 pMechanism,
                 pMutTemplate,
-                u64::try_from(template.len())?,
+                len,
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {
