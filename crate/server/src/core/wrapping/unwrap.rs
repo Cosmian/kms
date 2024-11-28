@@ -187,10 +187,7 @@ async fn unwrap_using_encryption_oracle(
     // determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix("_pk")
-        .map_or(unwrapping_key_uid, |unwrapping_key_uid_no_suffix| {
-            unwrapping_key_uid_no_suffix
-        });
-
+        .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
     //check permissions
     if !kms
         .database

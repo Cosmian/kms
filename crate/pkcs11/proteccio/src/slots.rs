@@ -15,6 +15,12 @@ use crate::{proteccio::HsmLib, PError, PResult, Session};
 
 pub struct ObjectHandlesCache(Mutex<LruCache<Vec<u8>, CK_OBJECT_HANDLE>>);
 
+impl Default for ObjectHandlesCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ObjectHandlesCache {
     pub fn new() -> Self {
         #[allow(unsafe_code)]
