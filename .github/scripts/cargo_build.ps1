@@ -41,11 +41,13 @@ function BuildProject
     Get-ChildItem ..\..
 
     # Check dynamic links
-    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\x86_64-pc-windows-msvc\$BuildType\ckms.exe | Select-String "libcrypto"
+    $ErrorActionPreference = "SilentlyContinue"
+    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\x86_64-pc-windows-msvc\$BuildType\ckms.exe -ErrorAction SilentlyContinue | Select-String "libcrypto"
     if ($output)
     {
         throw "OpenSSL (libcrypto) found in dynamic dependencies. Error: $output"
     }
+    $ErrorActionPreference = "Stop"
 
     # Build `server`
     Set-Location crate\server
@@ -62,6 +64,7 @@ function BuildProject
     Get-ChildItem ..\..
 
     # Check dynamic links
+    $ErrorActionPreference = "SilentlyContinue"
     $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\x86_64-pc-windows-msvc\$BuildType\cosmian_kms_server.exe | Select-String "libcrypto"
     if ($output)
     {
