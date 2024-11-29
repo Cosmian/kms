@@ -9,7 +9,7 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
    that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
 !!!important  "The Wildcard User: *"
-In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
+    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
 objects to all users.
 
 To manage access rights, the user can call the following endpoints or use
