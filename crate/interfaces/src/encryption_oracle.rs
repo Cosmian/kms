@@ -31,8 +31,8 @@ pub struct EncryptedContent {
     pub tag: Option<Vec<u8>>,
 }
 
-#[async_trait(?Send)]
-pub trait EncryptionOracle {
+#[async_trait]
+pub trait EncryptionOracle: Send + Sync {
     /// Encrypt data
     /// # Arguments
     /// * `uid` - the ID of the key to use for encryption
