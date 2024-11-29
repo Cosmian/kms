@@ -123,46 +123,43 @@ impl CreateKeyPairsAction {
 
         let kacls_url = kms_rest_client.google_cse_status();
 
-        let (private_key_id, public_key_id) = match &self.rsa_private_key_id {
-            Some(id) => {
-                let attributes_response = kms_rest_client
-                    .get_attributes(GetAttributes {
-                        unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
-                        attribute_references: None,
-                    })
-                    .await?;
-                if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
-                    // Do we need to add encryption Algorithm to RSA too ?
-                    if let Some(linked_public_key_id) = attributes_response
-                        .attributes
-                        .get_link(LinkType::PublicKeyLink)
-                    {
-                        (id.to_string(), linked_public_key_id.to_string())
-                    } else {
-                        return Err(CliError::ServerError(
-                            "Invalid private-key-id  - no linked public key found".to_string(),
-                        ));
-                    }
+        let (private_key_id, public_key_id) = if let Some(id) = &self.rsa_private_key_id {
+            let attributes_response = kms_rest_client
+                .get_attributes(GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
+                    attribute_references: None,
+                })
+                .await?;
+            if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
+                // Do we need to add encryption Algorithm to RSA too ?
+                if let Some(linked_public_key_id) = attributes_response
+                    .attributes
+                    .get_link(LinkType::PublicKeyLink)
+                {
+                    (id.to_string(), linked_public_key_id.to_string())
                 } else {
                     return Err(CliError::ServerError(
-                        "Invalid private-key-id - must be of PrivateKey type".to_string(),
+                        "Invalid private-key-id  - no linked public key found".to_string(),
                     ));
                 }
+            } else {
+                return Err(CliError::ServerError(
+                    "Invalid private-key-id - must be of PrivateKey type".to_string(),
+                ));
             }
-            None => {
-                let created_key_pair = kms_rest_client
-                    .create_key_pair(create_rsa_key_pair_request(
-                        None,
-                        Vec::<String>::new(),
-                        RSA_4096,
-                        self.sensitive,
-                    )?)
-                    .await?;
-                (
-                    created_key_pair.private_key_unique_identifier.to_string(),
-                    created_key_pair.public_key_unique_identifier.to_string(),
-                )
-            }
+        } else {
+            let created_key_pair = kms_rest_client
+                .create_key_pair(create_rsa_key_pair_request(
+                    None,
+                    Vec::<String>::new(),
+                    RSA_4096,
+                    self.sensitive,
+                )?)
+                .await?;
+            (
+                created_key_pair.private_key_unique_identifier.to_string(),
+                created_key_pair.public_key_unique_identifier.to_string(),
+            )
         };
 
         // Export wrapped private key with google CSE key

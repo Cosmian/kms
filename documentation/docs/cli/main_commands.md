@@ -313,9 +313,9 @@ Import a private or public key in the KMS.
 
 Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
 
-`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
-`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key id if any
 
 `--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
 
@@ -1083,9 +1083,9 @@ Import a private or public key in the KMS.
 
 Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
 
-`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
-`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key id if any
 
 `--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
 
@@ -1564,9 +1564,9 @@ Import a private or public key in the KMS.
 
 Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
 
-`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
-`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key id if any
 
 `--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
 
@@ -1910,9 +1910,9 @@ Import a private or public key in the KMS.
 
 Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
 
-`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
 
-`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key id if any
 
 `--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
 

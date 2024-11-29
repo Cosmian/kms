@@ -62,7 +62,7 @@ impl TryFrom<&SqliteRow> for ObjectWithMetadata {
 }
 
 #[derive(Clone)]
-pub struct SqlitePool {
+pub(crate) struct SqlitePool {
     pool: Pool<Sqlite>,
 }
 

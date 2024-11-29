@@ -41,7 +41,9 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         (
             self.pub_key_uid,
             self.priv_key_uid,
-        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_bytes(), False)
+        ) = await self.client.create_cover_crypt_master_key_pair(
+            self.policy.to_bytes(), False
+        )
 
     async def test_master_keys(self) -> None:
         # Query public key from KMS

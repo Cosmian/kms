@@ -1,6 +1,6 @@
 mod cached_sqlcipher;
 mod cached_sqlite_struct;
-pub mod extra_store_params;
+pub(crate) mod extra_store_params;
 mod hsm;
 mod locate_query;
 mod mysql;
@@ -9,7 +9,7 @@ mod redis;
 mod sqlite;
 mod store_traits;
 
-pub use cached_sqlcipher::CachedSqlCipher;
+pub(crate) use cached_sqlcipher::CachedSqlCipher;
 use cosmian_kmip::kmip::kmip_objects::{Object, ObjectType};
 pub use extra_store_params::ExtraStoreParams;
 pub use hsm::HsmStore;
@@ -18,13 +18,13 @@ pub(crate) use mysql::MySqlPool;
 pub(crate) use pgsql::PgPool;
 use rawsql::Loader;
 #[cfg(test)]
-pub use redis::additional_redis_findex_tests;
-pub use redis::{
-    redis_master_key_from_password, RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-};
+pub(crate) use redis::additional_redis_findex_tests;
+pub use redis::redis_master_key_from_password;
+pub(crate) use redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH};
 use serde::{Deserialize, Serialize};
 pub(crate) use sqlite::SqlitePool;
-pub use store_traits::{AtomicOperation, ObjectsStore, PermissionsStore};
+pub use store_traits::AtomicOperation;
+pub(crate) use store_traits::{ObjectsStore, PermissionsStore};
 
 const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");

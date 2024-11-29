@@ -62,7 +62,7 @@ impl TryFrom<&PgRow> for ObjectWithMetadata {
 }
 
 #[derive(Clone)]
-pub struct PgPool {
+pub(crate) struct PgPool {
     pool: Pool<Postgres>,
 }
 

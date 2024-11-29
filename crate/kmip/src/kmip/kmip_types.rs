@@ -499,7 +499,7 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
     {
         struct CryptographicUsageMaskVisitor;
 
-        impl<'de> Visitor<'de> for CryptographicUsageMaskVisitor {
+        impl Visitor<'_> for CryptographicUsageMaskVisitor {
             type Value = CryptographicUsageMask;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -585,7 +585,7 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
     {
         struct ProtectionStorageMasksVisitor;
 
-        impl<'de> Visitor<'de> for ProtectionStorageMasksVisitor {
+        impl Visitor<'_> for ProtectionStorageMasksVisitor {
             type Value = ProtectionStorageMasks;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -669,7 +669,7 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
     {
         struct StorageStatusMaskVisitor;
 
-        impl<'de> Visitor<'de> for StorageStatusMaskVisitor {
+        impl Visitor<'_> for StorageStatusMaskVisitor {
             type Value = StorageStatusMask;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

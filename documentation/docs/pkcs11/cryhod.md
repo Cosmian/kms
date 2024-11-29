@@ -1,4 +1,4 @@
-The Cosmian KMS can be used to unlock Prim'x CRYHOD paritions
+The Cosmian KMS can be used to unlock Prim'x CRYHOD partitions
 
 ## Configuring Prim'X CRYHOD
 
@@ -29,7 +29,7 @@ Configuring the location of the PKCS#11 provider using the policy P296
 
 ![CRYHOD_p296](images/cryhod_p296.png)
 
-Enter the full path of the `ckms_pkcs11.dll` as value name and leve the value empty.
+Enter the full path of the `ckms_pkcs11.dll` as value name and leave the value empty.
 
 Note: if you change the value, kill all CRYHOD processes or restart
 for the change to be taken into effect
@@ -42,7 +42,7 @@ Launch `Computer Encryption Center`
 
 And select the partition to encrypt.
 
-Then select ` Key stored in a smart card or USB device (PKCS#11)`
+Then select `Key stored in a smart card or USB device (PKCS#11)`
 
 ![CRYHOD_pkcs11](images/cryhod_pkcs11.png)
 
@@ -81,7 +81,7 @@ By default, the logs are available in the User home `.cosmian` sub-directory.
 Get-Content -path C:\<USER HOME>\.cosmian\ckms-pkcs11.log -wait
 ```
 
-The log level can be adjusted using the `COSMIAN_PKCS11_LOGGING_LEVEL` environement variable.
+The log level can be adjusted using the `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable.
 
 ```powershell
 setx COSMIAN_PKCS11_LOGGING_LEVEL "debug"

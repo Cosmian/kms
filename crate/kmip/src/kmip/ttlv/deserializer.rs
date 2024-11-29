@@ -117,7 +117,7 @@ where
     value.post_fix(s.tag.as_str())
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
+impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     type Error = TtlvError;
 
     // Look at the input data to decide what Serde data model type to
@@ -849,7 +849,7 @@ impl<'a, 'de> EnumWalker<'a, 'de> {
 //
 // Note that all enum deserialization methods in Serde refer exclusively to the
 // "externally tagged" enum representation.
-impl<'de, 'a> EnumAccess<'de> for EnumWalker<'a, 'de> {
+impl<'de> EnumAccess<'de> for EnumWalker<'_, 'de> {
     type Error = TtlvError;
     type Variant = Self;
 
@@ -866,7 +866,7 @@ impl<'de, 'a> EnumAccess<'de> for EnumWalker<'a, 'de> {
 
 // `VariantAccess` is provided to the `Visitor` to give it the ability to see
 // the content of the single variant that it decided to deserialize.
-impl<'de, 'a> VariantAccess<'de> for EnumWalker<'a, 'de> {
+impl<'de> VariantAccess<'de> for EnumWalker<'_, 'de> {
     type Error = TtlvError;
 
     // If the `Visitor` expected this variant to be a unit variant, the input

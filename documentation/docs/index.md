@@ -54,27 +54,6 @@ to be used in various applications, such as in S/MIME encrypted emails.
     The decrypted file is available at "image2.png"
     ```
 
-## Table of contents
-
-- [Cosmian KMS](#cosmian-kms)
-    - [Table of contents](#table-of-contents)
-    - [Public Source Code](#public-source-code)
-    - [KMIP 2.1 API](#kmip-21-api)
-    - [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
-    - [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-    - [FIPS 140-3 certifications](#fips-140-3-certifications)
-    - [Veracrypt and LUKS disk encryption support](#veracrypt-and-luks-disk-encryption-support)
-    - [State-of-the-art authentication](#state-of-the-art-authentication)
-    - [High-availability and databases](#high-availability-and-databases)
-    - [Designed to securely run in the Public Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-public-cloud-or-other-zero-trust-environments)
-    - [Support for object tagging](#support-for-object-tagging)
-    - [Command line interface client](#command-line-interface-client)
-    - [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-    - [Integrated with OpenTelemetry](#integrated-with-opentelemetry)
-    - [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-    - [Comprehensive inline help](#comprehensive-inline-help)
-    - [TOML configuration file](#toml-configuration-file)
-
 ## Public Source Code
 
 The server's source code is fully available on [GitHub](https://github.com/Cosmian/kms) under a
@@ -233,151 +212,151 @@ Options:
             A key must be supplied on every call
           - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
             The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
-          
+
           [env: KMS_DATABASE_TYPE=]
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
       --database-url <DATABASE_URL>
           The url of the database for postgresql, mysql or findex-redis
-          
+
           [env: KMS_DATABASE_URL=]
 
       --sqlite-path <SQLITE_PATH>
           The directory path of the sqlite or sqlite-enc
-          
+
           [env: KMS_SQLITE_PATH=]
           [default: ./sqlite-data]
 
       --redis-master-password <REDIS_MASTER_PASSWORD>
           redis-findex: a master password used to encrypt the Redis data and indexes
-          
+
           [env: KMS_REDIS_MASTER_PASSWORD=]
 
       --redis-findex-label <REDIS_FINDEX_LABEL>
           redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
-          
+
           [env: KMS_REDIS_FINDEX_LABEL=]
 
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database
-          
+
           [env: KMS_CLEAR_DATABASE=]
 
       --port <PORT>
           The KMS server port
-          
+
           [env: KMS_PORT=]
           [default: 9998]
 
       --hostname <HOSTNAME>
           The KMS server hostname
-          
+
           [env: KMS_HOSTNAME=]
           [default: 0.0.0.0]
 
       --https-p12-file <HTTPS_P12_FILE>
           The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode
-          
+
           [env: KMS_HTTPS_P12_FILE=]
 
       --https-p12-password <HTTPS_P12_PASSWORD>
           The password to open the PKCS#12 Certificates and Key file
-          
+
           [env: KMS_HTTPS_P12_PASSWORD=]
 
       --authority-cert-file <AUTHORITY_CERT_FILE>
           The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used
-          
+
           [env: KMS_AUTHORITY_CERT_FILE=]
 
       --api-token-id <API_TOKEN_ID>
           The API token to use for authentication
-          
+
           [env: KMS_API_TOKEN=]
 
       --jwt-issuer-uri <JWT_ISSUER_URI>...
           The issuer URI of the JWT token
-          
+
           To handle multiple identity managers, add different parameters under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order :
-          
+
           --`jwt_issuer_uri` <`JWT_ISSUER_URI_1`> <`JWT_ISSUER_URI_2`> --`jwks_uri` <`JWKS_URI_1`> <`JWKS_URI_2`> --`jwt_audience` <`JWT_AUDIENCE_1`> <`JWT_AUDIENCE_2`>
-          
+
           For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
-          
+
           For Google, this would be `https://accounts.google.com`
-          
+
           [env: KMS_JWT_ISSUER_URI=]
 
       --jwks-uri <JWKS_URI>...
           The JWKS (Json Web Key Set) URI of the JWT token
-          
+
           To handle multiple identity managers, add different parameters under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
-          
+
           For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-          
+
           For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
-          
+
           Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
-          
+
           [env: KMS_JWKS_URI=]
 
       --jwt-audience <JWT_AUDIENCE>...
           The audience of the JWT token
-          
+
           Optional: the server will validate the JWT `aud` claim against this value if set
-          
+
           [env: KMS_JST_AUDIENCE=]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
-          
+
           [env: KMS_ROOT_DATA_PATH=]
           [default: ./cosmian-kms]
 
       --tmp-path <TMP_PATH>
           The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
-          
+
           [env: KMS_TMP_PATH=]
           [default: /tmp]
 
       --default-username <DEFAULT_USERNAME>
           The default username to use when no authentication method is provided
-          
+
           [env: KMS_DEFAULT_USERNAME=]
           [default: admin]
 
       --force-default-username
           When an authentication method is provided, perform the authentication but always use the default username instead of the one provided by the authentication method
-          
+
           [env: KMS_FORCE_DEFAULT_USERNAME=]
 
       --google-cse-kacls-url <GOOGLE_CSE_KACLS_URL>
           This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-          
+
           It should contain the external URL of this server as configured in Google Workspace client side encryption settings For instance, if this server is running on domain `cse.my_domain.com`, the URL should be something like <https://cse.my_domain.com/google_cse>
-          
+
           [env: KMS_GOOGLE_CSE_KACLS_URL=]
 
       --ms-dke-service-url <MS_DKE_SERVICE_URL>
           This setting enables the Microsoft Double Key Encryption service feature of this server.
-          
+
           It should contain the external URL of this server as configured in Azure App Registrations
           as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
-          
+
           The URL should be something like <https://cse.my_domain.com/ms_dke>
-          
+
           [env: KMS_MS_DKE_SERVICE_URL=]
 
       --otlp <OTLP>
           The OTLP collector URL
           (for instance, <http://localhost:4317>)
-          
+
           [env: KMS_OTLP_URL=]
 
       --quiet
           Do not log to stdout
-          
+
           [env: KMS_LOG_QUIET=]
 
       --info
@@ -386,13 +365,13 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           Only `proteccio` is supported for now.
-          
+
           [default: proteccio]
           [possible values: proteccio]
 
       --hsm-admin <HSM_ADMIN>
           The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them
-          
+
           [env: KMS_HSM_ADMIN=]
           [default: admin]
 
@@ -436,7 +415,7 @@ ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = "proteccio"
 hsm_admin = "[hsm admin username]" #for Create operation on HSM
-hsm_slot = [number_of_slot1, numer_of_slot2, ...]
+hsm_slot = [number_of_slot1, number_of_slot2, ...]
 hsm_password = [password_of_slot1, password_of_slot2, ...]
 
 

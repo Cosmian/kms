@@ -20,6 +20,7 @@ pub struct ObjectWithMetadata {
 }
 
 impl ObjectWithMetadata {
+    #[must_use]
     pub const fn new(
         id: String,
         object: Object,
@@ -36,10 +37,12 @@ impl ObjectWithMetadata {
         }
     }
 
+    #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    #[must_use]
     pub const fn object(&self) -> &Object {
         &self.object
     }
@@ -57,14 +60,17 @@ impl ObjectWithMetadata {
         &mut self.object
     }
 
+    #[must_use]
     pub fn owner(&self) -> &str {
         &self.owner
     }
 
+    #[must_use]
     pub const fn state(&self) -> StateEnumeration {
         self.state
     }
 
+    #[must_use]
     pub const fn attributes(&self) -> &Attributes {
         &self.attributes
     }
@@ -72,34 +78,6 @@ impl ObjectWithMetadata {
     pub fn attributes_mut(&mut self) -> &mut Attributes {
         &mut self.attributes
     }
-
-    // /// Will return the unwrapped version of the object.
-    // /// If the object is wrapped, it wil try to unwrap it
-    // /// and cache the unwrapped version in the structure.
-    // /// This call will return None for non-wrappable objects such as Certificates
-    // pub async fn unwrapped(
-    //     &self,
-    //     kms: &KMS,
-    //     user: &str,
-    //     params: Option<&ExtraStoreParams>,
-    // ) -> KResult<Object> {
-    //     kms.store
-    //         .get_unwrapped(self.id(), self.object(), kms, user, params)
-    //         .await
-    // }
-    //
-    // /// Transform this own to its unwrapped version.
-    // /// Returns false if this fails
-    // /// Has no effect on a non wrappable object such as a Certificate
-    // pub async fn make_unwrapped(
-    //     &mut self,
-    //     kms: &KMS,
-    //     user: &str,
-    //     params: Option<&ExtraStoreParams>,
-    // ) -> KResult<()> {
-    //     self.object = self.unwrapped(kms, user, params).await?;
-    //     Ok(())
-    // }
 }
 
 impl Display for ObjectWithMetadata {

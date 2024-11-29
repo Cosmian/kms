@@ -2,7 +2,7 @@ mod db_error;
 mod result;
 
 pub use db_error::DbError;
-pub use result::{DbResult, DbResultHelper};
+pub(crate) use result::{DbResult, DbResultHelper};
 
 /// Return early with an error if a condition is not satisfied.
 ///

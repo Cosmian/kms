@@ -260,8 +260,7 @@ fn is_rsa_keypair_creation(
                 if !attributes
                     .cryptographic_algorithm
                     .as_ref()
-                    .map(|algorithm| *algorithm == CryptographicAlgorithm::RSA)
-                    .unwrap_or(false)
+                    .is_some_and(|algorithm| *algorithm == CryptographicAlgorithm::RSA)
                 {
                     return None;
                 }

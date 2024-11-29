@@ -171,7 +171,7 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
             db_params,
         )
         .await;
-    assert!(atomic.is_err());
+    atomic.unwrap_err();
 
     // this however should work
     db.atomic(

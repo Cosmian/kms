@@ -64,7 +64,7 @@ impl TryFrom<&MySqlRow> for ObjectWithMetadata {
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
 #[derive(Clone)]
-pub struct MySqlPool {
+pub(crate) struct MySqlPool {
     pool: Pool<MySql>,
 }
 
@@ -573,7 +573,7 @@ where
     // Build the raw SQL query
     let raw_sql = get_mysql_query!("select-uids-from-tags").replace("@TAGS", &tags_params);
 
-    // Bind the tags paramss
+    // Bind the tags params
     let mut query = sqlx::query::<MySql>(&raw_sql);
     for tag in tags {
         query = query.bind(tag);

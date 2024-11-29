@@ -45,7 +45,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct CachedSqlCipher {
+pub(crate) struct CachedSqlCipher {
     path: PathBuf,
     cache: Arc<KMSSqliteCache>,
 }

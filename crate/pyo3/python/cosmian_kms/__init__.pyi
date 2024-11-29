@@ -6,7 +6,6 @@ from cloudproof_cover_crypt import Attribute, Policy
 UidOrTags = Union[str, List[str]]
 """KMS Objects (e.g. keys) can either be referenced by an UID using a single string, or by a list of tags using a list of string."""
 
-
 class KmsObject:
     def object_type(self) -> str:
         """Get the type of the underlying KMIP object.
@@ -21,7 +20,6 @@ class KmsObject:
         Returns:
             bytes
         """
-
 
 class KmsEncryptResponse:
     """Represents the response from a KMS encryption operation."""
@@ -75,21 +73,20 @@ class KmsEncryptResponse:
             bytes
         """
 
-
 class KmsClient:
     """Python client for a Key Management System (KMS). The methods return Future object which
     can be used to track and manage the status of the requests asynchronously.
     """
 
     def __init__(
-            self,
-            server_url: str,
-            api_key: Optional[str] = None,
-            client_pkcs12_path: Optional[str] = None,
-            client_pkcs12_password: Optional[str] = None,
-            database_secret: Optional[str] = None,
-            insecure_mode: bool = False,
-            allowed_tee_tls_cert: Optional[bytes] = None,
+        self,
+        server_url: str,
+        api_key: Optional[str] = None,
+        client_pkcs12_path: Optional[str] = None,
+        client_pkcs12_password: Optional[str] = None,
+        database_secret: Optional[str] = None,
+        insecure_mode: bool = False,
+        allowed_tee_tls_cert: Optional[bytes] = None,
     ) -> None:
         """Instantiate a KMS Client
 
@@ -104,7 +101,7 @@ class KmsClient:
         """
 
     def create_cover_crypt_master_key_pair(
-            self, policy: Union[Policy, bytes, bool], sensitive: bool = False
+        self, policy: Union[Policy, bytes, bool], sensitive: bool = False
     ) -> Future[Tuple[str, str]]:
         """Generate the master authority keys for supplied Policy.
 
@@ -117,15 +114,15 @@ class KmsClient:
         """
 
     def import_cover_crypt_master_private_key(
-            self,
-            private_key: bytes,
-            replace_existing: bool,
-            link_master_public_key_id: str,
-            policy: bytes,
-            tags: Optional[List[str]],
-            is_wrapped: bool,
-            wrapping_password: Optional[str] = None,
-            unique_identifier: Optional[str] = None,
+        self,
+        private_key: bytes,
+        replace_existing: bool,
+        link_master_public_key_id: str,
+        policy: bytes,
+        tags: Optional[List[str]],
+        is_wrapped: bool,
+        wrapping_password: Optional[str] = None,
+        unique_identifier: Optional[str] = None,
     ) -> Future[str]:
         """Import a Private Master Key into the KMS.
 
@@ -143,12 +140,12 @@ class KmsClient:
         """
 
     def import_cover_crypt_public_key(
-            self,
-            public_key: bytes,
-            replace_existing: bool,
-            policy: bytes,
-            link_master_private_key_id: str,
-            unique_identifier: Optional[str] = None,
+        self,
+        public_key: bytes,
+        replace_existing: bool,
+        policy: bytes,
+        link_master_private_key_id: str,
+        unique_identifier: Optional[str] = None,
     ) -> Future[str]:
         """Import a Public Master Key into the KMS.
 
@@ -164,9 +161,9 @@ class KmsClient:
         """
 
     def rekey_cover_crypt_access_policy(
-            self,
-            access_policy: str,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        access_policy: str,
+        master_secret_key_identifier: UidOrTags,
     ) -> Future[Tuple[str, str]]:
         """Generate new keys associated to the given access policy in the master keys.
         This will automatically refresh the corresponding user keys.
@@ -180,9 +177,9 @@ class KmsClient:
         """
 
     async def prune_cover_crypt_access_policy(
-            self,
-            access_policy: str,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        access_policy: str,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Removes old keys associated to the access policy from the master keys.
@@ -198,9 +195,9 @@ class KmsClient:
         """
 
     async def remove_cover_crypt_attribute(
-            self,
-            attribute: str,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        attribute: str,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
@@ -222,9 +219,9 @@ class KmsClient:
         """
 
     async def disable_cover_crypt_attribute(
-            self,
-            attribute: str,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        attribute: str,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Disable a specific attribute from a keypair's policy.
@@ -242,10 +239,10 @@ class KmsClient:
         """
 
     async def add_cover_crypt_attribute(
-            self,
-            attribute: str,
-            is_hybridized: bool,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        attribute: str,
+        is_hybridized: bool,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
@@ -264,10 +261,10 @@ class KmsClient:
         """
 
     async def rename_cover_crypt_attribute(
-            self,
-            attribute: str,
-            new_name: str,
-            master_secret_key_identifier: UidOrTags,
+        self,
+        attribute: str,
+        new_name: str,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
@@ -282,11 +279,11 @@ class KmsClient:
         """
 
     def create_cover_crypt_user_decryption_key(
-            self,
-            access_policy: str,
-            master_secret_key_identifier: str,
-            sensitive: bool = False,
-            tags: Optional[str] = None,
+        self,
+        access_policy: str,
+        master_secret_key_identifier: str,
+        sensitive: bool = False,
+        tags: Optional[str] = None,
     ) -> Future[str]:
         """Generate a user secret key.
         A new user secret key does NOT include to old (i.e. rotated) partitions.
@@ -302,15 +299,15 @@ class KmsClient:
         """
 
     def import_cover_crypt_user_decryption_key(
-            self,
-            private_key: bytes,
-            replace_existing: bool,
-            link_master_private_key_id: str,
-            access_policy: str,
-            tags: Optional[List[str]] = None,
-            is_wrapped: Optional[bool] = None,
-            wrapping_password: Optional[str] = None,
-            unique_identifier: Optional[str] = None,
+        self,
+        private_key: bytes,
+        replace_existing: bool,
+        link_master_private_key_id: str,
+        access_policy: str,
+        tags: Optional[List[str]] = None,
+        is_wrapped: Optional[bool] = None,
+        wrapping_password: Optional[str] = None,
+        unique_identifier: Optional[str] = None,
     ) -> Future[str]:
         """Import a user secret key into the KMS.
 
@@ -329,12 +326,12 @@ class KmsClient:
         """
 
     def cover_crypt_encryption(
-            self,
-            encryption_policy_str: str,
-            data: bytes,
-            public_key_identifier: UidOrTags,
-            header_metadata: Optional[bytes] = None,
-            authentication_data: Optional[bytes] = None,
+        self,
+        encryption_policy_str: str,
+        data: bytes,
+        public_key_identifier: UidOrTags,
+        header_metadata: Optional[bytes] = None,
+        authentication_data: Optional[bytes] = None,
     ) -> Future[bytes]:
         """Hybrid encryption. Concatenates the encrypted header and the symmetric
         ciphertext.
@@ -351,10 +348,10 @@ class KmsClient:
         """
 
     def cover_crypt_decryption(
-            self,
-            encrypted_data: bytes,
-            user_key_identifier: UidOrTags,
-            authentication_data: Optional[bytes] = None,
+        self,
+        encrypted_data: bytes,
+        user_key_identifier: UidOrTags,
+        authentication_data: Optional[bytes] = None,
     ) -> Future[Tuple[bytes, bytes]]:
         """Hybrid decryption.
 
@@ -378,9 +375,9 @@ class KmsClient:
         """
 
     def revoke_key(
-            self,
-            revocation_reason: str,
-            key_identifier: UidOrTags,
+        self,
+        revocation_reason: str,
+        key_identifier: UidOrTags,
     ) -> Future[str]:
         """Mark a CoverCrypt Key as revoked
 
@@ -393,8 +390,8 @@ class KmsClient:
         """
 
     def destroy_key(
-            self,
-            key_identifier: UidOrTags,
+        self,
+        key_identifier: UidOrTags,
     ) -> Future[str]:
         """Mark a CoverCrypt Key as destroyed
 
@@ -406,10 +403,10 @@ class KmsClient:
         """
 
     def create_symmetric_key(
-            self,
-            key_len_in_bits: int,
-            algorithm: str = "AES",
-            tags: Optional[List[str]] = None,
+        self,
+        key_len_in_bits: int,
+        algorithm: str = "AES",
+        tags: Optional[List[str]] = None,
     ) -> Future[str]:
         """Create a symmetric key using the specified key length, cryptographic algorithm, and optional tags
 
@@ -423,9 +420,9 @@ class KmsClient:
         """
 
     def encrypt(
-            self,
-            data: bytes,
-            key_identifier: UidOrTags,
+        self,
+        data: bytes,
+        key_identifier: UidOrTags,
     ) -> Future[KmsEncryptResponse]:
         """Encrypts the provided binary data using the specified key identifier or tags
 
@@ -438,11 +435,11 @@ class KmsClient:
         """
 
     def decrypt(
-            self,
-            encrypted_data: bytes,
-            key_identifier: UidOrTags,
-            iv_counter_nonce: Optional[bytes] = None,
-            authentication_encryption_tag: Optional[bytes] = None,
+        self,
+        encrypted_data: bytes,
+        key_identifier: UidOrTags,
+        iv_counter_nonce: Optional[bytes] = None,
+        authentication_encryption_tag: Optional[bytes] = None,
     ) -> Future[bytes]:
         """Hybrid decryption.
 

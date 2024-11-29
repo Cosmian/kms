@@ -1,4 +1,4 @@
-<h1>HSM Support</h1>
+# HSM Support
 
 Cosmian KMS natively integrates with
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
@@ -59,7 +59,7 @@ identifier is stored in the `LABEL` field of the key object in the HSM.
 
 The following KMIP operations can be performed on HSM keys via the KMS server API:
 
-#### `Create`
+### `Create`
 
 Create a new key in the HSM. The key unique must be provided on the request and must follow the
 `hsm::<slot_number>::<key_identifier>` format described above.
@@ -75,8 +75,8 @@ Using the `ckms` client, an RSA 4096-bit key can be created with the following c
 ```shell
 ❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::4::mykey
 The RSA key pair has been created.
-	  Public key unique identifier: hsm::4::mykey_pk
-	  Private key unique identifier: hsm::4::mykey
+      Public key unique identifier: hsm::4::mykey_pk
+      Private key unique identifier: hsm::4::mykey
 ```
 
 Keys should be flagged as `sensitive` when created in the HSM, so that the private key or symmetric key cannot be
@@ -84,7 +84,7 @@ exported (see below `Get` and `Export`).
 
 Note: HSM keys do not support object tagging in this release.
 
-#### `Destroy`
+### `Destroy`
 
 Contrarily to the KMS keys, HSM keys must not be Revoked before being Destroyed. The `Destroy` operation will remove the
 key from the HSM.
@@ -97,10 +97,10 @@ To destroy the key `hsm::4::mykey`, the following command can be used:
 ```shell
 ❯ ckms rsa keys destroy --key-id hsm::4::mykey
 Successfully destroyed the key.
-	  Unique identifier: hsm::4::mykey
+      Unique identifier: hsm::4::mykey
 ```
 
-#### `Get` & `Export`
+### `Get` & `Export`
 
 The `Get` and `Export` operations are used to retrieve the key material from the HSM.
 Only the user identified by the `--hsm-admin` argument or a user which has been granted the `Get` operation (by the HSM
@@ -114,10 +114,10 @@ To export the public key `hsm::4::mykey_pk` in PKCS#8 PEM format, the following 
 ```shell
 ❯ ckms rsa keys export --key-id hsm::4::mykey_pk --key-format pkcs8-pem /tmp/pubkey.pem
 The key hsm::4::mykey_pk of type PublicKey was exported to "/tmp/pubkey.pem"
-	  Unique identifier: hsm::4::mykey_pk
+      Unique identifier: hsm::4::mykey_pk
 ```
 
-#### `Encrypt`
+### `Encrypt`
 
 Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `--hsm-admin` argument or a
 user which has been granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
@@ -130,11 +130,11 @@ can be used:
 
 ```shell
 ❯ ckms rsa encrypt --key-id hsm::4::mykey_pk --encryption-algorithm ckm-rsa-pkcs-oaep \
-/tmp/secret.pem 
+/tmp/secret.pem
 The encrypted file is available at "/tmp/secret.enc"
 ```
 
-#### `Decrypt`
+### `Decrypt`
 
 Symmetric keys and private keys can be used to decrypt data. Only the user identified by the `--hsm-admin` argument or a
 user which has been granted the `Decrypt` operation (by the HSM admin) can decrypt data with keys stored in the HSM.
@@ -164,7 +164,7 @@ For instance, the following command creates a 256-bit AES key wrapped by the HSM
 ❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
 --wrapping-key-id hsm::4::mykey_pk my_sym_key
 The symmetric key was successfully generated.
-	  Unique identifier: my_sym_key
+      Unique identifier: my_sym_key
 ```
 
 The symmetric key is now stored in the database encrypted (wrapped) by the HSM key. The encryption happened in the HSM.
@@ -179,4 +179,3 @@ For example, to encrypt a message with the key `my_sym_key`, the following comma
 ❯ ckms sym encrypt --key-id my_sym_key /tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
 ```
-

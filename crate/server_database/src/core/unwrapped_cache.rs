@@ -18,18 +18,21 @@ pub struct CachedUnwrappedObject {
 }
 
 impl CachedUnwrappedObject {
-    pub fn new(key_signature: [u8; 32], unwrapped_object: Object) -> Self {
+    #[must_use]
+    pub const fn new(key_signature: [u8; 32], unwrapped_object: Object) -> Self {
         Self {
             key_signature,
             unwrapped_object,
         }
     }
 
-    pub fn key_signature(&self) -> &[u8; 32] {
+    #[must_use]
+    pub const fn key_signature(&self) -> &[u8; 32] {
         &self.key_signature
     }
 
-    pub fn unwrapped_object(&self) -> &Object {
+    #[must_use]
+    pub const fn unwrapped_object(&self) -> &Object {
         &self.unwrapped_object
     }
 }
@@ -49,6 +52,7 @@ impl Default for UnwrappedCache {
 }
 
 impl UnwrappedCache {
+    #[must_use]
     pub fn new() -> Self {
         #[allow(unsafe_code)]
         let max = unsafe { NonZeroUsize::new_unchecked(100) };
@@ -125,7 +129,8 @@ mod tests {
     use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
 
     #[tokio::test]
-    pub async fn test_lru_cache() -> DbResult<()> {
+    #[allow(clippy::unwrap_used)]
+    async fn test_lru_cache() -> DbResult<()> {
         log_init(option_env!("RUST_LOG"));
 
         let dir = TempDir::new()?;

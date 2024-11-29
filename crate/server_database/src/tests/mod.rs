@@ -32,7 +32,7 @@ mod owner_test;
 mod permissions_test;
 mod tagging_tests;
 
-pub fn get_redis_url() -> String {
+pub(crate) fn get_redis_url() -> String {
     std::env::var("REDIS_HOST").map_or_else(
         |_| "redis://localhost:6379".to_owned(),
         |var_env| format!("redis://{var_env}:6379"),

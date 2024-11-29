@@ -58,25 +58,25 @@ impl Database {
     async fn instantiate_main_database(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
-    ) -> DbResult<Database> {
+    ) -> DbResult<Self> {
         Ok(match main_db_params {
             MainDbParams::Sqlite(db_path) => {
                 let db = Arc::new(
                     SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start).await?,
                 );
-                Database::new(db.clone(), db)
+                Self::new(db.clone(), db)
             }
             MainDbParams::SqliteEnc(db_path) => {
                 let db = Arc::new(CachedSqlCipher::instantiate(db_path, clear_db_on_start)?);
-                Database::new(db.clone(), db)
+                Self::new(db.clone(), db)
             }
             MainDbParams::Postgres(url) => {
                 let db = Arc::new(PgPool::instantiate(url.as_str(), clear_db_on_start).await?);
-                Database::new(db.clone(), db)
+                Self::new(db.clone(), db)
             }
             MainDbParams::Mysql(url) => {
                 let db = Arc::new(MySqlPool::instantiate(url.as_str(), clear_db_on_start).await?);
-                Database::new(db.clone(), db)
+                Self::new(db.clone(), db)
             }
             MainDbParams::RedisFindex(url, master_key, label) => {
                 // There is no reason to keep a copy of the key in the shared config
@@ -91,12 +91,12 @@ impl Database {
                 let db = Arc::new(
                     RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
                 );
-                Database::new(db.clone(), db)
+                Self::new(db.clone(), db)
             }
         })
     }
 
-    pub fn unwrapped_cache(&self) -> &UnwrappedCache {
+    pub const fn unwrapped_cache(&self) -> &UnwrappedCache {
         &self.unwrapped_cache
     }
 

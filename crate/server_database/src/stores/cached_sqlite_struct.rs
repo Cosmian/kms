@@ -728,7 +728,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_sqlite_cache() {
+    async fn test_sqlite_cache() {
         let cache = KMSSqliteCache::new(2);
 
         assert_eq!(cache.max_size, 2);

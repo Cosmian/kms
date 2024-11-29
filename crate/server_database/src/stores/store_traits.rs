@@ -154,7 +154,7 @@ pub trait ObjectsStore {
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]
-pub trait PermissionsStore {
+pub(crate) trait PermissionsStore {
     /// List all the KMIP operations granted to the `user`
     /// on all the objects in the database
     /// (i.e. the objects for which `user` is not the owner)

@@ -106,7 +106,7 @@ pub struct ExportObjectParams<'a> {
     pub authenticated_encryption_additional_data: Option<String>,
 }
 
-impl<'a> ExportObjectParams<'a> {
+impl ExportObjectParams<'_> {
     #[must_use]
     pub fn new() -> Self {
         Self {

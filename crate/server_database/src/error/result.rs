@@ -1,9 +1,9 @@
 use crate::error::DbError;
 
-pub type DbResult<R> = Result<R, DbError>;
+pub(crate) type DbResult<R> = Result<R, DbError>;
 
 /// A helper trait for `DbResult` that provides additional methods for error handling.
-pub trait DbResultHelper<T> {
+pub(crate) trait DbResultHelper<T> {
     /// Sets the context for the error.
     ///
     /// # Errors

@@ -37,10 +37,10 @@ use crate::{
     AtomicOperation, ObjectWithMetadata,
 };
 
-pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
-pub const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
-pub const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
-pub const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
+pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub(crate) const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -65,7 +65,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
 }
 
 #[derive(Clone)]
-pub struct RedisWithFindex {
+pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
