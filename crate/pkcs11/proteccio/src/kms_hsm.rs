@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 
 use crate::{AesKeySize, Proteccio, RsaKeySize};
 
-#[async_trait(?Send)]
+#[async_trait]
 impl HSM for Proteccio {
     async fn create_key(
         &self,
