@@ -84,7 +84,6 @@ pub(crate) fn test_wrap_with_rsa_oaep() -> CliResult<()> {
             ..Default::default()
         },
     )?;
-    // let dek = "fad76bbe-4d53-421a-bcfa-e3af34318ecc".to_string();
     run_encrypt_decrypt_test(
         KMS_HSM_CLIENT_CONF,
         &dek,
