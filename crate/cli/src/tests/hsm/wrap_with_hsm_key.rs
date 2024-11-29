@@ -31,7 +31,6 @@ pub(crate) fn test_wrap_with_aes_gcm() -> CliResult<()> {
         },
     )?;
     // println!("Wrapping key id: {wrapping_key_id}" );
-    // let wrapping_key_id = "hsm::4::a44cca9e-a02a-49a0-998b-19d0924e9c6f".to_string();
     let dek = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         CreateKeyAction {
