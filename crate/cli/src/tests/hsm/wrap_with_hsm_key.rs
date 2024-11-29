@@ -129,7 +129,6 @@ pub(crate) fn test_unwrap_on_export() -> CliResult<()> {
     )?;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
-    // let dek = "b558d64c-07a8-4ce4-8e88-d86756249672".to_string();
     export_key(ExportKeyParams {
         cli_conf_path: KMS_HSM_CLIENT_CONF.to_owned(),
         sub_command: "sym".to_owned(),
