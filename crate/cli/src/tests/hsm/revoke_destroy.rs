@@ -13,7 +13,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_revoke_symmetric_key() -> CliResult<()> {
-    // syn
+    // sym
     let key_id = create_symmetric_key(
         KMS_HSM_CLIENT_CONF,
         CreateKeyAction {
