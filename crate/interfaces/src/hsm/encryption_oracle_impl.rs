@@ -23,7 +23,7 @@ impl HsmEncryptionOracle {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl EncryptionOracle for HsmEncryptionOracle {
     async fn encrypt(
         &self,
