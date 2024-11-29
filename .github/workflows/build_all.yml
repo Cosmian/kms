@@ -105,7 +105,7 @@ jobs:
         /usr/local/openssl/lib/ossl-modules/legacy.dylib
 
   windows-2022:
-    # if: inputs.debug_or_release == 'release'
+    if: inputs.debug_or_release == 'release'
     uses: ./.github/workflows/build_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}

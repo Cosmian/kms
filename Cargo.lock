@@ -1506,7 +1506,7 @@ dependencies = [
  "rsa",
  "serial_test",
  "strum_macros 0.26.4",
- "thiserror 1.0.63",
+ "thiserror 2.0.3",
  "tracing",
  "tracing-subscriber",
  "zeroize",
