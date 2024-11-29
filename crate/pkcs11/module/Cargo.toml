@@ -14,8 +14,8 @@ doctest = false
 [dependencies]
 bincode = "1.3.3"
 const-oid = "0.9.6"
-hex = "0.4.3"
-log = "0.4.22"
+hex = { workspace = true }
+log = { workspace = true }
 once_cell = "1.19.0"
 p256 = { version = "0.13.2", default-features = false, features = [
   "arithmetic",
