@@ -42,7 +42,7 @@ pub(crate) fn test_aes_gcm() -> CliResult<()> {
         Some(KeyEncryptionAlgorithm::AesGcm),
         12 + 32 + 16 /* encapsulation size */
             + 1 /* encapsulation len leb128 */
-            + 12 /* nonce */  + 16, /* ag */
+            + 12 /* nonce */  + 16, /* tag */
     )
 }
 
