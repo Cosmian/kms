@@ -6,7 +6,7 @@ use base64::Engine;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
 use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
-    start_test_server_with_options, AuthenticationOptions, DBConfig, TestsContext,
+    start_test_server_with_options, AuthenticationOptions, MainDBConfig, TestsContext,
 };
 use tempfile::TempDir;
 use tracing::{info, trace};
@@ -68,11 +68,11 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     // plaintext no auth
     info!("Testing server with no auth");
     let ctx = start_test_server_with_options(
-        DBConfig {
+        MainDBConfig {
             database_type: Some("sqlite".to_owned()),
             sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
             clear_database: true,
-            ..DBConfig::default()
+            ..MainDBConfig::default()
         },
         PORT,
         AuthenticationOptions {
@@ -90,11 +90,11 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     let (api_token_id, api_token) = create_api_token(&ctx)?;
     ctx.stop_server().await?;
 
-    let default_db_config = DBConfig {
+    let default_db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
         sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
         clear_database: false,
-        ..DBConfig::default()
+        ..MainDBConfig::default()
     };
 
     // plaintext JWT token auth

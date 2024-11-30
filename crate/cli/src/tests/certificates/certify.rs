@@ -26,7 +26,7 @@ use crate::{
             export::export_certificate,
             import::{import_certificate, ImportCertificateInput},
         },
-        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
+        rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
         shared::{export_key, ExportKeyParams},
         utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
         PROG_NAME,
@@ -467,7 +467,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CliResult<()> {
 
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
@@ -510,7 +510,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CliResult<()> {
 
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
@@ -653,7 +653,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
 
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(
@@ -686,7 +686,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CliResult<()> {
 pub(crate) fn create_self_signed_cert(ctx: &TestsContext) -> CliResult<String> {
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(

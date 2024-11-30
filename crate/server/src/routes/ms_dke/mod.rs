@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, log::trace};
 use url::Url;
 
-use crate::{kms_bail, kms_error, result::KResult, KMSServer};
+use crate::{core::KMS, kms_bail, kms_error, result::KResult};
 
 #[derive(Serialize, Debug)]
 pub enum KeyType {
@@ -85,10 +85,7 @@ pub struct KeyData {
 }
 
 #[get("/version")]
-pub(crate) async fn version(
-    req_http: HttpRequest,
-    kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<String>> {
+pub(crate) async fn version(req_http: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req_http));
     Ok(Json(crate_version!().to_owned()))
 }
@@ -97,7 +94,7 @@ pub(crate) async fn version(
 pub(crate) async fn get_key(
     req_http: HttpRequest,
     path: Path<String>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let mut key_name = path.into_inner();
     if key_name.is_empty() {
@@ -116,7 +113,7 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<KeyData> {
+async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
@@ -202,7 +199,7 @@ pub(crate) async fn decrypt(
     req_http: HttpRequest,
     wrap_request: Json<EncryptedData>,
     path: Path<(String, String)>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
     info!("Encrypted Data : {encrypted_data:?}",);
@@ -219,7 +216,7 @@ async fn _decrypt(
     key_tag: &str,
     encrypted_data: EncryptedData,
     req_http: HttpRequest,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<DecryptedData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);

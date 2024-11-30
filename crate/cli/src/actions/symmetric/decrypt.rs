@@ -122,7 +122,7 @@ impl DecryptAction {
         let output_file_name = self
             .output_file
             .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
+            .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
 
         let mut output_file =
             File::create(&output_file_name).context("Fail to write the plaintext file")?;

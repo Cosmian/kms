@@ -101,12 +101,13 @@ class KmsClient:
         """
 
     def create_cover_crypt_master_key_pair(
-        self, policy: Union[Policy, bytes]
+        self, policy: Union[Policy, bytes, bool], sensitive: bool = False
     ) -> Future[Tuple[str, str]]:
         """Generate the master authority keys for supplied Policy.
 
         Args:
-            policy (Union[Policy, str]): policy used to generate the keys
+            policy (Union[Policy, str, bool]): policy used to generate the keys
+            sensitive (bool): whether the key is sensitive
 
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -281,6 +282,7 @@ class KmsClient:
         self,
         access_policy: str,
         master_secret_key_identifier: str,
+        sensitive: bool = False,
         tags: Optional[str] = None,
     ) -> Future[str]:
         """Generate a user secret key.
@@ -289,6 +291,7 @@ class KmsClient:
         Args:
             access_policy(str): user access policy
             master_secret_key_identifier (str): master secret key UID
+            sensitive (bool): whether the key is sensitive
             tags (Optional[List[str]]): optional tags to use with the keys
 
         Returns:

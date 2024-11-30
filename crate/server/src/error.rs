@@ -7,6 +7,8 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
+use cosmian_kms_interfaces::InterfaceError;
+use cosmian_kms_server_database::DbError;
 use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
@@ -52,7 +54,7 @@ pub enum KmsError {
 
     // Any errors related to a bad behavior of the DB but not related to the user input
     #[error("Database Error: {0}")]
-    DatabaseError(String),
+    Database(String),
 
     // Any errors related to a bad behavior of the server but not related to the user input
     #[error("Unexpected server error: {0}")]
@@ -80,8 +82,14 @@ pub enum KmsError {
     #[error("Findex Error: {0}")]
     Findex(String),
 
+    #[error("Unsupported algorithm: {0}")]
+    UnsupportedAlgorithm(String),
+
     #[error("Invalid URL: {0}")]
     UrlError(String),
+
+    #[error("{0}")]
+    Default(String),
 }
 
 impl KmsError {
@@ -150,7 +158,7 @@ impl From<std::num::TryFromIntError> for KmsError {
 
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
-        Self::DatabaseError(e.to_string())
+        Self::Database(e.to_string())
     }
 }
 
@@ -252,6 +260,24 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
     }
 }
 
+impl From<DbError> for KmsError {
+    fn from(value: DbError) -> Self {
+        Self::Default(value.to_string())
+    }
+}
+
+impl From<KmsError> for DbError {
+    fn from(value: KmsError) -> Self {
+        Self::Default(value.to_string())
+    }
+}
+
+impl From<InterfaceError> for KmsError {
+    fn from(value: InterfaceError) -> Self {
+        Self::Default(value.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -322,10 +348,9 @@ mod tests {
 
     fn bail() -> Result<(), KmsError> {
         let var = 43;
-        if true {
+        {
             kms_bail!("interpolate {var}");
         }
-        Ok(())
     }
 
     fn ensure() -> Result<(), KmsError> {

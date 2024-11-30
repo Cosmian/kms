@@ -30,7 +30,7 @@ pub trait KResultHelper<T> {
         O: FnOnce() -> String;
 }
 
-impl<T, E> KResultHelper<T> for std::result::Result<T, E>
+impl<T, E> KResultHelper<T> for Result<T, E>
 where
     E: std::error::Error,
 {

@@ -7,14 +7,11 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
     },
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;
 
 use crate::{
-    core::{
-        cover_crypt::rekey_keypair_cover_crypt, extra_database_params::ExtraDatabaseParams, KMS,
-    },
-    database::object_with_metadata::ObjectWithMetadata,
+    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -24,7 +21,7 @@ pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
@@ -43,54 +40,55 @@ pub(crate) async fn rekey_keypair(
         .context("Rekey keypair: the private key unique identifier must be a string")?;
 
     // retrieve from tags or use passed identifier
-    let mut owm_s = kms
-        .db
-        .retrieve(uid_or_tags, user, ObjectOperationType::Rekey, params)
+    let owm_s = kms
+        .database
+        .retrieve_objects(uid_or_tags, params)
         .await?
-        .into_values()
-        .filter(|owm| {
-            // only active objects
-            if owm.state != StateEnumeration::Active {
-                return false
-            }
-            // only private keys
-            if owm.object.object_type() != ObjectType::PrivateKey {
-                return false
-            }
-            // if a Covercrypt key, it must be a master secret key
-            if let Ok(attributes) = owm.object.attributes() {
-                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                    // a master key should have policies in the attributes
-                    return policy_from_attributes(attributes).is_ok()
+        .into_values();
+
+    for owm in owm_s {
+        // only active objects
+        if owm.state() != StateEnumeration::Active {
+            continue
+        }
+        // only private keys
+        if owm.object().object_type() != ObjectType::PrivateKey {
+            continue
+        }
+        // if a Covercrypt key, it must be a master secret key
+        if let Ok(attributes) = owm.object().attributes() {
+            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                // a master key should have policies in the attributes
+                if policy_from_attributes(attributes).is_err() {
+                    continue
                 }
             }
-            true
-        })
-        .collect::<Vec<ObjectWithMetadata>>();
-
-    // there can only be one private key
-    let owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_owned()))?;
-
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for key {uid_or_tags}",
-        )))
-    }
-
-    if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
-        let action = rekey_edit_action_from_attributes(attributes)?;
-        rekey_keypair_cover_crypt(kms, Covercrypt::default(), owm.id, user, action, params).await
-    } else if let Some(other) = attributes.cryptographic_algorithm {
-        kms_bail!(KmsError::NotSupported(format!(
-            "The rekey of a key pair for algorithm: {other:?} is not yet supported"
-        )))
-    } else {
+        }
+        if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
+            let action = rekey_edit_action_from_attributes(attributes)?;
+            return Box::pin(rekey_keypair_cover_crypt(
+                kms,
+                Covercrypt::default(),
+                owm.id().to_owned(),
+                user,
+                action,
+                params,
+            ))
+            .await
+        } else if let Some(other) = attributes.cryptographic_algorithm {
+            kms_bail!(KmsError::NotSupported(format!(
+                "The rekey of a key pair for algorithm: {other:?} is not yet supported"
+            )))
+        }
         kms_bail!(KmsError::InvalidRequest(
             "The cryptographic algorithm must be specified in the private key attributes for key \
              pair creation"
                 .to_owned()
         ))
     }
+
+    Err(KmsError::KmipError(
+        ErrorReason::Item_Not_Found,
+        uid_or_tags.to_owned(),
+    ))
 }

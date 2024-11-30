@@ -29,21 +29,22 @@ use zeroize::Zeroizing;
 
 use crate::{
     config::ServerParams,
+    core::KMS,
     error::KmsError,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
-    KMSServer,
 };
 
 #[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let request =
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -202,7 +203,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let wrapped_symmetric_key = [0_u8; 32];
@@ -220,11 +221,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
             },
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
-            key_wrapping_data: Some(Box::new(KeyWrappingData {
+            key_wrapping_data: Some(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 iv_counter_nonce: Some(aesgcm_nonce.to_vec()),
                 ..KeyWrappingData::default()
-            })),
+            }),
         },
     };
 
@@ -258,7 +259,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = symmetric_key_create_request(
@@ -266,8 +267,9 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
-    )
-    .unwrap();
+        false,
+        None,
+    )?;
 
     trace!("request: {}", request);
     let response = kms.create(request, owner, None).await?;
@@ -315,11 +317,12 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+    let request =
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key

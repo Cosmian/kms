@@ -24,6 +24,7 @@ cosmian_kms_client = { path = "../client", default-features = false }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], default-features = false }
+cosmian_kms_server_database = { path = "../server_database" }
 cosmian_logger = { path = "../logger" }
 serde_json = { workspace = true }
 tempfile = "3.1"

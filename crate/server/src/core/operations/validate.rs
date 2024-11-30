@@ -7,8 +7,9 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
+    KmipOperation,
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::ExtraStoreParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
@@ -20,8 +21,7 @@ use openssl::{
 use tracing::{debug, trace, warn};
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    database::retrieve_object_for_operation,
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::KResult,
 };
@@ -72,7 +72,7 @@ pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {}", request);
 
@@ -618,7 +618,7 @@ async fn certificates_by_uid(
     unique_identifiers: Vec<UniqueIdentifier>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Vec<Vec<u8>>> {
     debug!("certificates_by_uid: entering: {unique_identifiers:?}");
     let mut results = Vec::new();
@@ -637,11 +637,11 @@ async fn certificate_by_uid(
     unique_identifier: &str,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Vec<u8>> {
     let uid_owm = retrieve_object_for_operation(
         unique_identifier,
-        ObjectOperationType::Validate,
+        KmipOperation::Validate,
         kms,
         user,
         params,
@@ -651,13 +651,13 @@ async fn certificate_by_uid(
     if let Object::Certificate {
         certificate_type: _,
         certificate_value,
-    } = uid_owm.object
+    } = uid_owm.object()
     {
-        Ok(certificate_value)
+        Ok(certificate_value.clone())
     } else {
         Err(KmsError::Certificate(format!(
             "Requested a Certificate Object, got a {}",
-            uid_owm.object.object_type()
+            uid_owm.object().object_type()
         )))
     }
 }

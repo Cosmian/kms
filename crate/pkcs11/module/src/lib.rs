@@ -57,8 +57,11 @@ mod error;
 
 pub use error::{MError, MResult};
 
-use crate::{core::attribute::AttributeType, sessions::DecryptContext, traits::RemoteObjectType};
+use crate::{
+    core::attribute::AttributeType, objects_store::OBJECTS_STORE, sessions::DecryptContext,
+};
 
+mod objects_store;
 mod sessions;
 #[cfg(test)]
 mod tests;
@@ -86,7 +89,6 @@ where
 #[macro_export]
 macro_rules! cryptoki_fn {
     (fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
-        #[allow(unreachable_pub)]
         #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub extern "C" fn $name($($arg: $type),*) -> CK_RV {
@@ -94,7 +96,6 @@ macro_rules! cryptoki_fn {
         }
     };
     (unsafe fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
-        #[allow(unreachable_pub)]
         #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[no_mangle]
         pub unsafe extern "C" fn $name($($arg: $type),*) -> CK_RV {
@@ -327,7 +328,7 @@ cryptoki_fn!(
                 | CKF_WRITE_PROTECTED
                 | CKF_USER_PIN_INITIALIZED
                 | CKF_RNG
-                | CKF_HW_SLOT, /* systemd-cryptenroll() requires this to be an hardware slot to
+                | CKF_HW_SLOT, /* systemd-cryptenroll() requires this to be a hardware slot to
                                 * be detected by auto */
             ulMaxSessionCount: CK_UNAVAILABLE_INFORMATION,
             ulSessionCount: CK_UNAVAILABLE_INFORMATION,
@@ -440,6 +441,12 @@ cryptoki_fn!(
             return Err(MError::SessionParallelNotSupported);
         }
         unsafe { *phSession = sessions::create(flags) };
+        info!(
+            "C_OpenSession: slot: {:?}, flags: {:?}, session: {}",
+            slotID,
+            flags,
+            unsafe { *phSession }
+        );
         Ok(())
     }
 );
@@ -447,6 +454,7 @@ cryptoki_fn!(
 cryptoki_fn!(
     fn C_CloseSession(hSession: CK_SESSION_HANDLE) {
         initialized!();
+        info!("C_CloseSession: session: {:?}", hSession);
         if sessions::close(hSession) {
             return Ok(());
         }
@@ -458,6 +466,7 @@ cryptoki_fn!(
     fn C_CloseAllSessions(slotID: CK_SLOT_ID) {
         initialized!();
         valid_slot!(slotID);
+        info!("C_CloseAllSessions: slot: {:?}", slotID);
         sessions::close_all();
         Ok(())
     }
@@ -481,6 +490,13 @@ cryptoki_fn!(
             ulDeviceError: 0,
         };
         unsafe { *pInfo = info };
+        trace!(
+            "C_GetSessionInfo: session: {:?}, slot: {:?}, state: {:?}, flags: {:?}",
+            hSession,
+            SLOT_ID,
+            state,
+            flags
+        );
         Ok(())
     }
 );
@@ -559,22 +575,24 @@ cryptoki_fn!(
         pTemplate: CK_ATTRIBUTE_PTR,
         ulCount: CK_ULONG,
     ) {
-        initialized!();
-        valid_session!(hSession);
-        not_null!(pTemplate);
         trace!(
             "C_GetAttributeValue: session: {:?}, object: {:?}",
             hSession,
             hObject
         );
+        initialized!();
+        valid_session!(hSession);
+        not_null!(pTemplate);
+
         sessions::session(hSession, |session| -> MResult<()> {
-            let object_store = &session
-                .find_ctx
-                .as_ref()
-                .ok_or_else(|| MError::OperationNotInitialized)?
-                .objects;
-            let Some(object) = object_store.get(hObject as usize) else {
-                return Err(MError::ObjectHandleInvalid(hObject));
+            let find_ctx = OBJECTS_STORE
+                .read()
+                .map_err(|_| MError::OperationNotInitialized(hSession))?;
+            let object = match find_ctx.get_using_handle(hObject) {
+                Some(object) => object,
+                None => {
+                    return Err(MError::ObjectHandleInvalid(hObject));
+                }
             };
             let template = if ulCount > 0 {
                 if pTemplate.is_null() {
@@ -589,7 +607,14 @@ cryptoki_fn!(
                     .type_
                     .try_into()
                     .map_err(|_| MError::AttributeTypeInvalid(attribute.type_))?;
-                if let Some(value) = object.attribute(type_) {
+                info!(
+                    "C_GetAttributeValue: session: {:?}, object: {:?} [handle: {}], type: {:?}",
+                    hSession,
+                    object.remote_id(),
+                    hObject,
+                    type_.to_string(),
+                );
+                if let Some(value) = object.attribute(type_)? {
                     let value = value.as_raw_value();
                     attribute.ulValueLen = value.len() as CK_ULONG;
                     if attribute.pValue.is_null() {
@@ -605,13 +630,6 @@ cryptoki_fn!(
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
-                info!(
-                    "C_GetAttributeValue: session: {:?}, object: {:?},type: {:?}",
-                    hSession,
-                    hObject,
-                    type_.to_string(),
-                );
-                debug!("C_GetAttributeValue: attribute: {:?}", attribute);
             }
             Ok(())
         })
@@ -642,6 +660,10 @@ cryptoki_fn!(
             .into();
 
         sessions::session(hSession, |session| -> MResult<()> {
+            info!(
+                "C_FindObjectsInit: session: {:?}, load Objects Store context",
+                hSession
+            );
             session.load_find_context(template)
         })
     }
@@ -659,25 +681,30 @@ cryptoki_fn!(
         not_null!(phObject);
         not_null!(pulObjectCount);
         sessions::session(hSession, |session| -> MResult<()> {
-            let Some(find_ctx) = &mut session.find_ctx else {
-                unsafe { *pulObjectCount = 0 };
-                return Err(MError::OperationNotInitialized);
-            };
-            debug!(
-                "C_FindObjects: objects still available: {:?}",
-                find_ctx.unread_indexes
+            trace!(
+                "C_FindObjects: session: {:?}, objects available: {:?}",
+                hSession,
+                session.find_objects_ctx
             );
-            if find_ctx.unread_indexes.is_empty() {
-                info!("C_FindObjects: no more objects to return");
+            if session.find_objects_ctx.is_empty() {
+                info!(
+                    "C_FindObjects: session: {:?}, no more objects to return",
+                    hSession
+                );
                 unsafe { *pulObjectCount = 0 };
                 return Ok(());
             }
-            let max_objects = cmp::min(find_ctx.objects.len(), ulMaxObjectCount as usize);
-            let handles = find_ctx
-                .unread_indexes
+            let max_objects = cmp::min(session.find_objects_ctx.len(), ulMaxObjectCount as usize);
+            let handles = session
+                .find_objects_ctx
                 .drain(0..max_objects)
                 .collect::<Vec<_>>();
-            info!("C_FindObjects: returning {} objects", handles.len());
+            info!(
+                "C_FindObjects: session: {:?}, returning {} object with handles {:?}",
+                hSession,
+                handles.len(),
+                handles
+            );
             let output = unsafe { slice::from_raw_parts_mut(phObject, max_objects) };
             output.copy_from_slice(handles.as_slice());
             unsafe { *pulObjectCount = max_objects as CK_ULONG };
@@ -690,20 +717,7 @@ cryptoki_fn!(
     fn C_FindObjectsFinal(hSession: CK_SESSION_HANDLE) {
         initialized!();
         valid_session!(hSession);
-        sessions::session(hSession, |session| -> MResult<()> {
-            // re-initialize the find context unread indexes
-            let find_ctx = session
-                .find_ctx
-                .as_mut()
-                .ok_or(MError::OperationNotInitialized)?;
-            find_ctx.unread_indexes = find_ctx
-                .objects
-                .iter()
-                .enumerate()
-                .map(|(i, _)| i as CK_OBJECT_HANDLE)
-                .collect();
-            Ok(())
-        })
+        Ok(())
     }
 );
 
@@ -750,29 +764,24 @@ cryptoki_fn!(
         not_null!(pMechanism);
         sessions::session(hSession, |session| -> MResult<()> {
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            let object_store = &session
-                .find_ctx
-                .as_ref()
-                .ok_or(MError::OperationNotInitialized)?
-                .objects;
-            match object_store.get(hKey as usize) {
-                Some(Object::RemoteObjectId(remote_object)) => match remote_object.remote_type() {
-                    RemoteObjectType::PublicKey | RemoteObjectType::Certificate => {
-                        Err(MError::KeyHandleInvalid(hKey))
-                    }
-                    RemoteObjectType::PrivateKey | RemoteObjectType::SymmetricKey => {
-                        debug!(
-                            "C_DecryptInit: session: {:?}, remote_object: {:?}, mechanism: {:?}",
-                            hSession, &remote_object, &mechanism
-                        );
-                        session.decrypt_ctx = Some(DecryptContext {
-                            remote_object: remote_object.clone(),
-                            algorithm: mechanism.into(),
-                            ciphertext: None,
-                        });
-                        Ok(())
-                    }
-                },
+            let find_ctx = OBJECTS_STORE
+                .read()
+                .map_err(|_| MError::OperationNotInitialized(hSession))?;
+            match find_ctx.get_using_handle(hKey).as_deref() {
+                Some(Object::PrivateKey(sk)) => {
+                    debug!(
+                        "C_DecryptInit: session: {:?}, remote_object: {:?}, mechanism: {:?}",
+                        hSession,
+                        &sk.remote_id(),
+                        &mechanism
+                    );
+                    session.decrypt_ctx = Some(DecryptContext {
+                        remote_object_id: sk.remote_id().to_string(),
+                        algorithm: mechanism.into(),
+                        ciphertext: None,
+                    });
+                    Ok(())
+                }
                 Some(_) | None => Err(MError::KeyHandleInvalid(hKey)),
             }
         })
@@ -893,13 +902,13 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism);
         sessions::session(hSession, |session| -> MResult<()> {
-            let object_store = &session
-                .find_ctx
-                .as_ref()
-                .ok_or(MError::OperationNotInitialized)?
-                .objects;
-            let Some(Object::PrivateKey(private_key)) = object_store.get(hKey as usize) else {
-                return Err(MError::KeyHandleInvalid(hKey))
+            let find_ctx = OBJECTS_STORE
+                .read()
+                .map_err(|_| MError::OperationNotInitialized(hSession))?;
+            let object = find_ctx.get_using_handle(hKey);
+            let private_key = match object.as_deref() {
+                Some(Object::PrivateKey(private_key)) => private_key,
+                Some(_) | None => return Err(MError::KeyHandleInvalid(hKey)),
             };
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
             session.sign_ctx = Some(SignContext {
@@ -939,7 +948,7 @@ cryptoki_fn!(
         not_null!(pPart);
         sessions::session(hSession, |session| -> MResult<()> {
             let sign_ctx = match session.sign_ctx.as_mut() {
-                None => return Err(MError::OperationNotInitialized),
+                None => return Err(MError::OperationNotInitialized(hSession)),
                 Some(sign_ctx) => sign_ctx,
             };
             sign_ctx

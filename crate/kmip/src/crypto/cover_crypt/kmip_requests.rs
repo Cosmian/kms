@@ -23,6 +23,7 @@ use crate::{
 pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     policy: &Policy,
     tags: T,
+    sensitive: bool,
 ) -> Result<CreateKeyPair, KmipError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -30,6 +31,7 @@ pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        sensitive,
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -44,6 +46,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
     tags: T,
+    sensitive: bool,
 ) -> Result<Create, KmipError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -57,6 +60,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
             ),
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        sensitive,
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -127,14 +131,14 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(key),
-                    attributes: Some(Box::new(attributes)),
+                    attributes: Some(attributes),
                 },
                 cryptographic_length,
                 key_wrapping_data: if is_wrapped {
-                    Some(Box::new(KeyWrappingData {
+                    Some(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
                         ..KeyWrappingData::default()
-                    }))
+                    })
                 } else {
                     None
                 },
@@ -202,14 +206,14 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(key),
-                    attributes: Some(Box::new(attributes)),
+                    attributes: Some(attributes),
                 },
                 cryptographic_length,
                 key_wrapping_data: if is_wrapped {
-                    Some(Box::new(KeyWrappingData {
+                    Some(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
                         ..KeyWrappingData::default()
-                    }))
+                    })
                 } else {
                     None
                 },
@@ -258,7 +262,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(public_key.to_vec())),
-                    attributes: Some(Box::new(attributes)),
+                    attributes: Some(attributes),
                 },
                 cryptographic_length,
                 key_wrapping_data: None,

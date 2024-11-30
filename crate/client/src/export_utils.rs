@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, Operation},
-    kmip_types::{AttributeReference, BlockCipherMode, CryptographicParameters, EncodingOption},
+    kmip_types::{AttributeReference, CryptographicParameters, EncodingOption},
 };
 
 use crate::{
@@ -22,19 +22,21 @@ fn export_request(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-    block_cipher_mode: Option<BlockCipherMode>,
+    encoding_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
 ) -> Export {
-    let key_wrapping_specification = key_wrapping_specification(
-        unwrap,
-        wrapping_key_id,
-        block_cipher_mode,
-        authenticated_encryption_additional_data,
-    );
     Export::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_string()),
         unwrap,
-        key_wrapping_specification,
+        wrapping_key_id.map(|wrapping_key_id| {
+            key_wrapping_specification(
+                wrapping_key_id,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data,
+                encoding_to_ttlv,
+            )
+        }),
         key_format_type,
     )
 }
@@ -44,57 +46,46 @@ fn get_request(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-    block_cipher_mode: Option<BlockCipherMode>,
+    encoding_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
 ) -> Get {
-    let key_wrapping_specification = key_wrapping_specification(
-        unwrap,
-        wrapping_key_id,
-        block_cipher_mode,
-        authenticated_encryption_additional_data,
-    );
     Get::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_string()),
         unwrap,
-        key_wrapping_specification,
+        wrapping_key_id.map(|wrapping_key_id| {
+            key_wrapping_specification(
+                wrapping_key_id,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data,
+                encoding_to_ttlv,
+            )
+        }),
         key_format_type,
     )
 }
 
 /// Determine the `KeyWrappingSpecification`
 fn key_wrapping_specification(
-    unwrap: bool,
-    wrapping_key_id: Option<&str>,
-    block_cipher_mode: Option<BlockCipherMode>,
+    wrapping_key_id: &str,
+    cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
-) -> Option<KeyWrappingSpecification> {
-    let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
-        None
-    } else if block_cipher_mode == Some(BlockCipherMode::GCM) {
-        wrapping_key_id.map(|id| KeyWrappingSpecification {
-            wrapping_method: WrappingMethod::Encrypt,
-            encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString(id.to_string()),
-                cryptographic_parameters: Some(Box::new(CryptographicParameters {
-                    block_cipher_mode,
-                    ..CryptographicParameters::default()
-                })),
-            }),
-            attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
-            encoding_option: Some(EncodingOption::NoEncoding),
-            ..KeyWrappingSpecification::default()
-        })
-    } else {
-        wrapping_key_id.map(|id| KeyWrappingSpecification {
-            wrapping_method: WrappingMethod::Encrypt,
-            encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString(id.to_string()),
-                cryptographic_parameters: None,
-            }),
-            ..KeyWrappingSpecification::default()
-        })
-    };
-    key_wrapping_specification
+    encode_to_ttlv: bool,
+) -> KeyWrappingSpecification {
+    KeyWrappingSpecification {
+        wrapping_method: WrappingMethod::Encrypt,
+        encryption_key_information: Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_string()),
+            cryptographic_parameters,
+        }),
+        attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
+        encoding_option: Some(if encode_to_ttlv {
+            EncodingOption::TTLVEncoding
+        } else {
+            EncodingOption::NoEncoding
+        }),
+        ..KeyWrappingSpecification::default()
+    }
 }
 
 #[derive(Default)]
@@ -107,13 +98,15 @@ pub struct ExportObjectParams<'a> {
     pub allow_revoked: bool,
     /// `key_format_type` - The key format for export
     pub key_format_type: Option<KeyFormatType>,
-    /// `block_cipher_mode` - If wrapping with symmetric key, how to wrap key, using RFC5649 (`NistKeyWrap`) or AES256GCM (GCM)
-    pub block_cipher_mode: Option<BlockCipherMode>,
+    /// `encode_to_ttlv` - if wrapping, Encode the Key Material to JSON TTLV before wrapping
+    pub encode_to_ttlv: bool,
+    /// `cryptographic_parameters` - The cryptographic parameters for wrapping
+    pub wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     /// `authenticated_encryption_additional_data` - Wrapping using GCM mode, additional data used for encryption
     pub authenticated_encryption_additional_data: Option<String>,
 }
 
-impl<'a> ExportObjectParams<'a> {
+impl ExportObjectParams<'_> {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -121,7 +114,8 @@ impl<'a> ExportObjectParams<'a> {
             wrapping_key_id: None,
             allow_revoked: false,
             key_format_type: None,
-            block_cipher_mode: None,
+            encode_to_ttlv: false,
+            wrapping_cryptographic_parameters: None,
             authenticated_encryption_additional_data: None,
         }
     }
@@ -145,8 +139,8 @@ pub async fn export_object(
     kms_rest_client: &KmsClient,
     object_id_or_tags: &str,
     params: ExportObjectParams<'_>,
-) -> Result<(Object, Option<Attributes>), ClientError> {
-    let (object, object_type, attributes) = if params.allow_revoked {
+) -> Result<(UniqueIdentifier, Object, Option<Attributes>), ClientError> {
+    let (id, object, object_type, attributes) = if params.allow_revoked {
         //use the KMIP export function to get revoked objects
         let export_response = kms_rest_client
             .export(export_request(
@@ -154,12 +148,14 @@ pub async fn export_object(
                 params.unwrap,
                 params.wrapping_key_id,
                 params.key_format_type,
-                params.block_cipher_mode,
+                params.encode_to_ttlv,
+                params.wrapping_cryptographic_parameters,
                 params.authenticated_encryption_additional_data,
             ))
             .await
             .with_context(|| "Export")?;
         (
+            export_response.unique_identifier,
             export_response.object,
             export_response.object_type,
             Some(export_response.attributes),
@@ -172,15 +168,21 @@ pub async fn export_object(
                 params.unwrap,
                 params.wrapping_key_id,
                 params.key_format_type,
-                params.block_cipher_mode,
+                params.encode_to_ttlv,
+                params.wrapping_cryptographic_parameters,
                 params.authenticated_encryption_additional_data,
             ))
             .await
             .with_context(|| "Get")?;
-        (get_response.object, get_response.object_type, None)
+        (
+            get_response.unique_identifier,
+            get_response.object,
+            get_response.object_type,
+            None,
+        )
     };
     // Return the object after post fixing the object type
-    Ok((Object::post_fix(object_type, object), attributes))
+    Ok((id, Object::post_fix(object_type, object), attributes))
 }
 
 /// Export a batch of Objects from the KMS
@@ -197,7 +199,7 @@ pub async fn batch_export_objects(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     params: ExportObjectParams<'_>,
-) -> Result<Vec<(Object, Attributes)>, ClientError> {
+) -> Result<Vec<(UniqueIdentifier, Object, Attributes)>, ClientError> {
     if params.allow_revoked {
         batch_export(
             kms_rest_client,
@@ -205,7 +207,8 @@ pub async fn batch_export_objects(
             params.unwrap,
             params.wrapping_key_id,
             params.key_format_type,
-            params.block_cipher_mode,
+            params.encode_to_ttlv,
+            params.wrapping_cryptographic_parameters,
             params.authenticated_encryption_additional_data,
         )
         .await
@@ -216,22 +219,25 @@ pub async fn batch_export_objects(
             params.unwrap,
             params.wrapping_key_id,
             params.key_format_type,
-            params.block_cipher_mode,
+            params.encode_to_ttlv,
+            params.wrapping_cryptographic_parameters,
             params.authenticated_encryption_additional_data,
         )
         .await
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn batch_get(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-    block_cipher_mode: Option<BlockCipherMode>,
+    encode_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
-) -> ClientResult<Vec<(Object, Attributes)>> {
+) -> ClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -242,7 +248,8 @@ async fn batch_get(
                     unwrap,
                     wrapping_key_id,
                     key_format_type,
-                    block_cipher_mode,
+                    encode_to_ttlv,
+                    wrapping_cryptographic_parameters.clone(),
                     authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
@@ -253,7 +260,7 @@ async fn batch_get(
         })
         .collect();
     let responses = batch_operations(kms_rest_client, operations).await?;
-    let mut results = vec![];
+    let mut results = Vec::with_capacity(responses.len());
 
     for response in responses.chunks(2) {
         match response {
@@ -262,7 +269,11 @@ async fn batch_get(
                 Operation::GetAttributesResponse(get_attributes_response),
             ] => {
                 let object = Object::post_fix(get.object_type, get.object.clone());
-                results.push((object, get_attributes_response.attributes.clone()));
+                results.push((
+                    get.unique_identifier.clone(),
+                    object,
+                    get_attributes_response.attributes.clone(),
+                ));
             }
             operations => {
                 let mut errors = String::new();
@@ -279,15 +290,17 @@ async fn batch_get(
     Ok(results)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn batch_export(
     kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     key_format_type: Option<KeyFormatType>,
-    block_cipher_mode: Option<BlockCipherMode>,
+    encode_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
     authenticated_encryption_additional_data: Option<String>,
-) -> ClientResult<Vec<(Object, Attributes)>> {
+) -> ClientResult<Vec<(UniqueIdentifier, Object, Attributes)>> {
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
@@ -298,7 +311,8 @@ async fn batch_export(
                     unwrap,
                     wrapping_key_id,
                     key_format_type,
-                    block_cipher_mode,
+                    encode_to_ttlv,
+                    wrapping_cryptographic_parameters.clone(),
                     authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
@@ -321,7 +335,11 @@ async fn batch_export(
                     Object::post_fix(export_response.object_type, export_response.object.clone());
                 let mut attributes = export_response.attributes.clone();
                 let _ = attributes.set_tags(get_attributes_response.attributes.get_tags());
-                results.push((object, get_attributes_response.attributes.clone()));
+                results.push((
+                    get_attributes_response.unique_identifier.clone(),
+                    object,
+                    get_attributes_response.attributes.clone(),
+                ));
             }
             operations => {
                 let mut errors = String::new();

@@ -162,7 +162,7 @@ async fn recover_policy(
             },
         )
         .await?
-        .0
+        .1
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
         from_ttlv(&ttlv)?

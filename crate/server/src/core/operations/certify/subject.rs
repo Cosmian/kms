@@ -10,12 +10,13 @@ use cosmian_kmip::{
     },
     openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions},
 };
+use cosmian_kms_server_database::ObjectWithMetadata;
 use openssl::{
     pkey::{PKey, Public},
     x509::{X509Extension, X509Name, X509NameRef, X509Req, X509},
 };
 
-use crate::{database::object_with_metadata::ObjectWithMetadata, kms_error, result::KResult};
+use crate::{kms_error, result::KResult};
 
 /// This holds `KeyPair` information when one is created for the subject
 pub(crate) struct KeyPairData {
@@ -44,6 +45,7 @@ impl Display for KeyPairData {
 }
 
 /// The party that gets signed by the issuer and gets the certificate
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Subject {
     X509Req(
         /// Unique identifier of the certificate to create
@@ -96,7 +98,7 @@ impl Subject {
                 .public_key()
                 .map_err(|e| kms_error!("No public key: {e}")),
             Self::PublicKeyAndSubjectName(_, owm, _sn) => {
-                kmip_public_key_to_openssl(&owm.object).map_err(Into::into)
+                kmip_public_key_to_openssl(owm.object()).map_err(Into::into)
             }
             Self::KeypairAndSubjectName(_, keypair, _sn) => {
                 kmip_public_key_to_openssl(&keypair.public_key_object).map_err(Into::into)

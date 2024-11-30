@@ -12,8 +12,9 @@ use cosmian_kms_client::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
-            Attributes, BlockCipherMode, CertificateAttributes, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
+            Attributes, BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
+            CryptographicParameters, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier, VendorAttribute,
         },
     },
     ExportObjectParams, KmsClient,
@@ -53,6 +54,10 @@ pub struct CreateKeyPairsAction {
     /// The existing private key id of an existing RSA keypair to use (optional - if no ID is provided, a RSA keypair will be created)
     #[clap(long, short = 'k')]
     rsa_private_key_id: Option<String>,
+
+    /// Sensitive: if set, the key will not be exportable
+    #[clap(long = "sensitive", default_value = "false")]
+    sensitive: bool,
 
     /// Dry run mode. If set, the action will not be executed.
     #[clap(long, default_value = "false")]
@@ -118,54 +123,56 @@ impl CreateKeyPairsAction {
 
         let kacls_url = kms_rest_client.google_cse_status();
 
-        let (private_key_id, public_key_id) = match &self.rsa_private_key_id {
-            Some(id) => {
-                let attributes_response = kms_rest_client
-                    .get_attributes(GetAttributes {
-                        unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
-                        attribute_references: None,
-                    })
-                    .await?;
-                if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
-                    // Do we need to add encryption Algorithm to RSA too ?
-                    if let Some(linked_public_key_id) = attributes_response
-                        .attributes
-                        .get_link(LinkType::PublicKeyLink)
-                    {
-                        (id.to_string(), linked_public_key_id.to_string())
-                    } else {
-                        return Err(CliError::ServerError(
-                            "Invalid private-key-id  - no linked public key found".to_string(),
-                        ));
-                    }
+        let (private_key_id, public_key_id) = if let Some(id) = &self.rsa_private_key_id {
+            let attributes_response = kms_rest_client
+                .get_attributes(GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.to_string())),
+                    attribute_references: None,
+                })
+                .await?;
+            if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
+                // Do we need to add encryption Algorithm to RSA too ?
+                if let Some(linked_public_key_id) = attributes_response
+                    .attributes
+                    .get_link(LinkType::PublicKeyLink)
+                {
+                    (id.to_string(), linked_public_key_id.to_string())
                 } else {
                     return Err(CliError::ServerError(
-                        "Invalid private-key-id - must be of PrivateKey type".to_string(),
+                        "Invalid private-key-id  - no linked public key found".to_string(),
                     ));
                 }
+            } else {
+                return Err(CliError::ServerError(
+                    "Invalid private-key-id - must be of PrivateKey type".to_string(),
+                ));
             }
-            None => {
-                let created_key_pair = kms_rest_client
-                    .create_key_pair(create_rsa_key_pair_request(
-                        None,
-                        Vec::<String>::new(),
-                        RSA_4096,
-                    )?)
-                    .await?;
-                (
-                    created_key_pair.private_key_unique_identifier.to_string(),
-                    created_key_pair.public_key_unique_identifier.to_string(),
-                )
-            }
+        } else {
+            let created_key_pair = kms_rest_client
+                .create_key_pair(create_rsa_key_pair_request(
+                    None,
+                    Vec::<String>::new(),
+                    RSA_4096,
+                    self.sensitive,
+                )?)
+                .await?;
+            (
+                created_key_pair.private_key_unique_identifier.to_string(),
+                created_key_pair.public_key_unique_identifier.to_string(),
+            )
         };
 
         // Export wrapped private key with google CSE key
-        let (wrapped_private_key, _attributes) = export_object(
+        let (_, wrapped_private_key, _attributes) = export_object(
             kms_rest_client,
             &private_key_id,
             ExportObjectParams {
                 wrapping_key_id: Some(&self.cse_key_id),
-                block_cipher_mode: Some(BlockCipherMode::GCM),
+                wrapping_cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    block_cipher_mode: Some(BlockCipherMode::GCM),
+                    ..CryptographicParameters::default()
+                }),
                 ..ExportObjectParams::default()
             },
         )
@@ -173,7 +180,7 @@ impl CreateKeyPairsAction {
 
         let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
 
-        // Sign created public key with issuer private key
+        // Sign created public key with the issuer private key
         let attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
             certificate_attributes: Some(Box::new(CertificateAttributes::parse_subject_line(
@@ -206,7 +213,7 @@ impl CreateKeyPairsAction {
             .unique_identifier;
 
         // From the created leaf certificate, export the associated PKCS7 containing the whole cert chain
-        let (pkcs7_object, _pkcs7_object_export_attributes) = export_object(
+        let (_, pkcs7_object, _pkcs7_object_export_attributes) = export_object(
             kms_rest_client,
             &certificate_unique_identifier.to_string(),
             ExportObjectParams {

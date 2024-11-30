@@ -35,7 +35,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag])?;
+    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -113,7 +113,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag])?;
+    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -145,8 +145,12 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk_tag = "udk";
     let udk_json_tag = serde_json::to_string(&[udk_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Level::Top Secret";
-    let request =
-        build_create_user_decryption_private_key_request(access_policy, &mkp_json_tag, [udk_tag])?;
+    let request = build_create_user_decryption_private_key_request(
+        access_policy,
+        &mkp_json_tag,
+        [udk_tag],
+        false,
+    )?;
     let _create_response: CreateResponse = test_utils::post(&app, request).await?;
     // let user_decryption_key_identifier = &create_response.unique_identifier;
 
@@ -197,8 +201,12 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk1_tag = "udk1";
     let udk1_json_tag = serde_json::to_string(&[udk1_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
-    let request =
-        build_create_user_decryption_private_key_request(access_policy, &mkp_json_tag, [udk1_tag])?;
+    let request = build_create_user_decryption_private_key_request(
+        access_policy,
+        &mkp_json_tag,
+        [udk1_tag],
+        false,
+    )?;
     let _create_response: CreateResponse = test_utils::post(&app, &request).await?;
 
     //
@@ -206,8 +214,12 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk2_tag = "udk2";
     let udk2_json_tag = serde_json::to_string(&[udk2_tag.to_owned()])?;
     let access_policy = "Department::MKG && Level::Confidential";
-    let request =
-        build_create_user_decryption_private_key_request(access_policy, &mkp_json_tag, [udk2_tag])?;
+    let request = build_create_user_decryption_private_key_request(
+        access_policy,
+        &mkp_json_tag,
+        [udk2_tag],
+        false,
+    )?;
     let _create_response2: CreateResponse = test_utils::post(&app, &request).await?;
 
     // test user1 can decrypt

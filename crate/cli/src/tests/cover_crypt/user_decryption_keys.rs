@@ -19,6 +19,7 @@ pub(crate) fn create_user_decryption_key(
     master_private_key_id: &str,
     access_policy: &str,
     tags: &[&str],
+    sensitive: bool,
 ) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -33,6 +34,9 @@ pub(crate) fn create_user_decryption_key(
     for tag in tags {
         args.push("--tag");
         args.push(tag);
+    }
+    if sensitive {
+        args.push("--sensitive");
     }
     cmd.arg(SUB_COMMAND).args(args);
 
@@ -59,6 +63,7 @@ pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
 
     // and a user key
@@ -67,6 +72,7 @@ pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     )?;
     assert!(!user_key_id.is_empty());
 
@@ -83,6 +89,7 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
 
     // bad attributes
@@ -91,6 +98,7 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],
+        false,
     )
     .err()
     .unwrap();
@@ -105,9 +113,13 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
         "BAD_KEY",
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],
+        false,
     )
     .err()
     .unwrap();
-    assert!(err.to_string().contains("Item_Not_Found: BAD_KEY"));
+    assert!(
+        err.to_string()
+            .contains("no Covercrypt master private key found for: BAD_KEY")
+    );
     Ok(())
 }

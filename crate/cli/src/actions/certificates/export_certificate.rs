@@ -88,7 +88,7 @@ impl ExportCertificateAction {
     pub async fn run(&self, client_connector: &KmsClient) -> CliResult<()> {
         trace!("Export certificate: {:?}", self);
 
-        let object_id: String = if let Some(object_id) = &self.unique_id {
+        let id_or_tags: String = if let Some(object_id) = &self.unique_id {
             object_id.clone()
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
@@ -111,9 +111,9 @@ impl ExportCertificateAction {
         };
 
         // export the object
-        let (object, export_attributes) = export_object(
+        let (id, object, export_attributes) = export_object(
             client_connector,
-            &object_id,
+            &id_or_tags,
             ExportObjectParams {
                 wrapping_key_id,
                 allow_revoked: self.allow_revoked,
@@ -163,7 +163,7 @@ impl ExportCertificateAction {
             _ => {
                 cli_bail!(
                     "The object {} is not a certificate but a {}",
-                    &object_id,
+                    &id,
                     object.object_type()
                 );
             }
@@ -171,7 +171,7 @@ impl ExportCertificateAction {
 
         let mut stdout = format!(
             "The certificate {} was exported to {:?}",
-            &object_id, &self.certificate_file
+            &id, &self.certificate_file
         );
 
         // write attributes to a file
@@ -180,12 +180,12 @@ impl ExportCertificateAction {
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
             let stdout_attributes = format!(
                 "The attributes of the certificate {} were exported to {:?}",
-                &object_id, &attributes_file
+                &id_or_tags, &attributes_file
             );
             stdout = format!("{stdout} - {stdout_attributes}");
         }
         let mut stdout = console::Stdout::new(&stdout);
-        stdout.set_unique_identifier(object_id);
+        stdout.set_unique_identifier(id_or_tags);
         stdout.write()?;
 
         Ok(())

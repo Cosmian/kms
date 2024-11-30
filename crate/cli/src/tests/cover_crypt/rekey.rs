@@ -86,12 +86,14 @@ async fn test_rekey_error() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     );
 
     // bad attributes
@@ -176,12 +178,14 @@ async fn test_rekey_prune() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     )?;
 
     encrypt(

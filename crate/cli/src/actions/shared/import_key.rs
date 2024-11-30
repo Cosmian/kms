@@ -35,10 +35,7 @@ pub(crate) enum ImportKeyFormat {
 
 /// Import a private or public key in the KMS.
 ///
-/// When no unique id is specified, a unique id based on the key material is generated.
-///
-/// Import of a private key will automatically generate the corresponding public key
-/// with id `{private_key_id}-pub`.
+/// When no unique id is specified, a unique id is generated.
 ///
 /// By default, the format is expected to be JSON TTLV but
 /// other formats can be specified with the option `-f`.
@@ -69,11 +66,11 @@ pub struct ImportKeyAction {
     #[clap(long, short = 'f', default_value = "json-ttlv")]
     key_format: ImportKeyFormat,
 
-    /// For a private key: the corresponding public key id if any.
+    /// For a private key: the corresponding KMS public key id if any.
     #[clap(long, short = 'p')]
     public_key_id: Option<String>,
 
-    /// For a public key: the corresponding private key id if any.
+    /// For a public key: the corresponding KMS private key id if any.
     #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
@@ -267,7 +264,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -280,7 +277,7 @@ pub(crate) fn build_private_key_from_der_bytes(
     }
 }
 
-// Here the zeroizing type on public key bytes is overkill but it aligns with
+// Here the zeroizing type on public key bytes is overkill, but it aligns with
 // other methods dealing with private components.
 fn build_public_key_from_der_bytes(
     key_format_type: KeyFormatType,
@@ -292,7 +289,7 @@ fn build_public_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -316,7 +313,7 @@ fn build_symmetric_key_from_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),

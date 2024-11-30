@@ -15,23 +15,27 @@ use cosmian_kmip::{
     },
     kmip::{
         extra::BulkData,
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
             PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
+        KmipOperation,
     },
     openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
-    database::object_with_metadata::ObjectWithMetadata,
+    core::{
+        to_cryptographic_algorithm,
+        uid_utils::{has_prefix, uids_from_unique_identifier},
+        KMS,
+    },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -43,111 +47,182 @@ pub(crate) async fn decrypt(
     kms: &KMS,
     request: Decrypt,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<DecryptResponse> {
     trace!("decrypt: {}", serde_json::to_string(&request)?);
+    let data = request.data.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+    })?;
 
-    let owm = get_key(kms, &request, user, params).await?;
-
-    // Make sure that the key used to decrypt can be used to decrypt.
-    if !owm
-        .object
-        .attributes()?
-        .is_usage_authorized_for(CryptographicUsageMask::Decrypt)?
-    {
-        return Err(KmsError::KmipError(
-            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-            "CryptographicUsageMask not authorized for Decrypt".to_owned(),
-        ))
-    }
-
-    match &owm.object {
-        Object::SymmetricKey { .. } | Object::PrivateKey { .. } => {
-            // we do not (yet) support continuation cases
-            let data = request.data.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
-            })?;
-
-            // it may be a bulk decryption request, if not, fallback to single decryption
-            BulkData::deserialize(data).map_or_else(
-                |_| decrypt_single(&owm, &request),
-                |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
-            )
-        }
-        other => kms_bail!(KmsError::NotSupported(format!(
-            "decrypt: decryption with keys of type: {} is not supported",
-            other.object_type()
-        ))),
-    }
-}
-
-async fn get_key(
-    kms: &KMS,
-    request: &Decrypt,
-    user: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<ObjectWithMetadata> {
-    // there must be an identifier
-    let uid_or_tags = request
+    // Get the uids from the unique identifier
+    let unique_identifier = request
         .unique_identifier
         .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Get Key: unique_identifier must be a string")?;
-    trace!("get_key: uid_or_tags: {uid_or_tags}");
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+        .await
+        .context("Decrypt")?;
+    debug!("Decrypt: candidate uids: {uids:?}");
 
-    // retrieve from tags or use passed identifier
-    let mut owm_s = kms
-        .db
-        .retrieve(uid_or_tags, user, ObjectOperationType::Decrypt, params)
-        .await?
-        .into_values()
-        .filter(|owm| {
-            let object_type = owm.object.object_type();
-            if owm.state != StateEnumeration::Active {
-                return false
-            }
-            if object_type == ObjectType::SymmetricKey {
-                return true
-            }
-            if object_type != ObjectType::PrivateKey {
-                return false
-            }
-            if let Ok(attributes) = owm.object.attributes() {
-                // is it a Covercrypt secret key?
-                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                    // does it have an access policy that allows decryption?
-                    return attributes::access_policy_from_attributes(attributes).is_ok()
+    // Determine which uid to select. The decision process is as follows: loop through the uids
+    // 1. if the uid has a prefix, try using that
+    // 2. if the uid does not have a prefix, fetch the corresponding object and check that
+    //   a- the object is active
+    //   b- the object is a Private Key, a Symmetric Key
+    //   c- the object is authorized for Decryption
+    //
+    // Permissions check are done AFTER the object is fetched in the default database
+    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
+    // for each uid. This also is based on the high probability that there sill be a single object
+    // in the candidates list.
+    let mut selected_owm = None;
+    for uid in uids {
+        if let Some(prefix) = has_prefix(&uid) {
+            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+                let ops = kms
+                    .database
+                    .list_user_operations_on_object(&uid, user, false, params)
+                    .await?;
+                if !ops
+                    .iter()
+                    .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
+                {
+                    continue
                 }
             }
-            true
-        })
-        .collect::<Vec<ObjectWithMetadata>>();
-    trace!("get_key: owm_s: number of results: {}", owm_s.len());
+            debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
+            return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
+        }
 
-    // there can only be one key
-    let mut owm = owm_s.pop().ok_or_else(|| {
+        //Default database
+        let owm = kms
+            .database
+            .retrieve_object(&uid, params)
+            .await?
+            .ok_or_else(|| {
+                KmsError::KmipError(
+                    ErrorReason::Item_Not_Found,
+                    format!("Decrypt: failed to retrieve the key: {uid}"),
+                )
+            })?;
+        if owm.state() != StateEnumeration::Active {
+            continue
+        }
+        let attributes = owm.object().attributes().cloned().unwrap_or_default();
+        if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
+            continue
+        }
+        //check user permissions - owner can always decrypt
+        if owm.owner() != user {
+            let ops = kms
+                .database
+                .list_user_operations_on_object(&uid, user, false, params)
+                .await?;
+            if !ops
+                .iter()
+                .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
+            {
+                continue
+            }
+        }
+        debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
+        // user is authorized to decrypt with the key
+        if let Object::SymmetricKey { .. } = owm.object() {
+            selected_owm = Some(owm);
+            break
+        }
+        if let Object::PrivateKey { .. } = owm.object() {
+            // is it a Covercrypt secret key?
+            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                // does it have an access policy that allows decryption?
+                if attributes::access_policy_from_attributes(&attributes).is_err() {
+                    continue
+                }
+            }
+            selected_owm = Some(owm);
+            break
+        }
+    }
+    let mut owm = selected_owm.ok_or_else(|| {
         KmsError::KmipError(
             ErrorReason::Item_Not_Found,
-            format!(
-                "Get Key: no available key found (must be an active symmetric key or private key) \
-                 for object identifier {uid_or_tags}"
-            ),
+            format!("Decrypt: no valid key for id: {unique_identifier}"),
         )
     })?;
 
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for key {uid_or_tags}",
-        )))
-    }
+    // if the key is wrapped, we need to unwrap it
+    owm.set_object(
+        kms.get_unwrapped(owm.id(), owm.object(), user, params)
+            .await
+            .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
+    );
 
-    // unwrap if wrapped
-    if owm.object.key_wrapping_data().is_some() {
-        let key_block = owm.object.key_block_mut()?;
-        unwrap_key(key_block, kms, &owm.owner, params).await?;
+    BulkData::deserialize(data).map_or_else(
+        |_| decrypt_single(&owm, &request),
+        |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
+    )
+}
+
+/// Decrypt using an decryption oracle.
+/// # Arguments
+/// * `kms` - the KMS
+/// * `request` - the decrypt request
+/// * `uid` - the unique identifier of the key
+/// * `prefix` - the prefix of the decryption oracle
+/// # Returns
+/// * the decrypt response
+async fn decrypt_using_encryption_oracle(
+    kms: &KMS,
+    request: &Decrypt,
+    uid: &str,
+    prefix: &str,
+) -> KResult<DecryptResponse> {
+    let mut data = request
+        .iv_counter_nonce
+        .as_ref()
+        .map_or(vec![], Clone::clone);
+    data.extend(
+        request
+            .data
+            .as_ref()
+            .ok_or_else(|| {
+                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+            })?
+            .clone(),
+    );
+    if let Some(tag) = &request.authenticated_encryption_tag {
+        data.extend(tag.iter().copied());
     }
-    Ok(owm)
+    debug!(
+        "Encryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
+        data.len()
+    );
+    let cleartext = kms
+        .encryption_oracles
+        .read()
+        .await
+        .get(prefix)
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "Decrypt: unknown decryption oracle prefix: {prefix}"
+            ))
+        })?
+        .decrypt(
+            uid,
+            data.as_slice(),
+            request
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|cp| to_cryptographic_algorithm(cp).transpose())
+                .transpose()?,
+            request.authenticated_encryption_additional_data.as_deref(),
+        )
+        .await?;
+    Ok(DecryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        data: Some(cleartext),
+        correlation_value: request.correlation_value.clone(),
+    })
 }
 
 fn decrypt_bulk(
@@ -159,7 +234,7 @@ fn decrypt_bulk(
         "decrypt_bulk: ==> decrypting {} ciphertexts",
         bulk_data.len()
     );
-    let key_block = owm.object.key_block()?;
+    let key_block = owm.object().key_block()?;
     let mut plaintexts = Vec::with_capacity(bulk_data.len());
 
     match &key_block.key_format_type {
@@ -237,7 +312,7 @@ fn decrypt_bulk(
         plaintexts.len()
     );
     Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(BulkData::new(plaintexts).serialize()?),
         correlation_value: request.correlation_value.clone(),
     })
@@ -245,7 +320,7 @@ fn decrypt_bulk(
 
 fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
     trace!("decrypt_single");
-    let key_block = owm.object.key_block()?;
+    let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
@@ -274,7 +349,8 @@ fn decrypt_with_covercrypt(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<DecryptResponse, KmsError> {
-    CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
+    trace!("Decrypt with Covercrypt key {}", owm.id());
+    CovercryptDecryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
         .decrypt(request)
         .map_err(Into::into)
 }
@@ -306,7 +382,7 @@ fn decrypt_single_with_symmetric_key(
         .unwrap_or(EMPTY_SLICE);
     let plaintext = sym_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
     Ok(Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),
         correlation_value: request.correlation_value.clone(),
     }))
@@ -316,7 +392,7 @@ fn get_aead_and_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
-    let key_block = owm.object.key_block()?;
+    let key_block = owm.object().key_block()?;
     // recover the cryptographic algorithm from the request or the key block or default to AES
     let cryptographic_algorithm = request
         .cryptographic_parameters
@@ -348,7 +424,7 @@ fn decrypt_with_public_key(
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
-    let private_key = kmip_private_key_to_openssl(&owm.object)?;
+    let private_key = kmip_private_key_to_openssl(owm.object())?;
 
     let plaintext = match private_key.id() {
         Id::RSA => decrypt_with_rsa(
@@ -363,7 +439,7 @@ fn decrypt_with_public_key(
         }
     };
     Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),
         correlation_value: request.correlation_value.clone(),
     })

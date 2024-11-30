@@ -8,7 +8,7 @@
 //! 4. Remove the attribute.
 //! 5. Verify the attribute is removed.
 //!
-//! The tests use the `KMSServer` to perform operations and the `GetAttributesResponse` to
+//! The tests use the `KMS` to perform operations and the `GetAttributesResponse` to
 //! verify the state of attributes.
 //!
 //! # Constants
@@ -43,16 +43,12 @@ use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
+    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
 };
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
 
-async fn get_attributes(
-    kms: &Arc<KMSServer>,
-    uid: &str,
-    tag: Tag,
-) -> KResult<GetAttributesResponse> {
+async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttributesResponse> {
     kms.get_attributes(
         GetAttributes {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
@@ -64,7 +60,7 @@ async fn get_attributes(
     .await
 }
 
-async fn set_attribute(kms: &Arc<KMSServer>, uid: &str, attribute: Attribute) -> KResult<()> {
+async fn set_attribute(kms: &Arc<KMS>, uid: &str, attribute: Attribute) -> KResult<()> {
     kms.set_attribute(
         SetAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
@@ -77,7 +73,7 @@ async fn set_attribute(kms: &Arc<KMSServer>, uid: &str, attribute: Attribute) ->
     Ok(())
 }
 
-async fn delete_attribute(kms: &Arc<KMSServer>, delete_request: DeleteAttribute) -> KResult<()> {
+async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KResult<()> {
     kms.delete_attribute(delete_request, USER, None).await?;
     Ok(())
 }
@@ -87,18 +83,21 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     log_init(None);
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
 
     let mut rng = CsRng::from_entropy();
 
     // Create key
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let sym_key_object =
-        create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES)?;
+    let sym_key_object = create_symmetric_key_kmip_object(
+        symmetric_key.as_slice(),
+        CryptographicAlgorithm::AES,
+        false,
+    )?;
     let uid = Uuid::new_v4().to_string();
 
-    kms.db
+    kms.database
         .create(
             Some(uid.clone()),
             USER,
@@ -144,7 +143,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
 }
 
 async fn set_activation_date_and_remove_it(
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
     uid: &str,
     delete_request: DeleteAttribute,
 ) -> KResult<()> {
@@ -167,7 +166,7 @@ async fn set_activation_date_and_remove_it(
 }
 
 async fn set_link_attribute_and_remove_it(
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
     uid: &str,
     tag: Tag,
     link_type: LinkType,
@@ -202,7 +201,7 @@ async fn set_link_attribute_and_remove_it(
     Ok(())
 }
 
-async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMSServer>, uid: &str) -> KResult<()> {
+async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
     // Check no cryptographic algorithm is set
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
 
@@ -242,7 +241,7 @@ async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMSServer>, uid: &s
     Ok(())
 }
 
-async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMSServer>, uid: &str) -> KResult<()> {
+async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
     // Check no cryptographic length is set
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));

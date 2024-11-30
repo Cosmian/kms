@@ -24,17 +24,17 @@ use cosmian_kmip::{
 
 use crate::{
     config::ServerParams,
+    core::KMS,
     error::KmsError,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
-    KMSServer,
 };
 
 #[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
@@ -42,6 +42,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         Some(UniqueIdentifier::TextString("ec_sk_uid".to_owned())),
         EMPTY_TAGS,
         RecommendedCurve::CURVE25519,
+        false,
     )?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
@@ -201,7 +202,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = Message {
@@ -219,6 +220,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
+                false,
             )?)),
             MessageBatchItem::new(Operation::Locate(
                 cosmian_kmip::kmip::kmip_operations::Locate::default(),
@@ -244,21 +246,25 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
+                false,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
+                false,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::SECP256K1,
+                false,
             )?)),
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
+                false,
             )?)),
         ],
     };

@@ -26,14 +26,18 @@ use tempfile::TempDir;
 use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
-#[cfg(not(feature = "fips"))]
-use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
-    actions::{shared::ExportKeyFormat, symmetric::keys::create_key::CreateKeyAction},
+    actions::{
+        shared::{export_key::WrappingAlgorithm, ExportKeyFormat},
+        symmetric::keys::create_key::CreateKeyAction,
+    },
     error::{result::CliResult, CliError},
     tests::{
-        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
-        symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
+        symmetric::create_key::create_symmetric_key,
+        utils::recover_cmd_logs,
+        PROG_NAME,
     },
 };
 
@@ -47,7 +51,7 @@ pub(crate) struct ExportKeyParams {
     pub unwrap: bool,
     pub wrap_key_id: Option<String>,
     pub allow_revoked: bool,
-    pub block_cipher_mode: Option<String>,
+    pub wrapping_algorithm: Option<WrappingAlgorithm>,
     pub authenticated_additional_data: Option<String>,
 }
 
@@ -89,13 +93,22 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CliResult<()> {
     if params.allow_revoked {
         args.push("--allow-revoked".to_owned());
     }
-    if let Some(block_cipher_mode) = params.block_cipher_mode {
-        args.push("--block-cipher-mode".to_owned());
-        args.push(block_cipher_mode);
+    if let Some(wrapping_algorithm) = &params.wrapping_algorithm {
+        args.push("--wrapping-algorithm".to_owned());
+        args.push(wrapping_algorithm.to_string());
     }
     if let Some(authenticated_additional_data) = params.authenticated_additional_data {
-        args.push("--authenticated-additional-data".to_owned());
-        args.push(authenticated_additional_data);
+        if let Some(wrapping_algorithm) = params.wrapping_algorithm {
+            if wrapping_algorithm == WrappingAlgorithm::AesGCM {
+                args.push("--authenticated-additional-data".to_owned());
+                args.push(authenticated_additional_data);
+            } else {
+                return Err(CliError::Default(
+                    "Authenticated additional data can only be used with AESGCM wrapping algorithm"
+                        .to_owned(),
+                ));
+            }
+        }
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, params.cli_conf_path);
@@ -204,12 +217,12 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
 
     // generate a symmetric key
     let (private_key_id, _public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // generate a symmetric key
     let sym_key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
-    // Export wrapped key with symmetric key as default (JsonTTLV with Raw Key Format Type)
+    // Export wrapped key with a symmetric key as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "rsa".to_owned(),
@@ -267,21 +280,21 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
             key_id: private_key_id.clone(),
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             wrap_key_id: Some(sym_key_id.clone()),
-            block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap.to_string()),
+            wrapping_algorithm: Some(WrappingAlgorithm::NistKeyWrap),
             authenticated_additional_data: Some("encryption_data".to_owned()),
             ..Default::default()
         })
         .is_err()
     );
 
-    // Export wrapped key with symmetric key using AESGCM as default (JsonTTLV with Raw Key Format Type)
+    // Export wrapped key with a symmetric key using AESGCM as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "rsa".to_owned(),
         key_id: private_key_id.clone(),
         key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
         wrap_key_id: Some(sym_key_id.clone()),
-        block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
+        wrapping_algorithm: Some(WrappingAlgorithm::AesGCM),
         ..Default::default()
     })?;
 
@@ -307,7 +320,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
             key_id: sym_key_id,
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             wrap_key_id: Some(private_key_id),
-            block_cipher_mode: Some(BlockCipherMode::GCM.to_string()),
+            wrapping_algorithm: Some(WrappingAlgorithm::AesGCM),
             ..Default::default()
         })
         .is_err()
@@ -370,6 +383,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
 
     _export_cc_test(
@@ -390,6 +404,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     )?;
     _export_cc_test(
         KeyFormatType::CoverCryptSecretKey,
@@ -427,6 +442,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
 
     // Export to non existing dir
@@ -456,7 +472,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "x25519", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "x25519", &[], false)?;
 
     //
     // Private Key
@@ -568,6 +584,193 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
     assert_eq!(
         pkey_1.public_key_to_der().unwrap(),
         pkey_2.public_key_to_der().unwrap()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_sensitive_sym() -> CliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a symmetric key
+    let key_id = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            sensitive: true,
+            ..Default::default()
+        },
+    )?;
+
+    // the key should not be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_err()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_sensitive_ec_key() -> CliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate an ec key pair
+    let (private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], true)?;
+
+    // the private key should not be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "ec".to_owned(),
+            key_id: private_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_err()
+    );
+
+    // the public key should be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "ec".to_owned(),
+            key_id: public_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_ok()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_sensitive_rsa_key() -> CliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate an ec key pair
+    let (private_key_id, public_key_id) = create_rsa_key_pair(
+        &ctx.owner_client_conf_path,
+        &RsaKeyPairOptions {
+            sensitive: true,
+            ..Default::default()
+        },
+    )?;
+
+    // the private key should not be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "rsa".to_owned(),
+            key_id: private_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_err()
+    );
+
+    // the public key should be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "rsa".to_owned(),
+            key_id: public_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_ok()
+    );
+
+    Ok(())
+}
+
+#[cfg(not(feature = "fips"))]
+#[tokio::test]
+pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // generate a new master key pair
+    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_client_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &[],
+        true,
+    )?;
+
+    // Master private key should not be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "cc".to_owned(),
+            key_id: master_private_key_id.clone(),
+            key_file: tmp_path
+                .join("output.sk.export")
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            ..Default::default()
+        })
+        .is_err()
+    );
+
+    // Master public key should not be exportable
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "cc".to_owned(),
+            key_id: master_public_key_id,
+            key_file: tmp_path
+                .join("output.sk.export")
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            ..Default::default()
+        })
+        .is_ok()
+    );
+
+    let user_key_id = create_user_decryption_key(
+        &ctx.owner_client_conf_path,
+        &master_private_key_id,
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
+        true,
+    )?;
+
+    assert!(
+        export_key(ExportKeyParams {
+            cli_conf_path: ctx.owner_client_conf_path.clone(),
+            sub_command: "cc".to_owned(),
+            key_id: user_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .is_err()
     );
 
     Ok(())

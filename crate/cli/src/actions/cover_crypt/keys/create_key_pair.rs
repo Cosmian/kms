@@ -64,6 +64,10 @@ pub struct CreateMasterKeyPairAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// Sensitive: if set, the private key will not be exportable
+    #[clap(long = "sensitive", default_value = "false")]
+    sensitive: bool,
 }
 
 impl CreateMasterKeyPairAction {
@@ -78,7 +82,8 @@ impl CreateMasterKeyPairAction {
         };
 
         // Create the kmip query
-        let create_key_pair = build_create_master_keypair_request(&policy, &self.tags)?;
+        let create_key_pair =
+            build_create_master_keypair_request(&policy, &self.tags, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

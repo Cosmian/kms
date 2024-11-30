@@ -25,7 +25,7 @@ sudo apt-get install fonts-noto-mono fonts-noto pandoc librsvg2-bin
 
 ```sh
 brew install pandoc librsvg
-brew install --cask homebrew/cask-fonts/font-noto-mono
+brew install font-noto-mono
 ```
 
 #### mkdocs

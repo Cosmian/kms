@@ -71,8 +71,8 @@ pub enum MError {
     #[error("object {0} is invalid")]
     ObjectHandleInvalid(CK_OBJECT_HANDLE),
 
-    #[error("operation has not been initialized")]
-    OperationNotInitialized,
+    #[error("operation has not been initialized, session: {0}")]
+    OperationNotInitialized(CK_SESSION_HANDLE),
 
     #[error("no random number generator")]
     RandomNoRng,
@@ -113,7 +113,19 @@ pub enum MError {
     Bincode(#[from] Box<bincode::ErrorKind>),
 
     #[error("{0}")]
+    Pkcs1(String),
+
+    #[error("{0}")]
+    Encoding(String),
+
+    #[error("Oid: {0}")]
+    Oid(String),
+
+    #[error("{0}")]
     Todo(String),
+
+    #[error("cryptographic error: {0}")]
+    Cryptography(String),
 }
 
 impl From<MError> for CK_RV {
@@ -131,7 +143,7 @@ impl From<MError> for CK_RV {
             MError::MechanismInvalid(_) => CKR_MECHANISM_INVALID,
             MError::NeedToCreateThreads => CKR_NEED_TO_CREATE_THREADS,
             MError::ObjectHandleInvalid(_) => CKR_OBJECT_HANDLE_INVALID,
-            MError::OperationNotInitialized => CKR_OPERATION_NOT_INITIALIZED,
+            MError::OperationNotInitialized(_) => CKR_OPERATION_NOT_INITIALIZED,
             MError::RandomNoRng => CKR_RANDOM_NO_RNG,
             MError::SessionHandleInvalid(_) => CKR_SESSION_HANDLE_INVALID,
             MError::SessionParallelNotSupported => CKR_SESSION_PARALLEL_NOT_SUPPORTED,
@@ -144,8 +156,30 @@ impl From<MError> for CK_RV {
             | MError::FromVecWithNul(_)
             | MError::NullPtr
             | MError::Todo(_)
+            | MError::Cryptography(_)
             | MError::TryFromInt(_)
+            | MError::Pkcs1(_)
+            | MError::Encoding(_)
+            | MError::Oid(_)
             | MError::TryFromSlice(_) => CKR_GENERAL_ERROR,
         }
+    }
+}
+
+impl From<pkcs1::Error> for MError {
+    fn from(value: pkcs1::Error) -> Self {
+        MError::Pkcs1(value.to_string())
+    }
+}
+
+impl From<pkcs1::der::Error> for MError {
+    fn from(value: pkcs1::der::Error) -> Self {
+        MError::Pkcs1(value.to_string())
+    }
+}
+
+impl From<const_oid::Error> for MError {
+    fn from(value: const_oid::Error) -> Self {
+        MError::Oid(value.to_string())
     }
 }

@@ -1,0 +1,64 @@
+[package]
+name = "cosmian_kms_server_database"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Crate containing the database for the Cosmian KMS server and the supported stores"
+
+[lib]
+doctest = false
+
+[dependencies]
+async-trait = "0.1"
+clap = { workspace = true }
+cloudproof = { workspace = true }
+cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+cosmian_kmip = { path = "../kmip" }
+cosmian_kms_interfaces = { path = "../interfaces" }
+hex = { workspace = true }
+lazy_static = "1.5"
+lru = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
+] }
+num_cpus = "1.16.0"
+rawsql = "0.1"
+redis = { version = "0.23", features = [
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { version = "0.8.1", default-features = false, features = [
+  "json",
+  "runtime-tokio-native-tls",
+  "mysql",
+  "postgres",
+  "sqlite",
+] }
+thiserror = { workspace = true }
+tiny-keccak = "2.0.2"
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+version-compare = "0.2.0"
+zeroize = { workspace = true }
+
+[dev-dependencies]
+cosmian_logger = { path = "../logger" }
+rand_chacha = "0.3.1"
+tempfile = "3.11"
+tracing = { version = "0.1.40", default-features = false }
+tracing-subscriber = { version = "0.3.18", default-features = false, features = [
+  "env-filter",
+] }

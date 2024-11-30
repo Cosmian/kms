@@ -6,11 +6,11 @@ mod certificates;
 mod cover_crypt;
 mod elliptic_curve;
 mod google_cmd;
+mod hsm;
 mod new_database;
 mod rsa;
 mod shared;
 mod symmetric;
-
 pub(crate) mod utils;
 
 const PROG_NAME: &str = "ckms";

@@ -209,12 +209,14 @@ async fn test_edit_policy() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     )?;
 
     encrypt(
@@ -277,6 +279,7 @@ async fn test_edit_policy() -> CliResult<()> {
         &master_private_key_id,
         "(Department::Sales || Department::Marketing) && Security Level::Confidential",
         &[],
+        false,
     )?;
 
     // finance and marketing user can not decrypt the sales file

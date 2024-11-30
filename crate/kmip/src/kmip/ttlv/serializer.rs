@@ -57,7 +57,7 @@ where
     Ok(ttlv)
 }
 
-impl<'a> ser::Serializer for &'a mut TTLVSerializer {
+impl ser::Serializer for &mut TTLVSerializer {
     // The error type when some error occurs during serialization.
     type Error = TtlvError;
     // The output type produced by this `Serializer` during successful
@@ -449,7 +449,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
 
 // This impl is SerializeSeq so these methods are called after `serialize_seq`
 // is called on the Serializer.
-impl<'a> ser::SerializeSeq for &'a mut TTLVSerializer {
+impl ser::SerializeSeq for &mut TTLVSerializer {
     // Must match the `Error` type of the serializer.
     type Error = TtlvError;
     // Must match the `Ok` type of the serializer.
@@ -554,7 +554,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut TTLVSerializer {
 }
 
 // For example the E::T in enum E { T(u8, u8) }
-impl<'a> ser::SerializeTupleVariant for &'a mut TTLVSerializer {
+impl ser::SerializeTupleVariant for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -582,7 +582,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut TTLVSerializer {
 // the length may or may not be known before iterating through all the entries.
 // When deserializing, the length is determined by looking at the serialized
 // data.
-impl<'a> ser::SerializeMap for &'a mut TTLVSerializer {
+impl ser::SerializeMap for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -619,7 +619,7 @@ impl<'a> ser::SerializeMap for &'a mut TTLVSerializer {
 }
 
 // Structs are like seqs for their elements
-impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
+impl ser::SerializeStruct for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 

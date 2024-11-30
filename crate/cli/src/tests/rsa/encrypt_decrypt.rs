@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
@@ -9,10 +9,12 @@ use tracing::trace;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::rsa::{EncryptionAlgorithm, HashFn},
+    actions::rsa::{HashFn, RsaEncryptionAlgorithm},
     error::{result::CliResult, CliError},
     tests::{
-        rsa::create_key_pair::create_rsa_4096_bits_key_pair, utils::recover_cmd_logs, PROG_NAME,
+        rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
+        utils::recover_cmd_logs,
+        PROG_NAME,
     },
 };
 
@@ -21,7 +23,7 @@ pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
     public_key_id: &str,
-    encryption_algorithm: EncryptionAlgorithm,
+    encryption_algorithm: RsaEncryptionAlgorithm,
     hash_fn: Option<HashFn>,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
@@ -62,7 +64,7 @@ pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,
-    encryption_algorithm: EncryptionAlgorithm,
+    encryption_algorithm: RsaEncryptionAlgorithm,
     hash_fn: Option<HashFn>,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
@@ -121,7 +123,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     trace!("private_key_id: {private_key_id}");
     trace!("public_key_id: {public_key_id}");
@@ -129,7 +131,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
-        EncryptionAlgorithm::CkmRsaPkcs,
+        RsaEncryptionAlgorithm::CkmRsaPkcs,
         None,
         Some(output_file.to_str().unwrap()),
         None,
@@ -140,7 +142,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
-        EncryptionAlgorithm::CkmRsaPkcs,
+        RsaEncryptionAlgorithm::CkmRsaPkcs,
         None,
         Some(recovered_file.to_str().unwrap()),
         None,
@@ -157,7 +159,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
             &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
-            EncryptionAlgorithm::CkmRsaAesKeyWrap,
+            RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
             None,
             Some(recovered_file.to_str().unwrap()),
             None,
@@ -193,7 +195,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     trace!("private_key_id: {private_key_id}");
     trace!("public_key_id: {public_key_id}");
@@ -201,7 +203,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
-        EncryptionAlgorithm::CkmRsaPkcsOaep,
+        RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
@@ -212,7 +214,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
-        EncryptionAlgorithm::CkmRsaPkcsOaep,
+        RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(recovered_file.to_str().unwrap()),
         None,
@@ -229,7 +231,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
             &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
-            EncryptionAlgorithm::CkmRsaAesKeyWrap,
+            RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
             Some(HashFn::Sha256),
             Some(recovered_file.to_str().unwrap()),
             None,
@@ -243,7 +245,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
             &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
-            EncryptionAlgorithm::CkmRsaPkcsOaep,
+            RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
             Some(HashFn::Sha1),
             Some(recovered_file.to_str().unwrap()),
             None,
@@ -277,7 +279,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
+        create_rsa_key_pair(&ctx.owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     trace!("private_key_id: {private_key_id}");
     trace!("public_key_id: {public_key_id}");
@@ -285,7 +287,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
-        EncryptionAlgorithm::CkmRsaAesKeyWrap,
+        RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
@@ -296,7 +298,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
-        EncryptionAlgorithm::CkmRsaAesKeyWrap,
+        RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
         Some(HashFn::Sha256),
         Some(recovered_file.to_str().unwrap()),
         None,
@@ -309,7 +311,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
             &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
-            EncryptionAlgorithm::CkmRsaPkcsOaep,
+            RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
             Some(HashFn::Sha256),
             Some(recovered_file.to_str().unwrap()),
             None,
@@ -323,7 +325,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CliResult<()> {
             &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
-            EncryptionAlgorithm::CkmRsaAesKeyWrap,
+            RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
             Some(HashFn::Sha1),
             Some(recovered_file.to_str().unwrap()),
             None,
@@ -352,14 +354,19 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (_private_key_id, _public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag_rsa"])?;
+    let (_private_key_id, _public_key_id) = create_rsa_key_pair(
+        &ctx.owner_client_conf_path,
+        &RsaKeyPairOptions {
+            tags: HashSet::from(["tag_rsa".to_string()]),
+            ..Default::default()
+        },
+    )?;
 
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         "[\"tag_rsa\"]",
-        EncryptionAlgorithm::CkmRsaPkcsOaep,
+        RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
@@ -370,7 +377,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         "[\"tag_rsa\"]",
-        EncryptionAlgorithm::CkmRsaPkcsOaep,
+        RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(recovered_file.to_str().unwrap()),
         None,

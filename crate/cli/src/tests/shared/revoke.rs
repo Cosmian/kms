@@ -3,9 +3,10 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use kms_test_server::{
-    start_default_test_kms_server, start_default_test_kms_server_with_non_revokable_key_ids,
+    start_default_test_kms_server, start_default_test_kms_server_with_non_revocable_key_ids,
 };
 use tempfile::TempDir;
+use uuid::Uuid;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::cover_crypt::{
@@ -46,7 +47,7 @@ pub(crate) fn revoke(
     ))
 }
 
-fn assert_revoker(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
+pub(crate) fn assert_revoked(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -95,7 +96,7 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
     )?;
 
     // assert
-    assert_revoker(&ctx.owner_client_conf_path, &key_id)
+    assert_revoked(&ctx.owner_client_conf_path, &key_id)
 }
 
 #[tokio::test]
@@ -107,7 +108,7 @@ async fn test_revoke_ec_key() -> CliResult<()> {
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // revoke via the private key
         revoke(
@@ -118,15 +119,15 @@ async fn test_revoke_ec_key() -> CliResult<()> {
         )?;
 
         // assert
-        assert_revoker(&ctx.owner_client_conf_path, &private_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &public_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &private_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &public_key_id)?;
     }
 
     // revoke via public key
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // revoke via the private key
         revoke(
@@ -137,8 +138,8 @@ async fn test_revoke_ec_key() -> CliResult<()> {
         )?;
 
         // assert
-        assert_revoker(&ctx.owner_client_conf_path, &private_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &public_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &private_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &public_key_id)?;
     }
 
     Ok(())
@@ -158,6 +159,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -165,12 +167,14 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         revoke(
@@ -181,10 +185,10 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
         )?;
 
         // assert
-        assert_revoker(&ctx.owner_client_conf_path, &master_private_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &master_public_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &user_key_id_1)?;
-        assert_revoker(&ctx.owner_client_conf_path, &user_key_id_2)?;
+        assert_revoked(&ctx.owner_client_conf_path, &master_private_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &master_public_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &user_key_id_1)?;
+        assert_revoked(&ctx.owner_client_conf_path, &user_key_id_2)?;
     }
 
     // check revocation of all keys when the public key is revoked
@@ -195,6 +199,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -202,12 +207,14 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         revoke(
@@ -218,10 +225,10 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
         )?;
 
         // assert
-        assert_revoker(&ctx.owner_client_conf_path, &master_private_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &master_public_key_id)?;
-        assert_revoker(&ctx.owner_client_conf_path, &user_key_id_1)?;
-        assert_revoker(&ctx.owner_client_conf_path, &user_key_id_2)?;
+        assert_revoked(&ctx.owner_client_conf_path, &master_private_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &master_public_key_id)?;
+        assert_revoked(&ctx.owner_client_conf_path, &user_key_id_1)?;
+        assert_revoked(&ctx.owner_client_conf_path, &user_key_id_2)?;
     }
 
     // check that revoking a user key, does not revoke anything else
@@ -232,6 +239,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -239,6 +247,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
@@ -246,6 +255,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         revoke(
@@ -256,7 +266,7 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
         )?;
 
         // assert
-        assert_revoker(&ctx.owner_client_conf_path, &user_key_id_1)?;
+        assert_revoked(&ctx.owner_client_conf_path, &user_key_id_1)?;
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;
@@ -298,15 +308,15 @@ async fn test_revoke_cover_crypt() -> CliResult<()> {
 }
 
 #[tokio::test]
-async fn test_non_revokable_symmetric_key() -> CliResult<()> {
+async fn test_non_revocable_symmetric_key() -> CliResult<()> {
     //
-    // Check that a non-revokable key cannot be revoked (and then still exportable)
+    // Check that a non-revocable key cannot be revoked (and then still exportable)
     //
-    let google_key_id = "my_google_cse";
+    let non_revocable_key = Uuid::new_v4().to_string();
 
-    // init the test server with the non-revokable key in parameter
-    let ctx = start_default_test_kms_server_with_non_revokable_key_ids(Some(vec![
-        google_key_id.to_owned(),
+    // init the test server with the non-revocable key in the parameter
+    let ctx = start_default_test_kms_server_with_non_revocable_key_ids(Some(vec![
+        non_revocable_key.clone(),
         "my_dke_key".to_owned(),
     ]))
     .await;
@@ -315,12 +325,12 @@ async fn test_non_revokable_symmetric_key() -> CliResult<()> {
     let key_id = create_symmetric_key(
         &ctx.owner_client_conf_path,
         CreateKeyAction {
-            key_id: Some(google_key_id.to_owned()),
+            key_id: Some(non_revocable_key.clone()),
             ..Default::default()
         },
     )?;
 
-    assert_eq!(key_id, google_key_id);
+    assert_eq!(key_id, non_revocable_key);
 
     // revoke
     revoke(

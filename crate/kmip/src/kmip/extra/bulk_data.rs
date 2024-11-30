@@ -17,7 +17,7 @@ pub struct BulkData(Vec<Zeroizing<Vec<u8>>>);
 
 impl BulkData {
     #[must_use]
-    pub fn new(data: Vec<Zeroizing<Vec<u8>>>) -> Self {
+    pub const fn new(data: Vec<Zeroizing<Vec<u8>>>) -> Self {
         Self(data)
     }
 

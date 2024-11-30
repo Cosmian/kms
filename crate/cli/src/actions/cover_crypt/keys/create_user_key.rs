@@ -62,6 +62,10 @@ pub struct CreateUserKeyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
     tags: Vec<String>,
+
+    /// Sensitive: if set, the key will not be exportable
+    #[clap(long = "sensitive", default_value = "false")]
+    sensitive: bool,
 }
 
 impl CreateUserKeyAction {
@@ -75,6 +79,7 @@ impl CreateUserKeyAction {
             &self.access_policy,
             &self.master_private_key_id,
             &self.tags,
+            self.sensitive,
         )?;
 
         // Query the KMS with your kmip data

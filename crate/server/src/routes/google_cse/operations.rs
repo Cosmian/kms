@@ -20,14 +20,16 @@ use zeroize::Zeroizing;
 
 use super::GoogleCseConfig;
 use crate::{
-    core::operations::{decrypt, encrypt},
+    core::{
+        operations::{decrypt, encrypt},
+        KMS,
+    },
     error::KmsError,
     kms_ensure,
     result::KResult,
     routes::google_cse::jwt::{
         validate_cse_authentication_token, validate_cse_authorization_token, validate_tokens,
     },
-    KMSServer,
 };
 
 const NONCE_LENGTH: usize = 12;
@@ -149,7 +151,7 @@ pub struct WrapResponse {
 pub async fn wrap(
     request: WrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<WrapResponse> {
     debug!("wrap: entering");
 
@@ -249,7 +251,7 @@ fn get_application(reason: &str) -> String {
 pub async fn unwrap(
     request: UnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<UnwrapResponse> {
     debug!("unwrap: entering");
 
@@ -333,7 +335,7 @@ pub struct PrivateKeySignResponse {
 pub async fn private_key_sign(
     request: PrivateKeySignRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<PrivateKeySignResponse> {
     debug!("private_key_sign: entering");
     let roles: &[Role; 1] = &[Role::Signer];
@@ -438,7 +440,7 @@ pub struct PrivateKeyDecryptResponse {
 pub async fn private_key_decrypt(
     request: PrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<PrivateKeyDecryptResponse> {
     debug!("private_key_decrypt: entering");
     let roles: &[Role; 1] = &[Role::Decrypter];
@@ -530,7 +532,7 @@ pub struct DigestResponse {
 pub async fn digest(
     request: DigestRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<DigestResponse> {
     let application = get_application(&request.reason);
 
@@ -592,7 +594,7 @@ pub struct PrivilegedWrapResponse {
 pub async fn privileged_wrap(
     request: PrivilegedWrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<PrivilegedWrapResponse> {
     debug!("privileged-wrap: validate authentication token");
     let user = validate_cse_authentication_token(&request.authentication, cse_config, true).await?;
@@ -658,7 +660,7 @@ pub struct PrivilegedUnwrapResponse {
 pub async fn privileged_unwrap(
     request: PrivilegedUnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
     debug!("privileged_unwrap: entering");
 
@@ -719,7 +721,7 @@ pub struct PrivilegedPrivateKeyDecryptResponse {
 pub async fn privileged_private_key_decrypt(
     request: PrivilegedPrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("privileged_private_key_decrypt: entering");
     debug!("privileged_private_key_decrypt: validate_tokens");
@@ -810,7 +812,7 @@ pub struct RewrapResponse {
 pub async fn rewrap(
     request: RewrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
     debug!("rewrap: entering");
 
@@ -910,7 +912,7 @@ async fn cse_wrapped_key_decrypt(
     wrapping_key_id: UniqueIdentifier,
     user: String,
     resource_name: Option<Vec<u8>>,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
     debug!("cse_wrapped_key_decrypt: wrapped_key: {wrapped_key}");
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;

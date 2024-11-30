@@ -15,7 +15,8 @@ Management System** that presents some unique features, such as
   interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
 - Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
-- FIPS 140-2 mode gated behind the feature `fips`
+- FIPS 140-3 mode gated behind the feature `fips`
+- support for the Proteccio HSM with KMS keys wrapped by the HSM
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
 - out-of-the-box support
@@ -62,7 +63,8 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.3
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
+launched from this GitHub project by running
 
 ```sh
 cargo run --bin ckms -- --help
@@ -161,7 +163,9 @@ vcpkg integrate install
 
 ### Build the KMS
 
-Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate, not
+Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
+the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate,
+not
 from the project root.
 
 Build the server and CLI binaries:

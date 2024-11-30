@@ -6,7 +6,7 @@ use zeroize::Zeroizing;
 use crate::{
     traits::{
         Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
-        RemoteObjectId, SearchOptions, Version,
+        SearchOptions, Version,
     },
     MResult,
 };
@@ -44,9 +44,9 @@ pub trait Backend: Send + Sync {
 
     fn find_certificate(&self, query: SearchOptions) -> MResult<Option<Arc<dyn Certificate>>>;
     fn find_all_certificates(&self) -> MResult<Vec<Arc<dyn Certificate>>>;
-    fn find_private_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn RemoteObjectId>>>;
-    fn find_public_key(&self, query: SearchOptions) -> MResult<Option<Arc<dyn PublicKey>>>;
-    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn RemoteObjectId>>>;
+    fn find_private_key(&self, query: SearchOptions) -> MResult<Arc<dyn PrivateKey>>;
+    fn find_public_key(&self, query: SearchOptions) -> MResult<Arc<dyn PublicKey>>;
+    fn find_all_private_keys(&self) -> MResult<Vec<Arc<dyn PrivateKey>>>;
     fn find_all_public_keys(&self) -> MResult<Vec<Arc<dyn PublicKey>>>;
     fn find_data_object(&self, query: SearchOptions) -> MResult<Option<Arc<dyn DataObject>>>;
     fn find_all_data_objects(&self) -> MResult<Vec<Arc<dyn DataObject>>>;
@@ -58,7 +58,7 @@ pub trait Backend: Send + Sync {
 
     fn decrypt(
         &self,
-        remote_object: Arc<dyn RemoteObjectId>,
+        remote_object_id: String,
         algorithm: EncryptionAlgorithm,
         ciphertext: Vec<u8>,
     ) -> MResult<Zeroizing<Vec<u8>>>;
