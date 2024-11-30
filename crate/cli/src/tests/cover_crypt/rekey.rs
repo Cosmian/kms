@@ -6,7 +6,7 @@ use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::KeyUsage,
+    actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
     error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
@@ -86,12 +86,14 @@ async fn test_rekey_error() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     );
 
     // bad attributes
@@ -123,7 +125,7 @@ async fn test_rekey_error() -> CliResult<()> {
     let tmp_path = tmp_dir.path();
     // create a symmetric key
     let symmetric_key_id =
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+        create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export_key(ExportKeyParams {
@@ -176,12 +178,14 @@ async fn test_rekey_prune() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
+        false,
     )?;
 
     encrypt(

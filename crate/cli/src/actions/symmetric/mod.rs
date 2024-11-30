@@ -9,7 +9,7 @@ use crate::error::result::CliResult;
 
 mod decrypt;
 mod encrypt;
-mod keys;
+pub(crate) mod keys;
 
 /// Manage symmetric keys. Encrypt and decrypt data.
 #[derive(Parser)]

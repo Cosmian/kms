@@ -22,10 +22,12 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
     initialize_logging("ckms-pkcs11", Level::from_str(&debug_level).ok(), None);
     // Instantiate a backend with a kms client using the `kms.json` file in the local default directory.
-    cosmian_pkcs11_module::traits::register_backend(Box::new(backend::CkmsBackend::instantiate(
-        get_kms_client()
-            .expect("failed instantiating the KMS client with the current configuration"),
-    )));
+    cosmian_pkcs11_module::traits::register_backend(Box::new(
+        backend::CkmsBackend::instantiate(
+            get_kms_client().expect("failed getting the KMS client from the current configuration"),
+        )
+        .expect("failed instantiating the backend with the current configuration"),
+    ));
     // Update the function list with this PKCS#11 entry function
     FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
     // Return the function list to the client application using the output parameters
@@ -33,5 +35,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     CKR_OK
 }
 
+mod pkcs11_public_key;
+mod test;
 #[cfg(test)]
 mod tests;

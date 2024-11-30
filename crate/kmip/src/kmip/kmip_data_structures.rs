@@ -50,7 +50,7 @@ pub struct KeyBlock {
     pub cryptographic_length: Option<i32>,
     /// SHALL only be present if the key is wrapped.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_data: Option<Box<KeyWrappingData>>,
+    pub key_wrapping_data: Option<KeyWrappingData>,
 }
 
 impl Display for KeyBlock {
@@ -123,7 +123,7 @@ impl KeyBlock {
         let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
-        Ok((key, self.key_value.attributes.as_deref()))
+        Ok((key, self.key_value.attributes.as_ref()))
     }
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
@@ -134,24 +134,6 @@ impl KeyBlock {
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
         self.key_value.attributes_mut()
-    }
-
-    /// Extract `counter_iv_nonce` value from `KeyBlock`
-    ///
-    /// # Arguments
-    ///
-    /// * `self`: the KMIP key block
-    ///
-    /// # Returns
-    ///
-    /// * an optional byte vector
-    ///
-    #[must_use]
-    pub const fn counter_iv_nonce(&self) -> Option<&Vec<u8>> {
-        match &self.key_wrapping_data {
-            Some(kwd) => kwd.iv_counter_nonce.as_ref(),
-            None => None,
-        }
     }
 
     /// Returns the identifier of a linked object of a certain type, if it exists in the attributes
@@ -233,7 +215,7 @@ impl KeyBlock {
 pub struct KeyValue {
     pub key_material: KeyMaterial,
     #[serde(skip_serializing_if = "attributes_is_default_or_none")]
-    pub attributes: Option<Box<Attributes>>,
+    pub attributes: Option<Attributes>,
 }
 
 impl Display for KeyValue {
@@ -253,7 +235,7 @@ fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Optio
 
 impl KeyValue {
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        self.attributes.as_deref().ok_or_else(|| {
+        self.attributes.as_ref().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its attributes".to_owned(),
@@ -262,7 +244,7 @@ impl KeyValue {
     }
 
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        self.attributes.as_deref_mut().ok_or_else(|| {
+        self.attributes.as_mut().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its mutable attributes".to_owned(),
@@ -334,6 +316,15 @@ pub struct KeyWrappingData {
     pub encoding_option: Option<EncodingOption>,
 }
 
+impl KeyWrappingData {
+    /// Returns the encoding option for the key wrapping data
+    /// If not present, the wrapped Key Value structure SHALL not have any encoding.
+    #[must_use]
+    pub fn get_encoding(&self) -> EncodingOption {
+        self.encoding_option.unwrap_or(EncodingOption::NoEncoding)
+    }
+}
+
 impl Default for KeyWrappingData {
     fn default() -> Self {
         Self {
@@ -342,7 +333,7 @@ impl Default for KeyWrappingData {
             mac_or_signature_key_information: None,
             mac_or_signature: None,
             iv_counter_nonce: None,
-            encoding_option: None,
+            encoding_option: Some(EncodingOption::NoEncoding),
         }
     }
 }
@@ -385,8 +376,37 @@ impl Default for KeyWrappingSpecification {
             encryption_key_information: None,
             mac_or_signature_key_information: None,
             attribute_name: None,
-            encoding_option: Some(EncodingOption::TTLVEncoding),
+            encoding_option: Some(EncodingOption::NoEncoding),
         }
+    }
+}
+
+impl KeyWrappingSpecification {
+    /// Returns the encoding option for the key wrapping specification
+    /// If not present, the wrapped Key Value structure SHALL be TTLV encoded.
+    #[must_use]
+    pub fn get_encoding(&self) -> EncodingOption {
+        self.encoding_option.unwrap_or(EncodingOption::NoEncoding)
+    }
+
+    /// Returns the key wrapping data from the key wrapping specification
+    #[must_use]
+    pub fn get_key_wrapping_data(&self) -> KeyWrappingData {
+        KeyWrappingData {
+            wrapping_method: self.wrapping_method,
+            encryption_key_information: self.encryption_key_information.clone(),
+            mac_or_signature_key_information: self.mac_or_signature_key_information.clone(),
+            encoding_option: Some(self.get_encoding()),
+            ..KeyWrappingData::default()
+        }
+    }
+
+    /// Returns the additional authenticated data from the key wrapping specification
+    pub fn get_additional_authenticated_data(&self) -> Option<&[u8]> {
+        self.attribute_name
+            .as_ref()
+            .and_then(|attributes| attributes.first())
+            .map(String::as_bytes)
     }
 }
 

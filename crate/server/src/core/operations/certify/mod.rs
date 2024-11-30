@@ -21,12 +21,13 @@ use cosmian_kmip::{
             Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
             LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
+        KmipOperation,
     },
     openssl::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, openssl_certificate_to_kmip,
     },
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams, ObjectWithMetadata};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
@@ -38,7 +39,6 @@ use tracing::{debug, info, trace};
 use crate::{
     core::{
         certificate::retrieve_issuer_private_key_and_certificate,
-        extra_database_params::ExtraDatabaseParams,
         operations::{
             certify::{
                 issuer::Issuer,
@@ -46,10 +46,8 @@ use crate::{
             },
             create_key_pair::generate_key_pair_and_tags,
         },
+        retrieve_object_utils::retrieve_object_for_operation,
         KMS,
-    },
-    database::{
-        object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation, AtomicOperation,
     },
     error::KmsError,
     kms_bail,
@@ -68,7 +66,7 @@ pub(crate) async fn certify(
     kms: &KMS,
     request: Certify,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<CertifyResponse> {
     trace!("Certify: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -108,7 +106,7 @@ pub(crate) async fn certify(
                  {from_public_key}"
             );
             // update the public key attributes with a link to the certificate
-            let mut public_key_attributes = from_public_key.attributes;
+            let mut public_key_attributes = from_public_key.attributes().to_owned();
             public_key_attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::from(unique_identifier.clone()),
@@ -117,7 +115,7 @@ pub(crate) async fn certify(
             let mut certificate_attributes = attributes.clone();
             certificate_attributes.set_link(
                 LinkType::PublicKeyLink,
-                LinkedObjectIdentifier::TextString(from_public_key.id.clone()),
+                LinkedObjectIdentifier::TextString(from_public_key.id().to_owned()),
             );
             // update the link to the private for the certificate
             if let Some(private_key_id) = public_key_attributes.get_link(LinkType::PrivateKeyLink) {
@@ -135,8 +133,8 @@ pub(crate) async fn certify(
                     )),
                     // update the public key
                     AtomicOperation::UpdateObject((
-                        from_public_key.id,
-                        from_public_key.object,
+                        from_public_key.id().to_owned(),
+                        from_public_key.object().to_owned(),
                         public_key_attributes,
                         None,
                     )),
@@ -216,7 +214,7 @@ pub(crate) async fn certify(
     };
 
     // perform DB operations
-    kms.db.atomic(user, &operations, params).await?;
+    kms.database.atomic(user, &operations, params).await?;
 
     Ok(CertifyResponse { unique_identifier })
 }
@@ -265,7 +263,7 @@ async fn get_subject(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
@@ -293,14 +291,14 @@ async fn get_subject(
     let public_key = if let Some(request_id) = &request.unique_identifier {
         if let Ok(owm) = retrieve_object_for_operation(
             &request_id.to_string(),
-            ObjectOperationType::Certify,
+            KmipOperation::Certify,
             kms,
             user,
             params,
         )
         .await
         {
-            let object_type = owm.object.object_type();
+            let object_type = owm.object().object_type();
             match object_type {
                 // If the user passed a certificate, attempt to renew it
                 ObjectType::Certificate => {
@@ -311,8 +309,8 @@ async fn get_subject(
                         .unwrap_or_else(|| request_id.clone());
                     return Ok(Subject::Certificate(
                         certificate_id,
-                        kmip_certificate_to_openssl(&owm.object)?,
-                        owm.attributes,
+                        kmip_certificate_to_openssl(owm.object())?,
+                        owm.attributes().to_owned(),
                     ))
                 }
                 //If the user passed a public key, it is a new certificate signing this public key
@@ -417,7 +415,7 @@ async fn get_issuer<'a>(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) =
         request
@@ -447,9 +445,9 @@ async fn get_issuer<'a>(
     )
     .await?;
     Ok(Issuer::PrivateKeyAndCertificate(
-        UniqueIdentifier::TextString(issuer_certificate.id.clone()),
-        kmip_private_key_to_openssl(&issuer_private_key.object)?,
-        kmip_certificate_to_openssl(&issuer_certificate.object)?,
+        UniqueIdentifier::TextString(issuer_certificate.id().to_owned()),
+        kmip_private_key_to_openssl(issuer_private_key.object())?,
+        kmip_certificate_to_openssl(issuer_certificate.object())?,
     ))
 }
 
@@ -458,12 +456,12 @@ async fn fetch_object_from_attributes(
     kms: &KMS,
     attributes: &Attributes,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = retrieve_object_for_operation(
             &object_id.to_string(),
-            ObjectOperationType::Certify,
+            KmipOperation::Certify,
             kms,
             user,
             params,
@@ -478,7 +476,7 @@ async fn issuer_for_self_signed_certificate<'a>(
     subject: &'a Subject,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {
@@ -507,7 +505,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             })?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
-                kmip_private_key_to_openssl(&private_key.object)?,
+                kmip_private_key_to_openssl(private_key.object())?,
                 certificate.clone(),
             ))
         }
@@ -517,7 +515,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             let private_key = fetch_object_from_attributes(
                 LinkType::PrivateKeyLink,
                 kms,
-                &public_key.attributes,
+                public_key.attributes(),
                 user,
                 params,
             )
@@ -533,7 +531,7 @@ async fn issuer_for_self_signed_certificate<'a>(
             let certificate = fetch_object_from_attributes(
                 LinkType::CertificateLink,
                 kms,
-                &public_key.attributes,
+                public_key.attributes(),
                 user,
                 params,
             )
@@ -541,12 +539,12 @@ async fn issuer_for_self_signed_certificate<'a>(
             match certificate {
                 Some(certificate) => Ok(Issuer::PrivateKeyAndCertificate(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(&private_key.object)?,
-                    kmip_certificate_to_openssl(&certificate.object)?,
+                    kmip_private_key_to_openssl(private_key.object())?,
+                    kmip_certificate_to_openssl(certificate.object())?,
                 )),
                 None => Ok(Issuer::PrivateKeyAndSubjectName(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(&private_key.object)?,
+                    kmip_private_key_to_openssl(private_key.object())?,
                     subject_name,
                 )),
             }

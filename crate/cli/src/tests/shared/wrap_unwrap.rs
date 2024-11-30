@@ -19,6 +19,7 @@ use tempfile::TempDir;
 
 use super::ExportKeyParams;
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -140,16 +141,17 @@ pub(crate) async fn test_password_wrap_import() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
     // EC
     let (private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // sym
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())
@@ -195,7 +197,7 @@ pub(crate) fn password_wrap_import_test(
         );
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::TTLVEncoding)
+            Some(EncodingOption::NoEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
@@ -238,7 +240,7 @@ pub(crate) fn password_wrap_import_test(
 
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::TTLVEncoding)
+            Some(EncodingOption::NoEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(

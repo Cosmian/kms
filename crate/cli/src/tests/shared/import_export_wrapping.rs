@@ -15,7 +15,6 @@ use cosmian_kms_client::{
             },
         },
     },
-    kmip::extra::tagging::EMPTY_TAGS,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use kms_test_server::start_default_test_kms_server;
@@ -24,13 +23,13 @@ use tracing::{debug, trace};
 
 use super::ExportKeyParams;
 use crate::{
-    actions::shared::utils::KeyUsage,
+    actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
     error::result::CliResult,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
         shared::{export::export_key, import::import_key, ImportKeyParams},
-        symmetric,
+        symmetric::create_key::create_symmetric_key,
     },
 };
 
@@ -46,7 +45,8 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key = create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES)?;
+    let wrap_key =
+        create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES, false)?;
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key
@@ -64,6 +64,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -78,6 +79,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         "nist-p256",
         &[],
+        false,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -88,13 +90,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     )?;
 
     // test sym
-    let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_client_conf_path,
-        None,
-        None,
-        None,
-        &EMPTY_TAGS,
-    )?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
         "sym",
@@ -124,6 +120,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         Some(CryptographicAlgorithm::EC),
         Some(CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey),
         Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey),
+        false,
     )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
@@ -154,6 +151,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
+        false,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -168,6 +166,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         "nist-p256",
         &[],
+        false,
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
@@ -178,13 +177,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     )?;
 
     debug!("testing symmetric keys");
-    let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_client_conf_path,
-        None,
-        None,
-        None,
-        &EMPTY_TAGS,
-    )?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     test_import_export_wrap_private_key(
         &ctx.owner_client_conf_path,
         "sym",
@@ -282,15 +275,15 @@ fn test_import_export_wrap_private_key(
             re_exported_key.key_block()?.key_value.key_material
                 == private_key.key_block()?.key_value.key_material
         );
-        assert!(
+        assert_eq!(
             re_exported_key
                 .key_block()?
                 .attributes()?
+                .get_link(LinkType::PublicKeyLink),
+            private_key
+                .key_block()?
+                .attributes()?
                 .get_link(LinkType::PublicKeyLink)
-                == private_key
-                    .key_block()?
-                    .attributes()?
-                    .get_link(LinkType::PublicKeyLink)
         );
         assert!(re_exported_key.key_wrapping_data().is_none());
     }

@@ -38,6 +38,10 @@ pub struct CreateKeyPairAction {
     /// is generated if not specified.
     #[clap(required = false)]
     private_key_id: Option<String>,
+
+    /// Sensitive: if set, the private key will not be exportable
+    #[clap(long = "sensitive", default_value = "false")]
+    sensitive: bool,
 }
 
 impl CreateKeyPairAction {
@@ -47,7 +51,7 @@ impl CreateKeyPairAction {
             .as_ref()
             .map(|id| UniqueIdentifier::TextString(id.clone()));
         let create_key_pair_request =
-            create_rsa_key_pair_request(private_key_id, &self.tags, self.key_size)?;
+            create_rsa_key_pair_request(private_key_id, &self.tags, self.key_size, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

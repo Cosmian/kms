@@ -23,9 +23,10 @@ use cosmian_kmip::{
             LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
         },
         ttlv::{deserializer::from_ttlv, TTLV},
+        KmipOperation,
     },
 };
-use cosmian_kms_client::access::{Access, ObjectOperationType, SuccessResponse};
+use cosmian_kms_client::access::{Access, SuccessResponse};
 use cosmian_logger::log_utils::log_init;
 use openssl::{
     hash::MessageDigest,
@@ -40,6 +41,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     config::ServerParams,
+    core::KMS,
     result::{KResult, KResultHelper},
     routes::google_cse::operations::{
         DigestRequest, DigestResponse, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
@@ -52,7 +54,6 @@ use crate::{
         google_cse::utils::generate_google_jwt,
         test_utils::{self, https_clap_config},
     },
-    KMSServer,
 };
 
 pub(crate) mod utils;
@@ -115,11 +116,11 @@ where
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
         user_id: "*".to_owned(),
         operation_types: vec![
-            ObjectOperationType::Create,
-            ObjectOperationType::Destroy,
-            ObjectOperationType::Get,
-            ObjectOperationType::Encrypt,
-            ObjectOperationType::Decrypt,
+            KmipOperation::Create,
+            KmipOperation::Destroy,
+            KmipOperation::Get,
+            KmipOperation::Encrypt,
+            KmipOperation::Decrypt,
         ],
     };
 
@@ -277,7 +278,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Box::default()),
+                attributes: Some(Attributes::default()),
             },
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -295,7 +296,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(None);
 
     let clap_config = https_clap_config();
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create google_cse key
@@ -322,7 +323,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     // Create RSA key pair for Google GMail
     let created_key_pair = kms
         .create_key_pair(
-            create_rsa_key_pair_request(None, Vec::<String>::new(), 4096)?,
+            create_rsa_key_pair_request(None, Vec::<String>::new(), 4096, false)?,
             owner,
             None,
         )
@@ -338,10 +339,10 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
                     wrapping_method: WrappingMethod::Encrypt,
                     encryption_key_information: Some(EncryptionKeyInformation {
                         unique_identifier: google_cse_key.unique_identifier,
-                        cryptographic_parameters: Some(Box::new(CryptographicParameters {
+                        cryptographic_parameters: Some(CryptographicParameters {
                             block_cipher_mode: Some(BlockCipherMode::GCM),
                             ..CryptographicParameters::default()
-                        })),
+                        }),
                     }),
                     attribute_name: None,
                     encoding_option: Some(EncodingOption::NoEncoding),
@@ -771,11 +772,11 @@ async fn test_cse_rewrap_key() -> KResult<()> {
         )),
         user_id: "*".to_owned(),
         operation_types: vec![
-            ObjectOperationType::Create,
-            ObjectOperationType::Destroy,
-            ObjectOperationType::Get,
-            ObjectOperationType::Encrypt,
-            ObjectOperationType::Decrypt,
+            KmipOperation::Create,
+            KmipOperation::Destroy,
+            KmipOperation::Get,
+            KmipOperation::Encrypt,
+            KmipOperation::Decrypt,
         ],
     };
 

@@ -1,4 +1,4 @@
-mod export_key;
+pub(crate) mod export_key;
 pub(crate) mod import_key;
 mod locate;
 pub mod utils;

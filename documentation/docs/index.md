@@ -22,11 +22,11 @@ to be used in various applications, such as in S/MIME encrypted emails.
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.3
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
     ```
 
     Pre-built binaries, for both the server and CLI (called `ckms`) are available for multiple
-    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.19.3/).
+    operating systems on [Cosmian packages](https://package.cosmian.com/kms/4.20.0/).
 
     Using [`ckms`](./cli/cli.md), you can easily manage the server:
 
@@ -53,27 +53,6 @@ to be used in various applications, such as in S/MIME encrypted emails.
     ...
     The decrypted file is available at "image2.png"
     ```
-
-## Table of contents
-
-- [Cosmian KMS](#cosmian-kms)
-  - [Table of contents](#table-of-contents)
-  - [Public Source Code](#public-source-code)
-  - [KMIP 2.1 API](#kmip-21-api)
-  - [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
-  - [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-  - [FIPS 140-3 certifications](#fips-140-3-certifications)
-  - [Veracrypt and LUKS disk encryption support](#veracrypt-and-luks-disk-encryption-support)
-  - [State-of-the-art authentication](#state-of-the-art-authentication)
-  - [High-availability and databases](#high-availability-and-databases)
-  - [Designed to securely run in the Public Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-public-cloud-or-other-zero-trust-environments)
-  - [Support for object tagging](#support-for-object-tagging)
-  - [Command line interface client](#command-line-interface-client)
-  - [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-  - [Integrated with OpenTelemetry](#integrated-with-opentelemetry)
-  - [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-  - [Comprehensive inline help](#comprehensive-inline-help)
-  - [TOML configuration file](#toml-configuration-file)
 
 ## Public Source Code
 
@@ -109,6 +88,12 @@ When run in FIPS mode, the Cosmian KMS uses only cryptographic primitives that a
 the standards of the National Institute of Standards and Technology (NIST) and uses
 implementations of an NIST FIPS 140–3 compliant cryptographic module.
 See [FIPS mode](./fips.md)
+
+## Support for Proteccio HSMs
+
+The Cosmian KMS can be configured to use Proteccio HSMs to store and manage keys and create KMS keys wrapped by the HSM
+keys. This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
+Check the [HSM](./hsm.md) page for details.
 
 ## Veracrypt and LUKS disk encryption support
 
@@ -180,7 +165,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.19.3/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.20.0/)
 
 ## Integrated with OpenTelemetry
 
@@ -206,7 +191,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.19.3 --help
+docker run --rm ghcr.io/cosmian/kms:4.20.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
@@ -219,11 +204,11 @@ Usage: cosmian_kms_server [OPTIONS]
 
 Options:
       --database-type <DATABASE_TYPE>
-          The database type of the KMS server
-          - postgresql: PostgreSQL. The database url must be provided
-          - mysql: MySql or MariaDB. The database url must be provided
-          - sqlite: SQLite. The data will be stored at the sqlite_path directory
-          - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
+          The main database of the KMS server that holds default cryptographic objects and permissions.
+          - postgresql: `PostgreSQL`. The database url must be provided
+          - mysql: `MySql` or `MariaDB`. The database url must be provided
+          - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
+          - sqlite-enc: `SQLite` encrypted at rest. the data will be stored at the `sqlite_path` directory.
             A key must be supplied on every call
           - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
             The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
@@ -232,7 +217,7 @@ Options:
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
       --database-url <DATABASE_URL>
-          The url of the database for postgresql, mysql or redis-findex
+          The url of the database for postgresql, mysql or findex-redis
 
           [env: KMS_DATABASE_URL=]
 
@@ -285,12 +270,17 @@ Options:
 
           [env: KMS_AUTHORITY_CERT_FILE=]
 
+      --api-token-id <API_TOKEN_ID>
+          The API token to use for authentication
+
+          [env: KMS_API_TOKEN=]
+
       --jwt-issuer-uri <JWT_ISSUER_URI>...
           The issuer URI of the JWT token
 
           To handle multiple identity managers, add different parameters under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order :
 
-          --jwt_issuer_uri <JWT_ISSUER_URI_1> <JWT_ISSUER_URI_2> --jwks_uri <JWKS_URI_1> <JWKS_URI_2> --jwt_audience <JWT_AUDIENCE_1> <JWT_AUDIENCE_2>
+          --`jwt_issuer_uri` <`JWT_ISSUER_URI_1`> <`JWT_ISSUER_URI_2`> --`jwks_uri` <`JWKS_URI_1`> <`JWKS_URI_2`> --`jwt_audience` <`JWT_AUDIENCE_1`> <`JWT_AUDIENCE_2`>
 
           For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 
@@ -352,7 +342,7 @@ Options:
           This setting enables the Microsoft Double Key Encryption service feature of this server.
 
           It should contain the external URL of this server as configured in Azure App Registrations
-          as the DKE Service (https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
+          as the DKE Service (<https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store>)
 
           The URL should be something like <https://cse.my_domain.com/ms_dke>
 
@@ -360,7 +350,7 @@ Options:
 
       --otlp <OTLP>
           The OTLP collector URL
-          (for instance, http://localhost:4317)
+          (for instance, <http://localhost:4317>)
 
           [env: KMS_OTLP_URL=]
 
@@ -369,11 +359,43 @@ Options:
 
           [env: KMS_LOG_QUIET=]
 
+      --info
+          Print the server configuration information and exit
+
+      --hsm-model <HSM_MODEL>
+          The HSM model.
+          Only `proteccio` is supported for now.
+
+          [default: proteccio]
+          [possible values: proteccio]
+
+      --hsm-admin <HSM_ADMIN>
+          The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them
+
+          [env: KMS_HSM_ADMIN=]
+          [default: admin]
+
+      --hsm-slot <HSM_SLOT>
+          HSM slot number. The slots used must be listed.
+          Repeat this option to specify multiple slots
+          while specifying a password for each slot (or an empty string for no password)
+          e.g.
+          ```sh
+            --hsm_slot 1 --hsm_password password1 \
+            --hsm_slot 2 --hsm_password password2
+          ```
+
+      --hsm-password <HSM_PASSWORD>
+          Password for the user logging in to the HSM Slot specified with `--hsm_slot`
+          Provide an empty string for no password
+          see `--hsm_slot` for more information
+
   -h, --help
           Print help (see a summary with '-h')
 
   -V, --version
           Print version
+
 
 ```
 
@@ -390,6 +412,12 @@ default_username = "[default username]"
 force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
 ms_dke_service_url = "[ms dke service url]"
+info = false
+hsm_model = "proteccio"
+hsm_admin = "[hsm admin username]" #for Create operation on HSM
+hsm_slot = [number_of_slot1, number_of_slot2, ...]
+hsm_password = [password_of_slot1, password_of_slot2, ...]
+
 
 [db]
 database_type = "[redis-findex, postgresql,...]"

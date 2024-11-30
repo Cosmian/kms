@@ -13,6 +13,7 @@ use crate::tests::{
     },
 };
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -77,6 +78,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["test_cc"],
+        false,
     )?;
 
     trace!("master_private_key_id: {master_private_key_id}");
@@ -145,6 +147,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["test_cc", "another_tag"],
+        false,
     )?;
     // Locate with Tags
     let ids = locate(
@@ -217,8 +220,12 @@ pub(crate) async fn test_locate_elliptic_curve() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["test_ec"])?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(
+        &ctx.owner_client_conf_path,
+        "nist-p256",
+        &["test_ec"],
+        false,
+    )?;
 
     // Locate with Tags
     let ids = locate(
@@ -305,8 +312,13 @@ pub(crate) async fn test_locate_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
 
     // generate a new key
-    let key_id =
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &["test_sym"])?;
+    let key_id = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            tags: vec!["test_sym".to_string()],
+            ..Default::default()
+        },
+    )?;
 
     // Locate with Tags
     let ids = locate(
@@ -379,6 +391,7 @@ pub(crate) async fn test_locate_grant() -> CliResult<()> {
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["test_grant"],
+        false,
     )?;
 
     // Locate with Tags
@@ -412,6 +425,7 @@ pub(crate) async fn test_locate_grant() -> CliResult<()> {
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["test_grant", "another_tag"],
+        false,
     )?;
     // Locate with Tags
     let ids = locate(

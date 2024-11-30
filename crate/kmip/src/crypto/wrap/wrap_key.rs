@@ -9,6 +9,8 @@ use zeroize::Zeroizing;
 use super::WRAPPING_SECRET_LENGTH;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
+#[cfg(not(feature = "fips"))]
+use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_wrap;
 use crate::{
     crypto::{
         password_derivation::derive_key_from_password,
@@ -40,6 +42,13 @@ use crate::{
 };
 
 /// Wrap a key using a password
+///
+/// # Arguments
+/// * `key` - the key to wrap
+/// * `salt` - the salt to use for the key derivation
+/// * `wrapping_password` - the password to use for the key derivation
+/// # Returns
+/// * `KResult<Vec<u8>>` - the wrapped key
 pub fn wrap_key_bytes(
     key: &[u8],
     salt: &[u8; FIPS_MIN_SALT_SIZE],
@@ -89,10 +98,61 @@ pub fn wrap_key_block(
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<(), KmipError> {
-    trace!(
-        "wrap_key_block: entering: object type: {:?}",
-        wrapping_key.object_type()
-    );
+    let data_to_wrap = key_data_to_wrap(&object_key_block, key_wrapping_specification)?;
+    check_block_cipher_mode_in_encryption_key_information(
+        wrapping_key,
+        key_wrapping_specification,
+    )?;
+    let ciphertext = wrap(
+        wrapping_key,
+        &key_wrapping_specification.get_key_wrapping_data(),
+        &data_to_wrap,
+        key_wrapping_specification.get_additional_authenticated_data(),
+    )?;
+    update_key_block_with_wrapped_key(object_key_block, key_wrapping_specification, ciphertext);
+
+    Ok(())
+}
+
+/// Post process the wrapped key block
+/// The key block is updated with the wrapped key
+/// The key wrapping data is updated with the key wrapping data
+/// # Arguments
+/// * `object_key_block` - the key block of the object to wrap
+/// * `key_wrapping_specification` - the key wrapping specification
+/// * `ciphertext` - the wrapped key
+pub fn update_key_block_with_wrapped_key(
+    object_key_block: &mut KeyBlock,
+    key_wrapping_specification: &KeyWrappingSpecification,
+    wrapped_key: Vec<u8>,
+) {
+    // wrap the key based on the encoding
+    match key_wrapping_specification.get_encoding() {
+        EncodingOption::TTLVEncoding => {
+            object_key_block.key_value = KeyValue {
+                key_material: KeyMaterial::ByteString(wrapped_key.into()),
+                // not clear whether this should be filled or not
+                attributes: object_key_block.key_value.attributes.clone(),
+            };
+        }
+        EncodingOption::NoEncoding => {
+            object_key_block.key_value.key_material = KeyMaterial::ByteString(wrapped_key.into());
+        }
+    };
+    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+}
+
+/// Determine the Key data to wrap
+/// The key data is determined based on the encoding
+/// # Arguments
+/// * `object_key_block` - the key block of the object to wrap
+/// * `key_wrapping_specification` - the key wrapping specification
+/// # Returns
+/// * `KResult<Zeroizing<Vec<u8>>>` - the key data to wrap
+pub fn key_data_to_wrap(
+    object_key_block: &&mut KeyBlock,
+    key_wrapping_specification: &KeyWrappingSpecification,
+) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     if object_key_block.key_wrapping_data.is_some() {
         kmip_bail!("unable to wrap the key: it is already wrapped")
     }
@@ -105,70 +165,13 @@ pub fn wrap_key_block(
             kmip_bail!("Unable to wrap the key: wrapping method is not supported: {x:?}")
         }
     }
-
-    check_block_cipher_mode_in_encryption_key_information(
-        wrapping_key,
-        key_wrapping_specification,
-    )?;
-
-    // determine the encoding of the wrapping
-    let encoding = key_wrapping_specification
-        .encoding_option
-        .unwrap_or(EncodingOption::TTLVEncoding);
-
-    let key_wrapping_data = KeyWrappingData {
-        wrapping_method: key_wrapping_specification.wrapping_method,
-        encryption_key_information: key_wrapping_specification
-            .encryption_key_information
-            .clone(),
-        mac_or_signature_key_information: key_wrapping_specification
-            .mac_or_signature_key_information
-            .clone(),
-        encoding_option: key_wrapping_specification.encoding_option,
-        ..KeyWrappingData::default()
-    };
-
-    let additional_data_encryption = key_wrapping_specification
-        .attribute_name
-        .as_ref()
-        .and_then(|attributes| attributes.first())
-        .map(std::string::String::as_bytes);
-    trace!(
-        "wrap_key_block: additional_data_encryption: {:?}",
-        additional_data_encryption
-    );
-
     // wrap the key based on the encoding
-    match encoding {
+    Ok(match key_wrapping_specification.get_encoding() {
         EncodingOption::TTLVEncoding => {
-            let key_to_wrap = Zeroizing::from(serde_json::to_vec(&object_key_block.key_value)?);
-            let ciphertext = wrap(
-                wrapping_key,
-                &key_wrapping_data,
-                &key_to_wrap,
-                additional_data_encryption,
-            )?;
-            object_key_block.key_value = KeyValue {
-                key_material: KeyMaterial::ByteString(ciphertext.into()),
-                // not clear whether this should be filled or not
-                attributes: object_key_block.key_value.attributes.clone(),
-            };
+            Zeroizing::from(serde_json::to_vec(&object_key_block.key_value)?)
         }
-        EncodingOption::NoEncoding => {
-            let key_to_wrap = object_key_block.key_bytes()?;
-            let ciphertext = wrap(
-                wrapping_key,
-                &key_wrapping_data,
-                &key_to_wrap,
-                additional_data_encryption,
-            )?;
-            object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
-        }
-    };
-
-    object_key_block.key_wrapping_data = Some(Box::new(key_wrapping_data));
-
-    Ok(())
+        EncodingOption::NoEncoding => object_key_block.key_bytes()?,
+    })
 }
 
 /// Encrypt bytes using the wrapping key
@@ -176,9 +179,9 @@ pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
-    additional_data_encryption: Option<&[u8]>,
+    additional_authenticated_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipError> {
-    debug!("wrap: with object type: {:?}", wrapping_key.object_type());
+    trace!("wrap: with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
         Object::Certificate {
             certificate_value, ..
@@ -196,7 +199,7 @@ pub(crate) fn wrap(
         | Object::PrivateKey { key_block }
         | Object::PublicKey { key_block }
         | Object::SymmetricKey { key_block } => {
-            debug!("wrap: key_block: {}", key_block);
+            trace!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 kmip_bail!("unable to wrap key: wrapping key is wrapped and that is not supported")
@@ -213,31 +216,32 @@ pub(crate) fn wrap(
                 ))
             }
 
-            // recover the cryptographic algorithm from the key block or default to AES
-            let cryptographic_algorithm = key_block
-                .cryptographic_algorithm()
-                .copied()
-                .unwrap_or(CryptographicAlgorithm::AES);
-            debug!(
-                "wrap: cryptographic_algorithm: {:?}",
-                cryptographic_algorithm
-            );
-
             let ciphertext = match key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
-                    let block_cipher_mode = key_wrapping_data
+                    let cryptographic_parameters = key_wrapping_data
                         .encryption_key_information
                         .clone()
-                        .and_then(|info| info.cryptographic_parameters)
-                        .and_then(|params| params.block_cipher_mode);
-                    debug!("wrap: block_cipher_mode: {:?}", block_cipher_mode);
+                        .and_then(|info| info.cryptographic_parameters);
+                    let cryptographic_algorithm = cryptographic_parameters
+                        .as_ref()
+                        .and_then(|params| params.cryptographic_algorithm)
+                        .unwrap_or(CryptographicAlgorithm::AES);
+                    let block_cipher_mode = cryptographic_parameters
+                        .as_ref()
+                        .and_then(|params| params.block_cipher_mode)
+                        .unwrap_or(BlockCipherMode::NISTKeyWrap);
+                    debug!(
+                        "symmetric wrapping using {cryptographic_algorithm} and \
+                         block_cipher_mode: {:?}",
+                        block_cipher_mode
+                    );
                     let key_bytes = key_block.key_bytes()?;
-                    let aad = additional_data_encryption.unwrap_or_default();
-                    if block_cipher_mode == Some(BlockCipherMode::GCM) {
+                    let aad = additional_authenticated_data.unwrap_or_default();
+                    if block_cipher_mode == BlockCipherMode::GCM {
                         // wrap using aes GCM
                         let aead = SymCipher::from_algorithm_and_key_size(
                             cryptographic_algorithm,
-                            block_cipher_mode,
+                            Some(block_cipher_mode),
                             key_bytes.len(),
                         )?;
 
@@ -252,7 +256,7 @@ pub(crate) fn wrap(
                         ciphertext.extend_from_slice(&ct);
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
-                        debug!(
+                        trace!(
                             "wrap: nonce: {}, aad: {}, tag: {}",
                             general_purpose::STANDARD.encode(&nonce),
                             general_purpose::STANDARD.encode(aad),
@@ -314,6 +318,11 @@ fn wrap_with_rsa(
     key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
+    debug!("wrapping with RSA {algorithm} {padding:?} {hashing_fn:?} ");
+    #[cfg(not(feature = "fips"))]
+    if padding == PaddingMethod::PKCS1v15 {
+        return ckm_rsa_pkcs_key_wrap(pub_key, key_to_wrap)
+    }
     if padding != PaddingMethod::OAEP {
         kmip_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
     }

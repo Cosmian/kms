@@ -5,13 +5,14 @@ use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
 use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
-    AuthenticationOptions, DBConfig, DEFAULT_SQLITE_PATH,
+    AuthenticationOptions, MainDBConfig, DEFAULT_SQLITE_PATH,
 };
 use predicates::prelude::*;
 use tempfile::TempDir;
 use tracing::info;
 
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         shared::{export_key, ExportKeyParams},
@@ -120,11 +121,11 @@ async fn test_multiple_databases() -> CliResult<()> {
     // init the test server
     // since we are going to rewrite the conf, use a different port
     let ctx = start_test_server_with_options(
-        DBConfig {
+        MainDBConfig {
             database_type: Some("sqlite-enc".to_owned()),
             sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
             clear_database: true,
-            ..DBConfig::default()
+            ..MainDBConfig::default()
         },
         9997,
         AuthenticationOptions {
@@ -134,11 +135,12 @@ async fn test_multiple_databases() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
 
     // create a symmetric key in the default encrypted database
-    let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_1 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // export the key 1
     // Export
     export_key(ExportKeyParams {
@@ -163,7 +165,7 @@ async fn test_multiple_databases() -> CliResult<()> {
         .expect("Can't write the new conf");
 
     // create a symmetric key in the default encrypted database
-    let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     // export the key 1
     // Export
     export_key(ExportKeyParams {

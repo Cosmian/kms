@@ -47,10 +47,10 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+                build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+                build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
         ],
     };

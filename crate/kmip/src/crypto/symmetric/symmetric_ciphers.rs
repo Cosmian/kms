@@ -329,6 +329,7 @@ pub fn encrypt(
 }
 
 /// Decrypt the ciphertext using the given symmetric cipher.
+///
 /// Return the decrypted plaintext.
 /// The tag is required for AEAD ciphers (`AES GCN`, `ChaCha20 Poly1305`, ...).
 /// For XTS mode, the nonce is the tweak, the aad and the tag are ignored.

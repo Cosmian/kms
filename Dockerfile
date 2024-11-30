@@ -1,6 +1,6 @@
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04
 
-LABEL version="4.19.3"
+LABEL version="4.20.0"
 LABEL name="Cosmian KMS docker container"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,7 +15,6 @@ RUN apt-get update \
     libssl-dev \
     ca-certificates \
     libclang-dev \
-    libsodium-dev \
     pkg-config \
     git \
     wget \
@@ -29,31 +28,13 @@ COPY . /root/kms
 
 WORKDIR /root/kms
 
-RUN mkdir -p $OPENSSL_DIR \
-    && bash /root/kms/.github/scripts/local_ossl_instl.sh $OPENSSL_DIR
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then export ARCHITECTURE=x86_64; elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then export ARCHITECTURE=arm; elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then export ARCHITECTURE=arm64; else export ARCHITECTURE=x86_64; fi \
+    && bash /root/kms/.github/scripts/get_openssl_binaries.sh
 
-RUN /root/.cargo/bin/cargo build --release --no-default-features
-
-#
-# KMS Server
-#
-FROM ubuntu:22.04 AS kms
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV OPENSSL_DIR=/usr/local/openssl
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends -qq -y \
-    ca-certificates \
-    libssl-dev \
-    libsodium-dev \
-    && apt-get -y -q upgrade \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
-COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
-COPY --from=builder $OPENSSL_DIR/lib64/ossl-modules/legacy.so $OPENSSL_DIR/lib64/ossl-modules/legacy.so
+RUN /root/.cargo/bin/cargo build --release --no-default-features \
+    && cp /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server \
+    && cp /root/kms/target/release/ckms               /usr/bin/ckms
 
 #
 # Create working directory

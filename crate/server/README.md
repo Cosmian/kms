@@ -5,9 +5,9 @@
 The KMS server provides several features which can be enabled at compilation times. Enable/Disable these features will change the server configuration variables.
 
 | Feature  | Description                                                                                                       | Staging | Prod 🔥 |
-|----------|-------------------------------------------------------------------------------------------------------------------|---------|---------|
-| insecure | Do not verify auth0 token expiration date     | ✅       |         |
-| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |         |
+| -------- | ----------------------------------------------------------------------------------------------------------------- | ------- | ------ |
+| insecure | Do not verify auth0 token expiration date                                                                         | ✅       |        |
+| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |        |
 
 **Caption**:
 ✅ Enabled

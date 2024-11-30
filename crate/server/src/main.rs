@@ -7,8 +7,8 @@ use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     error::KmsError,
     kms_bail,
-    kms_server::start_kms_server,
     result::KResult,
+    start_kms_server::start_kms_server,
     telemetry::initialize_telemetry,
 };
 use dotenvy::dotenv;
@@ -60,7 +60,7 @@ async fn main() -> KResult<()> {
     };
 
     let clap_config = if conf.exists() {
-        _ = ClapConfig::parse(); // Do that do catch --help or --version even if we use a conf file
+        let _ = ClapConfig::parse(); // Do that do catch --help or --version even if we use a conf file
 
         info!(
             "Configuration file {conf:?} found. Command line arguments and env variables are \
@@ -166,14 +166,14 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::{
-        config::{ClapConfig, DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig},
+        config::{ClapConfig, HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig},
         telemetry::TelemetryConfig,
     };
 
     #[test]
     fn test_toml() {
         let config = ClapConfig {
-            db: DBConfig {
+            db: MainDBConfig {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
                 sqlite_path: PathBuf::from("[sqlite path]"),
@@ -213,6 +213,11 @@ mod tests {
                 quiet: false,
             },
             info: false,
+            hsm_model: "".to_string(),
+            hsm_admin: "".to_string(),
+            hsm_slot: vec![],
+            hsm_password: vec![],
+            non_revocable_key_id: None,
         };
 
         let toml_string = r#"
@@ -220,6 +225,11 @@ default_username = "[default username]"
 force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
 ms_dke_service_url = "[ms dke service url]"
+info = false
+hsm_model = ""
+hsm_admin = ""
+hsm_slot = []
+hsm_password = []
 
 [db]
 database_type = "[redis-findex, postgresql,...]"
@@ -250,6 +260,7 @@ otlp = "http://localhost:4317"
 quiet = false
 "#;
 
+        // println!("{}", toml::to_string(&config).unwrap().trim());
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
     }
 }

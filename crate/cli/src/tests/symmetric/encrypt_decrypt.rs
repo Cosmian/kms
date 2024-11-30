@@ -7,7 +7,10 @@ use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
+    actions::symmetric::{
+        keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+        DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
+    },
     error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
 };
@@ -196,10 +199,11 @@ async fn test_aes_gcm_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -215,10 +219,11 @@ async fn test_aes_xts_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(512),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(512),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -235,10 +240,11 @@ async fn test_aes_gcm_siv_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -255,10 +261,11 @@ async fn test_chacha20_poly1305_server_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let dek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("chacha20"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Chacha20,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -277,8 +284,13 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
     let tmp_path = tmp_dir.path();
 
     let ctx = start_default_test_kms_server().await;
-    let _key_id =
-        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &["tag_sym"])?;
+    let _key_id = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            tags: vec!["tag_sym".to_owned()],
+            ..Default::default()
+        },
+    )?;
 
     let input_file = PathBuf::from("test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
@@ -337,10 +349,11 @@ async fn test_aes_gcm_aes_gcm_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -358,10 +371,11 @@ async fn test_aes_gcm_aes_xts_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -380,10 +394,11 @@ async fn test_aes_gcm_chacha20_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,
@@ -401,10 +416,11 @@ async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kek = create_symmetric_key(
         &ctx.owner_client_conf_path,
-        Some(256),
-        None,
-        Some("aes"),
-        &[],
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
     )?;
     run_encrypt_decrypt_test(
         &ctx.owner_client_conf_path,

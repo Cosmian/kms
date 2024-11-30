@@ -3,15 +3,16 @@ use std::fmt::{self};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use super::{DBConfig, HttpConfig, JwtAuthConfig, WorkspaceConfig};
+use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
 use crate::telemetry::TelemetryConfig;
 
 const DEFAULT_USERNAME: &str = "admin";
+const HSM_ADMIN: &str = "admin";
 
 impl Default for ClapConfig {
     fn default() -> Self {
         Self {
-            db: DBConfig::default(),
+            db: MainDBConfig::default(),
             http: HttpConfig::default(),
             auth: JwtAuthConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -21,6 +22,11 @@ impl Default for ClapConfig {
             ms_dke_service_url: None,
             telemetry: TelemetryConfig::default(),
             info: false,
+            hsm_admin: HSM_ADMIN.to_owned(),
+            hsm_model: "proteccio".to_owned(),
+            hsm_slot: vec![],
+            hsm_password: vec![],
+            non_revocable_key_id: None,
         }
     }
 }
@@ -30,7 +36,7 @@ impl Default for ClapConfig {
 #[serde(default)]
 pub struct ClapConfig {
     #[clap(flatten)]
-    pub db: DBConfig,
+    pub db: MainDBConfig,
 
     #[clap(flatten)]
     pub http: HttpConfig,
@@ -73,6 +79,37 @@ pub struct ClapConfig {
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
     pub info: bool,
+
+    /// The HSM model.
+    /// Only `proteccio` is supported for now.
+    #[clap(verbatim_doc_comment, long,value_parser(["proteccio"]), default_value = "proteccio")]
+    pub hsm_model: String,
+
+    /// The username of the HSM admin.
+    /// The HSM admin can create objects on the HSM, destroy them, and potentially export them.
+    #[clap(long, env = "KMS_HSM_ADMIN", default_value = HSM_ADMIN)]
+    pub hsm_admin: String,
+
+    /// HSM slot number. The slots used must be listed.
+    /// Repeat this option to specify multiple slots
+    /// while specifying a password for each slot (or an empty string for no password)
+    /// e.g.
+    /// ```sh
+    ///   --hsm_slot 1 --hsm_password password1 \
+    ///   --hsm_slot 2 --hsm_password password2
+    ///```
+    #[clap(verbatim_doc_comment, long)]
+    pub hsm_slot: Vec<usize>,
+
+    /// Password for the user logging in to the HSM Slot specified with `--hsm_slot`
+    /// Provide an empty string for no password
+    /// see `--hsm_slot` for more information
+    #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
+    pub hsm_password: Vec<String>,
+
+    /// The non-revocable keys ID used for demo purposes
+    #[clap(long, hide = true)]
+    pub non_revocable_key_id: Option<Vec<String>>,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -98,6 +135,25 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("telemetry", &self.telemetry);
         let x = x.field("info", &self.info);
+        let x = x.field("HSM admin username", &self.hsm_admin);
+        let x = x.field(
+            "hsm_model",
+            if self.hsm_slot.is_empty() {
+                &"NO HSM"
+            } else {
+                &self.hsm_model
+            },
+        );
+        let x = x.field("hsm_slots", &self.hsm_slot);
+        let x = x.field(
+            "hsm_passwords",
+            &self
+                .hsm_password
+                .iter()
+                .map(|_| "********")
+                .collect::<Vec<&str>>(),
+        );
+        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         x.finish()
     }
 }

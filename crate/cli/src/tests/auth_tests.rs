@@ -6,13 +6,14 @@ use base64::Engine;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
 use cosmian_logger::log_utils::log_init;
 use kms_test_server::{
-    start_test_server_with_options, AuthenticationOptions, DBConfig, TestsContext,
+    start_test_server_with_options, AuthenticationOptions, MainDBConfig, TestsContext,
 };
 use tempfile::TempDir;
 use tracing::{info, trace};
 
 use super::utils::recover_cmd_logs;
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         access::SUB_COMMAND,
@@ -33,7 +34,8 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
 
 fn create_api_token(ctx: &TestsContext) -> CliResult<(String, String)> {
     // Create and export an API token
-    let api_token_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let api_token_id =
+        create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
     trace!("Symmetric key created of unique identifier: {api_token_id:?}");
 
     // Export as default (JsonTTLV with Raw Key Format Type)
@@ -66,11 +68,11 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     // plaintext no auth
     info!("Testing server with no auth");
     let ctx = start_test_server_with_options(
-        DBConfig {
+        MainDBConfig {
             database_type: Some("sqlite".to_owned()),
             sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
             clear_database: true,
-            ..DBConfig::default()
+            ..MainDBConfig::default()
         },
         PORT,
         AuthenticationOptions {
@@ -80,6 +82,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -87,11 +90,11 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
     let (api_token_id, api_token) = create_api_token(&ctx)?;
     ctx.stop_server().await?;
 
-    let default_db_config = DBConfig {
+    let default_db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
         sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
         clear_database: false,
-        ..DBConfig::default()
+        ..MainDBConfig::default()
     };
 
     // plaintext JWT token auth
@@ -106,6 +109,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -123,6 +127,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: None,
             api_token: None,
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -140,6 +145,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: Some("my_bad_token_id".to_owned()),
             api_token: Some("my_bad_token".to_owned()),
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -157,6 +163,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
             api_token_id: Some(api_token_id),
             api_token: Some(api_token),
         },
+        None,
     )
     .await?;
     run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -179,6 +186,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: None,
                 api_token: None,
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -196,6 +204,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: Some("my_bad_token_id".to_string()),
                 api_token: Some("my_bad_token".to_string()),
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);
@@ -216,6 +225,7 @@ pub(crate) async fn test_all_authentications() -> CliResult<()> {
                 api_token_id: Some("my_bad_token_id".to_string()),
                 api_token: Some("my_bad_token".to_string()),
             },
+            None,
         )
         .await?;
         run_owned_cli_command(&ctx.owner_client_conf_path);

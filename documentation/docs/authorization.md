@@ -188,7 +188,6 @@ or `Import` KMIP operations).
             "object_id": "the object unique identifier",
             "state": "<state>",
             "attributes": "<attributes>",
-            "is_wrapped": "<wrapped_state>"
          }
       ]
       ```
@@ -232,7 +231,6 @@ A user can list all the access rights that have been granted to it by object own
             "state": "<state>",
             "operations": [ <operation type> ]
             "attributes": "<attributes>",
-            "is_wrapped": "<wrapped_state>"
             }
       ]
       ```

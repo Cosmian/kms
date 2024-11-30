@@ -64,7 +64,7 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
     {
         struct TTLVEnumerationVisitor;
 
-        impl<'de> Visitor<'de> for TTLVEnumerationVisitor {
+        impl Visitor<'_> for TTLVEnumerationVisitor {
             type Value = TTLVEnumeration;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -238,7 +238,7 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
     {
         struct IntegerOrMaskVisitor;
 
-        impl<'de> Visitor<'de> for IntegerOrMaskVisitor {
+        impl Visitor<'_> for IntegerOrMaskVisitor {
             type Value = IntegerOrMask;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

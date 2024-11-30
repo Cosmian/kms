@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings
+exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|documentation/docs/benchmarks.md
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v3.4.0
@@ -109,7 +109,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/kmip/src/kmip/extra/x509_extensions.rs
+        exclude: crate/kmip/src/kmip/extra/x509_extensions.rs|documentation/docs/cli/main_commands.md
 
   - repo: https://github.com/psf/black
     rev: 24.8.0
@@ -130,7 +130,7 @@ repos:
       - id: renew-kms-markdown
       - id: docker-compose-up
       - id: cargo-test
-        args: [--, --skip, test_wrap_auth, --skip, google_cse]
+        args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-all-targets-all-features
       - id: clippy-autofix-all-targets

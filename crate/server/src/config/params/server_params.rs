@@ -1,8 +1,9 @@
-use std::{fmt, path::PathBuf};
+use std::{collections::HashMap, fmt, path::PathBuf};
 
+use cosmian_kms_server_database::MainDbParams;
 use openssl::x509::X509;
 
-use super::{DbParams, HttpParams};
+use super::HttpParams;
 use crate::{
     config::{ClapConfig, IdpConfig},
     kms_bail,
@@ -24,7 +25,7 @@ pub struct ServerParams {
     pub force_default_username: bool,
 
     /// The DB parameters may be supplied on the command line
-    pub db_params: Option<DbParams>,
+    pub main_db_params: Option<MainDbParams>,
 
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
@@ -57,6 +58,19 @@ pub struct ServerParams {
     ///
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
+
+    /// The username of the HSM admin.
+    /// The HSM admin can create objects on the HSM.
+    pub hsm_admin: String,
+
+    /// The HSM model, if any
+    pub hsm_model: Option<String>,
+
+    /// HSM slot passwords number
+    pub slot_passwords: HashMap<usize, Option<String>>,
+
+    /// The non-revocable keys ID used for demo purposes
+    pub non_revocable_key_id: Option<Vec<String>>,
 }
 
 /// Represents the server parameters.
@@ -93,9 +107,23 @@ impl ServerParams {
             })
             .transpose()?;
 
+        let slot_passwords: HashMap<usize, Option<String>> = conf
+            .hsm_slot
+            .iter()
+            .zip(&conf.hsm_password)
+            .map(|(s, p)| {
+                let password = if p.is_empty() {
+                    None
+                } else {
+                    Some(p.to_string())
+                };
+                (*s, password)
+            })
+            .collect();
+
         Ok(Self {
             identity_provider_configurations: conf.auth.extract_idp_configs()?,
-            db_params: conf.db.init(&conf.workspace.init()?)?,
+            main_db_params: Some(conf.db.init(&conf.workspace.init()?)?),
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname,
             port: conf.http.port,
@@ -106,6 +134,14 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
+            hsm_admin: conf.hsm_admin,
+            hsm_model: if slot_passwords.is_empty() {
+                None
+            } else {
+                Some(conf.hsm_model)
+            },
+            slot_passwords,
+            non_revocable_key_id: conf.non_revocable_key_id,
         })
     }
 
@@ -149,7 +185,7 @@ impl fmt::Debug for ServerParams {
                     &self.port
                 ),
             )
-            .field("db_params", &self.db_params)
+            .field("db_params", &self.main_db_params)
             .field("clear_db_on_start", &self.clear_db_on_start);
         let x = if let Some(identity_provider_configurations) =
             &self.identity_provider_configurations
@@ -177,12 +213,33 @@ impl fmt::Debug for ServerParams {
         };
         let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
         let x = x.field("api_token_id", &self.api_token_id);
+        let x = x.field("HSM_username", &self.hsm_admin);
+        let x = x.field(
+            "hsm_model",
+            if self.slot_passwords.is_empty() {
+                &"NO HSM"
+            } else {
+                &self.hsm_model
+            },
+        );
+        let x = x.field(
+            "slot_passwords",
+            &self
+                .slot_passwords
+                .iter()
+                .map(|(s, p)| {
+                    let p = if p.is_some() { "********" } else { "" };
+                    format!("{s} -> {p}")
+                })
+                .collect::<Vec<String>>(),
+        );
+        let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         x.finish()
     }
 }
 
 /// Creates a partial clone of the `ServerParams`
-/// the `DbParams` and PKCS#12 information is not copied
+/// the `DbParams`, PKCS#12 information and Proteccio password are not copied
 /// since it may contain sensitive material
 impl Clone for ServerParams {
     fn clone(&self) -> Self {
@@ -190,7 +247,7 @@ impl Clone for ServerParams {
             identity_provider_configurations: self.identity_provider_configurations.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,
-            db_params: None,
+            main_db_params: None,
             clear_db_on_start: self.clear_db_on_start,
             hostname: self.hostname.clone(),
             port: self.port,
@@ -199,6 +256,15 @@ impl Clone for ServerParams {
             api_token_id: self.api_token_id.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
+            hsm_admin: self.hsm_admin.clone(),
+            hsm_model: self.hsm_model.clone(),
+            slot_passwords: self
+                .slot_passwords
+                .clone()
+                .into_keys()
+                .map(|s| (s, None))
+                .collect(),
+            non_revocable_key_id: self.non_revocable_key_id.clone(),
         }
     }
 }

@@ -16,6 +16,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key_id: Option<UniqueIdentifier>,
     tags: T,
     cryptographic_length: usize,
+    sensitive: bool,
 ) -> Result<CreateKeyPair, KmipError> {
     #[cfg(feature = "fips")]
     let private_key_mask = FIPS_PRIVATE_RSA_MASK;
@@ -54,6 +55,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
+        sensitive,
         ..Attributes::default()
     };
 

@@ -6,20 +6,16 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
+use cosmian_kms_server_database::ExtraStoreParams;
 
-use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS},
-    error::KmsError,
-    kms_bail,
-    result::KResult,
-};
+use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraDatabaseParams>,
+    database_params: Option<&ExtraStoreParams>,
 ) -> KResult<Operation> {
     Ok(match ttlv.tag.as_str() {
         "Certify" => {
@@ -94,6 +90,7 @@ pub(crate) async fn dispatch(
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
+            #[allow(clippy::large_futures)]
             let resp = kms.rekey_keypair(req, user, database_params).await?;
             Operation::ReKeyKeyPairResponse(resp)
         }

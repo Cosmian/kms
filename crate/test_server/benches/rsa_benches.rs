@@ -1,15 +1,21 @@
 #![allow(dead_code)]
+
 use cosmian_kmip::{
     crypto::{
         generic::kmip_requests::{build_decryption_request, build_encryption_request},
         rsa::kmip_requests::create_rsa_key_pair_request,
     },
-    kmip::kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+    kmip::{
+        kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+        kmip_operations::Operation,
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+            ProtocolVersion,
+        },
     },
 };
 use cosmian_kms_client::KmsClient;
-use criterion::Criterion;
+use criterion::{BenchmarkId, Criterion, Throughput};
 use kms_test_server::start_default_test_kms_server;
 
 pub(crate) fn bench_rsa_create_keypair(c: &mut Criterion) {
@@ -267,7 +273,7 @@ pub(crate) async fn create_rsa_keypair(
     cryptographic_length: usize,
 ) -> (String, String) {
     let create_key_pair_request =
-        create_rsa_key_pair_request(None, ["bench"], cryptographic_length).unwrap();
+        create_rsa_key_pair_request(None, ["bench"], cryptographic_length, false).unwrap();
     // Query the KMS with your kmip data and get the key pair ids
     let response = kms_rest_client
         .create_key_pair(create_key_pair_request)
@@ -326,4 +332,195 @@ pub(crate) async fn decrypt(
         .unwrap()
         .data
         .unwrap();
+}
+
+/// Parametrized benchmarks
+/// We use the `Message` KMIP structure to send multiple requests in a single call
+pub(crate) async fn message_encrypt(
+    kms_rest_client: &KmsClient,
+    pk: &str,
+    plaintext: &[u8],
+    num_plaintexts: usize,
+    cryptographic_parameters: &CryptographicParameters,
+) -> MessageResponse {
+    // Create the kmip query
+    let encrypt_request = build_encryption_request(
+        pk,
+        None,
+        plaintext.to_vec(),
+        None,
+        None,
+        None,
+        Some(cryptographic_parameters.to_owned()),
+    )
+    .unwrap();
+
+    // Create the kmip query
+    let message_request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: num_plaintexts as u32,
+            ..Default::default()
+        },
+        items: (0..num_plaintexts)
+            .map(|_| MessageBatchItem::new(Operation::Encrypt(encrypt_request.clone())))
+            .collect(),
+    };
+
+    kms_rest_client.message(message_request).await.unwrap()
+}
+
+pub(crate) async fn message_decrypt(
+    kms_rest_client: &KmsClient,
+    sk: &str,
+    ciphertext: &[u8],
+    num_ciphertexts: usize,
+    cryptographic_parameters: &CryptographicParameters,
+) -> MessageResponse {
+    // Create the kmip query
+    let decrypt_request = build_decryption_request(
+        sk,
+        None,
+        ciphertext.to_vec(),
+        None,
+        None,
+        Some(cryptographic_parameters.clone()),
+    );
+
+    // Create the kmip query
+    let message_request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: num_ciphertexts as u32,
+            ..Default::default()
+        },
+        items: (0..num_ciphertexts)
+            .map(|_| MessageBatchItem::new(Operation::Decrypt(decrypt_request.clone())))
+            .collect(),
+    };
+
+    kms_rest_client.message(message_request).await.unwrap()
+}
+
+pub(crate) fn bench_encrypt_decrypt_parametrized(
+    c: &mut Criterion,
+    name: &str,
+    cryptographic_parameters: CryptographicParameters,
+) {
+    let mut group = c.benchmark_group(name);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    for num_plaintexts in [1, 10, 50, 100, 500, 1000] {
+        for key_size in [2048, 4096] {
+            let (kms_rest_client, sk, pk, ciphertext) = runtime.block_on(async {
+                let ctx = start_default_test_kms_server().await;
+                let kms_rest_client = ctx
+                    .owner_client_conf
+                    .initialize_kms_client(None, None, false)
+                    .unwrap();
+                let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
+                let ciphertext = encrypt(
+                    &kms_rest_client,
+                    &pk,
+                    vec![0u8; 32],
+                    &cryptographic_parameters,
+                )
+                .await;
+                (kms_rest_client, sk, pk, ciphertext)
+            });
+
+            let parameter_name = if num_plaintexts == 1 {
+                format!("{num_plaintexts} request")
+            } else {
+                format!("{num_plaintexts} requests")
+            };
+            // We can use the throughput function to tell Criterion.rs how large the input is
+            // so it can calculate the overall throughput of the function. If we wanted, we could
+            // even change the benchmark configuration for different inputs (eg. to reduce the
+            // number of samples for extremely large and slow inputs) or even different functions.
+            group.throughput(Throughput::Elements(num_plaintexts as u64));
+            group.bench_with_input(
+                BenchmarkId::new(
+                    format!("{}-bit key encrypt", key_size),
+                    parameter_name.clone(),
+                ),
+                &vec![0u8; 32],
+                |b, pt| {
+                    b.to_async(&runtime).iter(|| async {
+                        let _ = message_encrypt(
+                            &kms_rest_client,
+                            &pk,
+                            pt,
+                            num_plaintexts,
+                            &cryptographic_parameters,
+                        )
+                        .await;
+                    });
+                },
+            );
+            group.bench_with_input(
+                BenchmarkId::new(format!("{}-bit key decrypt", key_size), parameter_name),
+                &ciphertext,
+                |b, ct| {
+                    b.to_async(&runtime).iter(|| async {
+                        message_decrypt(
+                            &kms_rest_client,
+                            &sk,
+                            ct,
+                            num_plaintexts,
+                            &cryptographic_parameters,
+                        )
+                        .await;
+                    });
+                },
+            );
+        }
+    }
+
+    group.finish();
+}
+
+pub(crate) fn bench_encrypt_rsa_pkcs15_parametrized(c: &mut Criterion) {
+    bench_encrypt_decrypt_parametrized(
+        c,
+        "RSA PKCSv1.5 - plaintext of 32 bytes",
+        CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+    )
+}
+
+pub(crate) fn bench_encrypt_rsa_oaep_parametrized(c: &mut Criterion) {
+    bench_encrypt_decrypt_parametrized(
+        c,
+        "RSA OAEP - plaintext of 32 bytes",
+        CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+    )
+}
+
+pub(crate) fn bench_encrypt_rsa_aes_key_wrap_parametrized(c: &mut Criterion) {
+    bench_encrypt_decrypt_parametrized(
+        c,
+        "RSA AES KEY WRAP - plaintext of 32 bytes",
+        CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+    )
 }

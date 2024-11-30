@@ -25,7 +25,7 @@ pub(crate) enum Issuer<'a> {
     ),
 }
 
-impl<'a> Issuer<'a> {
+impl Issuer<'_> {
     pub(crate) const fn unique_identifier(&self) -> &UniqueIdentifier {
         match self {
             Issuer::PrivateKeyAndCertificate(unique_identifier, _, _)

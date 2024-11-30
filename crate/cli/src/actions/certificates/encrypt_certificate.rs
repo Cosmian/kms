@@ -8,7 +8,10 @@ use cosmian_kms_client::{
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::console,
+    actions::{
+        console,
+        rsa::{HashFn, RsaEncryptionAlgorithm},
+    },
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
@@ -40,6 +43,12 @@ pub struct EncryptCertificateAction {
     /// This data needs to be provided back for decryption.
     #[clap(required = false, long, short = 'a')]
     authentication_data: Option<String>,
+
+    /// Optional encryption algorithm.
+    /// This is only available for RSA keys for now.
+    /// The default for RSA is `PKCS_OAEP`.
+    #[clap(long, short = 'e', verbatim_doc_comment)]
+    encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 }
 
 impl EncryptCertificateAction {
@@ -61,10 +70,18 @@ impl EncryptCertificateAction {
             .as_ref()
             .map(|auth_data| auth_data.as_bytes().to_vec());
 
+        let cryptographic_parameters =
+            self.encryption_algorithm
+                .as_ref()
+                .map(|encryption_algorithm| {
+                    encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256)
+                });
+
         let encrypt_request = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(data),
             authenticated_encryption_additional_data: authentication_data,
+            cryptographic_parameters,
             ..Encrypt::default()
         };
 

@@ -120,7 +120,7 @@ fn create_master_private_key_object(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
-                attributes: Some(Box::new(attributes)),
+                attributes: Some(attributes),
             },
             cryptographic_length,
             key_wrapping_data: None,
@@ -139,6 +139,7 @@ fn create_master_public_key_object(
     master_private_key_uid: &str,
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
+    attributes.sensitive = false;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.
@@ -160,7 +161,7 @@ fn create_master_public_key_object(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
-                attributes: Some(Box::new(attributes)),
+                attributes: Some(attributes),
             },
             cryptographic_length,
             key_wrapping_data: None,

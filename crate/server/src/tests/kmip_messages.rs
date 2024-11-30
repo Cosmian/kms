@@ -14,7 +14,7 @@ use cosmian_kmip::{
 };
 
 use crate::{
-    config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
+    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
 };
 
 #[tokio::test]
@@ -23,12 +23,12 @@ async fn test_kmip_messages() -> KResult<()> {
 
     let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
     let ec_create_request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519)?;
+        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
 
     // prepare and send the single message
     let items = vec![
@@ -105,16 +105,12 @@ async fn test_kmip_messages() -> KResult<()> {
         ResultStatusEnumeration::OperationFailed
     );
     assert_eq!(
-        response.items[2].result_reason,
-        Some(ErrorReason::Item_Not_Found)
+        response.items[2].result_message,
+        Some("Decrypt: failed to retrieve the key: id_12345".to_owned())
     );
     assert_eq!(
-        response.items[2].result_message,
-        Some(
-            "Get Key: no available key found (must be an active symmetric key or private key) for \
-             object identifier id_12345"
-                .to_owned()
-        )
+        response.items[2].result_reason,
+        Some(ErrorReason::Item_Not_Found)
     );
     assert!(response.items[2].response_payload.is_none());
     Ok(())

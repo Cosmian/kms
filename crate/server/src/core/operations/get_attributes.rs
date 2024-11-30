@@ -7,22 +7,22 @@ use cosmian_kmip::{
             AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
             VendorAttribute, VendorAttributeReference,
         },
+        KmipOperation,
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
-use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_server_database::ExtraStoreParams;
 use strum::IntoEnumIterator;
 use tracing::{debug, trace};
 
 use crate::{
     core::{
-        extra_database_params::ExtraDatabaseParams,
-        operations::export_utils::{
+        operations::export_get::{
             openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
         },
+        retrieve_object_utils::retrieve_object_for_operation,
         KMS,
     },
-    database::retrieve_object_for_operation,
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -31,7 +31,7 @@ pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
     user: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraStoreParams>,
 ) -> KResult<GetAttributesResponse> {
     trace!("Get attributes: {}", serde_json::to_string(&request)?);
 
@@ -43,34 +43,29 @@ pub(crate) async fn get_attributes(
         .as_str()
         .context("Get Attributes: the unique identifier must be a string")?;
 
-    let owm = retrieve_object_for_operation(
-        uid_or_tags,
-        ObjectOperationType::GetAttributes,
-        kms,
-        user,
-        params,
-    )
-    .await?;
+    let owm =
+        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
+            .await?;
     trace!(
-        "Get Attributes: Retrieved object for get attributes: {:?}",
-        serde_json::to_string(&owm)
+        "Get Attributes: Retrieved object for get attributes: {}",
+        owm.object()
     );
-    let object_type = owm.object.object_type();
+    let object_type = owm.object().object_type();
 
-    let attributes = match &owm.object {
+    let attributes = match owm.object() {
         Object::Certificate { .. } => {
             // KMIP Attributes retrieved from dedicated column `Attributes`
-            owm.attributes
+            owm.attributes().to_owned()
         }
         Object::PrivateKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
-                *attributes
+                attributes
             } else {
                 // we want the default format which yields the most infos
-                let pkey = kmip_private_key_to_openssl(&owm.object)?;
+                let pkey = kmip_private_key_to_openssl(owm.object())?;
                 let default_kmip = openssl_private_key_to_kmip_default_format(
                     &pkey,
                     attributes.cryptographic_usage_mask,
@@ -82,7 +77,7 @@ pub(crate) async fn get_attributes(
                     .vendor_attributes
                     .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link.clone_from(&owm.attributes.link);
+                default_attributes.link.clone_from(&owm.attributes().link);
                 default_attributes
             }
         }
@@ -91,10 +86,10 @@ pub(crate) async fn get_attributes(
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
-                *attributes
+                attributes
             } else {
                 // we want the default format which yields the most infos
-                let pkey = kmip_public_key_to_openssl(&owm.object)?;
+                let pkey = kmip_public_key_to_openssl(owm.object())?;
                 let default_kmip = openssl_public_key_to_kmip_default_format(
                     &pkey,
                     attributes.cryptographic_usage_mask,
@@ -106,15 +101,15 @@ pub(crate) async fn get_attributes(
                     .vendor_attributes
                     .clone_from(&attributes.vendor_attributes);
                 // re-add the links
-                default_attributes.link.clone_from(&owm.attributes.link);
+                default_attributes.link.clone_from(&owm.attributes().link);
                 default_attributes
             }
         }
         Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
-            attributes.link.clone_from(&owm.attributes.link);
-            *attributes
+            attributes.link.clone_from(&owm.attributes().link);
+            attributes
         }
         Object::CertificateRequest { .. }
         | Object::OpaqueObject { .. }
@@ -160,7 +155,7 @@ pub(crate) async fn get_attributes(
                 attribute_name,
             }) => {
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
-                    let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+                    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
                     res.add_vendor_attribute(VendorAttribute {
                         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
                         attribute_name: VENDOR_ATTR_TAG.to_owned(),
@@ -234,13 +229,13 @@ pub(crate) async fn get_attributes(
     }
     debug!(
         "Retrieved Attributes for {} {}, tags {:?}",
-        owm.object.object_type(),
-        owm.id,
+        owm.object().object_type(),
+        owm.id(),
         res.get_tags()
     );
     trace!("Get Attributes: Response: {res:?}");
     Ok(GetAttributesResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         attributes: res,
     })
 }

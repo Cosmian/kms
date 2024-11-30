@@ -15,7 +15,8 @@ Management System** that presents some unique features, such as
   interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
 - Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
-- FIPS 140-2 mode gated behind the feature `fips`
+- FIPS 140-3 mode gated behind the feature `fips`
+- support for the Proteccio HSM with KMS keys wrapped by the HSM
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
 - out-of-the-box support
@@ -49,7 +50,7 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.19.3/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.20.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -58,11 +59,12 @@ Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.19.3
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
 ```
 
 Then, use the CLI to issue commands to the KMS.
-The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and launched from this GitHub project by running
+The CLI, called `ckms`, can be either downloaded from [Cosmian packages](https://package.cosmian.com/kms/) or built and
+launched from this GitHub project by running
 
 ```sh
 cargo run --bin ckms -- --help
@@ -125,13 +127,13 @@ OpenSSL v3.2.0 is required to build the KMS.
 
 ### Linux or MacOS (CPU Intel or MacOs ARM)
 
-Build OpenSSL v3.2.0 with the following commands:
+Retrieve OpenSSL v3.2.0 (already build) with the following commands:
 
 ```sh
 export OPENSSL_DIR=/usr/local/openssl
 sudo mkdir -p ${OPENSSL_DIR}
 sudo chown -R $USER ${OPENSSL_DIR}
-bash .github/scripts/local_ossl_instl.sh ${OPENSSL_DIR}
+bash .github/scripts/get_openssl_binaries.sh
 ```
 
 ### Windows
@@ -161,7 +163,9 @@ vcpkg integrate install
 
 ### Build the KMS
 
-Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI, the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate, not
+Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
+the KMS server and the PKCS11 provider - should directly be built using `cargo build --release` within their own crate,
+not
 from the project root.
 
 Build the server and CLI binaries:

@@ -10,7 +10,7 @@ use crate::{
     error::result::CliResult,
 };
 
-mod create_key;
+pub(crate) mod create_key;
 mod destroy_key;
 mod rekey;
 mod revoke_key;

@@ -55,7 +55,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ))?;
 
     // create Key Pair
-    let create_key_pair = build_create_master_keypair_request(&policy, EMPTY_TAGS)?;
+    let create_key_pair = build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -98,6 +98,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
+        false,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, request).await?;
     let user_decryption_key_identifier = create_response
@@ -121,8 +122,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(data, &decrypted_data.plaintext[..]);
     assert_eq!(header_metadata, decrypted_data.metadata);
@@ -157,6 +157,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
+        false,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_1 = create_response
@@ -171,6 +172,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
+        false,
     )?;
     let create_response2: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_2 = &create_response2
@@ -193,8 +195,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
@@ -215,8 +216,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
@@ -305,8 +305,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
@@ -319,7 +318,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
-    rekey_keypair_response.unwrap();
+    rekey_keypair_response?;
 
     // test user2 can no longer decrypt old message
     let request = build_decryption_request(
@@ -351,7 +350,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
-    rekey_keypair_response.unwrap();
+    rekey_keypair_response?;
 
     // Encrypt for new attribute
     let data = b"New tech research data";
@@ -370,7 +369,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    encrypt_response.unwrap();
+    encrypt_response?;
 
     //
     // Rename Attributes
@@ -384,7 +383,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
-    rekey_keypair_response.unwrap();
+    rekey_keypair_response?;
 
     // Encrypt for renamed attribute
     let data = b"hr data";
@@ -403,7 +402,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         }),
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
-    encrypt_response.unwrap();
+    encrypt_response?;
 
     //
     // Disable ABE Attribute
@@ -414,7 +413,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
-    rekey_keypair_response.unwrap();
+    rekey_keypair_response?;
 
     // Encrypt with disabled ABE attribute will fail
     let authentication_data = b"cc the uid".to_vec();
@@ -445,7 +444,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
-    rekey_keypair_response.unwrap();
+    rekey_keypair_response?;
 
     // Encrypt for removed attribute will fail
     let data = b"New hr data";

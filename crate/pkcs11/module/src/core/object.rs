@@ -2,7 +2,7 @@
 // Changes made to the original code are
 // licensed under the Business Source License version 1.1.
 //
-//Original code:
+// This :
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,36 +17,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 
-use p256::pkcs8::{
-    der::{asn1::OctetString, Encode},
-    AssociatedOid,
-};
-use pkcs1::{der::Decode, RsaPublicKey};
+use log::error;
+use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
+use pkcs1::EncodeRsaPrivateKey;
 use pkcs11_sys::{
-    CKC_X_509, CKK_EC, CKK_RSA, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE,
-    CKO_PUBLIC_KEY, CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
+    CKC_X_509, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY,
+    CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID,
 };
+use rsa::{pkcs8::DecodePrivateKey, traits::PublicKeyParts, RsaPrivateKey};
 use tracing::debug;
 
 use crate::{
-    core::attribute::{Attribute, AttributeType, Attributes},
-    traits::{
-        backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, RemoteObjectId,
-    },
+    core::attribute::{Attribute, AttributeType},
+    traits::{Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey},
+    MError, MResult,
 };
 
-// TODO(bweeks): resolve by improving the ObjectStore implementation.
 #[allow(clippy::derived_hash_with_manual_eq)]
-#[derive(Debug, Hash, Eq, Clone)]
+#[derive(Hash, Eq, Clone)]
 pub enum Object {
     Certificate(Arc<dyn Certificate>),
     PrivateKey(Arc<dyn PrivateKey>),
     Profile(CK_PROFILE_ID),
     PublicKey(Arc<dyn PublicKey>),
     DataObject(Arc<dyn DataObject>),
-    RemoteObjectId(Arc<dyn RemoteObjectId>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ObjectType {
+    Certificate,
+    PrivateKey,
+    Profile,
+    PublicKey,
+    DataObject,
 }
 
 //  #[derive(PartialEq)] fails to compile because it tries to move the Box<_>ed
@@ -60,14 +65,12 @@ impl PartialEq for Object {
             (Self::Profile(l0), Self::Profile(r0)) => l0 == r0,
             (Self::PublicKey(l0), Self::PublicKey(r0)) => l0 == r0,
             (Self::DataObject(l0), Self::DataObject(r0)) => l0 == r0,
-            (Self::RemoteObjectId(l0), Self::RemoteObjectId(r0)) => l0 == r0,
             (
                 Self::Certificate(_)
                 | Self::PrivateKey(_)
                 | Self::Profile(_)
                 | Self::PublicKey(_)
-                | Self::DataObject(_)
-                | Self::RemoteObjectId(_),
+                | Self::DataObject(_),
                 _,
             ) => false,
         }
@@ -75,193 +78,208 @@ impl PartialEq for Object {
 }
 
 impl Object {
-    pub fn attribute(&self, type_: AttributeType) -> Option<Attribute> {
+    pub fn object_type(&self) -> ObjectType {
+        match self {
+            Object::Certificate(_) => ObjectType::Certificate,
+            Object::PrivateKey(_) => ObjectType::PrivateKey,
+            Object::Profile(_) => ObjectType::Profile,
+            Object::PublicKey(_) => ObjectType::PublicKey,
+            Object::DataObject(_) => ObjectType::DataObject,
+        }
+    }
+
+    pub fn remote_id(&self) -> String {
+        match self {
+            Object::Certificate(cert) => cert.remote_id(),
+            Object::PrivateKey(private_key) => private_key.remote_id(),
+            Object::Profile(id) => id.to_string(),
+            Object::PublicKey(public_key) => public_key.remote_id(),
+            Object::DataObject(data) => data.remote_id(),
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            Object::Certificate(_) => "Certificate",
+            Object::PrivateKey(_) => "Private Key",
+            Object::Profile(_) => "Profile",
+            Object::PublicKey(_) => "Public Key",
+            Object::DataObject(_) => "Data Object",
+            // Object::RemoteObjectId(_) => "Remote Object ID",
+        }
+        .to_string()
+    }
+
+    pub fn attribute(&self, type_: AttributeType) -> MResult<Option<Attribute>> {
         let attribute = match self {
-            Self::Certificate(cert) => match type_ {
+            Object::Certificate(cert) => match type_ {
                 AttributeType::CertificateCategory => Some(Attribute::CertificateCategory(
                     CK_CERTIFICATE_CATEGORY_UNSPECIFIED,
                 )),
                 AttributeType::CertificateType => Some(Attribute::CertificateType(CKC_X_509)),
                 AttributeType::Class => Some(Attribute::Class(CKO_CERTIFICATE)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(cert.label()),
-                        hash: cert.public_key().public_key_hash(),
-                    })
-                    .ok()?,
-                )),
+                AttributeType::Id => Some(Attribute::Id(cert.private_key_id())),
                 AttributeType::Issuer => cert.issuer().map(Attribute::Issuer).ok(),
-                AttributeType::Label => Some(Attribute::Label(cert.label())),
+                AttributeType::Label => Some(Attribute::Label("Certificate".to_string())),
                 AttributeType::Token => Some(Attribute::Token(true)),
-                AttributeType::Trusted => Some(Attribute::Trusted(false)),
+                AttributeType::Trusted => Some(Attribute::Trusted(true)),
                 AttributeType::SerialNumber => {
                     cert.serial_number().map(Attribute::SerialNumber).ok()
                 }
                 AttributeType::Subject => cert.subject().map(Attribute::Subject).ok(),
                 AttributeType::Value => cert.to_der().map(Attribute::Value).ok(),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
+                AttributeType::Modulus => {
+                    Some(Attribute::Modulus(cert.public_key()?.rsa_modulus()?))
+                }
+                AttributeType::PublicExponent => Some(Attribute::PublicExponent(
+                    cert.public_key()?.rsa_public_exponent()?,
+                )),
                 _ => {
-                    debug!("certificate: type_ unimplemented: {:?}", type_);
+                    error!("certificate: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
-            Self::PrivateKey(private_key) => match type_ {
+            Object::PrivateKey(private_key) => match type_ {
                 AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
                 AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
                 AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
-                AttributeType::Decrypt => Some(Attribute::Decrypt(false)),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
                 AttributeType::EcParams => {
-                    Some(Attribute::EcParams(p256::NistP256::OID.to_der().ok()?))
+                    let algorithm = private_key.algorithm();
+                    match algorithm {
+                        KeyAlgorithm::EccP256
+                        | KeyAlgorithm::EccP384
+                        | KeyAlgorithm::EccP521
+                        | KeyAlgorithm::X25519 {}
+                        | KeyAlgorithm::Ed25519
+                        | KeyAlgorithm::X448
+                        | KeyAlgorithm::Ed448 => Some(Attribute::EcParams(
+                            private_key.algorithm().to_oid()?.to_der()?,
+                        )),
+                        _ => None,
+                    }
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(private_key.label()),
-                        hash: private_key.public_key_id(),
-                    })
-                    .ok()?,
-                )),
-                AttributeType::KeyType => Some(Attribute::KeyType(match private_key.algorithm() {
-                    KeyAlgorithm::Rsa => CKK_RSA,
-                    KeyAlgorithm::Ecc => CKK_EC,
-                })),
-                AttributeType::Label => Some(Attribute::Label(private_key.label())),
+                AttributeType::Id => Some(Attribute::Id(private_key.remote_id().clone())),
+                AttributeType::KeyType => {
+                    Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
+                }
+                AttributeType::Label => Some(Attribute::Label("Private Key".to_string())),
                 AttributeType::Modulus => {
-                    let modulus = private_key
-                        .find_public_key(backend())
-                        .ok()
-                        .flatten()
-                        .and_then(|public_key| {
-                            let der = public_key.to_der();
-                            RsaPublicKey::from_der(&der)
-                                .map(|pk| pk.modulus.as_bytes().to_vec())
-                                .ok()
-                        });
-                    modulus.map(Attribute::Modulus)
+                    let der_bytes = private_key.pkcs8_der_bytes()?;
+                    let sk = RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref()).map_err(|e| {
+                        error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                        MError::Cryptography("Failed to fetch the PKCS1 DER bytes".to_string())
+                    })?;
+                    Some(Attribute::Modulus(sk.n().to_bytes_be()))
                 }
                 AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
                 AttributeType::PublicExponent => {
-                    let public_exponent = private_key
-                        .find_public_key(backend())
-                        .ok()
-                        .flatten()
-                        .and_then(|public_key| {
-                            let der = public_key.to_der();
-                            RsaPublicKey::from_der(&der)
-                                .map(|pk| pk.public_exponent.as_bytes().to_vec())
-                                .ok()
-                        });
-                    public_exponent.map(Attribute::PublicExponent)
+                    let der_bytes = private_key.pkcs8_der_bytes()?;
+                    let sk = RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref()).map_err(|e| {
+                        error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                        MError::Cryptography("Failed to fetch the PKCS1 DER bytes".to_string())
+                    })?;
+                    Some(Attribute::PublicExponent(sk.e().to_bytes_be()))
                 }
                 AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
                 AttributeType::Sign => Some(Attribute::Sign(true)),
                 AttributeType::SignRecover => Some(Attribute::SignRecover(false)),
                 AttributeType::Token => Some(Attribute::Token(true)),
-                AttributeType::Unwrap => Some(Attribute::Unwrap(false)),
+                AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
+                AttributeType::Value => match private_key.algorithm() {
+                    KeyAlgorithm::Rsa => {
+                        let der_bytes = private_key.pkcs8_der_bytes()?;
+                        RsaPrivateKey::from_pkcs8_der(der_bytes.as_ref())
+                            .map(|sk| sk.to_pkcs1_der())
+                            .map_err(|e| {
+                                error!("Failed to fetch the PKCS1 DER bytes: {:?}", e);
+                                MError::Cryptography(
+                                    "Failed to fetch the PKCS1 DER bytes".to_string(),
+                                )
+                            })?
+                            .map(|sd| Attribute::Value(sd.to_bytes().to_vec()))
+                            .ok()
+                        // Some(Attribute::Value(der_bytes.to_vec()))
+                    }
+                    KeyAlgorithm::EccP256
+                    | KeyAlgorithm::EccP384
+                    | KeyAlgorithm::EccP521
+                    | KeyAlgorithm::Ed25519
+                    | KeyAlgorithm::X25519
+                    | KeyAlgorithm::X448
+                    | KeyAlgorithm::Ed448 => {
+                        Some(Attribute::Value(private_key.pkcs8_der_bytes()?.to_vec()))
+                    }
+                },
                 _ => {
-                    debug!("private_key: type_ unimplemented: {:?}", type_);
+                    error!("private_key: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
-            Self::Profile(id) => match type_ {
+            Object::Profile(id) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PROFILE)),
                 AttributeType::ProfileId => Some(Attribute::ProfileId(*id)),
                 AttributeType::Token => Some(Attribute::Token(true)),
                 AttributeType::Private => Some(Attribute::Private(true)),
                 _ => {
-                    debug!("profile: type_ unimplemented: {:?}", type_);
+                    error!("profile: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
-            Self::PublicKey(pk) => match type_ {
+            Object::PublicKey(pk) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PUBLIC_KEY)),
-                AttributeType::Label => Some(Attribute::Label(pk.label())),
-                AttributeType::Modulus => {
-                    let key = pk.to_der();
-                    let key = RsaPublicKey::from_der(&key).unwrap();
-                    Some(Attribute::Modulus(key.modulus.as_bytes().to_vec()))
-                }
+                AttributeType::Label => Some(Attribute::Label("Public Key".to_string())),
+                AttributeType::Modulus => Some(Attribute::Modulus(pk.rsa_modulus()?)),
                 AttributeType::PublicExponent => {
-                    let key = pk.to_der();
-                    let key = RsaPublicKey::from_der(&key).unwrap();
-                    Some(Attribute::Modulus(key.public_exponent.as_bytes().to_vec()))
+                    Some(Attribute::PublicExponent(pk.rsa_public_exponent()?))
                 }
-                AttributeType::KeyType => Some(Attribute::KeyType(match pk.algorithm() {
-                    KeyAlgorithm::Rsa => CKK_RSA,
-                    KeyAlgorithm::Ecc => CKK_EC,
-                })),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(pk.label()),
-                        hash: pk.public_key_hash(),
-                    })
-                    .ok()?,
-                )),
+                AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
+                AttributeType::Id => Some(Attribute::Id(pk.remote_id().clone())),
                 AttributeType::EcPoint => {
-                    if pk.algorithm() != KeyAlgorithm::Ecc {
-                        return None;
+                    if !pk.algorithm().is_ecc() {
+                        return Ok(None);
                     }
-                    let wrapped = OctetString::new(pk.to_der()).ok()?;
-                    Some(Attribute::EcPoint(wrapped.to_der().ok()?))
+                    Some(Attribute::EcPoint(
+                        pk.ec_p256_public_key()?
+                            .to_encoded_point(false)
+                            .to_bytes()
+                            .to_vec(),
+                    ))
                 }
                 AttributeType::EcParams => {
-                    Some(Attribute::EcParams(p256::NistP256::OID.to_der().ok()?))
+                    if !pk.algorithm().is_ecc() {
+                        return Ok(None);
+                    }
+                    Some(Attribute::EcParams(pk.algorithm().to_oid()?.to_der()?))
                 }
                 _ => {
-                    debug!("public_key: type_ unimplemented: {:?}", type_);
+                    error!("public_key: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
-            Self::DataObject(data) => match type_ {
+            Object::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
-                AttributeType::Id => Some(Attribute::Id(
-                    crate::core::compoundid::encode(&crate::core::compoundid::Id {
-                        label: Some(data.label()),
-                        hash: data.data_hash(),
-                    })
-                    .ok()?,
-                )),
-                // TODO(BGR) we should hold zeroizable values here
+                AttributeType::Id => Some(Attribute::Id(data.remote_id().clone())),
+                // TODO(BGR) should we hold zeroizable values here ?
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
                 AttributeType::Private => Some(Attribute::Private(true)),
-                AttributeType::Label => Some(Attribute::Label(data.label())),
+                AttributeType::Label => Some(Attribute::Label("Data Object".to_string())),
                 _ => {
-                    debug!("Data object: type_ unimplemented: {:?}", type_);
+                    error!("Data object: type_ unimplemented: {:?}", type_);
                     None
                 }
             },
-            Self::RemoteObjectId(remote_object_id) => {
-                if type_ == AttributeType::Id {
-                    Some(Attribute::Id(
-                        remote_object_id.remote_id().as_bytes().to_vec(),
-                    ))
-                } else {
-                    debug!("Remote object id: type_ unimplemented: {:?}", type_);
-                    None
-                }
-            }
         };
-        debug!("attribute: {:?} => {:?}", type_, attribute);
-        attribute
-    }
-
-    #[must_use]
-    pub fn matches(&self, others: &Attributes) -> bool {
-        if let Some(class) = others.get(AttributeType::Class) {
-            if *class != self.attribute(AttributeType::Class).unwrap() {
-                return false;
-            }
-        }
-        for other in &**others {
-            if let Some(attr) = self.attribute(other.attribute_type()) {
-                if *other != attr {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        true
+        debug!(
+            "Object: {}, attribute: {:?} => {:?}",
+            self.name(),
+            type_,
+            attribute
+        );
+        Ok(attribute)
     }
 }

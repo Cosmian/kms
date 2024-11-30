@@ -1,4 +1,4 @@
-use std::{any::Any, hash::Hash};
+use std::hash::Hash;
 
 use crate::{
     traits::{KeyAlgorithm, PublicKey},
@@ -6,21 +6,26 @@ use crate::{
 };
 
 pub trait Certificate: Send + Sync + std::fmt::Debug {
-    fn label(&self) -> String;
+    fn remote_id(&self) -> String;
     fn to_der(&self) -> MResult<Vec<u8>>;
-    fn public_key(&self) -> &dyn PublicKey;
-    fn algorithm(&self) -> KeyAlgorithm {
-        self.public_key().algorithm()
+    /// Returns the public key of the certificate
+    /// This key should no be kept in cache the session; its ID is empty
+    fn public_key(&self) -> MResult<Box<dyn PublicKey>>;
+    fn algorithm(&self) -> MResult<KeyAlgorithm> {
+        Ok(self.public_key()?.algorithm())
     }
     fn issuer(&self) -> MResult<Vec<u8>>;
     fn serial_number(&self) -> MResult<Vec<u8>>;
     fn subject(&self) -> MResult<Vec<u8>>;
+
+    /// This returns the private key ID associated with the certificate
+    /// which the CKA_ID
+    fn private_key_id(&self) -> String;
 }
 
 impl PartialEq for dyn Certificate {
     fn eq(&self, other: &Self) -> bool {
-        self.to_der().unwrap_or_else(|_| vec![]) == other.to_der().unwrap_or_else(|_| vec![])
-            && self.label() == other.label()
+        self.remote_id() == other.remote_id()
     }
 }
 
@@ -28,10 +33,6 @@ impl Eq for dyn Certificate {}
 
 impl Hash for dyn Certificate {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.to_der()
-            .unwrap_or_else(|_| vec![]) //unlikely: the certificate is originally parsed from DER
-            .hash(state);
-        self.label().hash(state);
+        self.remote_id().hash(state);
     }
 }

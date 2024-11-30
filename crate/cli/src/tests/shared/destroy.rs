@@ -11,6 +11,7 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
+    actions::symmetric::keys::create_key::CreateKeyAction,
     cli_bail,
     error::{result::CliResult, CliError},
     tests::{
@@ -87,7 +88,7 @@ async fn test_destroy_symmetric_key() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // destroy should not work when not revoked
     assert!(destroy(&ctx.owner_client_conf_path, "sym", &key_id).is_err());
@@ -114,7 +115,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_client_conf_path, "ec", &private_key_id).is_err());
@@ -138,7 +139,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
     {
         // syn
         let (private_key_id, public_key_id) =
-            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id).is_err());
@@ -180,6 +181,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -187,12 +189,14 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked
@@ -222,6 +226,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -229,12 +234,14 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_client_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked
@@ -264,6 +271,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             "--policy-specifications",
             "test_data/policy_specifications.json",
             &[],
+            false,
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
@@ -271,6 +279,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
@@ -278,6 +287,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
             &[],
+            false,
         )?;
 
         // destroy should not work when not revoked

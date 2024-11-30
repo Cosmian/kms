@@ -1,10 +1,12 @@
 use openssl::pkey::{Id, PKey, Private};
-use tracing::debug;
+use x509_parser::nom::AsBytes;
 use zeroize::Zeroizing;
 
 use super::WRAPPING_SECRET_LENGTH;
 #[cfg(not(feature = "fips"))]
 use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
+#[cfg(not(feature = "fips"))]
+use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_unwrap;
 use crate::{
     crypto::{
         password_derivation::derive_key_from_password,
@@ -25,8 +27,8 @@ use crate::{
         kmip_objects::Object,
         kmip_operations::ErrorReason,
         kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
-            KeyFormatType, PaddingMethod, WrappingMethod,
+            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask,
+            EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
         },
     },
     kmip_bail,
@@ -67,45 +69,90 @@ pub fn unwrap_key_block(
         .as_ref()
         .context("unable to unwrap key: key wrapping data is missing")?;
 
+    let wrapped_key = recover_wrapped_key(object_key_block, key_wrapping_data)?;
+
+    let plaintext = unwrap(
+        unwrapping_key,
+        key_wrapping_data,
+        wrapped_key.key_bytes.as_ref(),
+        aad.as_deref(),
+    )?;
+
+    update_key_block_with_unwrapped_key(
+        object_key_block,
+        &wrapped_key.attributes,
+        wrapped_key.encoding,
+        &plaintext,
+    )?;
+
+    Ok(())
+}
+
+pub struct WrappedKey {
+    pub key_bytes: Zeroizing<Vec<u8>>,
+    pub attributes: Option<Attributes>,
+    pub encoding: EncodingOption,
+}
+
+/// Recover the wrapped key from the key block and key wrapping data
+/// # Arguments
+/// * `object_key_block` - the key block of the object to unwrap
+/// * `key_wrapping_data` - the key wrapping data
+/// # Returns
+/// * `KResult<(Vec<u8>, Option<Attributes>, EncodingOption)>` - the recovered wrapped key, attributes, and encoding
+///
+pub fn recover_wrapped_key(
+    object_key_block: &KeyBlock,
+    key_wrapping_data: &KeyWrappingData,
+) -> Result<WrappedKey, KmipError> {
     // check that the wrapping method is supported
     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
         kmip_bail!("unable to unwrap key: only the Encrypt unwrapping method is supported")
     }
 
-    // get the encoding
-    let encoding = key_wrapping_data
-        .encoding_option
-        .unwrap_or(EncodingOption::TTLVEncoding);
+    let encoding = key_wrapping_data.get_encoding();
+    Ok(match encoding {
+        EncodingOption::TTLVEncoding => WrappedKey {
+            key_bytes: object_key_block.key_bytes()?,
+            attributes: object_key_block.attributes().ok().cloned(),
+            encoding,
+        },
+        EncodingOption::NoEncoding => {
+            let (bytes, attributes) = object_key_block.key_bytes_and_attributes()?;
+            WrappedKey {
+                key_bytes: bytes,
+                attributes: attributes.cloned(),
+                encoding,
+            }
+        }
+    })
+}
 
+/// Update the key block with the unwrapped key
+/// # Arguments
+/// * `object_key_block` - the key block of the object to update
+/// * `attributes` - the attributes of the key
+/// * `encoding` - the encoding of the key
+/// * `plaintext` - the unwrapped key
+pub fn update_key_block_with_unwrapped_key(
+    object_key_block: &mut KeyBlock,
+    attributes: &Option<Attributes>,
+    encoding: EncodingOption,
+    plaintext: &Zeroizing<Vec<u8>>,
+) -> Result<(), KmipError> {
     // unwrap the key based on the encoding
     let key_value: KeyValue = match encoding {
-        EncodingOption::TTLVEncoding => {
-            let ciphertext = object_key_block.key_bytes()?;
-            let plaintext = unwrap(
-                unwrapping_key,
-                key_wrapping_data,
-                ciphertext.as_slice(),
-                aad.as_deref(),
-            )?;
-            serde_json::from_slice::<KeyValue>(&plaintext)?
-        }
+        EncodingOption::TTLVEncoding => serde_json::from_slice::<KeyValue>(plaintext.as_bytes())?,
         EncodingOption::NoEncoding => {
-            let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
-            let plain_text = unwrap(
-                unwrapping_key,
-                key_wrapping_data,
-                &ciphertext,
-                aad.as_deref(),
-            )?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
-                    key: plain_text.to_vec().into(),
+                    key: plaintext.to_vec().into(),
                 },
-                _ => KeyMaterial::ByteString(plain_text.to_vec().into()),
+                _ => KeyMaterial::ByteString(plaintext.to_vec().into()),
             };
             KeyValue {
                 key_material,
-                attributes: attributes.map(|a| Box::new(a.clone())),
+                attributes: attributes.clone(),
             }
         }
     };
@@ -113,7 +160,6 @@ pub fn unwrap_key_block(
     object_key_block.key_value = key_value;
     object_key_block.key_wrapping_data = None;
     // we assume that the key_block KeyFormatType is valid
-
     Ok(())
 }
 
@@ -124,12 +170,6 @@ pub(crate) fn unwrap(
     ciphertext: &[u8],
     aad: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
-    debug!(
-        "decrypt_bytes: with object: {} on ciphertext length: {}",
-        unwrapping_key,
-        ciphertext.len()
-    );
-
     // Make sure that the key used to unwrap can be used to unwrap.
     if !unwrapping_key
         .attributes()?
@@ -232,6 +272,10 @@ fn unwrap_with_rsa(
     wrapped_key: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
+    #[cfg(not(feature = "fips"))]
+    if padding == PaddingMethod::PKCS1v15 {
+        return ckm_rsa_pkcs_key_unwrap(private_key, wrapped_key);
+    }
     if padding != PaddingMethod::OAEP {
         kmip_bail!(
             "Unable to wrap key with RSA: padding method not supported: {:?}",

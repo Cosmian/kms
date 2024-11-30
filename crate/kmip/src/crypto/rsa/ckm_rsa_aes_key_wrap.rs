@@ -77,8 +77,8 @@ pub fn ckm_rsa_aes_key_unwrap(
     #[cfg(feature = "fips")]
     if p_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_bail!(
-            "CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected >= {} bytes \
-             and got {} bytes",
+            "CKM_RSA_AES: CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected \
+             >= {} bytes and got {} bytes",
             FIPS_MIN_RSA_MODULUS_LENGTH,
             rsa_privkey.size()
         )
@@ -87,8 +87,10 @@ pub fn ckm_rsa_aes_key_unwrap(
     let encapsulation_bytes_len = usize::try_from(rsa_privkey.size())?;
     if ciphertext.len() <= encapsulation_bytes_len {
         kmip_bail!(
-            "CKM_RSA_OAEP decryption error: encrypted data of insufficient length: got {}",
-            ciphertext.len()
+            "CKM_RSA_AES: CKM_RSA_OAEP decryption error: encapsulated data of insufficient \
+             length: got {}, expected: {}",
+            ciphertext.len(),
+            encapsulation_bytes_len
         );
     }
 

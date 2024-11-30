@@ -54,8 +54,12 @@ nav:
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Zeroization: zeroization.md
-  - Cryptographic algorithms: algorithms.md
+  - Cryptographic algorithms:
+      - Algorithms: algorithms.md
+      - Benchmarks: benchmarks.md
+      - DKE & Google Benchmarks: google_dke_benchmarks.md
   - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
+  - Proteccio HSM support: hsm.md
   - Enabling TLS: tls.md
   - Logging and telemetry: logging.md
   - Configuring database: database.md

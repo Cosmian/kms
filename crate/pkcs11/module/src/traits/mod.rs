@@ -17,28 +17,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{any::Any, hash::Hash, sync::Arc};
-
 pub use backend::{backend, register_backend, Backend};
 pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
+pub use key_algorithm::KeyAlgorithm;
 pub use once_cell;
 pub use private_key::PrivateKey;
-pub use remote_object_id::{RemoteObjectId, RemoteObjectType};
+pub use public_key::PublicKey;
 pub use signature_algorithm::SignatureAlgorithm;
 
 use crate::{
     core::attribute::{Attribute, AttributeType, Attributes},
-    MError, MResult,
+    MError,
 };
 
 mod backend;
 mod certificate;
 mod data_object;
 mod encryption_algorithms;
+mod key_algorithm;
 mod private_key;
-mod remote_object_id;
+mod public_key;
 mod signature_algorithm;
 
 pub type Digest = [u8; 20];
@@ -54,71 +54,36 @@ pub enum DigestType {
 
 impl DigestType {
     #[must_use]
-    pub const fn digest_len(&self) -> usize {
+    pub fn digest_len(&self) -> usize {
         match self {
-            Self::Sha1 => 20,
-            Self::Sha224 => 28,
-            Self::Sha256 => 32,
-            Self::Sha384 => 48,
-            Self::Sha512 => 64,
+            DigestType::Sha1 => 20,
+            DigestType::Sha224 => 28,
+            DigestType::Sha256 => 32,
+            DigestType::Sha384 => 48,
+            DigestType::Sha512 => 64,
         }
-    }
-}
-
-pub trait PublicKey: Send + Sync + std::fmt::Debug {
-    fn public_key_hash(&self) -> Vec<u8>;
-    fn label(&self) -> String;
-    fn to_der(&self) -> Vec<u8>;
-    fn verify(&self, algorithm: &SignatureAlgorithm, data: &[u8], signature: &[u8]) -> MResult<()>;
-    fn delete(self: Arc<Self>);
-    fn algorithm(&self) -> KeyAlgorithm;
-}
-
-impl PartialEq for dyn PublicKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.public_key_hash() == other.public_key_hash() && self.label() == other.label()
-    }
-}
-
-impl Eq for dyn PublicKey {}
-
-impl Hash for dyn PublicKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
-        self.public_key_hash().hash(state);
-        self.label().hash(state);
     }
 }
 
 #[derive(Debug)]
 pub enum SearchOptions {
     All,
-    Label(String),
-    Id(Vec<u8>),
+    Id(String),
 }
 
 impl TryFrom<&Attributes> for SearchOptions {
     type Error = MError;
 
-    fn try_from(attributes: &Attributes) -> std::result::Result<Self, Self::Error> {
+    fn try_from(attributes: &Attributes) -> Result<Self, Self::Error> {
         if attributes.is_empty() {
-            return Ok(Self::All);
+            return Ok(SearchOptions::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
-            // let id = compoundid::decode(id)?;
-            Ok(Self::Id(id.clone()))
-        } else if let Some(Attribute::Label(label)) = attributes.get(AttributeType::Label) {
-            Ok(Self::Label(label.into()))
+            Ok(SearchOptions::Id(id.to_owned()))
         } else {
-            Ok(Self::All)
+            Ok(SearchOptions::All)
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyAlgorithm {
-    Rsa,
-    Ecc,
 }
 
 pub struct Version {
