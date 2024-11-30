@@ -2,27 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [] - 2024-11-28
+## [4.20.0] - 2024-11-30
 
 ### 🚀 Features
 
-- support for the Proteccio HSM that provides both
-  - the ability to perform the Create, Destroy, Export, Encrypt, and Decrypt operations on the HSM
-  - the ability to create keys in the KMS which are wrapped by a key in the HSM
-- the database components are now in a separate crate `server_database`. They are now split in 2 implementations:
-  Objects store and Permissions store
-- a new `interfaces` crate gathers interfaces to be implemented by new external components. Interfaces include:
-  - Object Store
-  - Permissions Store
-  - Encryption Oracle
-- key unique identifiers now support prefixes. Object Stores, Permissions stores, and Encryption Oracles can be
-  registered against the prefixes.
-- support for the `Sensitive` Attribute in addition to the ability to wrap a key by another key has been added to all
-  keys creations
+- HSM support ([#344](https://github.com/Cosmian/kms/pull/344))
+  - support for the Proteccio HSM that provides both
+    - the ability to perform the Create, Destroy, Export, Encrypt, and Decrypt operations on the HSM
+    - the ability to create keys in the KMS which are wrapped by a key in the HSM
+  - the database components are now in a separate crate `server_database`. They are now split in 2 implementations:
+    Objects store and Permissions store
+  - a new `interfaces` crate gathers interfaces to be implemented by new external components. Interfaces include:
+    - Object Store
+    - Permissions Store
+    - Encryption Oracle
+  - key unique identifiers now support prefixes. Object Stores, Permissions stores, and Encryption Oracles can be
+    registered against the prefixes.
+  - support for the `Sensitive` Attribute in addition to the ability to wrap a key by another key has been added to all
+    keys creations
+- Make keys non revocable on server ([#341](https://github.com/Cosmian/kms/pull/341))
+- Docker for Linux ARM and keep support for MacOS Intel ([#343](https://github.com/Cosmian/kms/pull/343))
 
 ### 🐛 Bug Fixes
 
+- The macOS-12 environment is now deprecated
 - Better permissions checking on wrapping and unwrapping
+
+### 📚 Documentation
+
+- Add benchmarks on simultaneous encryptions/decryptions
 
 ## [4.19.3] - 2024-10-29
 
