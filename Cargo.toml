@@ -71,7 +71,7 @@ leb128 = "0.2.5"
 log = { version = "0.4", default-features = false }
 lru = "0.12.5"
 native-tls = "0.2"
-num_cpus = "1.13"
+num_cpus = "1.16"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
 pem = "3.0"
@@ -84,11 +84,12 @@ sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.25", default-features = false }
 thiserror = "2.0"
 time = "0.3"
-tokio = { version = "1.39", default-features = false }
+tempfile = "3"
+tokio = { version = "1.42", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
-uuid = "1.10"
+uuid = "1.11"
 x509-cert = { version = "0.2.5", default-features = false }
 x509-parser = "0.16"
 zeroize = { version = "1.8", default-features = false }

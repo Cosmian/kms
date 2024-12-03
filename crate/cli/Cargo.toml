@@ -63,8 +63,8 @@ const-oid = { version = "0.9", features = ["db"] }
 kms_test_server = { path = "../test_server" }
 openssl = { workspace = true }
 predicates = "3.1"
-regex = { version = "1.10", default-features = false }
-tempfile = "3.11"
+regex = { version = "1.11", default-features = false }
+tempfile = { workspace = true }
 x509-parser = { workspace = true, features = ["verify"] }
 
 # ------------------------------------------------------------------------------

@@ -26,7 +26,7 @@ cosmian_kms_server = { path = "../server", features = [
 cosmian_kms_server_database = { path = "../server_database" }
 cosmian_logger = { workspace = true }
 serde_json = { workspace = true }
-tempfile = "3.1"
+tempfile = "3.14"
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 
