@@ -7,8 +7,8 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::{
-    batch_export_objects, export_object, ExportObjectParams, KmsClient,
-, KmsClientConfig};
+    batch_export_objects, export_object, ExportObjectParams, KmsClient, KmsClientConfig,
+};
 use cosmian_pkcs11_module::traits::{EncryptionAlgorithm, KeyAlgorithm};
 use tracing::{debug, error, trace};
 use zeroize::Zeroizing;
@@ -63,18 +63,14 @@ pub(crate) async fn get_kms_objects_async(
     key_format_type: KeyFormatType,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     let key_ids = locate_objects(kms_rest_client, tags).await?;
-    let responses = batch_export_objects(
-        kms_rest_client,
-        key_ids,
-        ExportObjectParams {
-            unwrap: true,
-            allow_revoked: true,
-            key_format_type,
-            ..ExportObjectParams::default()
-        },
-    )
-    .await?;
-    // trace!("Found objects: {}", responses);
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(key_format_type),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!("Found {} objects", responses.len());
+
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes

@@ -55,7 +55,7 @@ version-compare = "0.2.0"
 zeroize = { workspace = true }
 
 [dev-dependencies]
-cosmian_logger = { path = "../logger" }
+cosmian_logger = { workspace = true }
 rand_chacha = "0.3.1"
 tempfile = "3.11"
 tracing = { version = "0.1.40", default-features = false }

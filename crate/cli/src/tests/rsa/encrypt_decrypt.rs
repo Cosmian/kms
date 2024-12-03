@@ -102,7 +102,7 @@ pub(crate) fn decrypt(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
-    // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
+    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
@@ -176,7 +176,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CliResult<()> {
-    // to enable this, add cosmian_logger = { path = "../logger" } to dev-dependencies in Cargo.toml
+    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",

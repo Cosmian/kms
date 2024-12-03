@@ -22,7 +22,7 @@ use crate::{
 pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     db_and_params: &(DB, Option<ExtraStoreParams>),
 ) -> DbResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 

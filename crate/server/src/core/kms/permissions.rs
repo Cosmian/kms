@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
-use cosmian_kms_client::access::{
+use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
 use cosmian_kms_server_database::ExtraStoreParams;

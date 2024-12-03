@@ -26,7 +26,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     db_and_params: &(DB, Option<ExtraStoreParams>),
     verify_attributes: bool,
 ) -> DbResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
     let mut rng = CsRng::from_entropy();

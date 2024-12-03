@@ -26,8 +26,8 @@ use cosmian_kmip::{
         KmipOperation,
     },
 };
-use cosmian_kms_client::access::{Access, SuccessResponse};
-use cosmian_logger::log_utils::log_init;
+use cosmian_kms_access::access::{Access, SuccessResponse};
+use cosmian_logger::log_init;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private, Public},

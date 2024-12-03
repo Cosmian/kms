@@ -1,18 +1,19 @@
 [workspace]
 default-members = ["crate/cli", "crate/server", "crate/pkcs11/provider"]
 members = [
+  "crate/access",
   "crate/cli",
   "crate/client",
   "crate/interfaces",
   "crate/kmip",
   "crate/pyo3",
-  "crate/server",
-  "crate/server_database",
-  "crate/test_server",
   "crate/pkcs11/module",
   "crate/pkcs11/provider",
   "crate/pkcs11/proteccio",
   "crate/pkcs11/sys",
+  "crate/server",
+  "crate/server_database",
+  "crate/test_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2

@@ -42,7 +42,8 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
 
-        let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone()).expect("failed to initialize kms client");
+        let kms_rest_client =
+            KmsClient::new(ctx.owner_client_conf.clone()).expect("failed to initialize kms client");
         create_keys(&kms_rest_client)
             .await
             .expect("failed to create keys");

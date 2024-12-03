@@ -45,7 +45,7 @@ async fn clear_all(mgr: &mut ConnectionManager) -> DbResult<()> {
     Ok(())
 }
 
-pub(crate) async fn test_objects_db() -> KResult<()> {
+pub(crate) async fn test_objects_db() -> DbResult<()> {
     cosmian_logger::log_init(Some("test_objects_db=info"));
     trace!("test_objects_db");
 
