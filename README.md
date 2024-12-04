@@ -99,7 +99,7 @@ The encrypted file is available at "image.enc"
 The decrypted file is available at "image2.png"
 ```
 
-See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
+See the [documentation](https://docs.cosmian.com/key_management_system/) for more.
 
 ## Repository content
 
