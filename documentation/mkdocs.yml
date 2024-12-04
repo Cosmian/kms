@@ -52,7 +52,7 @@ plugins:
   - meta-descriptions
 nav:
   - Getting started: index.md
-  - Usage:
+  - Use cases:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Google workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/google_cse.md
@@ -67,9 +67,9 @@ nav:
           - Veracrypt: pkcs11/veracrypt.md
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
-      - Calling the KMS API: api.md
+      - API Endpoints: api.md
   - Configuration:
-      - Server Command Line Interface (CLI): server_cli.md
+      - Server CLI: server_cli.md
       - Authenticating users to the server: authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md

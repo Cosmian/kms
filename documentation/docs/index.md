@@ -23,7 +23,7 @@ to be used in various applications, such as in S/MIME encrypted emails.
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
     ```
 
-    Pre-built binaries, for both the server and CLI (called `cosmian`) are available for multiple
+    Pre-built binaries, for both the [server](https://package.cosmian.com/kms/4.20.0/) and [CLI](https://package.cosmian.com/cli/0.1.0/) (called `cosmian`) are available for multiple
     operating systems on [Cosmian packages](https://package.cosmian.com/cli/0.1.0/).
 
     Using [Cosmian CLI](/cosmian_cli), you can easily manage the server:

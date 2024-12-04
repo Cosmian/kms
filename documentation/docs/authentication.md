@@ -225,5 +225,3 @@ And finally, restart the server with the `--api-token-id` option.
 ```sh
 --api_token_id <SYMMETRIC_KEY_ID>
 ```
-
-<!-- todo(manu): rename cosmian to `ccli` -->
