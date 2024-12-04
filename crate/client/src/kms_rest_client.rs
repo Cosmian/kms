@@ -35,7 +35,7 @@ use crate::{
 pub struct KmsClient {
     pub client: HttpClient,
     pub print_json: bool,
-    pub conf: KmsClientConfig,
+    pub config: KmsClientConfig,
 }
 
 impl KmsClient {
@@ -43,19 +43,19 @@ impl KmsClient {
     ///
     /// Parameters `server_url` and `accept_invalid_certs` from the command line
     /// will override the ones from the configuration file.
-    pub fn new(conf: KmsClientConfig) -> Result<KmsClient, KmsClientError> {
+    pub fn new(config: KmsClientConfig) -> Result<KmsClient, KmsClientError> {
         // Instantiate a KMS server REST client with the given configuration
-        let kms_rest_client = HttpClient::instantiate(&conf.http_config).with_context(|| {
+        let kms_rest_client = HttpClient::instantiate(&config.http_config).with_context(|| {
             format!(
                 "Unable to instantiate a KMS REST client to server at {}",
-                conf.http_config.server_url
+                config.http_config.server_url
             )
         })?;
 
         Ok(KmsClient {
             client: kms_rest_client,
-            print_json: conf.print_json.unwrap_or_default(),
-            conf,
+            print_json: config.print_json.unwrap_or_default(),
+            config,
         })
     }
 

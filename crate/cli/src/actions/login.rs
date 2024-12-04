@@ -46,13 +46,13 @@ impl LoginAction {
     /// * The token exchange response cannot be parsed.
     /// * The client configuration cannot be updated or saved.
     #[allow(clippy::print_stdout)]
-    pub async fn process(&self, conf: &KmsClientConfig) -> CliResult<()> {
-        let mut conf = conf.clone();
-        let login_config = conf.http_config.oauth2_conf.as_ref().ok_or_else(|| {
+    pub async fn process(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let mut config = config.clone();
+        let login_config = config.http_config.oauth2_conf.as_ref().ok_or_else(|| {
             CliError::Default(format!(
                 "The `login` command (only used for JWT authentication) requires an Identity \
                  Provider (IdP) that MUST be configured in the oauth2_conf object in {:?}",
-                conf.conf_path
+                config.conf_path
             ))
         })?;
 
@@ -61,15 +61,15 @@ impl LoginAction {
         let access_token = state.finalize().await?;
 
         // update the configuration and save it
-        conf.http_config.access_token = Some(access_token);
-        let conf_path = conf.conf_path.clone().ok_or_else(|| {
+        config.http_config.access_token = Some(access_token);
+        let conf_path = config.conf_path.clone().ok_or_else(|| {
             CliError::Default("Configuration path `conf_path` must be filled".to_owned())
         })?;
-        conf.to_toml(&conf_path)?;
+        config.to_toml(&conf_path)?;
 
         println!(
             "\nSuccess! The access token was saved in the KMS configuration file: {:?}",
-            conf.conf_path
+            config.conf_path
         );
 
         Ok(())

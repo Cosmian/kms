@@ -32,7 +32,7 @@ impl GoogleCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::KeyPairs(command) => command.process(kms_rest_client).await?,
-            Self::Identities(command) => command.process(&kms_rest_client.conf).await?,
+            Self::Identities(command) => command.process(&kms_rest_client.config).await?,
         };
         Ok(())
     }

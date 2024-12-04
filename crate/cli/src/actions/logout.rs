@@ -23,17 +23,17 @@ impl LogoutAction {
     /// Returns an error if there is an issue loading or saving the configuration file.
     ///
     #[allow(clippy::print_stdout)]
-    pub fn process(&self, conf: &KmsClientConfig) -> CliResult<()> {
-        let mut conf = conf.clone();
-        conf.http_config.access_token = None;
-        let conf_path = conf.conf_path.clone().ok_or_else(|| {
+    pub fn process(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let mut config = config.clone();
+        config.http_config.access_token = None;
+        let conf_path = config.conf_path.clone().ok_or_else(|| {
             CliError::Default("Configuration path `conf_path` must be filled".to_owned())
         })?;
-        conf.to_toml(&conf_path)?;
+        config.to_toml(&conf_path)?;
 
         println!(
             "\nThe access token was removed from the KMS configuration file: {:?}",
-            conf.conf_path
+            config.conf_path
         );
 
         Ok(())

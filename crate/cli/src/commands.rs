@@ -86,11 +86,10 @@ impl KmsOptions {
 
 #[derive(Subcommand)]
 pub enum KmsActions {
-    Login(LoginAction),
-    Logout(LogoutAction),
-
     #[command(subcommand)]
     AccessRights(AccessAction),
+    #[command(subcommand)]
+    Attributes(AttributesCommands),
     #[cfg(not(feature = "fips"))]
     #[command(subcommand)]
     Cc(CovercryptCommands),
@@ -99,16 +98,16 @@ pub enum KmsActions {
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
-    Attributes(AttributesCommands),
+    Google(GoogleCommands),
     Locate(LocateObjectsAction),
+    Login(LoginAction),
+    Logout(LogoutAction),
     NewDatabase(NewDatabaseAction),
     #[command(subcommand)]
     Rsa(RsaCommands),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
-    #[command(subcommand)]
-    Google(GoogleCommands),
 }
 
 impl KmsActions {
@@ -129,8 +128,8 @@ impl KmsActions {
             Self::ServerVersion(action) => action.process(kms_rest_client).await,
             Self::Attributes(action) => action.process(kms_rest_client).await,
             Self::Google(action) => action.process(kms_rest_client).await,
-            Self::Login(action) => action.process(&kms_rest_client.conf).await,
-            Self::Logout(action) => action.process(&kms_rest_client.conf),
+            Self::Login(action) => action.process(&kms_rest_client.config).await,
+            Self::Logout(action) => action.process(&kms_rest_client.config),
         }
     }
 }

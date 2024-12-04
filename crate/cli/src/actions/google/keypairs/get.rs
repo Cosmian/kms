@@ -18,9 +18,9 @@ pub struct GetKeyPairsAction {
 }
 
 impl GetKeyPairsAction {
-    pub async fn run(&self, conf: &KmsClientConfig) -> CliResult<()> {
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
         let endpoint = [KEY_PAIRS_ENDPOINT, &self.key_pairs_id].concat();
-        let gmail_client = GmailClient::new(conf, &self.user_id);
+        let gmail_client = GmailClient::new(config, &self.user_id);
         let response = gmail_client.await?.get(&endpoint).await?;
         GmailClient::handle_response(response).await
     }

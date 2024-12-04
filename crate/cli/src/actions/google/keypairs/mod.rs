@@ -32,11 +32,11 @@ pub enum KeyPairsCommands {
 impl KeyPairsCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::Get(action) => action.run(&kms_rest_client.conf).await,
-            Self::List(action) => action.run(&kms_rest_client.conf).await,
-            Self::Enable(action) => action.run(&kms_rest_client.conf).await,
-            Self::Disable(action) => action.run(&kms_rest_client.conf).await,
-            Self::Obliterate(action) => action.run(&kms_rest_client.conf).await,
+            Self::Get(action) => action.run(&kms_rest_client.config).await,
+            Self::List(action) => action.run(&kms_rest_client.config).await,
+            Self::Enable(action) => action.run(&kms_rest_client.config).await,
+            Self::Disable(action) => action.run(&kms_rest_client.config).await,
+            Self::Obliterate(action) => action.run(&kms_rest_client.config).await,
             Self::Create(action) => action.run(kms_rest_client).await,
         }
     }

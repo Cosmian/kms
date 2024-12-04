@@ -27,13 +27,13 @@ pub enum IdentitiesCommands {
 }
 
 impl IdentitiesCommands {
-    pub async fn process(&self, conf: &KmsClientConfig) -> CliResult<()> {
+    pub async fn process(&self, config: &KmsClientConfig) -> CliResult<()> {
         match self {
-            Self::Get(action) => action.run(conf).await,
-            Self::List(action) => action.run(conf).await,
-            Self::Insert(action) => action.run(conf).await,
-            Self::Delete(action) => action.run(conf).await,
-            Self::Patch(action) => action.run(conf).await,
+            Self::Get(action) => action.run(config).await,
+            Self::List(action) => action.run(config).await,
+            Self::Insert(action) => action.run(config).await,
+            Self::Delete(action) => action.run(config).await,
+            Self::Patch(action) => action.run(config).await,
         }
     }
 }

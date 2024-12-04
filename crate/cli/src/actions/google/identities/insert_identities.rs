@@ -30,8 +30,8 @@ pub struct InsertIdentitiesAction {
 }
 
 impl InsertIdentitiesAction {
-    pub async fn run(&self, conf: &KmsClientConfig) -> CliResult<()> {
-        let gmail_client = GmailClient::new(conf, &self.user_id);
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let gmail_client = GmailClient::new(config, &self.user_id);
 
         // Construct identity_info
         let identity_info = IdentityInfo {

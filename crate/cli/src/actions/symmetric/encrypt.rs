@@ -337,7 +337,7 @@ impl EncryptAction {
     pub async fn client_side_encrypt_with_buffer(
         &self,
         kms_rest_client: &KmsClient,
-        key_encryption_key_id: &str,
+        kek_id: &str,
         key_encryption_algorithm: KeyEncryptionAlgorithm,
         data_encryption_algorithm: DataEncryptionAlgorithm,
         nonce: Option<Vec<u8>>,
@@ -369,7 +369,7 @@ impl EncryptAction {
         let (kem_nonce, kem_ciphertext, kem_tag) = self
             .server_side_encrypt(
                 kms_rest_client,
-                key_encryption_key_id,
+                kek_id,
                 key_encryption_algorithm.into(),
                 None,
                 dek.to_vec(),

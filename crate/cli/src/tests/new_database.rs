@@ -122,7 +122,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    // since we are going to rewrite the conf, use a different port
+    // since we are going to rewrite the config, use a different port
     let ctx = start_test_server_with_options(
         MainDBConfig {
             database_type: Some("sqlite-enc".to_owned()),

@@ -14,8 +14,8 @@ pub struct ListKeyPairsAction {
 }
 
 impl ListKeyPairsAction {
-    pub async fn run(&self, conf: &KmsClientConfig) -> CliResult<()> {
-        let gmail_client = GmailClient::new(conf, &self.user_id);
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let gmail_client = GmailClient::new(config, &self.user_id);
         let response = gmail_client.await?.get(KEY_PAIRS_ENDPOINT).await?;
         GmailClient::handle_response(response).await
     }

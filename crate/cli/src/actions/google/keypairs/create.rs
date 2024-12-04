@@ -113,7 +113,7 @@ impl CreateKeyPairsAction {
 
     #[allow(clippy::print_stdout)]
     pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
-        let gmail_client = GmailClient::new(&kms_rest_client.conf, &self.user_id);
+        let gmail_client = GmailClient::new(&kms_rest_client.config, &self.user_id);
 
         let kacls_url = kms_rest_client.google_cse_status();
 

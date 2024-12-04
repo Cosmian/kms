@@ -56,24 +56,24 @@ impl Default for KmsClientConfig {
 }
 
 impl KmsClientConfig {
-    pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, KmsClientError> {
+    pub fn location(config: Option<PathBuf>) -> Result<PathBuf, KmsClientError> {
         Ok(location(
-            conf,
+            config,
             KMS_CLI_CONF_ENV,
             KMS_CLI_CONF_PATH,
             KMS_CLI_CONF_DEFAULT_SYSTEM_PATH,
         )?)
     }
 
-    pub fn load(conf: &PathBuf) -> Result<KmsClientConfig, KmsClientError> {
-        match KmsClientConfig::from_json(conf) {
+    pub fn load(config: &PathBuf) -> Result<KmsClientConfig, KmsClientError> {
+        match KmsClientConfig::from_json(config) {
             Ok(config) => Ok(config),
             Err(e) => {
                 warn!(
                     "Error loading KMS client configuration from JSON format: {}",
                     e
                 );
-                Ok(KmsClientConfig::from_toml(conf)?)
+                Ok(KmsClientConfig::from_toml(config)?)
             }
         }
     }

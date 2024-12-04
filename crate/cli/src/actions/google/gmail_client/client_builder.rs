@@ -55,9 +55,12 @@ pub(crate) struct GmailClient {
 }
 
 impl GmailClient {
-    pub(crate) async fn new(conf: &KmsClientConfig, user_id: &str) -> CliResult<Self> {
-        let gmail_api_conf = conf.gmail_api_conf.clone().ok_or_else(|| {
-            CliError::Default(format!("No gmail_api_conf object in {:?}", conf.conf_path))
+    pub(crate) async fn new(config: &KmsClientConfig, user_id: &str) -> CliResult<Self> {
+        let gmail_api_conf = config.gmail_api_conf.clone().ok_or_else(|| {
+            CliError::Default(format!(
+                "No gmail_api_conf object in {:?}",
+                config.conf_path
+            ))
         })?;
 
         GmailClientBuilder::new(gmail_api_conf, user_id.to_string())

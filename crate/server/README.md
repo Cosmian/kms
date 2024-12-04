@@ -130,5 +130,3 @@ This table describes those actions a specific user is allowed to perform onto th
 - `permissions` is a serialized JSON list containing one or more of the following flags: `Create`, `Get`, `Encrypt`, `Decrypt`, `Import`, `Revoke`, `Locate`, `Rekey`, `Destroy` defining the operation kinds the user is granted
 
 The `userid` field will be used to check authorization by matching the email address contained in the authorization JWT.
-
-## 
