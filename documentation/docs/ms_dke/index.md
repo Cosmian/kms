@@ -1,6 +1,7 @@
 # Microsoft Double Key Encryption (DKE)
 
-Microsoft Double Key Encryption (DKE) is a feature of Microsoft 365 that allows you to protect your most sensitive
+Microsoft Double Key Encryption (DKE) is a [feature of Microsoft 365](https://learn.microsoft.com/en-us/purview/double-key-encryption)
+that allows you to protect your most sensitive
 data by encrypting data on the client computer before sending it to Microsoft servers.
 One of the keys used to encrypt remains under your control and makes the data unreadable by Microsoft. This key is kept
 inside your instance of Cosmian KMS which exposes the required API to integrate with Microsoft DKE.
@@ -63,7 +64,7 @@ corresponding entry in the server TOML configuration file.
 
 !!! important "Running the KMS server in the cloud for DKE"
       It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-      Cosmian VM](.././index.md#zero-trust-kms). However, due to the lack of authentication, and thus the need to firewall the server,
+      Cosmian VM](../marketplace_guide.md). However, due to the lack of authentication, and thus the need to firewall the server,
       one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
       particularly if running on Azure.
 

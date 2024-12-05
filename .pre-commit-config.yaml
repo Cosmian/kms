@@ -37,7 +37,7 @@ repos:
     hooks:
       - id: markdown-link-check
         args: [-q]
-        exclude: documentation/docs/ms_dke/ms_dke.md
+        exclude: documentation/docs/ms_dke/index.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3

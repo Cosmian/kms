@@ -24,12 +24,12 @@ markdown_extensions:
       permalink: true
       baselevel: 1
   - pymdownx.superfences:
-      # make exceptions to highlighting of code:
+          # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
           class: mermaid
-          # Uncomment the following line to check mermaid figures
-          # format: !!python/name:mermaid2.fence_mermaid_custom
+                # Uncomment the following line to check mermaid figures
+                # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji
@@ -55,12 +55,12 @@ nav:
   - Use cases:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Google workspace Client-Side Encryption (CSE):
-          - Getting started: google_cse/google_cse.md
+          - Getting started: google_cse/index.md
           - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
           - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
           - Configuring Gmail CSE: google_cse/configuring_gmail_cse.md
           - Migrating existing email to Gmail CSE: google_cse/migrating.md
-      - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
+      - Microsoft Double Key Encryption (DKE): ms_dke/index.md
       - HSM support:
           - Proteccio: hsm.md
       - Disk Encryption:
@@ -74,7 +74,7 @@ nav:
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
-      - Configuring database: database.md
+      - Database: database.md
       - Deploying email encryption with S/MIME: pki/smime.md
   - Deployment:
       - Deploying in single server mode: single_server_mode.md
@@ -88,7 +88,7 @@ nav:
               - Standard algorithms: benchmarks.md
               - DKE and Google CSE: google_dke_benchmarks.md
       - Zeroization: zeroization.md
-  - KMIP 2.1:
+  - KMIP 2.1 Support:
       - Introduction: kmip_2_1/index.md
       - Supported Objects: kmip_2_1/objects.md
       - Supported Formats: kmip_2_1/formats.md

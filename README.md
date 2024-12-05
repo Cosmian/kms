@@ -1,35 +1,48 @@
 # Cosmian KMS
 
-![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_rhel9.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_generic.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_windows.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_docker_image.yml/badge.svg?branch=main)
 
-Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
-Management System** that presents some unique features, such as
+The **Cosmian KMS** is a high-performance,
+[**open-source**](https://github.com/Cosmian/kms),
+[FIPS 140-3 compliant](./fips.md) server application
+written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
-  Cosmian VM (see [Cosmian VM](https://docs.cosmian.com/compute/cosmian_vm/overview/))
-  and application-level encryption
-  (see [Redis-Findex](./documentation/docs/database.md))
-- a JSON KMIP 2.1 compliant interface
-- support for object tagging to easily manage keys and secrets
-- a full-featured command line and graphical
-  interface ([Cosmian CLI](/cosmian_cli))
-- Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
-  on [Cosmian Github](https://github.com/Cosmian))
-- FIPS 140-3 mode gated behind the feature `fips`
-- support for the Proteccio HSM with KMS keys wrapped by the HSM
+  Cosmian VM. See our cloud-ready confidential KMS on the
+[Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./documentation/docs/marketplace_guide.md)
+- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
-  [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
+  [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
-  of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
-- [Veracrypt](https://veracrypt.fr/en/Home.html)
-  and [LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) disk encryption support
+  of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
+- support for the [Proteccio HSM](./documentation/docs/hsm.md) with KMS keys wrapped by the HSM
+- [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
+  and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
+- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
+- a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli)
+- a [high-availability mode](./documentation/docs/high_availability_mode.md) with simple horizontal scaling
+- a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+  on [Cosmian Github](https://github.com/Cosmian))
+- integrated with [OpenTelemetry](https://opentelemetry.io/)
 
-The KMS has extensive
-online [documentation](/key_management_system/)
+The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure.
+As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic
+services such as on-the-fly key generation, encryption, and decryption operations.
 
-The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
-Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
-Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
+The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum
+cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
+Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
+
+As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use
+their public keys to encrypt and decrypt data.
+Certificates can be exported under various formats including _PKCS#12_ modern and legacy flavor,
+to be used in various applications, such as in _S/MIME_ encrypted emails.
+
+The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
 - [Cosmian KMS](#cosmian-kms)
   - [Quick start](#quick-start)
@@ -109,14 +122,15 @@ binaries:
 - A server (`cosmian_kms_server`) which is the KMS itself
 - A CLI (`ckms`) to interact with this server
 
-And also some libraries:
+And also some crates:
 
-- `cosmian_kms_access` to handle permissions
-- `cosmian_kms_client` to query the server
-- `cosmian_kms_config` to handle the CLI configuration
-- `cosmian_kmip` which is an implementation of the KMIP standard
-- `cosmian_pkcs11_*` to handle PKCS11 support
-- `cosmian_kms_pyo3` which is a KMS client in Python
+- `access` to handle permissions
+- `client` to query the server
+- `interfaces` to handle the interfaces with storage and encryption oracles
+- `kmip` which is an implementation of the KMIP standard
+- `server_database` to handle the database
+- `pkcs11_*` to handle PKCS11 support
+- `kms_pyo3` which is a KMS client in Python
 - `kms_test_server` which is a library to instantiate programmatically the KMS server.
 
 **Please refer to the README of the inner directories to have more information.**

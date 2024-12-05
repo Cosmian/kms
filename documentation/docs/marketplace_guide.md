@@ -8,7 +8,7 @@ Please first read the guide about how to setup a Cosmian VM.
 
 The following steps can help one to deploy its own instance on each available cloud provider.
 
-Please first read the guide about [how to setup a Cosmian VM](/cosmian_vm/deployment_guide.md).
+Please first read the guide about [how to setup a Cosmian VM](/compute/cosmian_vm/deployment_guide).
 
 ## Deploy Cosmian VM KMS on a cloud provider
 
@@ -137,4 +137,4 @@ Wait for the agent to initialize the LUKS and generate the certificates. This is
 
 ## Verify the Cosmian VM KMS integrity ✅
 
-Verifying trustworthiness of the Cosmian VM KMS is exactly the same process as [verifying the Cosmian VM](/cosmian_vm/.md#verify-the-vm-snapshot) itself.
+Verifying trustworthiness of the Cosmian VM KMS is exactly the same process as [verifying the Cosmian VM](/compute/cosmian_vm/overview/) itself.

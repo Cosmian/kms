@@ -21,7 +21,7 @@ method can be either (one of them is enough):
 
 - a TLS client certificate and the server will extract the username from the certificate's subject
   common name (CN)
-- or a JWT access token and the server extracts the username from the token's subject (sub) claim
+- or using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates. The server extracts from the JWT token the username from the token's subject (sub) claim
 - an API token passed in the `Authorization` header configured both at the client and server
   side (the user being `default-username`)
 
