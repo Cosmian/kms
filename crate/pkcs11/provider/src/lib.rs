@@ -33,6 +33,5 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
 }
 
 mod pkcs11_public_key;
-mod test;
 #[cfg(test)]
 mod tests;
