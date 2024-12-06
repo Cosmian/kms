@@ -13,7 +13,6 @@ use tracing::{debug, trace, warn};
 use zeroize::Zeroizing;
 
 use crate::{
-    error::Pkcs11Error,
     kms_object::{
         get_kms_object, get_kms_object_attributes, get_kms_objects, key_algorithm_from_attributes,
         kms_decrypt, locate_kms_objects,
@@ -27,13 +26,13 @@ use crate::{
 const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
 pub(crate) struct CkmsBackend {
-    kms_client: KmsClient,
+    kms_rest_client: KmsClient,
 }
 
 impl CkmsBackend {
     /// Instantiate a new `CkmsBackend` using the
-    pub(crate) fn instantiate(kms_client: KmsClient) -> Result<Self, Pkcs11Error> {
-        Ok(CkmsBackend { kms_client })
+    pub(crate) fn instantiate(kms_rest_client: KmsClient) -> Self {
+        CkmsBackend { kms_rest_client }
     }
 }
 
@@ -80,8 +79,8 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
-            &self.kms_client,
-            &[disk_encryption_tag, "_cert".to_string()],
+            &self.kms_rest_client,
+            &[disk_encryption_tag, "_cert".to_owned()],
             KeyFormatType::X509,
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
@@ -102,7 +101,7 @@ impl Backend for CkmsBackend {
                 ))))
             }
         };
-        let kms_object = get_kms_object(&self.kms_client, &id, KeyFormatType::PKCS8)?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(
             id, kms_object,
         )?))
@@ -120,8 +119,11 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let mut private_keys = vec![];
-        for id in locate_kms_objects(&self.kms_client, &[disk_encryption_tag, "_sk".to_string()])? {
-            let attributes = get_kms_object_attributes(&self.kms_client, &id)?;
+        for id in locate_kms_objects(
+            &self.kms_rest_client,
+            &[disk_encryption_tag, "_sk".to_string()],
+        )? {
+            let attributes = get_kms_object_attributes(&self.kms_rest_client, &id)?;
             let key_size = attributes.cryptographic_length.ok_or_else(|| {
                 MError::Cryptography("find_all_private_keys: missing key size".to_string())
             })? as usize;
@@ -148,8 +150,8 @@ impl Backend for CkmsBackend {
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or(COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_string());
         let kms_objects = get_kms_objects(
-            &self.kms_client,
-            &[disk_encryption_tag, "_kk".to_string()],
+            &self.kms_rest_client,
+            &[disk_encryption_tag, "_kk".to_owned()],
             KeyFormatType::Raw,
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
@@ -180,7 +182,13 @@ impl Backend for CkmsBackend {
             remote_object_id,
             ciphertext.len()
         );
-        kms_decrypt(&self.kms_client, remote_object_id, algorithm, ciphertext).map_err(Into::into)
+        kms_decrypt(
+            &self.kms_rest_client,
+            remote_object_id,
+            algorithm,
+            ciphertext,
+        )
+        .map_err(Into::into)
     }
 }
 

@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
 use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
 
-use crate::{client_bail, ClientError};
+use crate::{kms_client_bail, KmsClientError};
 
 /// Build KMIP Objects from a PEM file.
 /// The PEM file can contain multiple objects.
@@ -41,7 +41,7 @@ use crate::{client_bail, ClientError};
 /// | CERTIFICATE REQUEST | PKCS#10 |
 /// | PKCS12 | PKCS#12 |
 ///
-pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
+pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, KmsClientError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
     for pem in pem_s {
@@ -71,7 +71,7 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
                 key_block: key_block_with_format_type(KeyFormatType::ECPrivateKey),
             }),
             "EC PUBLIC KEY" => {
-                return Err(ClientError::NotSupported(
+                return Err(KmsClientError::NotSupported(
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
                      EC private keys only"
                         .to_string(),
@@ -82,22 +82,22 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, ClientError> {
                 certificate_value: pem.into_contents(),
             }),
             "X509 CRL" => {
-                return Err(ClientError::NotSupported(
+                return Err(KmsClientError::NotSupported(
                     "X509 CRL not supported on this server".to_owned(),
                 ))
             }
             "NEW CERTIFICATE REQUEST" => {
-                return Err(ClientError::NotSupported(
+                return Err(KmsClientError::NotSupported(
                     "NEW CERTIFICATE REQUEST not supported on this server".to_owned(),
                 ))
             }
             "CERTIFICATE REQUEST" => {
-                return Err(ClientError::NotSupported(
+                return Err(KmsClientError::NotSupported(
                     "CERTIFICATE REQUEST not supported on this server".to_owned(),
                 ))
             }
             x => {
-                return Err(ClientError::NotSupported(format!(
+                return Err(KmsClientError::NotSupported(format!(
                     "PEM tag {x} not supported"
                 )))
             }
@@ -131,14 +131,14 @@ pub fn der_to_pem(
     bytes: &[u8],
     key_format_type: KeyFormatType,
     object_type: ObjectType,
-) -> Result<Zeroizing<Vec<u8>>, ClientError> {
+) -> Result<Zeroizing<Vec<u8>>, KmsClientError> {
     let pem = match key_format_type {
         KeyFormatType::PKCS1 => {
             let tag = match object_type {
                 ObjectType::PrivateKey => "RSA PRIVATE KEY",
                 ObjectType::PublicKey => "RSA PUBLIC KEY",
                 x => {
-                    client_bail!(
+                    kms_client_bail!(
                         "Object type {x:?} not supported for PKCS1. Must be a private key or \
                          public key"
                     )
@@ -151,7 +151,7 @@ pub fn der_to_pem(
                 ObjectType::PrivateKey => "PRIVATE KEY",
                 ObjectType::PublicKey => "PUBLIC KEY",
                 x => {
-                    client_bail!(
+                    kms_client_bail!(
                         "Object type {x:?} not supported for PKCS#8 / SPKI. Must be a private key \
                          (PKCS#8) or public key (SPKI)"
                     )
@@ -163,13 +163,15 @@ pub fn der_to_pem(
             let tag = match object_type {
                 ObjectType::PrivateKey => "EC PRIVATE KEY",
                 x => {
-                    client_bail!("Object type {x:?} not supported for SEC1. Must be a private key.")
+                    kms_client_bail!(
+                        "Object type {x:?} not supported for SEC1. Must be a private key."
+                    )
                 }
             };
             pem::Pem::new(tag, bytes)
         }
         _ => {
-            client_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
+            kms_client_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
         }
     };
     Ok(Zeroizing::new(

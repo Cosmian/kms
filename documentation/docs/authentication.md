@@ -21,7 +21,7 @@ method can be either (one of them is enough):
 
 - a TLS client certificate and the server will extract the username from the certificate's subject
   common name (CN)
-- or a JWT access token and the server extracts the username from the token's subject (sub) claim
+- or using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates. The server extracts from the JWT token the username from the token's subject (sub) claim
 - an API token passed in the `Authorization` header configured both at the client and server
   side (the user being `default-username`)
 
@@ -81,8 +81,8 @@ The JWT token should contain the following claims:
 - `exp`: The expiration time of the token. This should be a timestamp in the future.
 - `iat`: The time the token was issued. This should be a timestamp in the past.
 
-On the `ckms` command line interface, the token is configured in the client configuration. Please
-refer to the [CLI documentation](cli/cli.md) for more details.
+On the `cosmian` command line interface, the token is configured in the client configuration. Please
+refer to the [Cosmian CLI](../cosmian_cli/index.md) for more details.
 
 ### Configuring the KMS server for JWT authentication
 
@@ -202,23 +202,23 @@ To proceed, follow these steps:
 - run Cosmian KMS server without API token authentication
 - generate a symmetric key and export it from the server
 - restart the server with the `--api-token-id` option
-- configure `ckms` client with a `kms_access_token` containing the API token in base64.
+- configure `cosmian` client with a `access_token` containing the API token in base64.
 
-To generate a new API token, use the `ckms` CLI and save the symmetric key unique identifier (<
+To generate a new API token, use the `cosmian` CLI and save the symmetric key unique identifier (<
 SYMMETRIC_KEY_ID>):
 
 ```sh
-ckms sym keys create
+cosmian kms sym keys create
 ```
 
 Then export the symmetric key content in base64:
 
 ```sh
-ckms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
+cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> f base64 api_token.base64
 ```
 
-Reconfigure `ckms` client with the previous base64 encoded key as `kms_access_token`.
-Your `ckms` is now ready to authenticate using the API token.
+Reconfigure `cosmian` client with the previous base64 encoded key as `access_token`.
+Your `cosmian` is now ready to authenticate using the API token.
 
 And finally, restart the server with the `--api-token-id` option.
 

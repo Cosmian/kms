@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use clap::Parser;
+use cosmian_kms_client::KmsClientConfig;
 
 use super::KEY_PAIRS_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::result::CliResult};
@@ -19,9 +18,9 @@ pub struct GetKeyPairsAction {
 }
 
 impl GetKeyPairsAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
         let endpoint = [KEY_PAIRS_ENDPOINT, &self.key_pairs_id].concat();
-        let gmail_client = GmailClient::new(conf_path, &self.user_id);
+        let gmail_client = GmailClient::new(config, &self.user_id);
         let response = gmail_client.await?.get(&endpoint).await?;
         GmailClient::handle_response(response).await
     }

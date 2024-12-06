@@ -15,6 +15,7 @@ crate-type = ["rlib", "dylib"]
 doctest = false
 
 [dependencies]
+cosmian_config_utils = { workspace = true }
 cosmian_kmip = { path = "../../kmip" }
 cosmian_kms_client = { path = "../../client" }
 cosmian_pkcs11_module = { path = "../module" }
@@ -26,18 +27,18 @@ p256 = { version = "0.13.2", default-features = false, features = [
 ] }
 pkcs1 = "0.7.5"
 serde_json = { workspace = true }
-sha3 = "0.10.8"
+sha3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
-tracing-error = "0.2.0"
+tracing-error = "0.2.1"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 x509-cert = { workspace = true }
 zeroize = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tracing-journald = "0.3.0"
+tracing-journald = "0.3.1"
 
 [dev-dependencies]
-cosmian_logger = { path = "../../logger" }
+cosmian_logger = { workspace = true }
 kms_test_server = { path = "../../test_server" }

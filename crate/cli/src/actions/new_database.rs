@@ -6,7 +6,7 @@ use crate::error::result::{CliResult, CliResultHelper};
 /// Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 ///
 /// This secret is only displayed once and is not stored anywhere on the server.
-/// The secret must be set in the `kms_database_secret` property
+/// The secret must be set in the `database_secret` property
 /// of the CLI `kms.json` configuration file to use the encrypted database.
 ///
 /// Passing the correct secret "auto-selects" the correct encrypted database:
@@ -39,7 +39,7 @@ impl NewDatabaseAction {
 
         println!(
             "A new user encrypted database is configured. Use the following token (by adding it \
-             to the 'kms_database_secret' entry of your KMS_CLI_CONF):\n\n{token}\n\n"
+             to the 'database_secret' entry of your KMS_CLI_CONF):\n\n{token}\n\n"
         );
 
         println!(

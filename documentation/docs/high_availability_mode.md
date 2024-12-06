@@ -12,4 +12,3 @@ When the Cosmian KMS servers are configured to export an HTTPS port (as is the c
 
 - all the Cosmian KMS servers should expose the same server certificate on their HTTPS port
 - and the load balancer should be configured as an SSL load balancer (HAProxy is a good example of a high-performance SSL load balancer)
-

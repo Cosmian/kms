@@ -112,7 +112,7 @@ async fn test_certificate_import_encrypt(
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -123,7 +123,7 @@ async fn test_certificate_import_encrypt(
     let private_key_id = import_key(ImportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_string(),
-        key_file: format!("test_data/certificates/{key_path}"),
+        key_file: format!("../../test_data/certificates/{key_path}"),
         key_format: Some(ImportKeyFormat::Pem),
         tags: tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>(),
         replace_existing: true,
@@ -133,7 +133,7 @@ async fn test_certificate_import_encrypt(
     let root_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/{ca_path}"),
+        key_file: &format!("../../test_data/certificates/{ca_path}"),
         format: &CertificateInputFormat::Pem,
         tags: Some(tags),
         ..Default::default()
@@ -142,7 +142,7 @@ async fn test_certificate_import_encrypt(
     let subca_certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/{subca_path}"),
+        key_file: &format!("../../test_data/certificates/{subca_path}"),
         format: &CertificateInputFormat::Pem,
         issuer_certificate_id: Some(root_certificate_id),
         tags: Some(tags),
@@ -152,7 +152,7 @@ async fn test_certificate_import_encrypt(
     let certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/{cert_path}"),
+        key_file: &format!("../../test_data/certificates/{cert_path}"),
         format: &CertificateInputFormat::Pem,
         private_key_id: Some(private_key_id.clone()),
         issuer_certificate_id: Some(subca_certificate_id),
@@ -216,7 +216,7 @@ async fn import_encrypt_decrypt(
     let tmp_path = tmp_dir.path();
     // let tmp_path = std::path::Path::new("./");
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -229,7 +229,7 @@ async fn import_encrypt_decrypt(
     let private_key_id = import_key(ImportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "ec".to_string(),
-        key_file: format!("test_data/certificates/openssl/{filename}-private-key.pem"),
+        key_file: format!("../../test_data/certificates/openssl/{filename}-private-key.pem"),
         key_format: Some(ImportKeyFormat::Pem),
         key_id: Some(Uuid::new_v4().to_string()),
         tags: tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>(),
@@ -242,7 +242,7 @@ async fn import_encrypt_decrypt(
     let certificate_id = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: &format!("test_data/certificates/openssl/{filename}-cert.pem"),
+        key_file: &format!("../../test_data/certificates/openssl/{filename}-cert.pem"),
         format: &CertificateInputFormat::Pem,
         pkcs12_password: None,
         certificate_id: Some(Uuid::new_v4().to_string()),

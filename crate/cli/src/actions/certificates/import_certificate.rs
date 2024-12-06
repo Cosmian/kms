@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn test_chain_parse() {
         let chain_str =
-            include_bytes!("../../../test_data/certificates/mozilla_IncludedRootsPEM.txt");
+            include_bytes!("../../../../../test_data/certificates/mozilla_IncludedRootsPEM.txt");
         let objects = build_chain_from_stack(chain_str).unwrap();
         assert_eq!(objects.len(), 144);
     }

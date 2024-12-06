@@ -11,7 +11,7 @@ Redis-with-Findex is most useful when:
 - KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
 - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
-Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
+Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./marketplace_guide.md).
 
 ## Configuring the database
 

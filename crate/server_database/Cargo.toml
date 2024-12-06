@@ -38,7 +38,7 @@ redis = { version = "0.23", features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.8.1", default-features = false, features = [
+sqlx = { version = "0.8.2", default-features = false, features = [
   "json",
   "runtime-tokio-native-tls",
   "mysql",
@@ -55,10 +55,10 @@ version-compare = "0.2.0"
 zeroize = { workspace = true }
 
 [dev-dependencies]
-cosmian_logger = { path = "../logger" }
+cosmian_logger = { workspace = true }
 rand_chacha = "0.3.1"
-tempfile = "3.11"
-tracing = { version = "0.1.40", default-features = false }
-tracing-subscriber = { version = "0.3.18", default-features = false, features = [
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, default-features = false, features = [
   "env-filter",
 ] }

@@ -122,7 +122,7 @@ mod tests {
         crypto::symmetric::create_symmetric_key_kmip_object,
         kmip::kmip_types::CryptographicAlgorithm,
     };
-    use cosmian_logger::log_utils::log_init;
+    use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
 

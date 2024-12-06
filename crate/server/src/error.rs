@@ -220,6 +220,8 @@ impl From<KmipError> for KmsError {
             | KmipError::ConversionError(s)
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
+            KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
         }
     }
 }

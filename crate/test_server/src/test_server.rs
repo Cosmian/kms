@@ -9,9 +9,10 @@ use std::{
 use actix_server::ServerHandle;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
-    client_bail, client_error,
     cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    write_json_object_to_file, ClientConf, ClientError, GmailApiConf, KmsClient,
+    kms_client_bail, kms_client_error,
+    reexport::cosmian_http_client::HttpClientConfig,
+    write_json_object_to_file, GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
 };
 use cosmian_kms_server::{
     config::{ClapConfig, HttpConfig, HttpParams, JwtAuthConfig, MainDBConfig, ServerParams},
@@ -191,17 +192,17 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
 pub struct TestsContext {
     pub owner_client_conf_path: String,
     pub user_client_conf_path: String,
-    pub owner_client_conf: ClientConf,
+    pub owner_client_conf: KmsClientConfig,
     pub server_handle: ServerHandle,
-    pub thread_handle: JoinHandle<Result<(), ClientError>>,
+    pub thread_handle: JoinHandle<Result<(), KmsClientError>>,
 }
 
 impl TestsContext {
-    pub async fn stop_server(self) -> Result<(), ClientError> {
+    pub async fn stop_server(self) -> Result<(), KmsClientError> {
         self.server_handle.stop(false).await;
         self.thread_handle
             .join()
-            .map_err(|_e| client_error!("failed joining th stop thread"))?
+            .map_err(|_e| kms_client_error!("failed joining th stop thread"))?
     }
 }
 
@@ -219,8 +220,8 @@ pub async fn start_test_server_with_options(
     port: u16,
     authentication_options: AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
-) -> Result<TestsContext, ClientError> {
-    cosmian_logger::log_utils::log_init(None);
+) -> Result<TestsContext, KmsClientError> {
+    cosmian_logger::log_init(None);
     let server_params = generate_server_params(
         db_config.clone(),
         port,
@@ -231,26 +232,26 @@ pub async fn start_test_server_with_options(
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) =
         generate_owner_conf(&server_params, authentication_options.api_token.clone())?;
-    let kms_client = owner_client_conf.initialize_kms_client(None, None, false)?;
+    let kms_rest_client = KmsClient::new(owner_client_conf.clone())?;
 
     info!(
         "Starting KMS test server at URL: {} with server params {:?}",
-        owner_client_conf.kms_server_url, &server_params
+        owner_client_conf.http_config.server_url, &server_params
     );
 
     let (server_handle, thread_handle) = start_test_kms_server(server_params);
 
     // wait for the server to be up
-    wait_for_server_to_start(&kms_client)
+    wait_for_server_to_start(&kms_rest_client)
         .await
         .expect("server timeout");
 
     if db_config.database_type.clone().unwrap() == "sqlite-enc" {
         // Configure a database and create the kms json file
-        let database_secret = kms_client.new_database().await?;
+        let database_secret = kms_rest_client.new_database().await?;
 
         // Rewrite the conf with the correct database secret
-        owner_client_conf.kms_database_secret = Some(database_secret);
+        owner_client_conf.http_config.database_secret = Some(database_secret);
         write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
             .expect("Can't write owner CLI conf path");
     }
@@ -271,7 +272,7 @@ pub async fn start_test_server_with_options(
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
     server_params: ServerParams,
-) -> (ServerHandle, JoinHandle<Result<(), ClientError>>) {
+) -> (ServerHandle, JoinHandle<Result<(), KmsClientError>>) {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
     let thread_handle = thread::spawn(move || {
@@ -280,7 +281,7 @@ fn start_test_kms_server(
             .enable_all()
             .build()?
             .block_on(start_kms_server(server_params, Some(tx)))
-            .map_err(|e| ClientError::UnexpectedError(e.to_string()))
+            .map_err(|e| KmsClientError::UnexpectedError(e.to_string()))
     });
     trace!("Waiting for test KMS server to start...");
     let server_handle = rx
@@ -291,7 +292,7 @@ fn start_test_kms_server(
 }
 
 /// Wait for the server to start by reading the version
-async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientError> {
+async fn wait_for_server_to_start(kms_rest_client: &KmsClient) -> Result<(), KmsClientError> {
     // Depending on the running environment, the server could take a bit of time to start
     // We try to query it with a dummy request until be sure it is started.
     let mut retry = true;
@@ -299,7 +300,7 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
     let mut waiting = 1;
     while retry {
         info!("...checking if the server is up...");
-        let result = kms_client.version().await;
+        let result = kms_rest_client.version().await;
         if result.is_err() {
             timeout -= 1;
             retry = timeout >= 0;
@@ -309,7 +310,7 @@ async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientEr
                 waiting *= 2;
             } else {
                 info!("The server is still not up, stop trying");
-                client_bail!("Can't start the kms server to run tests");
+                kms_client_bail!("Can't start the kms server to run tests");
             }
         } else {
             info!("UP!");
@@ -332,16 +333,22 @@ fn generate_http_config(
         if use_client_cert {
             HttpConfig {
                 port,
-                https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
+                https_p12_file: Some(
+                    root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
+                ),
                 https_p12_password: Some("password".to_owned()),
-                authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
+                authority_cert_file: Some(
+                    root_dir.join("../../test_data/client_server/server/ca.crt"),
+                ),
                 api_token_id,
                 ..HttpConfig::default()
             }
         } else {
             HttpConfig {
                 port,
-                https_p12_file: Some(root_dir.join("certificates/server/kmserver.acme.com.p12")),
+                https_p12_file: Some(
+                    root_dir.join("../../test_data/client_server/server/kmserver.acme.com.p12"),
+                ),
                 https_p12_password: Some("password".to_owned()),
                 api_token_id,
                 ..HttpConfig::default()
@@ -361,7 +368,7 @@ fn generate_server_params(
     port: u16,
     authentication_options: &AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
-) -> Result<ServerParams, ClientError> {
+) -> Result<ServerParams, KmsClientError> {
     // Configure the server
     let clap_config = ClapConfig {
         auth: if authentication_options.use_jwt_token {
@@ -380,7 +387,7 @@ fn generate_server_params(
         ..ClapConfig::default()
     };
     ServerParams::try_from(clap_config)
-        .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))
+        .map_err(|e| KmsClientError::Default(format!("failed initializing the server config: {e}")))
 }
 
 fn set_access_token(server_params: &ServerParams, api_token: Option<String>) -> Option<String> {
@@ -398,7 +405,7 @@ fn set_access_token(server_params: &ServerParams, api_token: Option<String>) -> 
 fn generate_owner_conf(
     server_params: &ServerParams,
     api_token: Option<String>,
-) -> Result<(String, ClientConf), ClientError> {
+) -> Result<(String, KmsClientConfig), KmsClientError> {
     // This create root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -409,36 +416,44 @@ fn generate_owner_conf(
         .ok()
         .and_then(|config| serde_json::from_str(&config).ok());
 
-    let owner_client_conf = ClientConf {
-        kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
-            format!("https://0.0.0.0:{}", server_params.port)
-        } else {
-            format!("http://0.0.0.0:{}", server_params.port)
-        },
-        accept_invalid_certs: true,
-        kms_access_token: set_access_token(server_params, api_token),
-        ssl_client_pkcs12_path: if server_params.authority_cert_file.is_some() {
-            #[cfg(not(target_os = "macos"))]
-            let p = root_dir.join("certificates/owner/owner.client.acme.com.p12");
-            #[cfg(target_os = "macos")]
-            let p = root_dir.join("certificates/owner/owner.client.acme.com.old.format.p12");
-            Some(
-                p.to_str()
-                    .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
-                    .to_string(),
-            )
-        } else {
-            None
-        },
-        ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
-            Some("password".to_owned())
-        } else {
-            None
+    let owner_client_conf = KmsClientConfig {
+        http_config: HttpClientConfig {
+            server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
+                format!("https://0.0.0.0:{}", server_params.port)
+            } else {
+                format!("http://0.0.0.0:{}", server_params.port)
+            },
+            accept_invalid_certs: true,
+            access_token: set_access_token(server_params, api_token),
+            ssl_client_pkcs12_path: if server_params.authority_cert_file.is_some() {
+                #[cfg(not(target_os = "macos"))]
+                let p =
+                    root_dir.join("../../test_data/client_server/owner/owner.client.acme.com.p12");
+                #[cfg(target_os = "macos")]
+                let p = root_dir.join(
+                    "../../test_data/client_server/owner/owner.client.acme.com.old.format.p12",
+                );
+                Some(
+                    p.to_str()
+                        .ok_or_else(|| {
+                            KmsClientError::Default("Can't convert path to string".to_owned())
+                        })?
+                        .to_string(),
+                )
+            } else {
+                None
+            },
+            ssl_client_pkcs12_password: if server_params.authority_cert_file.is_some() {
+                Some("password".to_owned())
+            } else {
+                None
+            },
+            ..HttpClientConfig::default()
         },
         gmail_api_conf,
 
         // We use the private key since the private key is the public key with additional information.
-        ..ClientConf::default()
+        ..KmsClientConfig::default()
     };
     // write the conf to a file
     write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
@@ -448,23 +463,27 @@ fn generate_owner_conf(
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<String, ClientError> {
+fn generate_user_conf(
+    port: u16,
+    owner_client_conf: &KmsClientConfig,
+) -> Result<String, KmsClientError> {
     // This create root dir
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let mut user_conf = owner_client_conf.clone();
-    user_conf.ssl_client_pkcs12_path = {
+    user_conf.http_config.ssl_client_pkcs12_path = {
         #[cfg(not(target_os = "macos"))]
-        let p = root_dir.join("certificates/user/user.client.acme.com.p12");
+        let p = root_dir.join("../../test_data/client_server/user/user.client.acme.com.p12");
         #[cfg(target_os = "macos")]
-        let p = root_dir.join("certificates/user/user.client.acme.com.old.format.p12");
+        let p =
+            root_dir.join("../../test_data/client_server/user/user.client.acme.com.old.format.p12");
         Some(
             p.to_str()
-                .ok_or_else(|| ClientError::Default("Can't convert path to string".to_owned()))?
+                .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))?
                 .to_string(),
         )
     };
-    user_conf.ssl_client_pkcs12_password = Some("password".to_owned());
+    user_conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.json");
@@ -477,7 +496,7 @@ fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<Strin
 /// Generate an invalid configuration for sqlite-enc
 /// by changing the database secret  and return the file path
 #[must_use]
-pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
+pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
     // Create a new database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()
         .expect("Failed to generate rand bytes for generate_invalid_conf");
@@ -489,7 +508,8 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     let secrets = b64
         .decode(
             correct_conf
-                .kms_database_secret
+                .http_config
+                .database_secret
                 .as_ref()
                 .expect("missing database secret")
                 .clone(),
@@ -499,7 +519,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
         serde_json::from_slice::<ExtraStoreParams>(&secrets).expect("Can't deserialize token");
     secrets.key = db_key; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
-    invalid_conf.kms_database_secret = Some(token);
+    invalid_conf.http_config.database_secret = Some(token);
     write_json_object_to_file(&invalid_conf, &invalid_conf_path)
         .expect("Can't write CONF_PATH_BAD_KEY");
     invalid_conf_path
@@ -507,7 +527,7 @@ pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
 
 #[cfg(test)]
 #[tokio::test]
-async fn test_start_server() -> Result<(), ClientError> {
+async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server_with_options(
         sqlite_enc_db_config(),
         9990,

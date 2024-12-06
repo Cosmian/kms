@@ -47,6 +47,12 @@ pub enum KmipError {
 
     #[error("Object Not Found: {0}")]
     ObjectNotFound(String),
+
+    #[error(transparent)]
+    TryFromSliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
 }
 
 impl KmipError {
@@ -65,20 +71,8 @@ impl From<Vec<u8>> for KmipError {
     }
 }
 
-impl From<std::array::TryFromSliceError> for KmipError {
-    fn from(value: std::array::TryFromSliceError) -> Self {
-        Self::ConversionError(value.to_string())
-    }
-}
-
 impl From<TtlvError> for KmipError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
-    }
-}
-
-impl From<serde_json::Error> for KmipError {
-    fn from(e: serde_json::Error) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }

@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::{
-    batch_export_objects, export_object, ClientConf, ExportObjectParams, KmsClient,
+    batch_export_objects, export_object, ExportObjectParams, KmsClient, KmsClientConfig,
 };
 use cosmian_pkcs11_module::traits::{EncryptionAlgorithm, KeyAlgorithm};
 use tracing::{debug, error, trace};
@@ -25,51 +25,52 @@ pub(crate) struct KmsObject {
 }
 
 pub(crate) fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
-    let conf_path = ClientConf::location(None)?;
-    let conf = ClientConf::load(&conf_path)?;
-    let kms_client = conf.initialize_kms_client(None, None, false)?;
-    Ok(kms_client)
+    let conf_path = KmsClientConfig::location(None)?;
+    let conf = KmsClientConfig::load(&conf_path)?;
+    let kms_rest_client = KmsClient::new(conf)?;
+    Ok(kms_rest_client)
 }
 
 pub(crate) fn locate_kms_objects(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<String>, Pkcs11Error> {
-    tokio::runtime::Runtime::new()?.block_on(locate_kms_objects_async(kms_client, tags))
+    tokio::runtime::Runtime::new()?.block_on(locate_kms_objects_async(kms_rest_client, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<String>, Pkcs11Error> {
-    locate_objects(kms_client, tags).await
+    locate_objects(kms_rest_client, tags).await
 }
 
 pub(crate) fn get_kms_objects(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     tags: &[String],
     key_format_type: KeyFormatType,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
     tokio::runtime::Runtime::new()?.block_on(get_kms_objects_async(
-        kms_client,
+        kms_rest_client,
         tags,
         key_format_type,
     ))
 }
 
 pub(crate) async fn get_kms_objects_async(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     tags: &[String],
     key_format_type: KeyFormatType,
 ) -> Result<Vec<KmsObject>, Pkcs11Error> {
-    let key_ids = locate_objects(kms_client, tags).await?;
+    let key_ids = locate_objects(kms_rest_client, tags).await?;
     let export_object_params = ExportObjectParams {
         unwrap: true,
         key_format_type: Some(key_format_type),
         ..Default::default()
     };
-    let responses = batch_export_objects(kms_client, key_ids, export_object_params).await?;
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
     trace!("Found {} objects", responses.len());
+
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes
@@ -131,7 +132,7 @@ pub(crate) async fn get_kms_object_async(
 }
 
 async fn locate_objects(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<String>, Pkcs11Error> {
     let mut attributes = Attributes::default();
@@ -141,7 +142,7 @@ async fn locate_objects(
         attributes,
         ..Default::default()
     };
-    let response = kms_client.locate(locate).await?;
+    let response = kms_rest_client.locate(locate).await?;
     let uniques_identifiers = response
         .unique_identifiers
         .unwrap_or_default()
@@ -157,13 +158,13 @@ async fn locate_objects(
 }
 
 pub(crate) fn kms_decrypt(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     key_id: String,
     encryption_algorithm: EncryptionAlgorithm,
     data: Vec<u8>,
 ) -> Result<Zeroizing<Vec<u8>>, Pkcs11Error> {
     tokio::runtime::Runtime::new()?.block_on(kms_decrypt_async(
-        kms_client,
+        kms_rest_client,
         key_id,
         encryption_algorithm,
         data,
@@ -171,7 +172,7 @@ pub(crate) fn kms_decrypt(
 }
 
 pub(crate) async fn kms_decrypt_async(
-    kms_client: &KmsClient,
+    kms_rest_client: &KmsClient,
     key_id: String,
     encryption_algorithm: EncryptionAlgorithm,
     data: Vec<u8>,
@@ -189,7 +190,7 @@ pub(crate) async fn kms_decrypt_async(
         data: Some(data),
         ..Default::default()
     };
-    let response = kms_client.decrypt(decryption_request).await?;
+    let response = kms_rest_client.decrypt(decryption_request).await?;
     response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_string())
     })

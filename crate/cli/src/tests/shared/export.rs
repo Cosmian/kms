@@ -332,7 +332,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
-    fn _export_cc_test(
+    fn export_cc_test(
         key_format_type: KeyFormatType,
         key_id: &str,
         tmp_path: &Path,
@@ -381,18 +381,18 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;
 
-    _export_cc_test(
+    export_cc_test(
         KeyFormatType::CoverCryptSecretKey,
         &master_private_key_id,
         tmp_path,
         ctx,
     )?;
-    _export_cc_test(
+    export_cc_test(
         KeyFormatType::CoverCryptPublicKey,
         &master_public_key_id,
         tmp_path,
@@ -406,7 +406,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
         &[],
         false,
     )?;
-    _export_cc_test(
+    export_cc_test(
         KeyFormatType::CoverCryptSecretKey,
         &user_key_id,
         tmp_path,
@@ -440,7 +440,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;
@@ -717,7 +717,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         true,
     )?;

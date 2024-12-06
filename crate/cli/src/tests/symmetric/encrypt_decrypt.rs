@@ -1,15 +1,16 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{read_bytes_from_file, KmsClient, KMS_CLI_CONF_ENV};
 use kms_test_server::start_default_test_kms_server;
+use strum::IntoEnumIterator;
 use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
     actions::symmetric::{
         keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-        DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
+        DataEncryptionAlgorithm, DecryptAction, EncryptAction, KeyEncryptionAlgorithm,
     },
     error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
@@ -135,7 +136,7 @@ pub(crate) fn run_encrypt_decrypt_test(
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -292,7 +293,7 @@ async fn test_encrypt_decrypt_with_tags() -> CliResult<()> {
         },
     )?;
 
-    let input_file = PathBuf::from("test_data/plain.txt");
+    let input_file = PathBuf::from("../../test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
@@ -431,4 +432,56 @@ async fn test_rfc5649_aes_gcm_client_side() -> CliResult<()> {
             + 1 /* encapsulation len leb128 */
             + 12 /* nonce */ + 16, /* tag */
     )
+}
+
+#[tokio::test]
+async fn test_client_side_encryption_with_buffer() -> CliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kek = create_symmetric_key(
+        &ctx.owner_client_conf_path,
+        CreateKeyAction {
+            algorithm: SymmetricAlgorithm::Aes,
+            number_of_bits: Some(256),
+            ..Default::default()
+        },
+    )?;
+
+    let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
+
+    for size in [0, 1, 16, 64, 256, 1024, 4096, 16384] {
+        let plaintext: Vec<u8> = vec![0; size];
+        for kea in KeyEncryptionAlgorithm::iter() {
+            for dea in DataEncryptionAlgorithm::iter() {
+                if dea == DataEncryptionAlgorithm::AesXts {
+                    continue;
+                }
+                let ciphertext = EncryptAction::default()
+                    .client_side_encrypt_with_buffer(
+                        &kms_rest_client,
+                        &kek,
+                        kea,
+                        dea,
+                        None,
+                        &plaintext,
+                        Some(hex::encode(b"myid").into_bytes()),
+                    )
+                    .await?;
+
+                let cleartext = DecryptAction::default()
+                    .client_side_decrypt_with_buffer(
+                        &kms_rest_client,
+                        kea,
+                        dea,
+                        &kek,
+                        &ciphertext,
+                        Some(hex::encode(b"myid").into_bytes()),
+                    )
+                    .await?;
+
+                assert_eq!(cleartext, plaintext);
+            }
+        }
+    }
+
+    Ok(())
 }

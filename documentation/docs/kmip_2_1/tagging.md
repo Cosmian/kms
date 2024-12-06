@@ -18,7 +18,7 @@ The value is the serialization of the tags as a JSON array of strings.
 2. When unique identifiers are passed as part of the KMIP operation, such as in the `Certify`, `Encrypt`, `Export`, `Decrypt`, `Get`, `Get Attributes`, `Revoke`, and `Destroy` operations,
 the tags are in the unique identifier itself as a serialized JSON array e.g. `[ "tag1", "tag2" ]`.
 
-**Example**
+## Example
 
 Export the Symmetric key (tag `_kk`) with user tag `myTag`:
 

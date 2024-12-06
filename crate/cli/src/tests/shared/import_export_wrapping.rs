@@ -62,7 +62,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;
@@ -105,7 +105,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
-    cosmian_logger::log_utils::log_init(Some("debug"));
+    cosmian_logger::log_init(Some("debug"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -149,7 +149,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
-        "test_data/policy_specifications.json",
+        "../../test_data/policy_specifications.json",
         &[],
         false,
     )?;

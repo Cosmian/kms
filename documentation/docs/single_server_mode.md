@@ -50,10 +50,10 @@ docker run --rm -p 9998:9998 \
     Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
     The call will return a secret
 
-    === "ckms"
+    === "cosmian"
 
         ```sh
-        ckms new-database
+        cosmian kms new-database
         ```
 
     === "curl"
@@ -64,32 +64,33 @@ docker run --rm -p 9998:9998 \
         ```
         The secret is the value between the quotes `""`.
 
-    :warning: This secret is only displayed **once** and is **not stored** anywhere on the server.
+    Warning:
 
-    :warning: Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
+        - This secret is only displayed **once** and is **not stored** anywhere on the server.
+        - Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
 
 Once an encrypted database is created, the secret must be passed in every subsequent query to the
 KMS server.
 Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
 databases can be used concurrently on the same KMS server.
 
-=== "ckms"
+=== "cosmian"
 
-    The secret must be set in `kms_database_secret` property of the CLI `kms.json` configuration file.
+    The secret must be set in `database_secret` property of the CLI `kms.json` configuration file.
 
     ```json
         {
             "kms_server_url": "https://my-server:9998",
-            "kms_database_secret": "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="
+            "database_secret": "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="
         }
     ```
 
 === "curl"
 
-    The secret must be passed using a `KmsDatabaseSecret` HTTP header, e.g.
+    The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
 
     ```sh
         curl \
-        -H "KmsDatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
+        -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
         http://localhost:9998/objects/owned
     ```

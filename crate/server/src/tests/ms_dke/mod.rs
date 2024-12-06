@@ -52,7 +52,7 @@ const ENCRYPTED_DATA: &str = r#"{
 #[ignore]
 #[tokio::test]
 async fn decrypt_data_test() -> KResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
 
     let app = test_utils::test_app(None).await;
 

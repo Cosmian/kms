@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use clap::Parser;
+use cosmian_kms_client::KmsClientConfig;
 use serde::{Deserialize, Serialize};
 
 use super::IDENTITIES_ENDPOINT;
@@ -31,8 +30,8 @@ pub struct InsertIdentitiesAction {
 }
 
 impl InsertIdentitiesAction {
-    pub async fn run(&self, conf_path: &PathBuf) -> CliResult<()> {
-        let gmail_client = GmailClient::new(conf_path, &self.user_id);
+    pub async fn run(&self, config: &KmsClientConfig) -> CliResult<()> {
+        let gmail_client = GmailClient::new(config, &self.user_id);
 
         // Construct identity_info
         let identity_info = IdentityInfo {

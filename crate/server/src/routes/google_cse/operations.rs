@@ -650,8 +650,9 @@ pub struct PrivilegedUnwrapResponse {
     pub key: String,
 }
 
-/// Decrypts data exported from Google in a privileged context. Previously known as `TakeoutUnwrap`. Returns the Data Encryption Key (DEK) that was wrapped using wrap without checking the original document or file access control list (ACL).
+/// Decrypts data exported from Google in a privileged context. Previously known as `TakeoutUnwrap`.
 ///
+/// Returns the Data Encryption Key (DEK) that was wrapped using wrap without checking the original document or file access control list (ACL).
 /// See [doc](https://developers.google.com/workspace/cse/reference/privileged-unwrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 ///
@@ -802,8 +803,9 @@ pub struct RewrapResponse {
     pub wrapped_key: String,
 }
 
-/// Migrate from the old Key Access Control List Service (KACLS1) to the newer KACLS (KACLS2). It takes a Data Encryption Key (DEK) wrapped with KACLS1's wrap API, and returns a DEK wrapped with KACLS2's wrap API.
+/// Migrate from the old Key Access Control List Service (KACLS1) to the newer KACLS (KACLS2).
 ///
+/// It takes a Data Encryption Key (DEK) wrapped with KACLS1's wrap API, and returns a DEK wrapped with KACLS2's wrap API.
 /// See [doc](https://developers.google.com/workspace/cse/reference/rewrap) and
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 ///

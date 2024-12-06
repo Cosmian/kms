@@ -8,7 +8,7 @@ algorithms are also listed with the corresponding NIST standard.
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
 unwrapped... using
 the Cosmian KMS server [API](./kmip_2_1/json_ttlv_api.md)
-or [command line interface tool](./cli/cli.md)
+or [Cosmian CLI](../cosmian_cli/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket
 or pull request on

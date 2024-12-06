@@ -1,35 +1,48 @@
 # Cosmian KMS
 
-![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_rhel9.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_generic.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_windows.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/build_docker_image.yml/badge.svg?branch=main)
 
-Cosmian KMS is an implementation of a high-performance, massively scalable, **Key
-Management System** that presents some unique features, such as
+The **Cosmian KMS** is a high-performance,
+[**open-source**](https://github.com/Cosmian/kms),
+[FIPS 140-3 compliant](./fips.md) server application
+written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
-  Cosmian VM (see [Cosmian VM](https://docs.cosmian.com/compute/cosmian_vm/overview/))
-  and application-level encryption
-  (see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
-- a JSON KMIP 2.1 compliant interface
-- support for object tagging to easily manage keys and secrets
-- a full-featured command line and graphical
-  interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
-- Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
-  on [Cosmian Github](https://github.com/Cosmian))
-- FIPS 140-3 mode gated behind the feature `fips`
-- support for the Proteccio HSM with KMS keys wrapped by the HSM
+  Cosmian VM. See our cloud-ready confidential KMS on the
+[Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./documentation/docs/marketplace_guide.md)
+- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
-  [Google Workspace Client Side Encryption (CSE)](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA)
+  [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
-  of [Microsoft Double Key Encryption (DKE)](https://learn.microsoft.com/en-us/purview/double-key-encryption)
-- [Veracrypt](https://veracrypt.fr/en/Home.html)
-  and [LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) disk encryption support
+  of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
+- support for the [Proteccio HSM](./documentation/docs/hsm.md) with KMS keys wrapped by the HSM
+- [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
+  and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
+- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
+- a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
+- a [high-availability mode](./documentation/docs/high_availability_mode.md) with simple horizontal scaling
+- a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+  on [Cosmian Github](https://github.com/Cosmian))
+- integrated with [OpenTelemetry](https://opentelemetry.io/)
 
-The KMS has extensive
-online [documentation](https://docs.cosmian.com/cosmian_key_management_system/)
+The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure.
+As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic
+services such as on-the-fly key generation, encryption, and decryption operations.
 
-The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and
-Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
-Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
+The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum
+cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
+Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
+
+As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use
+their public keys to encrypt and decrypt data.
+Certificates can be exported under various formats including _PKCS#12_ modern and legacy flavor,
+to be used in various applications, such as in _S/MIME_ encrypted emails.
+
+The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
 - [Cosmian KMS](#cosmian-kms)
   - [Quick start](#quick-start)
@@ -42,7 +55,6 @@ Keys can be wrapped and unwrapped using RSA, ECIES or RFC5649/AES KWP.
     - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
   - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
   - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-  - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
   - [Server parameters](#server-parameters)
   - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
   - [Releases](#releases)
@@ -100,7 +112,7 @@ The encrypted file is available at "image.enc"
 The decrypted file is available at "image2.png"
 ```
 
-See the [documentation](https://docs.cosmian.com/cosmian_key_management_system/) for more.
+See the [documentation](https://docs.cosmian.com/key_management_system/) for more.
 
 ## Repository content
 
@@ -110,11 +122,16 @@ binaries:
 - A server (`cosmian_kms_server`) which is the KMS itself
 - A CLI (`ckms`) to interact with this server
 
-And also some libraries:
+And also some crates:
 
-- `cosmian_kms_client` to query the server
-- `cosmian_kmip` which is an implementation of the KMIP standard
-- `cosmian_kms_pyo3` a KMS client in Python.
+- `access` to handle permissions
+- `client` to query the server
+- `interfaces` to handle the interfaces with storage and encryption oracles
+- `kmip` which is an implementation of the KMIP standard
+- `server_database` to handle the database
+- `pkcs11_*` to handle PKCS11 support
+- `kms_pyo3` which is a KMS client in Python
+- `kms_test_server` which is a library to instantiate programmatically the KMS server.
 
 **Please refer to the README of the inner directories to have more information.**
 
@@ -238,26 +255,6 @@ cargo run --bin cosmian_kms_server -- \
 --redis-master-password secret --redis-findex-label label
 ```
 
-## Setup as a `Supervisor` service
-
-Supervisor (A Process Control System) is a client/server system that allows its users to monitor and
-control a number of processes on UNIX-like operating systems.
-
-Concerning the KMS, copy the binary `target/release/cosmian_kms_server` to the remote machine folder
-according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (i.e.:
-`/usr/sbin/cosmian_kms_server`).
-
-Copy the [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) config file
-as `/etc/supervisord.d/cosmian_kms.ini` in the remote machine.
-
-Run:
-
-```console
-supervisorctl reload
-supervisorctl start cosmian_kms
-supervisorctl status cosmian_kms
-```
-
 ## Server parameters
 
 If a configuration file is provided, parameters are set following this order:
@@ -273,77 +270,7 @@ Otherwise, the parameters are set following this order:
 
 ## Use the KMS inside a Cosmian VM on SEV/TDX
 
-See [this README](https://github.com/Cosmian/cosmian_vm) for more details about Cosmian VM.
-
-To deploy the KMS inside a Cosmian VM, connect to the VM and follow these steps:
-
-```console
-# Copy from resources/supervisor/cosmian_kms.ini
-$ sudo vi /etc/supervisord.d/cosmian_kms.ini
-
-# Copy the KMS server binary
-$ sudo cp some_location/cosmian_kms_server /usr/sbin/cosmian_kms
-
-# Create a conf file for the KMS (from resources/server.toml)
-# Instead of using default path `/etc/cosmian_kms/server.toml`,
-# we are using a path within LUKS encrypted container
-$ sudo vi /var/lib/cosmian_vm/data/app.conf
-$ sudo export COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app.conf"
-$ sudo supervisorctl reload
-$ sudo supervisorctl start cosmian_kms
-
-# Check logs
-$ sudo tail -f /var/log/cosmian_kms.err.log
-$ sudo tail -f /var/log/cosmian_kms.out.log
-```
-
-Now you can interact with your KMS through the KMS CLI.
-
-You can also interact with the Cosmian VM Agent through its own CLI as follows:
-
-```console
-# From your local machine
-# Snapshot the VM (it could take a while)
-$ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> snapshot
-
-# From time to time, verify it
-$ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> verify --snapshot ./cosmian_vm.snapshot
-Reading the snapshot...
-Fetching the collaterals...
-[ OK ] Verifying TPM attestation
-[ OK ] Verifying VM integrity (against N files)
-[ OK ] Verifying TEE attestation
-```
-
-You can also provide the configuration file of the KMS through the Cosmian VM Agent and let it start
-the KMS.
-
-1. Check that the `/etc/supervisord.d/cosmian_kms.ini` contains the following line:
-   `environment=COSMIAN_KMS_CONF=/var/lib/cosmian_vm/data/app.conf`
-2. Add the following lines in `/etc/cosmian_vm/agent.toml`
-
-```toml
-[app]
-service_type = "supervisor"
-service_app_name = "cosmian_kms"
-app_storage = "data/"
-```
-
-3. Provide the configuration (where `server.toml` is the configuration file of the KMS):
-
-```console
-$ ./cosmian_vm --url https://domain.name:port app init -c server.toml
-Processing init of the deployed app...
-The app has been configured
-```
-
-4. Save the printed key for further use
-5. In case of reboot, you will need to restart the KMS manually by sending the configuration
-   decryption key (the key saved at step 4):
-
-```console
-./cosmian_vm --url https://domain.name:port app restart --key 378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820
-```
+See the [Marketplace guide](./documentation/docs/marketplace_guide.md) for more details about Cosmian VM.
 
 ## Releases
 

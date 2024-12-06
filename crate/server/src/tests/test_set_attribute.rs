@@ -39,7 +39,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_logger::log_utils::log_init;
+use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{

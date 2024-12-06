@@ -3,8 +3,9 @@ use cosmian_kms_client::{
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
     KmsClient,
 };
+use strum::EnumIter;
 
-use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
+pub use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::result::CliResult;
 
 mod decrypt;
@@ -41,10 +42,11 @@ impl SymmetricCommands {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum DataEncryptionAlgorithm {
+#[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq)]
+pub enum DataEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20Poly1305,
+    #[default]
     AesGcm,
     AesXts,
     #[cfg(not(feature = "fips"))]
@@ -79,8 +81,8 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum KeyEncryptionAlgorithm {
+#[derive(ValueEnum, Debug, Clone, Copy, EnumIter)]
+pub enum KeyEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20Poly1305,
     AesGcm,

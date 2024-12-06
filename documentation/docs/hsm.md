@@ -1,5 +1,8 @@
 # HSM Support
 
+The Cosmian KMS can be configured to use Proteccio HSMs to store and manage keys and create KMS keys wrapped by the HSM
+keys. This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
+
 Cosmian KMS natively integrates with
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
 
@@ -43,7 +46,7 @@ create objects on the HSM via the KMIP `Create` operation the delegate other ope
 The `--hsm-slot` and `--hsm-password` arguments are the slot number and password of the HSM slots to be used by the KMS.
 These arguments can be repeated multiple times to specify multiple slots.
 
-If using the TOML configuration file, see this [page](./index.md#toml-configuration-file) for more information on how to
+If using the TOML configuration file, see this [page](./server_cli.md#toml-configuration-file) for more information on how to
 configure the HSM support.
 
 ## HSM operations

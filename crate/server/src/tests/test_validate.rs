@@ -15,7 +15,7 @@ use crate::{
 
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
@@ -104,7 +104,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
     let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
     let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid

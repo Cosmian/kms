@@ -135,7 +135,7 @@ async fn test_certificate_import_different_format() -> CliResult<()> {
     import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/exported_certificate_ttlv.json",
+        key_file: "../../test_data/certificates/exported_certificate_ttlv.json",
         format: &CertificateInputFormat::JsonTtlv,
         pkcs12_password: None,
         certificate_id: None,
@@ -151,7 +151,7 @@ async fn test_certificate_import_different_format() -> CliResult<()> {
     import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/ca.crt",
+        key_file: "../../test_data/certificates/ca.crt",
         format: &CertificateInputFormat::Pem,
         pkcs12_password: None,
         certificate_id: None,
@@ -167,7 +167,7 @@ async fn test_certificate_import_different_format() -> CliResult<()> {
     import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/mozilla_IncludedRootsPEM.txt",
+        key_file: "../../test_data/certificates/mozilla_IncludedRootsPEM.txt",
         format: &CertificateInputFormat::Chain,
         pkcs12_password: None,
         certificate_id: None,
@@ -183,7 +183,7 @@ async fn test_certificate_import_different_format() -> CliResult<()> {
     import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/p12/output.p12",
+        key_file: "../../test_data/certificates/p12/output.p12",
         format: &CertificateInputFormat::Pkcs12,
         pkcs12_password: Some("secret"),
         certificate_id: None,

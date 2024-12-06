@@ -1,8 +1,8 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
-use cosmian_logger::log_utils::log_init;
+use cosmian_kms_client::{write_json_object_to_file, KmsClient, KMS_CLI_CONF_ENV};
+use cosmian_logger::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
     AuthenticationOptions, MainDBConfig, DEFAULT_SQLITE_PATH,
@@ -27,7 +27,7 @@ pub(crate) async fn test_new_database() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_new_database as backend not sqlite-enc");
         return Ok(());
     }
@@ -49,7 +49,7 @@ pub(crate) async fn test_secrets_bad() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_secrets_bad as backend not sqlite-enc");
         return Ok(());
     }
@@ -73,13 +73,16 @@ pub(crate) async fn test_conf_does_not_exist() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_conf_does_not_exist as backend not sqlite-enc");
         return Ok(());
     }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
+    cmd.env(
+        KMS_CLI_CONF_ENV,
+        "../../test_data/configs/kms_bad_group_id.bad",
+    );
 
     cmd.arg("ec").args(vec!["keys", "create"]);
     let output = recover_cmd_logs(&mut cmd);
@@ -92,7 +95,7 @@ pub(crate) async fn test_secrets_key_bad() -> CliResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
 
-    if ctx.owner_client_conf.kms_database_secret.is_none() {
+    if ctx.owner_client_conf.http_config.database_secret.is_none() {
         info!("Skipping test_secrets_key_bad as backend not sqlite-enc");
         return Ok(());
     }
@@ -119,7 +122,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    // since we are going to rewrite the conf, use a different port
+    // since we are going to rewrite the config, use a different port
     let ctx = start_test_server_with_options(
         MainDBConfig {
             database_type: Some("sqlite-enc".to_owned()),
@@ -153,14 +156,12 @@ async fn test_multiple_databases() -> CliResult<()> {
     .unwrap();
 
     // create a new encrypted database
-    let kms_client = ctx
-        .owner_client_conf
-        .initialize_kms_client(None, None, false)?;
-    let new_database_secret = kms_client.new_database().await?;
+    let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
+    let new_database_secret = kms_rest_client.new_database().await?;
 
     // update the CLI conf
     let mut new_conf = ctx.owner_client_conf.clone();
-    new_conf.kms_database_secret = Some(new_database_secret);
+    new_conf.http_config.database_secret = Some(new_database_secret);
     write_json_object_to_file(&new_conf, &ctx.owner_client_conf_path)
         .expect("Can't write the new conf");
 

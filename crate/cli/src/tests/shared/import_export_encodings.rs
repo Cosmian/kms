@@ -16,37 +16,37 @@ async fn test_import_export_encodings() -> CliResult<()> {
 
     test_pems(
         ctx,
-        "test_data/key_encodings/ec_private_key_pkcs8.pem",
+        "../../test_data/key_encodings/ec_private_key_pkcs8.pem",
         ExportKeyFormat::Pkcs8Pem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/ec_private_key_sec1.pem",
+        "../../test_data/key_encodings/ec_private_key_sec1.pem",
         ExportKeyFormat::Sec1Pem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/ec_public_key_spki.pem",
+        "../../test_data/key_encodings/ec_public_key_spki.pem",
         ExportKeyFormat::SpkiPem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/rsa_private_key_pkcs1.pem",
+        "../../test_data/key_encodings/rsa_private_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/rsa_private_key_pkcs8.pem",
+        "../../test_data/key_encodings/rsa_private_key_pkcs8.pem",
         ExportKeyFormat::Pkcs8Pem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/rsa_public_key_pkcs1.pem",
+        "../../test_data/key_encodings/rsa_public_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
     test_pems(
         ctx,
-        "test_data/key_encodings/rsa_public_key_spki.pem",
+        "../../test_data/key_encodings/rsa_public_key_spki.pem",
         ExportKeyFormat::SpkiPem,
     )?;
 

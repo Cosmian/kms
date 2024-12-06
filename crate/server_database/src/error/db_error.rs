@@ -34,7 +34,7 @@ pub enum DbError {
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
 
-    // // When a user requests an item which does not exist
+    // When a user requests an item which does not exist
     #[error("Item not found: {0}")]
     ItemNotFound(String),
 
@@ -178,6 +178,8 @@ impl From<KmipError> for DbError {
             | KmipError::ConversionError(s)
             | KmipError::IndexingSlicing(s)
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
+            KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
+            KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
         }
     }
 }

@@ -20,13 +20,13 @@ For the list of supported key formats, please check the [formats page](./formats
 
 Importing a NIST P-256 EC Private Key in SEC1 format.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-ckms ec keys import crate/cli/test_data/certificates/openssl/prime256v1-private-key.pem --key-format pem
+cosmian kms ec keys import crate/cli/test_data/certificates/openssl/prime256v1-private-key.pem --key-format pem
 ```
 
-The conversion from PEM to DER is done by the `ckms` CLI.
+The conversion from PEM to DER is done by the [Cosmian CLI](../../cosmian_cli/index.md).
 
 In the JSON TTLV requests, please note:
 
@@ -145,13 +145,13 @@ In the JSON TTLV requests, please note:
 
 Importing a RSA 2048 key in PKCS#8 format with tags `MyRSAKey`and `2048`.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms ec keys import crate/cli/test_data/certificates/openssl/rsa-2048-private-key.pem --key-format pem --tag "MyRSAKey" --tag "2048"
+  cosmian kms ec keys import crate/cli/test_data/certificates/openssl/rsa-2048-private-key.pem --key-format pem --tag "MyRSAKey" --tag "2048"
 ```
 
-The conversion from PEM to DER is done by the `ckms` CLI.
+The conversion from PEM to DER is done by the [Cosmian CLI](../../cosmian_cli/index.md).
 
 In the JSON TTLV Request, please note:
 
@@ -273,10 +273,10 @@ In the JSON TTLV Request, please note:
 Importing a wrapped Covercrypt user key after unwrapping it with symmetric key
 `027cced1-ff2b-4bd3-a200-db1041583bdc` using RFC 5649.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-ckms cc keys import /tmp/sym_key.json  -u
+cosmian kms cc keys import /tmp/sym_key.json  -u
 ```
 
 **Note**: the `-u` flag is used to indicate that the key should be unwrapped on import; the JSON file (obtained using the
@@ -587,10 +587,10 @@ In the JSON TTLV request, please note:
 
 Importing a PKCS#12 container containing an EC private key, a certificate and an intermediate certificate.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms certificates import crate/cli/test_data/certificates/p12/output.p12 --tag "MyPKCS12" -f pkcs12 -p secret
+  cosmian kms certificates import crate/cli/test_data/certificates/p12/output.p12 --tag "MyPKCS12" -f pkcs12 -p secret
 ```
 
 In the request, please note:
@@ -740,10 +740,10 @@ In the request, please note:
 
 Importing a X509 certificate.  The certificate must be imported an X509, DER encoded.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  ckms certificates import --tag "MyImportedCert" crate/cli/test_data/certificates/ca.crt -f pem
+  cosmian kms certificates import --tag "MyImportedCert" crate/cli/test_data/certificates/ca.crt -f pem
 ```
 
 The conversion from PEM to DER is done by the CLI.

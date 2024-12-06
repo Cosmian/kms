@@ -107,14 +107,14 @@ mod tests {
     use serial_test::serial;
     use tracing::trace;
 
-    use crate::{log_utils::log_init, result::KResult};
+    use crate::{log_init, result::KResult};
 
     const REDIS_URL: &str = "redis://localhost:6379";
 
     #[actix_web::test]
     #[serial]
     pub async fn test_async_transaction() -> KResult<()> {
-        cosmian_logger::log_utils::log_init(Some("test_permissions_db=info"));
+        cosmian_logger::log_init(Some("test_permissions_db=info"));
         trace!("test_permissions_db");
 
         let client = redis::Client::open(REDIS_URL)?;

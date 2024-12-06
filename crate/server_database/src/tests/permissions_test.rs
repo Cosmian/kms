@@ -11,7 +11,7 @@ use crate::{
 pub(crate) async fn permissions<DB: ObjectsStore + PermissionsStore>(
     db_and_params: &(DB, Option<ExtraStoreParams>),
 ) -> DbResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     permissions_users(db_and_params).await?;
     permissions_wildcard(db_and_params).await?;
     Ok(())
@@ -20,7 +20,7 @@ pub(crate) async fn permissions<DB: ObjectsStore + PermissionsStore>(
 async fn permissions_users<DB: ObjectsStore + PermissionsStore>(
     db_and_params: &(DB, Option<ExtraStoreParams>),
 ) -> DbResult<()> {
-    cosmian_logger::log_utils::log_init(None);
+    cosmian_logger::log_init(None);
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 

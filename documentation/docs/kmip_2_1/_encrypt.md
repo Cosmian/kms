@@ -29,10 +29,10 @@ To see the list of supported cryptographic algorithms, please refer to [Supporte
 Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)
 to see how to create the symmetric key).
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-ckms sym encrypt -k 027cced1-ff2b-4bd3-a200-db1041583bd /tmp/hello_world.txt
+cosmian kms sym encrypt -k 027cced1-ff2b-4bd3-a200-db1041583bd /tmp/hello_world.txt
 ```
 
 *Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
@@ -102,10 +102,10 @@ Please note that the response contains:
 Encrypting the text `Hello, world!` with the Covercrypt master public key `0fd1f684-156c-4ca6-adc2-0a6f4b620463`
 (go to  [Create Key Pair](./_create_key_pair.md) to see how to create the mater key pair) and attributes `Security Level::Confidential && Department::FIN`.
 
-Corresponding `ckms` CLI command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-ckms cc encrypt -k 0fd1f684-156c-4ca6-adc2-0a6f4b620463 \
+cosmian kms cc encrypt -k 0fd1f684-156c-4ca6-adc2-0a6f4b620463 \
  /tmp/hello_world.txt "Security Level::Confidential && Department::FIN"
 ```
 
