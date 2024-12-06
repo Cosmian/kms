@@ -65,7 +65,7 @@ docker run --rm -p 9998:9998 \
         The secret is the value between the quotes `""`.
 
     Warning:
-    
+
         - This secret is only displayed **once** and is **not stored** anywhere on the server.
         - Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
 
