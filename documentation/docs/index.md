@@ -18,7 +18,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
   and [LUKS](./pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./fips.md) mode gated behind the feature `fips`
 - a [JSON KMIP 2.1](./kmip_2_1/index.md) compliant interface
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli)
+- a full-featured client [command line and graphical interface](../cosmian_cli/index.md)
 - a [high-availability mode](./high_availability_mode.md) with simple horizontal scaling
 - a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
@@ -48,14 +48,14 @@ The **Cosmian KMS** is packaged as:
 ## Client CLI
 
 The **Cosmian KMS** has an easy-to-use client command line interface built for many operating systems.
-The [Cosmian CLI](/cosmian_cli) can manage the server, and the keys and perform operations such as encryption or decryption.
+The [Cosmian CLI](../cosmian_cli/index.md) can manage the server, and the keys and perform operations such as encryption or decryption.
 
-The **[Cosmian CLI](/cosmian_cli)** is packaged as:
+The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
 - [Debian](https://package.cosmian.com/kms/4.20.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.20.0/rhel9/) package
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 
-**Note:** `ckms` has been replaced by [Cosmian CLI](/cosmian_cli) to manage other Cosmian products.
+**Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.
 
 !!! info "Quick start"
 
@@ -66,7 +66,7 @@ The **[Cosmian CLI](/cosmian_cli)** is packaged as:
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
     ```
 
-    Using [Cosmian CLI](/cosmian_cli), you can easily manage the server:
+    Using [Cosmian CLI](../cosmian_cli/index.md), you can easily manage the server:
 
     1) Create a 256-bit symmetric key
 
@@ -91,4 +91,3 @@ The **[Cosmian CLI](/cosmian_cli)** is packaged as:
     ...
     The decrypted file is available at "image2.png"
     ```
-

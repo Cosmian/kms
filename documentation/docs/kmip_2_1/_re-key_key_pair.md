@@ -34,7 +34,7 @@ The operation has currently no other usages on the Cosmian server.
 
 ### Example - Rotate the `Security Level::Confidential` attribute
 
-Corresponding [Cosmian CLI](/cosmian_cli) command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
 cosmian kms cc rotate -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"

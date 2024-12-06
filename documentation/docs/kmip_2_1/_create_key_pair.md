@@ -31,7 +31,7 @@ Please note:
 - The `CryptographicAlgorithm` is set to `ECDH`.
 - The `RecommendedCurve` is set to `CURVE25519`.
 
-Corresponding [Cosmian CLI](/cosmian_cli) command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
 cosmian kms ec keys create
@@ -150,7 +150,7 @@ cosmian kms ec keys create
 Creating a Covercrypt master key pair with the following policy specifications which is hex-encoded before being
 added to the KMIP request.
 
-**Note**: it is much easier to use the [Cosmian CLI](/cosmian_cli) to create Covercrypt master keys where a simple
+**Note**: it is much easier to use the [Cosmian CLI](../../cosmian_cli/index.md) to create Covercrypt master keys where a simple
 specification file can be used. Use the [debug mode](./json_ttlv_api.md) to get the hex-encoded policy from the
 specifications.
 
@@ -246,7 +246,7 @@ The policy to hex-encode to the call will be:
 }
 ```
 
-Corresponding [Cosmian CLI](/cosmian_cli) command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
 cosmian kms cc keys create-master-key-pair -s policy_specifications.json

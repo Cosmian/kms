@@ -8,7 +8,7 @@ Please first read the guide about how to setup a Cosmian VM.
 
 The following steps can help one to deploy its own instance on each available cloud provider.
 
-Please first read the guide about [how to setup a Cosmian VM](/compute/cosmian_vm/deployment_guide).
+Please first read the guide about [how to setup a Cosmian VM](../cosmian_vm/deployment_guide.md).
 
 ## Deploy Cosmian VM KMS on a cloud provider
 
@@ -98,9 +98,7 @@ As explained previously, it is safe to provide secrets (such as passwords) in th
 
 ### Use Cosmian VM CLI to send securely the new KMS configuration
 
-Cosmian VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker)
-
-{!./compute/cosmian_vm/cli_installation.md!}
+Cosmian VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker). Please follow the [installation instructions](../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli).
 
 ### Deploy the configuration and starts the Cosmian KMS
 
@@ -125,7 +123,7 @@ $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
 
     These certificates must be replaced by trusted ones using tools like `cosmian_certtool` or Linux tools (`certbot` with **Let's Encrypt** for instance).
 
-    See [how to setup trusted certificates](/cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
+    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md/#configure-https-with-your-own-domain).
 
 ## Snapshot the VM 📸
 
@@ -137,4 +135,4 @@ Wait for the agent to initialize the LUKS and generate the certificates. This is
 
 ## Verify the Cosmian VM KMS integrity ✅
 
-Verifying trustworthiness of the Cosmian VM KMS is exactly the same process as [verifying the Cosmian VM](/compute/cosmian_vm/overview/) itself.
+Verifying trustworthiness of the Cosmian VM KMS is exactly the same process as [verifying the Cosmian VM](../cosmian_vm/overview.md) itself.

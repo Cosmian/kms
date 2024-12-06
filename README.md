@@ -23,7 +23,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli)
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
 - a [high-availability mode](./documentation/docs/high_availability_mode.md) with simple horizontal scaling
 - a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))

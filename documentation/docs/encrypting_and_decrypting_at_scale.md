@@ -106,9 +106,9 @@ Hence, to encrypt 5 million messages on 10 core machines, 50 requests of 100,000
 should be sent in parallel. On a standard server CPU, the total processing time should be around 8
 seconds, excluding network latency.
 
-## Using the [Cosmian CLI](/cosmian_cli) client
+## Using the [Cosmian CLI](../cosmian_cli/index.md) client
 
-The [Cosmian CLI](/cosmian_cli) client can be used to encrypt and decrypt data locally, including large files.
+The [Cosmian CLI](../cosmian_cli/index.md) client can be used to encrypt and decrypt data locally, including large files.
 
 Encryption can be performed in two modes:
 
@@ -121,7 +121,7 @@ Encryption can be performed in two modes:
 ### Server side encryption and decryption
 
 When using server side encryption or decryption, the file content is sent to the server. To use
-this method use the `encrypt` or `decrypt` command of the [Cosmian CLI](/cosmian_cli) client WITHOUT specifying a
+this method use the `encrypt` or `decrypt` command of the [Cosmian CLI](../cosmian_cli/index.md) client WITHOUT specifying a
 `--key-encryption-algorithm` option.
 
 Say, the KMS holds a 256-bit AES key with the ID `43d28ec7-7438-4d2c-a1a0-00379fa4fe5d`

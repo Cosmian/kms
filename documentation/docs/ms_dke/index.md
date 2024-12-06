@@ -70,7 +70,7 @@ corresponding entry in the server TOML configuration file.
 
 #### Create an RSA key with tag `dke_key`
 
-Using the [Cosmian CLI](/cosmian_cli), create a 2048-bit RSA key with the tag `dke_key`:
+Using the [Cosmian CLI](../../cosmian_cli/index.md), create a 2048-bit RSA key with the tag `dke_key`:
 
 ```shell
 cosmian kms rsa keys create --tag dke_key --size_in_bits 2048
@@ -81,7 +81,7 @@ compliance portal. See [Create a sensitivity label for encryption](#create-a-sen
 
 #### Rotate the DKE key
 
-If later on you need to rotate the DKE key, you can use the [Cosmian CLI](/cosmian_cli) to create a new key with a new tag.
+If later on you need to rotate the DKE key, you can use the [Cosmian CLI](../../cosmian_cli/index.md) to create a new key with a new tag.
 You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
 

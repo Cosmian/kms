@@ -20,7 +20,7 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](/cosmian_cli).
+The PKCS#11 provider library uses the same configuration file as the [CLI](../../cosmian_cli/index.md).
 
 See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
 to learn
@@ -39,7 +39,7 @@ PKCS#12 file for authentication.
 }
 ```
 
-To use Open ID connect, install the [Cosmian CLI](/cosmian_cli) from https://package.cosmian.com/kms/ and
+To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from https://package.cosmian.com/kms/ and
 use the `cosmian kms login` command to authenticate to the KMS first.
 
 ## Creating keys to use with Veracrypt

@@ -82,7 +82,7 @@ The JWT token should contain the following claims:
 - `iat`: The time the token was issued. This should be a timestamp in the past.
 
 On the `cosmian` command line interface, the token is configured in the client configuration. Please
-refer to the [Cosmian CLI](/cosmian_cli) for more details.
+refer to the [Cosmian CLI](../cosmian_cli/index.md) for more details.
 
 ### Configuring the KMS server for JWT authentication
 

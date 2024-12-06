@@ -1,6 +1,6 @@
 # Comprehensive inline help
 
-Just like the [Cosmian CLI](/cosmian_cli), the KMS server has a built-in help
+Just like the [Cosmian CLI](../cosmian_cli/index.md), the KMS server has a built-in help
 system that can be accessed using the `--help` command line option.
 
 ```sh

@@ -27,7 +27,7 @@ Instead of using the UID of the key, we can use the unique tag of the key `MySym
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-Corresponding [Cosmian CLI](/cosmian_cli) command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
 cosmian kms sym decrypt /tmp/encrypted.bin -t MySymmetricKey
@@ -105,7 +105,7 @@ Instead of using the UID of the key, we can use the unique tag of the key `MyUse
 identified. It is possible to use multiple tags to identify a key; for instance Covercrypt user decryption keys
 automatically get a *system* tag `_uk`. See [tagging](./tagging.md) for more information on tags.
 
-Corresponding [Cosmian CLI](/cosmian_cli) command:
+Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
 cosmian kms cc decrypt /tmp/encrypted.bin  -t MyUserKey

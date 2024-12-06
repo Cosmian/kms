@@ -12,4 +12,4 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
       In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
       objects to all users.
 
-To manage access rights, the user can call the following endpoints or use the [Cosmian CLI](/cosmian_cli).
+To manage access rights, the user can call the following endpoints or use the [Cosmian CLI](../cosmian_cli/index.md).

@@ -101,7 +101,7 @@ ckms_pkcs11: /usr/local/lib/libckms_pkcs11.so
 ## Configuring the access to the KMS
 
 The PKCS#11 module uses the same configuration file as
-the [CLI](/cosmian_cli).
+the [CLI](../../cosmian_cli/index.md).
 Since it may be run as a system user, the configuration file should be made available
 in `/etc/cosmian/kms.json`.
 
@@ -119,7 +119,7 @@ PKCS#12 file for authentication.
 }
 ```
 
-To use Open ID connect, install the [Cosmian CLI](/cosmian_cli) from
+To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from
 [Cosmian packages](https://package.cosmian.com/kms/) and
 use the `cosmian kms login` command to authenticate to the KMS first.
 
