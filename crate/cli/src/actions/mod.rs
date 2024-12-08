@@ -1,5 +1,6 @@
 pub mod access;
 pub mod attributes;
+pub mod bench;
 pub mod certificates;
 pub mod console;
 #[cfg(not(feature = "fips"))]

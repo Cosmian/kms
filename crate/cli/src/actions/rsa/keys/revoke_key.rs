@@ -14,17 +14,17 @@ use crate::{actions::shared::utils::revoke, cli_bail, error::result::CliResult};
 pub struct RevokeKeyAction {
     /// The reason for the revocation as a string
     #[clap(required = true)]
-    revocation_reason: String,
+    pub(crate) revocation_reason: String,
 
     /// The key unique identifier of the key to revoke.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
-    key_id: Option<String>,
+    pub(crate) key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
-    tags: Option<Vec<String>>,
+    pub(crate) tags: Option<Vec<String>>,
 }
 
 impl RevokeKeyAction {

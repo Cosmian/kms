@@ -10,9 +10,9 @@ use cosmian_kms_client::{
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::result::CliResult;
 
-mod decrypt;
-mod encrypt;
-mod keys;
+pub mod decrypt;
+pub mod encrypt;
+pub mod keys;
 
 /// Manage RSA keys. Encrypt and decrypt data using RSA keys.
 #[derive(Parser)]

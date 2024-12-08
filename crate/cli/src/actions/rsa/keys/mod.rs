@@ -10,9 +10,9 @@ use crate::{
     error::result::CliResult,
 };
 
-mod create_key_pair;
-mod destroy_key;
-mod revoke_key;
+pub mod create_key_pair;
+pub mod destroy_key;
+pub mod revoke_key;
 
 /// Create, destroy, import, and export RSA key pairs
 #[derive(Subcommand)]
@@ -29,13 +29,27 @@ pub enum KeysCommands {
 impl KeysCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::Create(action) => action.run(kms_rest_client).await?,
-            Self::Export(action) => action.run(kms_rest_client).await?,
-            Self::Import(action) => action.run(kms_rest_client).await?,
-            Self::Wrap(action) => action.run(kms_rest_client).await?,
-            Self::Unwrap(action) => action.run(kms_rest_client).await?,
-            Self::Revoke(action) => action.run(kms_rest_client).await?,
-            Self::Destroy(action) => action.run(kms_rest_client).await?,
+            Self::Create(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Export(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Import(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Wrap(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Unwrap(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Revoke(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Destroy(action) => {
+                action.run(kms_rest_client).await?;
+            }
         };
 
         Ok(())

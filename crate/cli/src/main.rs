@@ -1,15 +1,15 @@
-use std::{path::PathBuf, process};
+use std::{path::PathBuf, process, sync::Arc};
 
 use clap::{CommandFactory, Parser, Subcommand};
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_cli::actions::cover_crypt::CovercryptCommands;
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, attributes::AttributesCommands, certificates::CertificatesCommands,
-        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, login::LoginAction,
-        logout::LogoutAction, markdown::MarkdownAction, new_database::NewDatabaseAction,
-        rsa::RsaCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        access::AccessAction, attributes::AttributesCommands, bench::BenchAction,
+        certificates::CertificatesCommands, elliptic_curves::EllipticCurveCommands,
+        google::GoogleCommands, login::LoginAction, logout::LogoutAction, markdown::MarkdownAction,
+        new_database::NewDatabaseAction, rsa::RsaCommands, shared::LocateObjectsAction,
+        symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::CliResult,
 };
@@ -75,6 +75,9 @@ enum CliCommands {
     #[clap(hide = true)]
     Markdown(MarkdownAction),
 
+    #[clap(hide = true)]
+    Bench(BenchAction),
+
     #[command(subcommand)]
     Google(GoogleCommands),
 }
@@ -124,6 +127,7 @@ async fn main_() -> CliResult<()> {
                 CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Attributes(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Google(action) => action.process(&conf_path, &kms_rest_client).await?,
+                CliCommands::Bench(action) => action.process(Arc::new(kms_rest_client)).await?,
                 _ => {
                     tracing::error!("unexpected command");
                 }
