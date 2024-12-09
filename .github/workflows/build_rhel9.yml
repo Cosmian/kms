@@ -1,0 +1,110 @@
+---
+name: RHEL
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+      debug_or_release:
+        required: true
+        type: string
+
+env:
+  OPENSSL_DIR: /usr/local/openssl
+
+jobs:
+  rhel9-tests:
+    name: ${{ inputs.archive-name }}
+    runs-on: ubuntu-22.04
+    container:
+      image: rockylinux:9.3
+
+    steps:
+      - name: Display cpuinfo
+        run: cat /proc/cpuinfo
+
+      - uses: actions/checkout@v3
+
+      - name: RHEL 9 prerequisites
+        run: |
+          set -x
+
+          yum -y install glib2-devel gtk3-devel atk-devel
+          yum -y install python-devel
+          yum -y install wget
+          yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Local OpenSSL FIPS Install
+        run: |
+          bash .github/scripts/get_openssl_binaries.sh
+        env:
+          OS_NAME: ubuntu_22_04
+
+      - name: Build and tests
+        env:
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          TARGET: ${{ inputs.target }}
+          DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
+          SKIP_SERVICES_TESTS: --skip test_encrypt --skip test_create
+        run: |
+          bash .github/scripts/cargo_build.sh
+
+      - name: Remove large files before saving cache
+        run: |
+          find target/ -type f -size ++100M -delete
+
+      - name: Upload CLI for RHEL 9
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_gui
+            target/${{ inputs.target }}/generate-rpm/cosmian_*
+          retention-days: 1
+          if-no-files-found: error
+
+  cli-test:
+    needs: rhel9-tests
+    name: Clean env test ${{ inputs.archive-name }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - run: find .
+        if: contains(runner.os, 'linux')
+
+      - name: Linux launch cosmian and cosmian_gui
+        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+        run: |
+          set -ex
+          # The current path should be /home/runner/work/cli/cli
+          pwd
+          find . -type f
+          chmod u+x ./${{ inputs.debug_or_release }}/cosmian
+          chmod u+x ./${{ inputs.debug_or_release }}/cosmian_gui
+
+          ./${{ inputs.debug_or_release }}/cosmian -V
+          ./${{ inputs.debug_or_release }}/cosmian_gui -V

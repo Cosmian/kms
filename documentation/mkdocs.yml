@@ -1,0 +1,60 @@
+---
+site_name: Cosmian CLI
+site_url: https://docs.cosmian.com/
+copyright: © Copyright 2018-2024 Cosmian. All rights reserved
+dev_addr: localhost:8003
+theme:
+  name: material
+  language: en
+  font:
+    text: Open Sans
+  favicon: favicon.png
+  logo: images/docslogo-2x.png
+  custom_dir: theme_overrides
+  features:
+    - content.tabs.link
+extra:
+  homepage: https://docs.cosmian.com/
+markdown_extensions:
+  - tables
+  - smarty
+  - abbr
+  - admonition
+  - toc:
+      permalink: true
+      baselevel: 1
+  - pymdownx.superfences:
+      # make exceptions to highlighting of code:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          # uncomment this only to test locally the mermaid rendering
+          # format: !%21python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji
+  - pymdownx.details
+  - pymdownx.arithmatex
+  - pymdownx.tasklist
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - attr_list
+  - markdown_katex:
+      no_inline_svg: true
+      insert_fonts_css: true
+  - markdown_include.include:
+      base_path: docs
+      inheritHeadingDepth: true
+plugins:
+  - search
+  - mermaid2
+  - kroki
+  - meta-descriptions
+nav:
+  - Getting started: index.md
+  - Installation: installation.md
+  - Configuration:
+      - TOML format: configuration.md
+      - Authorizing users with access rights: authorization.md
+      - Usage: usage.md
+  - User manual: cli/main_commands.md

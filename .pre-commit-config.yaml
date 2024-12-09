@@ -1,0 +1,137 @@
+---
+# Pre-requisites:
+# pip install pre-commit conventional-pre-commit
+# pre-commit install
+# pre-commit install --install-hooks -t commit-msg
+# pre-commit autoupdate
+
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+exclude: test_data|documentation/pandoc
+repos:
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.42.0
+    hooks:
+      - id: markdownlint-fix
+        args: [--disable=MD004, --disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046, --fix]
+        exclude: documentation/docs
+
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.12.2
+    hooks:
+      - id: markdown-link-check
+        args: [-q]
+        exclude: documentation/docs/ms_dke/ms_dke.md
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+    rev: 0.2.3
+    hooks:
+      - id: yamlfmt
+        args: [--mapping, '2', --sequence, '4', --offset, '2']
+        exclude: ansible
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.25.0
+    hooks:
+      - id: typos
+        exclude: documentation/docs/images
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      - id: forbid-crlf
+      - id: remove-crlf
+      - id: forbid-tabs
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+      - id: remove-tabs
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+
+  - repo: https://github.com/sirosen/texthooks
+    rev: 0.6.7
+    hooks:
+      - id: fix-smartquotes
+      - id: fix-ligatures
+      - id: fix-spaces
+        exclude: documentation/docs/images/google_cse.drawio.svg
+      - id: forbid-bidi-controls
+      - id: macro-expand
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-ast
+      - id: check-byte-order-marker
+      - id: check-builtin-literals
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+      - id: check-xml
+      - id: check-yaml
+      - id: debug-statements
+      - id: destroyed-symlinks
+      - id: detect-private-key
+        exclude: documentation/docs
+      - id: double-quote-string-fixer
+      - id: end-of-file-fixer
+        exclude: documentation/docs/cli/main_commands.md|documentation/docs
+      - id: file-contents-sorter
+      - id: fix-byte-order-marker
+      - id: fix-encoding-pragma
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: name-tests-test
+      - id: requirements-txt-fixer
+      - id: sort-simple-yaml
+      - id: trailing-whitespace
+        exclude: crate/kmip/src/kmip/extra/x509_extensions.rs
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        # avoid clash with `double-quote-string-fixer`
+        args: [--skip-string-normalization]
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.33
+    hooks:
+      - id: cargo-format
+      # - id: dprint-toml-fix
+      # - id: cargo-upgrade
+      # - id: cargo-update
+      - id: cargo-machete
+      - id: cargo-build-all
+      - id: renew-cosmian-markdown
+      - id: docker-compose-up
+      - id: cargo-test
+        args: [--, --skip, test_wrap_auth, --skip, google_cse]
+      - id: clippy-autofix-unreachable-pub
+      - id: clippy-autofix-all-targets-all-features
+      - id: clippy-autofix-all-targets
+      - id: clippy-all-targets-all-features
+      - id: clippy-all-targets
+      - id: cargo-format # in last du to clippy fixes
+      - id: docker-compose-down
+
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.16.1 # choose your preferred tag
+    hooks:
+      - id: cargo-deny
+        args: [--all-features, check]

@@ -1,0 +1,54 @@
+# Specifies which edition is used by the parser.
+# Default value: "2015"
+edition = "2021"
+
+# How imports should be grouped into use statements. Imports will be merged or split to the configured level of granularity.
+# Default value: Preserve
+imports_granularity = "Crate"
+
+# Format the metavariable matching patterns in macros.
+# Default value: false
+format_macro_matchers = true
+
+# Format string literals where necessary
+# Default value: false
+format_strings = true
+
+# Break comments to fit on the line
+# Default value: false
+# Possible values: true, false
+# wrap_comments = true
+
+# Convert /* */ comments to // comments where possible
+# Default value: false
+# Possible values: true, false
+# normalize_comments = true
+
+# Reorder impl items. type and const are put first, then macros and methods.
+# Default value: false
+reorder_impl_items = true
+
+# Controls the strategy for how imports are grouped together.
+# Default value: Preserve
+group_imports = "StdExternalCrate"
+
+# Add trailing semicolon after break, continue and return
+# Default value: true
+trailing_semicolon = false
+
+# Enable unstable features on the unstable channel.
+# Default value: false
+unstable_features = true
+
+# Use field initialize shorthand if possible.
+# Default value: false
+use_field_init_shorthand = true
+
+# Which version of the formatting rules to use. Version::One is backwards-compatible with Rustfmt 1.0. Other versions are only backwards compatible within a major version number.
+# Default value: "One"
+version = "Two"
+
+# The following rust files listing have been made in october 2021.
+# This listing allows us first to ignore all rust files formmatting.
+# Then we can remove progressively from this list the files we want to format
+ignore = []
