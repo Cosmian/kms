@@ -56,6 +56,22 @@ impl Default for CreateKeyPairAction {
 }
 
 impl CreateKeyPairAction {
+    /// Run the create key pair action
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to perform the key pair creation.
+    ///
+    /// # Results
+    ///
+    /// This function returns a `CliResult<(UniqueIdentifier, UniqueIdentifier)>` indicating the success or failure of the key pair creation action.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The key pair request cannot be built.
+    /// * The KMS server query fails.
+    /// * The key pair unique identifiers are empty.
     pub async fn run(
         &self,
         kms_rest_client: &KmsClient,

@@ -76,6 +76,8 @@ pub struct BenchAction {
 
 impl BenchAction {
     /// Run the tests
+    /// # Errors
+    /// Returns an error if the server is not reachable or if the keys can't be created.
     #[allow(clippy::print_stdout)]
     pub async fn process(&self, kms_rest_client: Arc<KmsClient>) -> CliResult<()> {
         let version = kms_rest_client
@@ -99,7 +101,7 @@ impl BenchAction {
             .grouping(Grouping::Standard)
             .separator(" ")
             .build()
-            .unwrap();
+            .map_err(|e| CliError::Default(format!("Failed to create the formatter: {e}")))?;
 
         // the data to encrypt
         let data = if self.batch_size == 1 {

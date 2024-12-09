@@ -26,6 +26,22 @@ pub struct DestroyKeyAction {
 }
 
 impl DestroyKeyAction {
+    /// Run the destroy key action
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to perform the key destruction.
+    ///
+    /// # Results
+    ///
+    /// This function returns a `CliResult<()>` indicating the success or failure of the key destruction action.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * Neither `key_id` nor `tags` are specified.
+    /// * The key destruction request fails.
+    /// * The KMS server query fails.
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()

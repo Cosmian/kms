@@ -27,6 +27,21 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
+    /// Process the key command
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to perform the key operations.
+    ///
+    /// # Results
+    ///
+    /// This function returns a `CliResult<()>` indicating the success or failure of the key command processing.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The specific key action fails.
+    /// * The KMS server query fails.
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Create(action) => {
