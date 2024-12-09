@@ -122,7 +122,7 @@ pub(crate) fn generate_key_pair_and_tags(
     let sensitive = request
         .private_key_attributes
         .as_ref()
-        .map_or(false, |attr| attr.sensitive)
+        .is_some_and(|attr| attr.sensitive)
         || common_attributes.sensitive;
     // Grab whatever attributes were supplied on the  create request.
     let any_attributes = Some(&common_attributes)

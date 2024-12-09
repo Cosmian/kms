@@ -76,6 +76,31 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
+    /// Runs the decryption process.
+    ///
+    /// This function performs the following steps:
+    /// 1. Reads the file to decrypt.
+    /// 2. Recovers the unique identifier or set of tags for the key.
+    /// 3. Creates the KMIP decryption request.
+    /// 4. Queries the KMS with the KMIP data and retrieves the plaintext.
+    /// 5. Writes the decrypted file to the specified output path.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client.
+    ///
+    /// # Returns
+    ///
+    /// * `CliResult<()>` - The result of the decryption process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The file to decrypt cannot be read.
+    /// * Neither `--key-id` nor `--tag` is specified.
+    /// * The KMIP decryption request cannot be created.
+    /// * The KMS query fails.
+    /// * The decrypted file cannot be written.
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file to decrypt
         let data = read_bytes_from_file(&self.input_file)

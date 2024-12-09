@@ -20,7 +20,7 @@ async fn test_get_attributes_p12() -> CliResult<()> {
     let imported_p12_sk_uid = import_certificate(ImportCertificateInput {
         cli_conf_path: &ctx.owner_client_conf_path,
         sub_command: "certificates",
-        key_file: "test_data/certificates/csr/intermediate.p12",
+        key_file: "../../test_data/certificates/csr/intermediate.p12",
         format: &CertificateInputFormat::Pkcs12,
         pkcs12_password: Some("secret"),
         certificate_id: Some("get_attributes_test_p12_cert".to_string()),

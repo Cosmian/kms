@@ -20,7 +20,7 @@ const NUM_MESSAGES: usize = 1000;
 
 #[tokio::test]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
-    cosmian_logger::log_utils::log_init(option_env!("RUST_LOG"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None).await;
 
     let response: CreateResponse =

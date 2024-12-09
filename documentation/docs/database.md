@@ -11,7 +11,7 @@ Redis-with-Findex is most useful when:
 - KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
 - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
-Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
+Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./marketplace_guide.md).
 
 ## Configuring the database
 
@@ -27,7 +27,7 @@ For
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.20.0 \
+  --name kms ghcr.io/cosmian/kms:4.20.1 \
   --database-type=postgresql \
   --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
 ```
@@ -36,7 +36,7 @@ docker run --rm -p 9998:9998 \
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.20.0 \
+  --name kms ghcr.io/cosmian/kms:4.20.1 \
   --database-type=mysql \
   --database-url=mysql://kms_user:kms_password@mariadb:3306/kms
 ```
@@ -50,7 +50,7 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.20.0 \
+  --name kms ghcr.io/cosmian/kms:4.20.1 \
   --database-type=redis-findex \
   --database-url=redis://localhost:6379 \
   --redis-master-password password \
@@ -87,7 +87,7 @@ Say the certificate is called `cert.p12` and is in a directory called `/certific
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.20.0 \
+  --name kms ghcr.io/cosmian/kms:4.20.1 \
   -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \

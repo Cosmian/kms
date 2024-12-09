@@ -1,7 +1,7 @@
 The server can serve requests using either plaintext HTTP or HTTPS.
 
 When running in a zero-trust environment, the KMS server should be started using HTTPS.
-Check the [running in a zero-trust environment](./zero_trust.md) section for more information.
+Check the [running in a zero-trust environment](./marketplace_guide.md) section for more information.
 
 To enable TLS, one can provide certificates on the command line interface.
 
@@ -23,7 +23,7 @@ Say the certificate is called `server.mydomain.com.p12`, is protected by the pas
 ```sh
 docker run --rm -p 443:9998 \
   -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:4.20.0 \
+  --name kms ghcr.io/cosmian/kms:4.20.1 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
   --https-p12-file=server.mydomain.com.p12 \

@@ -17,8 +17,8 @@ thiserror = { workspace = true }
 zeroize = { workspace = true, default-features = true }
 
 [dev-dependencies]
-cosmian_logger = { path = "../logger" }
-tempfile = "3.11"
-tracing-subscriber = { version = "0.3.18", default-features = false, features = [
+cosmian_logger = { workspace = true }
+tempfile = "3.14"
+tracing-subscriber = { workspace = true, default-features = false, features = [
   "env-filter",
 ] }

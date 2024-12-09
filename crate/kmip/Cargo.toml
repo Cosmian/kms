@@ -33,7 +33,7 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cloudproof = { workspace = true }
-cosmian_logger = { path = "../logger" }
+cosmian_logger = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

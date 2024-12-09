@@ -4,10 +4,10 @@
 - [Benchmarks on a 32 core CPU](#benchmarks-on-a-32-core-cpu)
   - [Notes](#notes)
   - [Concurrent Encryption/decryption requests per 32 core CPU](#concurrent-encryptiondecryption-requests-per-32-core-cpu)
-    - [AES GCM - plaintext of 64 bytes](#aes-gcm---plaintext-of-64-bytes)
-    - [RSA AES KEY WRAP - plaintext of 32 bytes](#rsa-aes-key-wrap---plaintext-of-32-bytes)
-    - [RSA PKCSv1.5 - plaintext of 32 bytes](#rsa-pkcsv15---plaintext-of-32-bytes)
-    - [RSA OAEP - plaintext of 32 bytes](#rsa-oaep---plaintext-of-32-bytes)
+    - [AES GCM](#aes-gcm)
+    - [RSA AES KEY WRAP](#rsa-aes-key-wrap)
+    - [RSA PKCSv1.5](#rsa-pkcsv15)
+    - [RSA OAEP](#rsa-oaep)
   - [VM capacity](#vm-capacity)
     - [Machine Details](#machine-details)
 
@@ -17,7 +17,9 @@
 
 ## Concurrent Encryption/decryption requests per 32 core CPU
 
-### AES GCM - plaintext of 64 bytes
+### AES GCM
+
+Plaintext of 64 bytes.
 
 |                     | `128-bit key encrypt` | `128-bit key decrypt` | `256-bit key encrypt` | `256-bit key decrypt` |
 | :------------------ | :-------------------- | :-------------------- | :-------------------- | :-------------------- |
@@ -28,7 +30,9 @@
 | **`500 requests`**  | `1.57 ms`             | `1.40 ms`             | `1.59 ms`             | `1.36 ms`             |
 | **`1000 requests`** | `3.02 ms`             | `2.52 ms`             | `2.97 ms`             | `2.57 ms`             |
 
-### RSA AES KEY WRAP - plaintext of 32 bytes
+### RSA AES KEY WRAP
+
+Plaintext of 32 bytes
 
 |                     | `2048-bit key encrypt` | `2048-bit key decrypt` | `4096-bit key encrypt` | `4096-bit key decrypt` |
 | :------------------ | :--------------------- | :--------------------- | :--------------------- | :--------------------- |
@@ -39,7 +43,9 @@
 | **`500 requests`**  | `36.39 ms`             | `315.27 ms`            | `57.21 ms`             | `1.69 s`               |
 | **`1000 requests`** | `73.79 ms`             | `625.05 ms`            | `124.43 ms`            | `3.56 s`               |
 
-### RSA PKCSv1.5 - plaintext of 32 bytes
+### RSA PKCSv1.5
+
+Plaintext of 32 bytes.
 
 |                     | `2048-bit key encrypt` | `2048-bit key decrypt` | `4096-bit key encrypt` | `4096-bit key decrypt` |
 | :------------------ | :--------------------- | :--------------------- | :--------------------- | :--------------------- |
@@ -50,7 +56,9 @@
 | **`500 requests`**  | `33.35 ms`             | `312.68 ms`            | `54.41 ms`             | `1.75 s`               |
 | **`1000 requests`** | `68.57 ms`             | `616.46 ms`            | `109.11 ms`            | `3.40 s`               |
 
-### RSA OAEP - plaintext of 32 bytes
+### RSA OAEP
+
+Plaintext of 32 bytes.
 
 |                     | `2048-bit key encrypt` | `2048-bit key decrypt` | `4096-bit key encrypt` | `4096-bit key decrypt` |
 | :------------------ | :--------------------- | :--------------------- | :--------------------- | :--------------------- |

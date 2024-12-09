@@ -321,7 +321,7 @@ pub(crate) async fn validate_tokens(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_logger::log_utils::log_init;
+    use cosmian_logger::log_init;
     use tracing::{debug, info, trace};
 
     use crate::{

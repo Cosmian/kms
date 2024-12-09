@@ -26,8 +26,8 @@ use cosmian_kmip::{
         KmipOperation,
     },
 };
-use cosmian_kms_client::access::{Access, SuccessResponse};
-use cosmian_logger::log_utils::log_init;
+use cosmian_kms_access::access::{Access, SuccessResponse};
+use cosmian_logger::log_init;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private, Public},
@@ -142,7 +142,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
         general_purpose::STANDARD.decode("9lb4w0UM8hTxaEWSRKbu1sMVxE4KD2Y4m7n7DvFlHW4=")?;
     // The RSA blue private key
     let blue_private_key = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/blue.key",
+        "../../test_data/certificates/gmail_cse/blue.key",
     ))?;
 
     let rsa_private_key = Rsa::<Private>::private_key_from_pem(&blue_private_key)?;
@@ -164,7 +164,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
     //-------------------------------------------------------------------------
     // The RSA blue public key
     let blue_public_key = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/blue.pem",
+        "../../test_data/certificates/gmail_cse/blue.pem",
     ))?;
     let rsa_public_key = X509::from_pem(&blue_public_key)?;
     let public_key = rsa_public_key.public_key()?;
@@ -229,7 +229,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
     tracing::debug!("private key sign response post: {pksr_response:?}");
 
     let user_public_key_pem_pkcs1 = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/test_public_key",
+        "../../test_data/certificates/gmail_cse/test_public_key",
     ))
     .unwrap();
 
@@ -366,7 +366,7 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     let private_key = build_private_key_from_der_bytes(
         KeyFormatType::PKCS12,
         Zeroizing::from(read_bytes_from_file(
-            &"src/routes/google_cse/python/openssl/int.p12".to_owned(),
+            &"../../test_data/certificates/gmail_cse/int.p12".to_owned(),
         )?),
     );
 
@@ -528,7 +528,7 @@ async fn test_encrypt_and_private_key_decrypt() -> KResult<()> {
     let dek = vec![1_u8; 32];
 
     let pub_key_pem = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/test_public_key",
+        "../../test_data/certificates/gmail_cse/test_public_key",
     ))?;
     let rsa_public_key = Rsa::public_key_from_pem_pkcs1(&pub_key_pem)?;
     let encrypted_data_encryption_key = rsa_encrypt(rsa_public_key, &dek)?;
@@ -661,7 +661,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
     println!("The current directory is {}", path.display());
 
     let user_public_key_pem_pkcs1 = read_bytes_from_file(&PathBuf::from(
-        "src/routes/google_cse/python/openssl/test_public_key",
+        "../../test_data/certificates/gmail_cse/test_public_key",
     ))
     .unwrap();
 

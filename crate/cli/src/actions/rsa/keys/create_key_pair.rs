@@ -27,25 +27,55 @@ pub struct CreateKeyPairAction {
         value_name = "SIZE_IN_BITS",
         default_value = "4096"
     )]
-    key_size: usize,
+    pub key_size: usize,
 
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
-    tags: Vec<String>,
+    pub tags: Vec<String>,
 
     /// The unique id of the private key; a random uuid
     /// is generated if not specified.
     #[clap(required = false)]
-    private_key_id: Option<String>,
+    pub private_key_id: Option<String>,
 
     /// Sensitive: if set, the private key will not be exportable
     #[clap(long = "sensitive", default_value = "false")]
-    sensitive: bool,
+    pub sensitive: bool,
+}
+
+impl Default for CreateKeyPairAction {
+    fn default() -> Self {
+        Self {
+            key_size: 4096,
+            tags: Vec::new(),
+            private_key_id: None,
+            sensitive: false,
+        }
+    }
 }
 
 impl CreateKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    /// Run the create key pair action
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to perform the key pair creation.
+    ///
+    /// # Results
+    ///
+    /// This function returns a `CliResult<(UniqueIdentifier, UniqueIdentifier)>` indicating the success or failure of the key pair creation action.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The key pair request cannot be built.
+    /// * The KMS server query fails.
+    /// * The key pair unique identifiers are empty.
+    pub async fn run(
+        &self,
+        kms_rest_client: &KmsClient,
+    ) -> CliResult<(UniqueIdentifier, UniqueIdentifier)> {
         let private_key_id = self
             .private_key_id
             .as_ref()
@@ -70,6 +100,9 @@ impl CreateKeyPairAction {
         );
         stdout.write()?;
 
-        Ok(())
+        Ok((
+            private_key_unique_identifier.to_owned(),
+            public_key_unique_identifier.to_owned(),
+        ))
     }
 }

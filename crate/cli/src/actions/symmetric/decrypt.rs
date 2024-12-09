@@ -12,14 +12,26 @@ use cosmian_kms_client::cosmian_kmip::crypto::symmetric::symmetric_ciphers::{
 use cosmian_kms_client::{
     cosmian_kmip::crypto::{
         generic::kmip_requests::build_decryption_request,
-        symmetric::symmetric_ciphers::{
-            Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
-            AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH,
+        symmetric::{
+            create_symmetric_key_kmip_object,
+            symmetric_ciphers::{
+                decrypt, Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH,
+                AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
+                RFC5649_16_MAC_LENGTH,
+            },
+        },
+        wrap::unwrap_key_block,
+    },
+    export_object,
+    kmip::{
+        kmip_data_structures::KeyWrappingData,
+        kmip_types::{
+            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
         },
     },
-    kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
-    read_bytes_from_file, KmsClient,
+    read_bytes_from_file, ExportObjectParams, KmsClient,
 };
+use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -55,7 +67,7 @@ use crate::{
 ///
 /// Note: server side decryption is not a streaming call:
 /// the data is entirely loaded in memory before being encrypted.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct DecryptAction {
     /// The file to decrypt
@@ -108,7 +120,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub(crate) async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
@@ -128,7 +140,7 @@ impl DecryptAction {
             File::create(&output_file_name).context("Fail to write the plaintext file")?;
 
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
-            self.client_side_decrypt(
+            self.client_side_decrypt_with_file(
                 kms_rest_client,
                 key_encryption_algorithm,
                 self.data_encryption_algorithm,
@@ -172,7 +184,13 @@ impl DecryptAction {
         Ok(())
     }
 
-    async fn server_side_decrypt(
+    /// Delegate decryption to the server.
+    ///
+    /// # Errors
+    /// - If the cryptographic algorithm is not supported
+    /// - If the block cipher mode is not supported
+    /// - If the key id is not specified
+    pub async fn server_side_decrypt(
         &self,
         kms_rest_client: &KmsClient,
         cryptographic_parameters: CryptographicParameters,
@@ -227,7 +245,7 @@ impl DecryptAction {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn client_side_decrypt(
+    async fn client_side_decrypt_with_file(
         &self,
         kms_rest_client: &KmsClient,
         key_encryption_algorithm: KeyEncryptionAlgorithm,
@@ -321,5 +339,98 @@ impl DecryptAction {
         let tag = &read_buffer[read_buffer.len() - cipher.tag_size()..];
         output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments, dead_code)]
+    /// Decrypt a buffer using a symmetric key.
+    /// # Errors
+    /// - If the key encryption algorithm is not supported
+    /// - If the data encryption algorithm is not supported
+    /// - If the key id is not specified
+    pub async fn client_side_decrypt_with_buffer(
+        &self,
+        kms_rest_client: &KmsClient,
+        data_encryption_algorithm: DataEncryptionAlgorithm,
+        key_encapsulation_key_id: &str,
+        ciphertext: &[u8],
+        aad: Option<Vec<u8>>,
+    ) -> CliResult<Vec<u8>> {
+        trace!(
+            "Decrypting buffer with data encryption algorithm {:?}, key id {:?}, ciphertext: {:?}",
+            data_encryption_algorithm,
+            key_encapsulation_key_id,
+            ciphertext
+        );
+
+        // First export the KEK locally
+        let unwrapping_key = export_object(
+            kms_rest_client,
+            key_encapsulation_key_id,
+            ExportObjectParams {
+                key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                ..ExportObjectParams::default()
+            },
+        )
+        .await?
+        .1;
+
+        // Then read the encapsulated data
+        let mut ct = ciphertext;
+        // Additional authenticated data (AAD) for AEAD ciphers
+        // (empty for XTS)
+        let aad = match data_encryption_algorithm {
+            DataEncryptionAlgorithm::AesXts => vec![],
+            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
+            #[cfg(not(feature = "fips"))]
+            DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
+                aad.unwrap_or_default()
+            }
+        };
+        // Open the input file
+        // read the encapsulation length as a LEB128 encoded u64
+        let encaps_length = leb128::read::unsigned(&mut ct).map_err(|e| {
+            CliError::Default(format!(
+                "Failed to read the encapsulation length from the encrypted file: {e}"
+            ))
+        })?;
+
+        // read the encapsulated data
+        #[allow(clippy::cast_possible_truncation)]
+        let mut encapsulation = vec![0; encaps_length as usize];
+        ct.read_exact(&mut encapsulation)?;
+
+        // Create the KMIP object corresponding to the DEK
+        let mut dek_object =
+            create_symmetric_key_kmip_object(&encapsulation, CryptographicAlgorithm::AES, false)?;
+        dek_object.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData::default());
+
+        // recover the DEK
+        unwrap_key_block(dek_object.key_block_mut()?, &unwrapping_key)?;
+        let dek = dek_object.key_block()?.key_bytes()?;
+
+        // determine the DEM parameters
+        let dem_cryptographic_parameters: CryptographicParameters =
+            data_encryption_algorithm.into();
+        let sym_cipher = SymCipher::from_algorithm_and_key_size(
+            dem_cryptographic_parameters
+                .cryptographic_algorithm
+                .unwrap_or(CryptographicAlgorithm::AES),
+            dem_cryptographic_parameters.block_cipher_mode,
+            dek.len(),
+        )?;
+        //read the nonce
+        let mut nonce = vec![0; sym_cipher.nonce_size()];
+
+        ct.read_exact(&mut nonce)?;
+
+        // decrypt the file
+        // let mut stream_cipher = cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad)?;
+        let tag_size = sym_cipher.tag_size();
+
+        let (ciphertext, tag) = ct.split_at(ct.len() - tag_size);
+
+        let cleartext = decrypt(sym_cipher, &dek, &nonce, &aad, ciphertext, tag)?;
+
+        Ok(cleartext.to_vec())
     }
 }
