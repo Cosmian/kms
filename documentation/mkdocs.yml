@@ -68,6 +68,10 @@ nav:
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
       - API Endpoints: api.md
+  - Server Installation:
+      - Single server mode: single_server_mode.md
+      - High-availability: high_availability_mode.md
+      - Deploying in Confidential VM: marketplace_guide.md
   - Server Configuration:
       - Command Line Interface: server_cli.md
       - Authenticating users to the server: authentication.md
@@ -76,10 +80,6 @@ nav:
       - Logging and telemetry: logging.md
       - Database: database.md
       - Deploying email encryption with S/MIME: pki/smime.md
-  - Server Installation:
-      - Single server mode: single_server_mode.md
-      - High-availability: high_availability_mode.md
-      - Deploying in Confidential VM: marketplace_guide.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:

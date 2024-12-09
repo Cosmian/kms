@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.20.1] - 2024-12-09
+
+### 🚀 Features
+
+- Add CLI bench command ([#348](https://github.com/Cosmian/kms/pull/348))
+
+### 🚜 Refactor
+
+- Re-expose clap actions for other CLIs (cosmian, ckms_gui) ([#339](https://github.com/Cosmian/kms/pull/339))
+
+### 📚 Documentation
+
+- Revisit the mkdocs documentation ([#339](https://github.com/Cosmian/kms/pull/339))
+
 ## [4.20.0] - 2024-11-30
 
 ### 🚀 Features

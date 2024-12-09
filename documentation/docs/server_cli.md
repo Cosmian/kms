@@ -4,7 +4,7 @@ Just like the [Cosmian CLI](../cosmian_cli/index.md), the KMS server has a built
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.20.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.20.1 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
