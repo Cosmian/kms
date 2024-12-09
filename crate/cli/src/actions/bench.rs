@@ -43,8 +43,8 @@ struct FinalResult {
 
 /// Run a set of benches to check the server performance.
 ///
-/// This command will create a key, encrypt and decrypt a set of data
-/// then revoke the key.
+/// This command will create one or more keys, encrypt and decrypt a set of data
+/// then revoke the keys.
 #[derive(Parser, Debug)]
 pub struct BenchAction {
     /// The number of parallel threads to use
