@@ -84,11 +84,15 @@ impl BenchAction {
             .with_context(|| "Can't execute the version query on the kms server")?;
         println!("Server version: {version}");
         println!(
-            "Running bench with {} threads, batch size {}, {} batches. Using a wrapped key? {}",
-            self.num_threads, self.batch_size, self.num_batches, self.wrapped_key
+            "Running bench with {} threads, batch size {}, {} batches.",
+            self.num_threads, self.batch_size, self.num_batches
         );
-        println!("Algorithm: AES GCM");
-        let (key_id, _wrapping_key) = self.create_keys(&kms_rest_client).await?;
+        if self.wrapped_key {
+            println!("Algorithm: AES GCM using a 256 bit key wrapped by a 4096 bit RSA key");
+        } else {
+            println!("Algorithm: AES GCM using a 256 bit key");
+        }
+        let (key_id, wrapping_key) = self.create_keys(&kms_rest_client).await?;
 
         // u128 formatter
         let format = CustomFormat::builder()
@@ -185,7 +189,8 @@ impl BenchAction {
             stdout.flush()?;
         }
         // revoke the keys
-        self.revoke_keys(&kms_rest_client, key_id, None).await?;
+        self.revoke_keys(&kms_rest_client, key_id, wrapping_key)
+            .await?;
 
         // Parse results
         final_results.sort_by_key(|r| r.batch_id);
@@ -221,7 +226,7 @@ impl BenchAction {
             total_decryption_time / (self.num_batches * self.batch_size) as u128
         );
         println!(
-            "Amortized Encryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
+            "Amortized encryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
             self.num_threads,
             total_encryption_time_amortized.to_formatted_string(&format),
             (total_encryption_time_amortized / (self.num_batches as u128))
@@ -229,7 +234,7 @@ impl BenchAction {
             total_encryption_time_amortized / (self.num_batches * self.batch_size) as u128
         );
         println!(
-            "Decryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
+            "Amortized decryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
             self.num_threads,
             total_decryption_time_amortized.to_formatted_string(&format),
             (total_decryption_time_amortized / (self.num_batches as u128))
@@ -256,7 +261,7 @@ impl BenchAction {
             .run(kms_rest_client)
             .await?;
             let kk = CreateKeyAction {
-                number_of_bits: Some(4096),
+                number_of_bits: Some(256),
                 wrapping_key_id: Some(pk.to_string()),
                 tags: vec!["bench".to_owned()],
                 ..Default::default()
@@ -288,17 +293,11 @@ impl BenchAction {
         }
         .run(kms_rest_client)
         .await?;
-        if let Some((sk, pk)) = wrapping_key {
+        if let Some((sk, _pk)) = wrapping_key {
+            // revoking the private key will revoke the public key
             RevokeKeyAction {
                 revocation_reason: "Bench".to_owned(),
                 key_id: Some(sk.to_string()),
-                tags: None,
-            }
-            .run(kms_rest_client)
-            .await?;
-            RevokeKeyAction {
-                revocation_reason: "Bench".to_owned(),
-                key_id: Some(pk.to_string()),
                 tags: None,
             }
             .run(kms_rest_client)
