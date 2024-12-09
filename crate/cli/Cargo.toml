@@ -25,13 +25,13 @@ fips = ["cosmian_kms_client/fips"]
 actix-web = { workspace = true, features = ["macros"] }
 base64 = { workspace = true }
 clap = { workspace = true, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
+    "help",
+    "env",
+    "std",
+    "usage",
+    "error-context",
+    "derive",
+    "cargo",
 ] }
 cloudproof = { workspace = true }
 cosmian_kms_client = { path = "../client" }
@@ -39,9 +39,10 @@ cosmian_logger = { path = "../logger" }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
 jwt-simple = { version = "0.12", default-features = false, features = [
-  "pure-rust",
+    "pure-rust",
 ] }
 leb128 = { workspace = true }
+num-format = { workspace = true }
 oauth2 = { version = "4.4", features = ["reqwest"] }
 pem = { workspace = true }
 reqwest = { workspace = true }
@@ -90,7 +91,7 @@ features = ["fips"]
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+    { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true

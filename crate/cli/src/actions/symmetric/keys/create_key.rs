@@ -102,7 +102,7 @@ pub struct CreateKeyAction {
 }
 
 impl CreateKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<UniqueIdentifier> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
             let bytes = general_purpose::STANDARD
@@ -140,16 +140,18 @@ impl CreateKeyAction {
                 let attributes = object.attributes_mut()?;
                 attributes.set_wrapping_key_id(wrapping_key_id);
             }
-            import_object(
-                kms_rest_client,
-                self.key_id.clone(),
-                object,
-                None,
-                false,
-                false,
-                &self.tags,
+            UniqueIdentifier::TextString(
+                import_object(
+                    kms_rest_client,
+                    self.key_id.clone(),
+                    object,
+                    None,
+                    false,
+                    false,
+                    &self.tags,
+                )
+                .await?,
             )
-            .await?
         } else {
             let key_id = self
                 .key_id
@@ -168,14 +170,13 @@ impl CreateKeyAction {
                 .await
                 .with_context(|| "failed creating the key")?
                 .unique_identifier
-                .to_string()
         };
 
         let mut stdout = console::Stdout::new("The symmetric key was successfully generated.");
         stdout.set_tags(Some(&self.tags));
-        stdout.set_unique_identifier(unique_identifier);
+        stdout.set_unique_identifier(&unique_identifier);
         stdout.write()?;
 
-        Ok(())
+        Ok(unique_identifier)
     }
 }

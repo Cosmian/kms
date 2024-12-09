@@ -75,6 +75,25 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
+    /// Run the encryption action
+    ///
+    /// # Arguments
+    ///
+    /// * `kms_rest_client` - A reference to the KMS client used to perform encryption.
+    ///
+    /// # Results
+    ///
+    /// This function returns a `CliResult<()>` indicating the success or failure of the encryption action.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The input file cannot be read.
+    /// * The key ID or tags are not specified.
+    /// * The encryption request cannot be built.
+    /// * The KMS server query fails.
+    /// * The encrypted data is empty.
+    /// * The encrypted file cannot be written.
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Read the file to encrypt
         let mut data = read_bytes_from_file(&self.input_file)
