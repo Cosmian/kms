@@ -1,0 +1,13 @@
+---
+name: CI in debug
+
+on:
+  push:
+
+jobs:
+  main:
+    uses: ./.github/workflows/main_base.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-10-17
+      debug_or_release: debug

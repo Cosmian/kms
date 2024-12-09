@@ -1,0 +1,20 @@
+---
+name: CI nightly release
+
+on:
+  push:
+    # any tags, including tags with / like v1.0/alpha
+    tags:
+      - '**'
+  schedule:
+    # every day at 1 AM
+    - cron: 00 1 * * *
+  workflow_dispatch:
+
+jobs:
+  main:
+    uses: ./.github/workflows/main_base.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-10-17
+      debug_or_release: release

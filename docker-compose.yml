@@ -1,0 +1,45 @@
+---
+services:
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kms:
+    container_name: kms
+    image: ghcr.io/cosmian/kms:4.20.1
+    ports:
+      - 9998:9998
+  findex-server:
+    depends_on:
+      - redis
+    container_name: findex-server
+    image: ghcr.io/cosmian/findex-server:0.1.0
+    ports:
+      - 6668:6668
+    environment:
+      RUST_LOG: cosmian_findex_server=trace
+      FINDEX_SERVER_DATABASE_TYPE: redis
+      FINDEX_SERVER_DATABASE_URL: redis://redis:6379
+  findex-server-cert-auth:
+    depends_on:
+      - redis
+    container_name: findex-server-cert-auth
+    image: ghcr.io/cosmian/findex-server:0.1.0
+    ports:
+      - 6660:6660
+    volumes:
+      - ./test_data:/test_data
+    environment:
+      RUST_LOG: cosmian_findex_server=trace
+      FINDEX_SERVER_DATABASE_TYPE: redis
+      FINDEX_SERVER_DATABASE_URL: redis://redis:6379
+      FINDEX_SERVER_PORT: 6660
+      FINDEX_SERVER_HTTPS_P12_FILE: /test_data/certificates/client_server/server/kmserver.acme.com.p12
+      FINDEX_SERVER_HTTPS_P12_PASSWORD: password
+      FINDEX_SERVER_AUTHORITY_CERT_FILE: /test_data/certificates/client_server/server/ca.crt

@@ -1,0 +1,9 @@
+---
+name: Github cache cleanup
+
+on: workflow_dispatch
+
+jobs:
+  cleanup:
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit

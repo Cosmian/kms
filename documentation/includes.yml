@@ -1,0 +1,41 @@
+---
+title: Cosmian CLI
+subtitle: Command Line Interface
+citation_package: biblatex
+# bibliography:
+# - biblio.bib
+# - ../pandoc/cryptobib/crypto.bib
+csl: https://raw.githubusercontent.com/citation-style-language/styles/master/ieee.csl
+version: Version 1.2
+author: |
+  Date: 08/04/2022 \linebreak Authors:
+  \linebreak \quad Bruno Grieder \quad CTO
+  \linebreak \quad Emmanuel Coste \quad Lead Developer
+titlepage: true
+titlepage-rule-height: 0
+title-meta: packaged_doc_title
+link-citations: true
+toc-own-page: true
+toc: true
+toc-title: Table Of Contents
+toc-depth: 3
+titlepage-logo: ./pandoc/cosmian.png
+logo-width: 200pt
+lang: en-US
+footer-left: Confidential
+footer-center: © Copyright 2018-2024 Cosmian. All rights reserved
+header-left: ./pandoc/favicon.png
+header-includes:
+  - \setcounter{page}{0} # So that the titlepage is the zeroth page
+pandoc-latex-admonition:
+  # order is important
+  - color: firebrick
+    classes: [admonition, danger]
+  - color: darkturquoise
+    classes: [admonition, info]
+  - color: forestgreen
+    classes: [admonition, important]
+  - color: dodgerblue
+    classes: [admonition, note]
+  - color: orange
+    classes: [admonition, warning]

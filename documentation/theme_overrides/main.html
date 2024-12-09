@@ -1,0 +1,174 @@
+<!--
+Check this documentation for customizations: https://squidfunk.github.io/mkdocs-material/customization/
+-->
+
+{% extends "base.html" %}
+
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ 'assets/stylesheets/extra.css' | url }}"/>
+{% endblock %}
+
+
+{% block libs %}
+{{ super() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+{% endblock %}
+
+{% block header %}
+<script type="application/ecmascript">
+    //
+    // Having a script in the body prevents background flashing
+    // see https://dev.to/ayc0/light-dark-mode-avoid-flickering-on-reload-1567 for example
+    //
+    function display_mode(mode) {
+        // replace icons with dark/light themes as appropriate
+        const favicon = document.querySelector('link[rel="icon"]'); // get favicon.ico element
+        const darkModeOn = mode === "dark" || (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (darkModeOn) {
+            if (favicon) {
+                favicon.href = "/images/favicon-white.png";
+            }
+            if (!document.body.classList.contains("dark-mode")) {
+                document.body.classList.add("dark-mode");
+            }
+        } else {
+            if (favicon) {
+                favicon.href = "/images/favicon-black.png";
+            }
+            document.body.classList.remove("dark-mode");
+        }
+    }
+
+    function set_theme_toggle(mode) {
+        const themeToggle = document.getElementById("themeToggle");
+        if (mode) {
+            if (mode === "dark") {
+                themeToggle.value = "dark";
+            } else if (mode === "light") {
+                themeToggle.value = "light";
+            } else {
+                themeToggle.value = "auto";
+            }
+        }
+    }
+
+    function determine_mode() {
+        const stored = localStorage.getItem("docs.cosmian.com::view-mode");
+        if (stored) {
+            if (stored === "dark" || stored === "auto" || stored === "light") {
+                return stored;
+            }
+        }
+        return "auto";
+    }
+
+    function change_theme(mode) {
+        if (mode === "auto") {
+            localStorage.removeItem("docs.cosmian.com::view-mode");
+        } else {
+            localStorage.setItem("docs.cosmian.com::view-mode", mode);
+        }
+        const new_mode = determine_mode();
+        display_mode(new_mode);
+    }
+
+    const mode = determine_mode();
+    display_mode(mode);
+    document.addEventListener("DOMContentLoaded", function () {
+        set_theme_toggle(mode);
+    });
+
+</script>
+{{ super() }}
+<div style="display: flex;margin-right: 15px;margin-top: 5px">
+    <div style="margin-left: auto;font-size: 0.75em">
+        <label for="themeToggle">View mode</label>
+        <select id="themeToggle" onchange="change_theme(this.value);this.blur()">
+            <option value="auto" selected>Auto</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+        </select>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block content %}
+
+<div class="md-content" data-md-component="content">
+    <article class="md-content__inner md-typeset">
+        {% if not "cosmian" in page.abs_url %} {% endif %} {% if
+        "developer_documentation" in page.abs_url %}
+        <a
+                class="md-content__button md-icon"
+                download
+                href="/branch_or_tag/cosmian_server_developer_documentation/Cosmian_Server_Developer_Documentation.pdf"
+        >
+            <svg
+                    style="height: 1.2rem; width: 1.2rem"
+                    viewBox="0 0 384 512 "
+                    xmlns="http://www.w3.org/2000/svg "
+            >
+                <path
+                        d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "
+                ></path>
+            </svg>
+        </a>
+        {% endif %} {% if "installation_guide" in page.abs_url %}
+        <a
+                class="md-content__button md-icon"
+                download
+                href="/branch_or_tag/cosmian_server_installation_guide/Cosmian_Server_Installation_Guide.pdf"
+        >
+            <svg
+                    style="height: 1.2rem; width: 1.2rem"
+                    viewBox="0 0 384 512 "
+                    xmlns="http://www.w3.org/2000/svg "
+            >
+                <path
+                        d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "
+                ></path>
+            </svg>
+        </a>
+        {% endif %} {% if "user_guide" in page.abs_url %}
+        <a
+                class="md-content__button md-icon"
+                download
+                href="/branch_or_tag/cosmian_user_guide/Cosmian_User_Guide.pdf"
+        >
+            <svg
+                    style="height: 1.2rem; width: 1.2rem"
+                    viewBox="0 0 384 512 "
+                    xmlns="http://www.w3.org/2000/svg "
+            >
+                <path
+                        d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "
+                ></path>
+            </svg>
+        </a>
+        {% endif %} {% if page.edit_url %}
+        <a
+                href="{{ page.edit_url }}"
+                title="{{ lang.t('edit.link.title') }}"
+                class="md-content__button md-icon"
+        >{% include ".icons/material/pencil.svg" %}</a
+        >
+        {% endif %} {% if not "\x3ch1" in page.content %}
+        <h1>{{ page.title | d(config.site_name, true)}}</h1>
+        {% endif %} {{ page.content }} {% if page and page.meta %} {% if
+        page.meta.git_revision_date_localized or page.meta.revision_date %} {%
+        include "partials/source-date.html" %} {% endif %} {% endif %}
+
+        <footer class="footer">
+            {% if config.copyright %}
+            <p>{{ config.copyright }}</p>
+            {% endif %}
+        </footer>
+        {% endblock %} {% block disqus %} {% include
+        "partials/integrations/disqus.html"%} {% endblock %}
+    </article>
+</div>
