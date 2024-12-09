@@ -62,7 +62,7 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.20.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.20.1/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -71,7 +71,7 @@ Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.0
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
 ```
 
 Then, use the CLI to issue commands to the KMS.
