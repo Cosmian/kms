@@ -41,16 +41,24 @@ struct FinalResult {
     decryption_time: u128,
 }
 
-/// Run a set of bunch to check the server performance
+/// Run a set of benches to check the server performance.
+///
+/// This command will create a key, encrypt and decrypt a set of data
+/// then revoke the key.
 #[derive(Parser, Debug)]
 pub struct BenchAction {
     /// The number of parallel threads to use
     #[clap(long = "number-of-threads", short = 't', default_value = "1")]
     num_threads: usize,
 
-    /// The size of an encryption/decryption batch
+    /// The size of an encryption/decryption batch.
     /// A size of 1 does not use the `BulkData` API
-    #[clap(long = "batch-size", short = 'b', default_value = "1")]
+    #[clap(
+        long = "batch-size",
+        short = 'b',
+        default_value = "1",
+        verbatim_doc_comment
+    )]
     batch_size: usize,
 
     /// The number of batches to run
@@ -79,6 +87,7 @@ impl BenchAction {
             "Running bench with {} threads, batch size {}, {} batches. Using a wrapped key? {}",
             self.num_threads, self.batch_size, self.num_batches, self.wrapped_key
         );
+        println!("Algorithm: AES GCM");
         let (key_id, _wrapping_key) = self.create_keys(&kms_rest_client).await?;
 
         // u128 formatter
@@ -212,14 +221,16 @@ impl BenchAction {
             total_decryption_time / (self.num_batches * self.batch_size) as u128
         );
         println!(
-            "Encryption time amortized {}µs => {}µs/batch => {}µs/value",
+            "Amortized Encryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
+            self.num_threads,
             total_encryption_time_amortized.to_formatted_string(&format),
             (total_encryption_time_amortized / (self.num_batches as u128))
                 .to_formatted_string(&format),
             total_encryption_time_amortized / (self.num_batches * self.batch_size) as u128
         );
         println!(
-            "Decryption time amortized {}µs => {}µs/batch => {}µs/value",
+            "Decryption time ({} threads): {}µs => {}µs/batch => {}µs/value",
+            self.num_threads,
             total_decryption_time_amortized.to_formatted_string(&format),
             (total_decryption_time_amortized / (self.num_batches as u128))
                 .to_formatted_string(&format),
