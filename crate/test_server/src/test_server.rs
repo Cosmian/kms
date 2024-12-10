@@ -19,6 +19,7 @@ use cosmian_kms_server::{
     start_kms_server::start_kms_server,
 };
 use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_logger::log_init;
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 use tracing::{info, trace};
@@ -221,7 +222,7 @@ pub async fn start_test_server_with_options(
     authentication_options: AuthenticationOptions,
     non_revocable_key_id: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
-    cosmian_logger::log_init(None);
+    log_init(None);
     let server_params = generate_server_params(
         db_config.clone(),
         port,

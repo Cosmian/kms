@@ -43,7 +43,6 @@ jwt-simple = { version = "0.12", default-features = false, features = [
 ] }
 leb128 = { workspace = true }
 num-format = { workspace = true }
-oauth2 = { version = "4.4", features = ["reqwest"] }
 pem = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
