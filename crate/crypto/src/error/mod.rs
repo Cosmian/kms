@@ -165,19 +165,13 @@ mod tests {
     fn test_crypto_error_interpolation() {
         let var = 42;
         let err = crypto_error!("interpolate {var}");
-        assert_eq!("General_Failure: interpolate 42", err.to_string());
+        assert_eq!("interpolate 42", err.to_string());
 
         let err = bail();
-        assert_eq!(
-            "General_Failure: interpolate 43",
-            err.unwrap_err().to_string()
-        );
+        assert_eq!("interpolate 43", err.unwrap_err().to_string());
 
         let err = ensure();
-        assert_eq!(
-            "General_Failure: interpolate 44",
-            err.unwrap_err().to_string()
-        );
+        assert_eq!("interpolate 44", err.unwrap_err().to_string());
     }
 
     fn bail() -> Result<(), CryptoError> {

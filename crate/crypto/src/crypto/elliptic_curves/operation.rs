@@ -481,6 +481,8 @@ pub fn create_approved_ecc_key_pair(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
     use cosmian_kmip::kmip::kmip_types::{
         CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve,
     };
@@ -506,8 +508,6 @@ mod tests {
     };
     #[cfg(not(feature = "fips"))]
     use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
-    #[cfg(not(feature = "fips"))]
-    use crate::kmip::kmip_data_structures::KeyMaterial;
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(not(feature = "fips"))]
     use crate::pad_be_bytes;
