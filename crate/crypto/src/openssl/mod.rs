@@ -2,6 +2,7 @@ mod certificate;
 mod hashing;
 mod private_key;
 mod public_key;
+pub mod x509_extensions;
 
 pub use certificate::{
     certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
