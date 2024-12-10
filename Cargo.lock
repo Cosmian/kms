@@ -1359,28 +1359,20 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.20.1"
 dependencies = [
- "aes-gcm-siv",
- "argon2",
- "base64 0.21.7",
  "bitflags 2.6.0",
  "chrono",
- "clap",
- "cloudproof",
  "cosmian_logger",
  "hex",
+ "leb128",
  "num-bigint-dig",
- "openssl",
  "pyo3",
- "rust-ini",
  "serde",
  "serde_json",
- "sha3",
  "strum",
  "thiserror 2.0.3",
  "time",
  "tracing",
  "uuid",
- "x509-parser",
  "zeroize",
 ]
 
@@ -1450,6 +1442,29 @@ dependencies = [
  "thiserror 2.0.3",
  "tracing",
  "url",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_crypto"
+version = "4.20.0"
+dependencies = [
+ "aes-gcm-siv",
+ "argon2",
+ "base64 0.21.7",
+ "cloudproof",
+ "cosmian_kmip",
+ "cosmian_logger",
+ "hex",
+ "num-bigint-dig",
+ "openssl",
+ "pyo3",
+ "rust-ini",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.3",
+ "tracing",
+ "x509-parser",
  "zeroize",
 ]
 
@@ -1543,6 +1558,7 @@ dependencies = [
  "cloudproof",
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
+ "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "hex",

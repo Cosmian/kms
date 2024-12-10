@@ -13,13 +13,13 @@ use crate::error::DbResult;
 /// It contains the unwrapped object and the key signature
 #[derive(Clone)]
 pub struct CachedUnwrappedObject {
-    key_signature: [u8; 32],
+    key_signature: u64,
     unwrapped_object: Object,
 }
 
 impl CachedUnwrappedObject {
     #[must_use]
-    pub const fn new(key_signature: [u8; 32], unwrapped_object: Object) -> Self {
+    pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
         Self {
             key_signature,
             unwrapped_object,
@@ -27,8 +27,8 @@ impl CachedUnwrappedObject {
     }
 
     #[must_use]
-    pub const fn key_signature(&self) -> &[u8; 32] {
-        &self.key_signature
+    pub const fn key_signature(&self) -> u64 {
+        self.key_signature
     }
 
     #[must_use]
@@ -118,10 +118,8 @@ mod tests {
         reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
     };
-    use cosmian_kmip::{
-        crypto::symmetric::create_symmetric_key_kmip_object,
-        kmip::kmip_types::CryptographicAlgorithm,
-    };
+    use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+    use cosmian_kms_crypto::crypto::symmetric::create_symmetric_key_kmip_object;
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;

@@ -6,7 +6,6 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::secret::SafeBigUint,
     error::{result::KmipResult, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -28,6 +27,7 @@ use crate::{
         },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
+    SafeBigUint,
 };
 
 fn aes_key_material(key_value: &[u8]) -> KeyMaterial {

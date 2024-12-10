@@ -1,12 +1,12 @@
 use std::ops::Deref;
 
-use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
     error::{result::KmipResult, KmipError},
     kmip::kmip_operations::ErrorReason,
+    Deserializer, Serializer,
 };
 
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays

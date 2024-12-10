@@ -13,7 +13,6 @@ use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
-    crypto::secret::SafeBigUint,
     error::KmipError,
     kmip::{
         kmip_operations::ErrorReason,
@@ -23,7 +22,7 @@ use crate::{
             WrappingMethod,
         },
     },
-    pad_be_bytes,
+    pad_be_bytes, SafeBigUint,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information

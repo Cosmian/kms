@@ -2,8 +2,6 @@ mod bulk_data;
 mod certificates;
 pub mod tagging;
 mod wrap_on_create;
-pub mod x509_extensions;
-
 pub use bulk_data::BulkData;
 
 /// The vendor ID to use for Cosmian specific attributes
