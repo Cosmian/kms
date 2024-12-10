@@ -7,7 +7,7 @@ use std::{
 
 use zeroize::Zeroizing;
 
-use crate::KmipError;
+use crate::{kmip_bail, KmipError};
 
 /// A `Serializable` object can easily be serialized and deserialized into an
 /// array of bytes.
@@ -37,15 +37,14 @@ pub trait Serializable: Sized {
     /// Deserializes the object.
     fn deserialize(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.is_empty() {
-            return Err(KmipError::Deserialization("empty bytes".to_string()).into());
+            return Err(KmipError::Deserialization("empty bytes".to_owned()).into());
         }
 
         let mut de = Deserializer::new(bytes);
         match de.read::<Self>() {
-            Ok(result) if !de.finalize().is_empty() => Err(KmipError::DeserializationSizeError(
-                bytes.len(),
-                result.length(),
-            ))?,
+            Ok(result) if !de.finalize().is_empty() => {
+                Err(KmipError::DeserializationSize(bytes.len(), result.length()))?
+            }
             success_or_failure => success_or_failure,
         }
     }
@@ -60,7 +59,7 @@ impl<'a> Deserializer<'a> {
     ///
     /// - `bytes`   : bytes to deserialize
     #[must_use]
-    pub const fn new(bytes: &'a [u8]) -> Deserializer<'a> {
+    pub const fn new(bytes: &'a [u8]) -> Self {
         Deserializer { readable: bytes }
     }
 
@@ -75,10 +74,7 @@ impl<'a> Deserializer<'a> {
         let mut buf = [0; LENGTH];
         self.readable
             .read_exact(&mut buf)
-            .map_err(|e| KmipError::DeserializationIoError {
-                bytes_len: LENGTH,
-                error: e.to_string(),
-            })?;
+            .map_err(|e| KmipError::Deserialization(e.to_string()))?;
         Ok(buf)
     }
 
@@ -93,18 +89,15 @@ impl<'a> Deserializer<'a> {
         if len_u64 == 0 {
             return Ok(vec![]);
         };
-        let len = usize::try_from(len_u64).map_err(|_| {
-            KmipError::GenericDeserializationError(format!(
-                "size of vector is too big for architecture: {len_u64} bytes",
+        let len = usize::try_from(len_u64).map_err(|e| {
+            KmipError::Deserialization(format!(
+                "size of vector is too big for architecture: {len_u64} bytes: {e}",
             ))
         })?;
         let mut buf = vec![0_u8; len];
-        self.readable
-            .read_exact(&mut buf)
-            .map_err(|_| KmipError::DeserializationSizeError {
-                expected: len + to_leb128_len(len),
-                given: original_length,
-            })?;
+        self.readable.read_exact(&mut buf).map_err(|_e| {
+            KmipError::DeserializationSize(len + to_leb128_len(len), original_length)
+        })?;
         Ok(buf)
     }
 
@@ -113,9 +106,9 @@ impl<'a> Deserializer<'a> {
     /// Returns a reference to the read subslice
     pub fn read_vec_as_ref(&mut self) -> Result<&'a [u8], KmipError> {
         let len_u64 = self.read_leb128_u64()?;
-        let len = usize::try_from(len_u64).map_err(|_| {
-            KmipError::GenericDeserializationError(format!(
-                "size of vector is too big for architecture: {len_u64} bytes",
+        let len = usize::try_from(len_u64).map_err(|e| {
+            KmipError::Deserialization(format!(
+                "size of vector is too big for architecture: {len_u64} bytes: {e}",
             ))
         })?;
         let (front, back) = self.readable.split_at(len);
@@ -130,7 +123,7 @@ impl<'a> Deserializer<'a> {
 
     /// Returns a pointer to the underlying value.
     #[must_use]
-    pub fn value(&self) -> &[u8] {
+    pub const fn value(&self) -> &[u8] {
         self.readable
     }
 
@@ -162,7 +155,7 @@ impl Serializer {
     /// - `n`   : `u64` to write
     pub fn write_leb128_u64(&mut self, n: u64) -> Result<usize, KmipError> {
         leb128::write::unsigned(&mut *self.0, n)
-            .map_err(|error| KmipError::WriteLeb128Error { value: n, error })
+            .map_err(|error| KmipError::Serialization(error.to_string()))
     }
 
     /// Writes an array of bytes to the `Serializer`.
@@ -171,10 +164,7 @@ impl Serializer {
     pub fn write_array(&mut self, array: &[u8]) -> Result<usize, KmipError> {
         self.0
             .write(array)
-            .map_err(|error| KmipError::SerializationIoError {
-                bytes_len: array.len(),
-                error,
-            })
+            .map_err(|error| KmipError::Deserialization(error.to_string()))
     }
 
     /// Writes a vector of bytes to the `Serializer`.
@@ -186,7 +176,7 @@ impl Serializer {
     pub fn write_vec(&mut self, vector: &[u8]) -> Result<usize, KmipError> {
         // Use the size as prefix. This allows initializing the vector with the
         // correct capacity on deserialization.
-        let mut len = self.write_leb128_u64(vector.len() as u64)?;
+        let mut len = self.write_leb128_u64(u64::try_from(vector.len())?)?;
         len += self.write_array(vector)?;
         Ok(len)
     }
@@ -233,7 +223,7 @@ impl Default for Serializer {
 ///
 /// - `n`   : `usize` for which to compute the length of the serialization
 #[must_use]
-pub fn to_leb128_len(n: usize) -> usize {
+pub const fn to_leb128_len(n: usize) -> usize {
     let mut n = n >> 7;
     let mut size = 1;
     while n != 0 {
@@ -252,36 +242,39 @@ pub fn to_leb128_len(n: usize) -> usize {
 /// # Panics
 ///
 /// Panics on failure.
-pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<(), String> {
-    let bytes = v.serialize().unwrap();
-    let w = T::deserialize(&bytes).unwrap();
+pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<(), KmipError> {
+    let bytes = v
+        .serialize()
+        .map_err(|e| KmipError::Serialization(format!("Error serializing: {e}")))?;
+    let w = T::deserialize(&bytes)
+        .map_err(|e| KmipError::Deserialization(format!("Error deserializing: {e}")))?;
     if bytes.len() != v.length() {
-        return Err(format!(
+        kmip_bail!(
             "incorrect serialized length (1): {} != {}",
             bytes.len(),
             v.length()
-        ));
+        );
     }
     if v != &w {
-        return Err(format!("incorrect deserialization: {:?} != {:?}", v, w));
+        kmip_bail!("incorrect deserialization: {:?} != {:?}", v, w);
     }
     if bytes.len() != w.length() {
-        return Err(format!(
+        kmip_bail!(
             "incorrect serialized length (2): {} != {}",
             bytes.len(),
             w.length()
-        ));
+        );
     }
     Ok(())
 }
 
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
+    use rand::RngCore;
+
     use super::{to_leb128_len, Deserializer, Serializable, Serializer};
-    use crate::{
-        reexport::rand_core::{RngCore, SeedableRng},
-        CsRng, KmipError,
-    };
+    use crate::{kmip_bail, KmipError};
 
     /// We don't have a non-fixed size implementation of Serializable inside
     /// `crypto_core` so just have a dummy implementation here.
@@ -309,18 +302,19 @@ mod tests {
     }
 
     #[test]
-    fn test_to_leb128_len() {
-        let mut rng = CsRng::from_entropy();
+    fn test_to_leb128_len() -> Result<(), KmipError> {
+        let mut rng = rand::thread_rng();
         let mut ser = Serializer::new();
         for i in 1..1000 {
             let n = rng.next_u32();
-            let length = ser.write_leb128_u64(u64::from(n)).unwrap();
+            let length = ser.write_leb128_u64(u64::from(n))?;
             assert_eq!(
                 length,
-                to_leb128_len(n as usize),
+                to_leb128_len(usize::try_from(n)?),
                 "Wrong serialization length for {i}th integer: `{n}u64`"
             );
         }
+        Ok(())
     }
 
     #[test]
@@ -351,7 +345,12 @@ mod tests {
             let empty_error = DummyLeb128Serializable::deserialize(&[]);
 
             dbg!(&empty_error);
-            assert!(matches!(empty_error, Err(KmipError::Deserialization)));
+            match empty_error {
+                Err(KmipError::Deserialization(e)) => {
+                    assert_eq!("empty bytes", e);
+                }
+                _ => kmip_bail!("unexpected error"),
+            }
         }
 
         let dummy = DummyLeb128Serializable {
@@ -366,10 +365,7 @@ mod tests {
             dbg!(&too_small_error);
             assert!(matches!(
                 too_small_error,
-                Err(KmipError::DeserializationSizeError {
-                    given: 513,
-                    expected: 514
-                })
+                Err(KmipError::DeserializationSize(514, 513))
             ));
         }
         {
@@ -380,10 +376,7 @@ mod tests {
             dbg!(&too_big_error);
             assert!(matches!(
                 too_big_error,
-                Err(KmipError::DeserializationSizeError {
-                    given: 515,
-                    expected: 514
-                })
+                Err(KmipError::DeserializationSize(515, 514))
             ));
         }
 

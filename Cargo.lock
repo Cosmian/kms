@@ -1366,6 +1366,7 @@ dependencies = [
  "leb128",
  "num-bigint-dig",
  "pyo3",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "strum",

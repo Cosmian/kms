@@ -271,7 +271,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    #[derive(Serialize)]
+    #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         big_int: BigUint,
@@ -282,25 +282,15 @@ fn test_ser_big_int() {
         big_int: BigUint::from(0x1111_1111_1222_2222_u128),
     };
     let ttlv = to_ttlv(&test).unwrap();
-    let expected = r#"TTLV {
-    tag: "Test",
-    value: Structure(
-        [
-            TTLV {
-                tag: "BigInt",
-                value: BigInteger(
-                    BigUint {
-                        data: [
-                            1229782938265199138,
-                        ],
-                    },
-                ),
-            },
-        ],
-    ),
-}"#;
-    let ttlv_s = format!("{ttlv:#?}");
-    assert_eq!(ttlv_s, expected);
+    let value = serde_json::to_value(&ttlv).unwrap();
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "BigInt");
+    assert_eq!(value["value"][0]["type"], "BigInteger");
+    assert_eq!(value["value"][0]["value"], "0x1111111112222222");
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
+    assert_eq!(test.big_int, rec.big_int);
 }
 
 #[test]

@@ -58,7 +58,7 @@
 pub use error::{result::KmipResultHelper, KmipError};
 
 mod bytes_ser_de;
-pub use bytes_ser_de::{Deserializer, Serializer};
+pub use bytes_ser_de::{test_serialization, to_leb128_len, Deserializer, Serializer};
 mod error;
 pub mod kmip;
 mod safe_biguint;
