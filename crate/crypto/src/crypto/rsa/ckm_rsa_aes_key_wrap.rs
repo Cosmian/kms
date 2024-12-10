@@ -1,3 +1,4 @@
+use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     pkey::{PKey, Private, Public},
     rand::rand_bytes,
@@ -13,7 +14,6 @@ use crate::{
     },
     crypto_bail,
     error::CryptoError,
-    kmip::kmip_types::HashingAlgorithm,
 };
 
 /// AES KEY WRAP with padding key length in bytes.
@@ -116,13 +116,13 @@ pub fn ckm_rsa_aes_key_unwrap(
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
     use openssl::pkey::PKey;
     use zeroize::Zeroizing;
 
     use crate::{
         crypto::rsa::ckm_rsa_aes_key_wrap::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
         error::CryptoError,
-        kmip::kmip_types::HashingAlgorithm,
     };
 
     #[test]

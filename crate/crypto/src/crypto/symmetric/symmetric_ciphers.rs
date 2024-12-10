@@ -1,5 +1,6 @@
 use std::cmp::PartialEq;
 
+use cosmian_kmip::kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm};
 use openssl::{
     rand::rand_bytes,
     symm::{
@@ -16,7 +17,6 @@ use crate::{
     crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     crypto_bail,
     error::{result::CryptoResult, CryptoError},
-    kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm},
 };
 
 /// AES 128 GCM key length in bytes.
@@ -138,7 +138,7 @@ impl SymCipher {
             #[cfg(not(feature = "fips"))]
             Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
                 //TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
-                crypto_bail!(KmipError::NotSupported(
+                crypto_bail!(CryptoError::NotSupported(
                     "AES GCM SIV is not supported in this version of openssl".to_owned()
                 ))
             }
@@ -229,7 +229,7 @@ impl SymCipher {
                     BlockCipherMode::GCMSIV => match key_size {
                         AES_128_GCM_SIV_KEY_LENGTH => Ok(Self::Aes128GcmSiv),
                         AES_256_GCM_SIV_KEY_LENGTH => Ok(Self::Aes256GcmSiv),
-                        _ => crypto_bail!(KmipError::NotSupported(
+                        _ => crypto_bail!(CryptoError::NotSupported(
                             "AES key must be 16 or 32 bytes long for AES GCM SIV".to_owned()
                         )),
                     },
@@ -251,7 +251,7 @@ impl SymCipher {
             CryptographicAlgorithm::ChaCha20 | CryptographicAlgorithm::ChaCha20Poly1305 => {
                 match key_size {
                     32 => Ok(Self::Chacha20Poly1305),
-                    _ => crypto_bail!(KmipError::NotSupported(
+                    _ => crypto_bail!(CryptoError::NotSupported(
                         "ChaCha20 key must be 32 bytes long".to_owned()
                     )),
                 }

@@ -1,15 +1,12 @@
 use std::convert::TryFrom;
 
+use cosmian_kmip::kmip::{
+    extra::VENDOR_ID_COSMIAN,
+    kmip_types::{Attributes, VendorAttribute},
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::CryptoError,
-    kmip::{
-        extra::VENDOR_ID_COSMIAN,
-        kmip_operations::ErrorReason,
-        kmip_types::{Attributes, VendorAttribute},
-    },
-};
+use crate::error::CryptoError;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EnclaveSharedKeyCreateRequest {
@@ -28,10 +25,9 @@ impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
             attribute_value: serde_json::to_vec(&request).map_err(|e| {
-                CryptoError::InvalidKmipObject(
-                    ErrorReason::Invalid_Attribute_Value,
-                    format!("failed serializing the shared key setup value. Error: {e:?}"),
-                )
+                CryptoError::Kmip(format!(
+                    "failed serializing the shared key setup value. Error: {e:?}"
+                ))
             })?,
         })
     }
@@ -44,16 +40,14 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
         if attribute.vendor_identification != VENDOR_ID_COSMIAN
             || &attribute.attribute_name != "enclave_shared_key_create_request"
         {
-            return Err(CryptoError::InvalidKmipObject(
-                ErrorReason::Invalid_Attribute_Value,
+            return Err(CryptoError::Kmip(
                 "the attributes in not a shared key create request".to_owned(),
             ))
         }
         serde_json::from_slice::<Self>(&attribute.attribute_value).map_err(|e| {
-            CryptoError::InvalidKmipObject(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed deserializing the Shared Key Create Request. Error: {e:?}"),
-            )
+            CryptoError::Kmip(format!(
+                "failed deserializing the Shared Key Create Request. Error: {e:?}"
+            ))
         })
     }
 }
@@ -63,8 +57,7 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
 
     fn try_from(attributes: &Attributes) -> Result<Self, CryptoError> {
         let vdr = attributes.vendor_attributes.as_ref().ok_or_else(|| {
-            CryptoError::InvalidKmipObject(
-                ErrorReason::Invalid_Attribute_Value,
+            CryptoError::Kmip(
                 "the attributes do not contain any vendor attribute, hence no shared key setup \
                  data"
                     .to_owned(),
@@ -78,8 +71,7 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
                     && att.vendor_identification == VENDOR_ID_COSMIAN
             })
             .ok_or_else(|| {
-                CryptoError::InvalidKmipObject(
-                    ErrorReason::Invalid_Attribute_Value,
+                CryptoError::Kmip(
                     "the attributes do not contain any vendor attribute, hence no shared key \
                      setup data"
                         .to_owned(),

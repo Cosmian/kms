@@ -1,3 +1,7 @@
+use cosmian_kmip::kmip::{
+    kmip_objects::Object::{self, Certificate},
+    kmip_types::{CertificateAttributes, CertificateType},
+};
 use openssl::{
     asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
@@ -6,13 +10,7 @@ use openssl::{
 };
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use crate::{
-    error::{result::CryptoResultHelper, CryptoError},
-    kmip::{
-        kmip_objects::Object::{self, Certificate},
-        kmip_types::{CertificateAttributes, CertificateType},
-    },
-};
+use crate::error::{result::CryptoResultHelper, CryptoError};
 
 /// Generate a KMIP certificate from an OpenSSL certificate
 pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<Object, CryptoError> {
@@ -27,16 +25,9 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, CryptoE
     match certificate {
         Certificate {
             certificate_value, ..
-        } => X509::from_der(certificate_value).map_err(|e| {
-            CryptoError::InvalidKmipValue(
-                crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
-                format!("failed to parse certificate: {e}"),
-            )
-        }),
-        _ => Err(CryptoError::InvalidKmipValue(
-            crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
-            "expected a certificate".to_owned(),
-        )),
+        } => X509::from_der(certificate_value)
+            .map_err(|e| CryptoError::Kmip(format!("failed to parse certificate: {e}"))),
+        _ => Err(CryptoError::Kmip("expected a certificate".to_owned())),
     }
 }
 
@@ -48,12 +39,8 @@ pub fn openssl_certificate_extensions(
     certificate: &X509,
 ) -> Result<Vec<X509Extension>, CryptoError> {
     let der_bytes = certificate.to_der()?;
-    let (_, certificate) = X509Certificate::from_der(der_bytes.as_slice()).map_err(|e| {
-        CryptoError::InvalidKmipValue(
-            crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
-            format!("failed to parse certificate: {e}"),
-        )
-    })?;
+    let (_, certificate) = X509Certificate::from_der(der_bytes.as_slice())
+        .map_err(|e| CryptoError::Kmip(format!("failed to parse certificate: {e}")))?;
     certificate
         .iter_extensions()
         .map(|ext| {
@@ -65,172 +52,175 @@ pub fn openssl_certificate_extensions(
         .collect()
 }
 
-impl CertificateAttributes {
-    #[must_use]
-    pub fn from(x509: &X509) -> Self {
-        let mut attributes = Self::default();
-        for entry in x509.subject_name().entries() {
-            match entry.object().nid() {
-                Nid::COMMONNAME => {
-                    if let Ok(cn) = entry.data().as_utf8() {
-                        attributes.certificate_subject_cn = cn.to_string();
-                    }
+#[must_use]
+pub fn openssl_x509_to_certificate_attributes(x509: &X509) -> CertificateAttributes {
+    let mut attributes = CertificateAttributes::default();
+    for entry in x509.subject_name().entries() {
+        match entry.object().nid() {
+            Nid::COMMONNAME => {
+                if let Ok(cn) = entry.data().as_utf8() {
+                    attributes.certificate_subject_cn = cn.to_string();
                 }
-                Nid::ORGANIZATIONALUNITNAME => {
-                    if let Ok(ou) = entry.data().as_utf8() {
-                        attributes.certificate_subject_ou = ou.to_string();
-                    }
-                }
-                Nid::COUNTRYNAME => {
-                    if let Ok(country) = entry.data().as_utf8() {
-                        attributes.certificate_subject_c = country.to_string();
-                    }
-                }
-                Nid::STATEORPROVINCENAME => {
-                    if let Ok(st) = entry.data().as_utf8() {
-                        attributes.certificate_subject_st = st.to_string();
-                    }
-                }
-                Nid::LOCALITYNAME => {
-                    if let Ok(l) = entry.data().as_utf8() {
-                        attributes.certificate_subject_l = l.to_string();
-                    }
-                }
-                Nid::ORGANIZATIONNAME => {
-                    if let Ok(o) = entry.data().as_utf8() {
-                        attributes.certificate_subject_o = o.to_string();
-                    }
-                }
-                Nid::PKCS9_EMAILADDRESS => {
-                    if let Ok(email) = entry.data().as_utf8() {
-                        attributes.certificate_subject_email = email.to_string();
-                    }
-                }
-                _ => (),
             }
-        }
-        if let Ok(serial_number) = x509.serial_number().to_bn() {
-            if let Ok(serial_number) = serial_number.to_hex_str() {
-                attributes.certificate_subject_serial_number = serial_number.to_string();
+            Nid::ORGANIZATIONALUNITNAME => {
+                if let Ok(ou) = entry.data().as_utf8() {
+                    attributes.certificate_subject_ou = ou.to_string();
+                }
             }
-        }
-
-        // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
-        if let Ok(spki) = Self::get_or_create_subject_key_identifier_value(x509) {
-            attributes.certificate_subject_uid = hex::encode(spki);
-        }
-
-        for entry in x509.issuer_name().entries() {
-            match entry.object().nid() {
-                Nid::COMMONNAME => {
-                    if let Ok(cn) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_cn = cn.to_string();
-                    }
+            Nid::COUNTRYNAME => {
+                if let Ok(country) = entry.data().as_utf8() {
+                    attributes.certificate_subject_c = country.to_string();
                 }
-                Nid::ORGANIZATIONALUNITNAME => {
-                    if let Ok(ou) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_ou = ou.to_string();
-                    }
-                }
-                Nid::COUNTRYNAME => {
-                    if let Ok(country) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_c = country.to_string();
-                    }
-                }
-                Nid::STATEORPROVINCENAME => {
-                    if let Ok(st) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_st = st.to_string();
-                    }
-                }
-                Nid::LOCALITYNAME => {
-                    if let Ok(l) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_l = l.to_string();
-                    }
-                }
-                Nid::ORGANIZATIONNAME => {
-                    if let Ok(o) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_o = o.to_string();
-                    }
-                }
-                Nid::PKCS9_EMAILADDRESS => {
-                    if let Ok(email) = entry.data().as_utf8() {
-                        attributes.certificate_issuer_email = email.to_string();
-                    }
-                }
-                _ => (),
             }
+            Nid::STATEORPROVINCENAME => {
+                if let Ok(st) = entry.data().as_utf8() {
+                    attributes.certificate_subject_st = st.to_string();
+                }
+            }
+            Nid::LOCALITYNAME => {
+                if let Ok(l) = entry.data().as_utf8() {
+                    attributes.certificate_subject_l = l.to_string();
+                }
+            }
+            Nid::ORGANIZATIONNAME => {
+                if let Ok(o) = entry.data().as_utf8() {
+                    attributes.certificate_subject_o = o.to_string();
+                }
+            }
+            Nid::PKCS9_EMAILADDRESS => {
+                if let Ok(email) = entry.data().as_utf8() {
+                    attributes.certificate_subject_email = email.to_string();
+                }
+            }
+            _ => (),
         }
-        attributes
+    }
+    if let Ok(serial_number) = x509.serial_number().to_bn() {
+        if let Ok(serial_number) = serial_number.to_hex_str() {
+            attributes.certificate_subject_serial_number = serial_number.to_string();
+        }
     }
 
-    /// Get the OpenSSL `X509Name` for the subject
-    pub fn subject_name(&self) -> Result<X509Name, CryptoError> {
-        let mut builder = X509NameBuilder::new()?;
-        if !self.certificate_subject_cn.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::COMMONNAME, &self.certificate_subject_cn)
-                .context("invalid common name")?;
-        }
-        if !self.certificate_subject_ou.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, &self.certificate_subject_ou)
-                .context("invalid organizational unit")?;
-        }
-        if !self.certificate_subject_c.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::COUNTRYNAME, &self.certificate_subject_c)
-                .context("invalid country name")?;
-        }
-        if !self.certificate_subject_st.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::STATEORPROVINCENAME, &self.certificate_subject_st)
-                .context("invalid state or province")?;
-        }
-        if !self.certificate_subject_l.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::LOCALITYNAME, &self.certificate_subject_l)
-                .context("invalid locality")?;
-        }
-        if !self.certificate_subject_o.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::ORGANIZATIONNAME, &self.certificate_subject_o)
-                .context("invalid organization")?;
-        }
-        if !self.certificate_subject_email.is_empty() {
-            builder
-                .append_entry_by_nid(Nid::PKCS9_EMAILADDRESS, &self.certificate_subject_email)
-                .context("invalid email")?;
-        }
-        Ok(builder.build())
+    // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
+    if let Ok(spki) = get_or_create_subject_key_identifier_value(x509) {
+        attributes.certificate_subject_uid = hex::encode(spki);
     }
 
-    /// Get the `SubjectKeyIdentifier` X509 extension value
-    /// If it is not available, it is
-    /// calculated according to RFC 5280 section 4.2.1.2
-    fn get_or_create_subject_key_identifier_value(
-        certificate: &X509,
-    ) -> Result<Vec<u8>, CryptoError> {
-        Ok(if let Some(ski) = certificate.subject_key_id() {
-            ski.as_slice().to_vec()
-        } else {
-            let pk = certificate.public_key()?;
-            let spki_der = pk.public_key_to_der()?;
-            let mut sha1 = Sha1::default();
-            sha1.update(&spki_der);
-            sha1.finish().to_vec()
-        })
+    for entry in x509.issuer_name().entries() {
+        match entry.object().nid() {
+            Nid::COMMONNAME => {
+                if let Ok(cn) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_cn = cn.to_string();
+                }
+            }
+            Nid::ORGANIZATIONALUNITNAME => {
+                if let Ok(ou) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_ou = ou.to_string();
+                }
+            }
+            Nid::COUNTRYNAME => {
+                if let Ok(country) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_c = country.to_string();
+                }
+            }
+            Nid::STATEORPROVINCENAME => {
+                if let Ok(st) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_st = st.to_string();
+                }
+            }
+            Nid::LOCALITYNAME => {
+                if let Ok(l) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_l = l.to_string();
+                }
+            }
+            Nid::ORGANIZATIONNAME => {
+                if let Ok(o) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_o = o.to_string();
+                }
+            }
+            Nid::PKCS9_EMAILADDRESS => {
+                if let Ok(email) = entry.data().as_utf8() {
+                    attributes.certificate_issuer_email = email.to_string();
+                }
+            }
+            _ => (),
+        }
     }
+    attributes
+}
+
+/// Get the OpenSSL `X509Name` for the subject
+pub fn certificate_attributes_to_subject_name(
+    attributes: &CertificateAttributes,
+) -> Result<X509Name, CryptoError> {
+    let mut builder = X509NameBuilder::new()?;
+    if !attributes.certificate_subject_cn.is_empty() {
+        builder
+            .append_entry_by_nid(Nid::COMMONNAME, &attributes.certificate_subject_cn)
+            .context("invalid common name")?;
+    }
+    if !attributes.certificate_subject_ou.is_empty() {
+        builder
+            .append_entry_by_nid(
+                Nid::ORGANIZATIONALUNITNAME,
+                &attributes.certificate_subject_ou,
+            )
+            .context("invalid organizational unit")?;
+    }
+    if !attributes.certificate_subject_c.is_empty() {
+        builder
+            .append_entry_by_nid(Nid::COUNTRYNAME, &attributes.certificate_subject_c)
+            .context("invalid country name")?;
+    }
+    if !attributes.certificate_subject_st.is_empty() {
+        builder
+            .append_entry_by_nid(Nid::STATEORPROVINCENAME, &attributes.certificate_subject_st)
+            .context("invalid state or province")?;
+    }
+    if !attributes.certificate_subject_l.is_empty() {
+        builder
+            .append_entry_by_nid(Nid::LOCALITYNAME, &attributes.certificate_subject_l)
+            .context("invalid locality")?;
+    }
+    if !attributes.certificate_subject_o.is_empty() {
+        builder
+            .append_entry_by_nid(Nid::ORGANIZATIONNAME, &attributes.certificate_subject_o)
+            .context("invalid organization")?;
+    }
+    if !attributes.certificate_subject_email.is_empty() {
+        builder
+            .append_entry_by_nid(
+                Nid::PKCS9_EMAILADDRESS,
+                &attributes.certificate_subject_email,
+            )
+            .context("invalid email")?;
+    }
+    Ok(builder.build())
+}
+
+/// Get the `SubjectKeyIdentifier` X509 extension value
+/// If it is not available, it is
+/// calculated according to RFC 5280 section 4.2.1.2
+fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<u8>, CryptoError> {
+    Ok(if let Some(ski) = certificate.subject_key_id() {
+        ski.as_slice().to_vec()
+    } else {
+        let pk = certificate.public_key()?;
+        let spki_der = pk.public_key_to_der()?;
+        let mut sha1 = Sha1::default();
+        sha1.update(&spki_der);
+        sha1.finish().to_vec()
+    })
 }
 
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use crate::openssl::certificate::openssl_x509_to_certificate_attributes;
 
     #[test]
     fn test_parsing_certificate_attributes() {
         use std::{fs::File, io::Read};
-
-        use super::CertificateAttributes;
 
         let mut buffer = Vec::new();
         let pem_filepath = "../../test_data/certificates/openssl/rsa-4096-cert.pem";
@@ -239,7 +229,7 @@ mod tests {
             .read_to_end(&mut buffer)
             .unwrap();
         let cert = openssl::x509::X509::from_pem(&buffer).unwrap();
-        let certificate_attributes = CertificateAttributes::from(&cert);
+        let certificate_attributes = openssl_x509_to_certificate_attributes(&cert);
         // Issuer: C = US, ST = Denial, L = Springfield, O = Dis, CN = www.RSA-4096-example.com
         // Validity
         //     Not Before: Oct  2 13:51:50 2023 GMT

@@ -1,3 +1,15 @@
+use cosmian_kmip::{
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve,
+        },
+    },
+    SafeBigUint,
+};
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},
@@ -13,18 +25,9 @@ use crate::crypto::elliptic_curves::{
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use crate::{
-    crypto::{secret::SafeBigUint, KeyPair},
+    crypto::KeyPair,
     crypto_bail,
     error::{result::CryptoResult, CryptoError},
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, RecommendedCurve,
-        },
-    },
 };
 
 #[cfg(feature = "fips")]
@@ -178,7 +181,7 @@ pub fn to_ec_public_key(
 /// Supported curves are:
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
 ///
-/// `pkey_bits_number` is passed independently from `len(bytes)` since some key
+/// `pkey_bits_number` is passed independently of `len(bytes)` since some key
 /// sizes are not multiple of 8 thus it cannot be computed by taking the byte
 /// array length.
 ///
@@ -478,6 +481,9 @@ pub fn create_approved_ecc_key_pair(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
+    use cosmian_kmip::kmip::kmip_types::{
+        CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve,
+    };
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
     // Load FIPS provider module from OpenSSL.
@@ -502,12 +508,9 @@ mod tests {
     use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
     #[cfg(not(feature = "fips"))]
     use crate::kmip::kmip_data_structures::KeyMaterial;
+    use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(not(feature = "fips"))]
     use crate::pad_be_bytes;
-    use crate::{
-        kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve},
-        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
-    };
 
     #[test]
     fn test_ed25519_keypair_generation() {

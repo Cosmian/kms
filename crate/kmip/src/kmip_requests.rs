@@ -1,19 +1,17 @@
 use std::path::PathBuf;
 
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyWrappingSpecification,
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Decrypt, Encrypt, Import, Revoke, Validate},
+    kmip_types::{
+        Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
+    },
+};
 use zeroize::Zeroizing;
 
 use super::data_to_encrypt::DataToEncrypt;
-use crate::{
-    error::CryptoError,
-    kmip::{
-        kmip_data_structures::KeyWrappingSpecification,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke, Validate},
-        kmip_types::{
-            Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
-        },
-    },
-};
+use crate::error::CryptoError;
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`
 pub fn build_revoke_key_request(
@@ -89,7 +87,7 @@ pub fn build_encryption_request(
             plaintext,
         }
         .to_bytes()
-        .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?
+        .map_err(|e| CryptoError::Kmip(e.to_string()))?
     } else {
         plaintext
     });

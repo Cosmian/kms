@@ -10,19 +10,19 @@ use cloudproof::reexport::{
         SymmetricKey,
     },
 };
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Encrypt, EncryptResponse},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    },
+    DataToEncrypt,
+};
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::{
-        cover_crypt::attributes::policy_from_attributes, generic::data_to_encrypt::DataToEncrypt,
-        EncryptionSystem,
-    },
+    crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
     error::CryptoError,
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
 };
 
 /// Encrypt a single block of data using an hybrid encryption mode
@@ -44,8 +44,7 @@ impl CoverCryptEncryption {
             public_key.key_block()?.key_bytes_and_attributes()?;
 
         let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
-            CryptoError::KmipError(
-                ErrorReason::Attribute_Not_Found,
+            CryptoError::Kmip(
                 "the master public key does not have attributes with the Policy".to_owned(),
             )
         })?)?;
@@ -102,12 +101,9 @@ impl CoverCryptEncryption {
             let len = de.read_leb128_u64()?;
             ser.write_leb128_u64(len)?;
             usize::try_from(len).map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    format!(
-                        "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
-                    ),
-                )
+                CryptoError::Kmip(format!(
+                    "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
+                ))
             })?
         };
 
@@ -134,9 +130,7 @@ impl CoverCryptEncryption {
         let encrypted_block = self
             .cover_crypt
             .encrypt(symmetric_key, plaintext, aead)
-            .map_err(|e| {
-                CryptoError::KmipError(ErrorReason::Invalid_Attribute_Value, e.to_string())
-            })?;
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
@@ -154,39 +148,26 @@ impl EncryptionSystem for CoverCryptEncryption {
         let authenticated_encryption_additional_data =
             request.authenticated_encryption_additional_data.as_deref();
 
-        let data_to_encrypt =
-            DataToEncrypt::try_from_bytes(request.data.as_deref().ok_or_else(|| {
-                CryptoError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    "Missing data to encrypt".to_owned(),
-                )
-            })?)?;
+        let data_to_encrypt = DataToEncrypt::try_from_bytes(
+            request
+                .data
+                .as_deref()
+                .ok_or_else(|| CryptoError::Kmip("Missing data to encrypt".to_owned()))?,
+        )?;
 
         let public_key =
             MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Codec_Error,
-                    format!("cover crypt encipher: failed recovering the public key: {e}"),
-                )
+                CryptoError::Kmip(format!(
+                    "cover crypt encipher: failed recovering the public key: {e}"
+                ))
             })?;
 
-        let encryption_policy_string =
-            data_to_encrypt
-                .encryption_policy
-                .as_deref()
-                .ok_or_else(|| {
-                    CryptoError::KmipError(
-                        ErrorReason::Invalid_Attribute_Value,
-                        "encryption policy missing".to_owned(),
-                    )
-                })?;
+        let encryption_policy_string = data_to_encrypt
+            .encryption_policy
+            .as_deref()
+            .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
         let encryption_policy = AccessPolicy::from_boolean_expression(encryption_policy_string)
-            .map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Invalid_Attribute_Value,
-                    format!("invalid encryption policy: {e}"),
-                )
-            })?;
+            .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
 
         // Generate a symmetric key and encrypt the header
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
@@ -197,11 +178,11 @@ impl EncryptionSystem for CoverCryptEncryption {
             data_to_encrypt.header_metadata.as_deref(),
             authenticated_encryption_additional_data,
         )
-        .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
+        .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-        let mut encrypted_header = encrypted_header.serialize().map_err(|e| {
-            CryptoError::KmipError(ErrorReason::Invalid_Attribute_Value, e.to_string())
-        })?;
+        let mut encrypted_header = encrypted_header
+            .serialize()
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         let encrypted_data = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),

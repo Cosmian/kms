@@ -1,19 +1,16 @@
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
+};
 pub use elliptic_curves::CURVE_25519_Q_LENGTH_BITS;
 pub use password_derivation::FIPS_MIN_SALT_SIZE;
 
-use crate::{
-    error::CryptoError,
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
-    },
-};
+use crate::error::CryptoError;
 
 pub mod certificates;
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
-pub mod generic;
 pub mod password_derivation;
 pub mod rsa;
 pub mod secret;

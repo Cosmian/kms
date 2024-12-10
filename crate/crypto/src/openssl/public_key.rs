@@ -1,3 +1,11 @@
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::{Object, ObjectType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
+        KeyFormatType, RecommendedCurve,
+    },
+};
 use num_bigint_dig::BigUint;
 use openssl::{
     bn::{BigNum, BigNumContext},
@@ -12,14 +20,6 @@ use zeroize::Zeroizing;
 use crate::{
     crypto_bail, crypto_error,
     error::{result::CryptoResultHelper, CryptoError},
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
-        },
-    },
 };
 
 /// Convert a KMIP Public key to openssl `PKey<Public>`
@@ -456,6 +456,11 @@ pub fn openssl_public_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    use cosmian_kmip::kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::Object,
+        kmip_types::{KeyFormatType, RecommendedCurve},
+    };
     use openssl::{
         bn::{BigNum, BigNumContext},
         ec::{EcGroup, EcKey, EcPoint},
@@ -470,14 +475,7 @@ mod tests {
     };
     #[cfg(not(feature = "fips"))]
     use crate::kmip::kmip_types::CryptographicUsageMask;
-    use crate::{
-        kmip::{
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::Object,
-            kmip_types::{KeyFormatType, RecommendedCurve},
-        },
-        openssl::{kmip_public_key_to_openssl, public_key::openssl_public_key_to_kmip},
-    };
+    use crate::openssl::{kmip_public_key_to_openssl, public_key::openssl_public_key_to_kmip};
 
     fn test_public_key_conversion_pkcs(
         public_key: &PKey<Public>,

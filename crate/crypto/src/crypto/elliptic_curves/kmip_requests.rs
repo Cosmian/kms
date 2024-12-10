@@ -1,3 +1,12 @@
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_operations::{CreateKeyPair, Get},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
+        KeyFormatType, RecommendedCurve, UniqueIdentifier,
+    },
+};
+
 #[cfg(feature = "fips")]
 use super::{
     FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
@@ -5,18 +14,7 @@ use super::{
 };
 #[cfg(feature = "fips")]
 use crate::crypto_bail;
-use crate::{
-    error::CryptoError,
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_operations::{CreateKeyPair, Get},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve, UniqueIdentifier,
-        },
-    },
-};
-
+use crate::error::CryptoError;
 /// Builds correct usage mask depending on the curve. In FIPS mode, curves are
 /// restricted to certain usage.
 ///

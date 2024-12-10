@@ -1,6 +1,6 @@
 #[cfg(feature = "fips")]
-use crate::kmip::kmip_types::CryptographicUsageMask;
-use crate::kmip::kmip_types::{
+use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
+use cosmian_kmip::kmip::kmip_types::{
     CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
 };
 

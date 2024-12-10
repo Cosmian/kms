@@ -1,4 +1,14 @@
 use base64::{engine::general_purpose, Engine};
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{
+        KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+    },
+    kmip_objects::Object,
+    kmip_types::{
+        BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
+        KeyFormatType, PaddingMethod, WrappingMethod,
+    },
+};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -27,17 +37,6 @@ use crate::{
     },
     crypto_bail, crypto_error,
     error::{result::CryptoResult, CryptoError},
-    kmip::{
-        kmip_data_structures::{
-            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
-        },
-        kmip_objects::Object,
-        kmip_operations::ErrorReason,
-        kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
-            KeyFormatType, PaddingMethod, WrappingMethod,
-        },
-    },
     openssl::kmip_public_key_to_openssl,
 };
 
@@ -214,8 +213,7 @@ pub(crate) fn wrap(
                 .attributes()?
                 .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
             {
-                return Err(CryptoError::InvalidKmipValue(
-                    ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                return Err(CryptoError::Kmip(
                     "CryptographicUsageMask not authorized for WrapKey".to_owned(),
                 ))
             }

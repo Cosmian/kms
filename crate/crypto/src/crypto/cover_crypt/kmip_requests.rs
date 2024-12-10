@@ -1,23 +1,20 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
+        Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+    },
+};
 use zeroize::Zeroizing;
 
 use super::attributes::{
     access_policy_as_vendor_attribute, policy_as_vendor_attribute,
     rekey_edit_action_as_vendor_attribute, RekeyEditAction,
 };
-use crate::{
-    crypto::wrap::wrap_key_bytes,
-    error::CryptoError,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
-            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
-        },
-    },
-};
+use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(

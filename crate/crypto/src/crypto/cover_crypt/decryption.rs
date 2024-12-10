@@ -2,19 +2,16 @@ use cloudproof::reexport::{
     cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
     crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
+    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::user_key::unwrap_user_decryption_key_object;
-use crate::{
-    crypto::DecryptionSystem,
-    error::CryptoError,
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, DecryptedData, ErrorReason},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
-};
+use crate::{crypto::DecryptionSystem, error::CryptoError};
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
@@ -54,22 +51,18 @@ impl CovercryptDecryption {
         user_decryption_key: &UserSecretKey,
     ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
         let mut de = Deserializer::new(encrypted_bytes);
-        let encrypted_header = EncryptedHeader::read(&mut de).map_err(|e| {
-            CryptoError::KmipError(
-                ErrorReason::Invalid_Message,
-                format!("Bad or corrupted encrypted data: {e}"),
-            )
-        })?;
+        let encrypted_header = EncryptedHeader::read(&mut de)
+            .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
         let encrypted_block = de.finalize();
 
         let header = encrypted_header
             .decrypt(&self.cover_crypt, user_decryption_key, aead)
-            .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?;
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         let cleartext = Zeroizing::from(
             self.cover_crypt
                 .decrypt(&header.symmetric_key, &encrypted_block, aead)
-                .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?,
+                .map_err(|e| CryptoError::Kmip(e.to_string()))?,
         );
 
         debug!(
@@ -120,12 +113,9 @@ impl CovercryptDecryption {
             let len = de.read_leb128_u64()?;
             ser.write_leb128_u64(len)?;
             usize::try_from(len).map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    format!(
-                        "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
-                    ),
-                )
+                CryptoError::Kmip(format!(
+                    "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
+                ))
             })?
         };
 
@@ -137,10 +127,7 @@ impl CovercryptDecryption {
             let (encrypted_header, encrypted_block) = {
                 let mut de_chunk = Deserializer::new(chunk_data);
                 let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
-                    CryptoError::KmipError(
-                        ErrorReason::Invalid_Message,
-                        format!("Bad or corrupted bulk encrypted data: {e}"),
-                    )
+                    CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
                 })?;
                 let encrypted_block = de_chunk.finalize();
                 (encrypted_header, encrypted_block)
@@ -148,12 +135,12 @@ impl CovercryptDecryption {
 
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, aead)
-                .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?;
+                .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
             let cleartext = self
                 .cover_crypt
                 .decrypt(&header.symmetric_key, &encrypted_block, aead)
-                .map_err(|e| CryptoError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?;
+                .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
             // All the headers are the same
             cleartext_header = Some(header);
@@ -168,12 +155,8 @@ impl CovercryptDecryption {
             ser.write_vec(&cleartext)?;
         }
 
-        let cleartext_header = cleartext_header.ok_or_else(|| {
-            CryptoError::KmipError(
-                ErrorReason::Internal_Server_Error,
-                "unable to recover any header".to_owned(),
-            )
-        })?;
+        let cleartext_header = cleartext_header
+            .ok_or_else(|| CryptoError::Kmip("unable to recover any header".to_owned()))?;
 
         Ok((cleartext_header, ser.finalize()))
     }
@@ -183,17 +166,13 @@ impl DecryptionSystem for CovercryptDecryption {
     fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
         let user_decryption_key = UserSecretKey::deserialize(&self.user_decryption_key_bytes)
             .map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Codec_Error,
-                    format!("cover crypt decipher: failed recovering the user key: {e}"),
-                )
+                CryptoError::Kmip(format!(
+                    "cover crypt decipher: failed recovering the user key: {e}"
+                ))
             })?;
 
         let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
-            CryptoError::KmipError(
-                ErrorReason::Invalid_Message,
-                "The decryption request should contain encrypted data".to_owned(),
-            )
+            CryptoError::Kmip("The decryption request should contain encrypted data".to_owned())
         })?;
 
         let (header, plaintext) = if let Some(CryptographicParameters {
