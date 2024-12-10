@@ -21,7 +21,7 @@ fips = []
 bitflags = "2.6"
 chrono = { workspace = true }
 cosmian_logger = { workspace = true }
-hex = { workspace = true }
+hex = { workspace = true, features = ["std"] }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
@@ -41,3 +41,6 @@ zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]
+
+[dev-dependencies]
+rand = { workspace = true }

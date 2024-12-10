@@ -20,8 +20,8 @@ pub enum KmipError {
     #[error("Deserialization error: {0}")]
     Deserialization(String),
 
-    #[error("Deserialization: invalid size: {0}, expected: {1}")]
-    DeserializationSizeError(usize, usize),
+    #[error("Deserialization: invalid size: {1}, expected: {0}")]
+    DeserializationSize(usize, usize),
 
     #[error("Indexing slicing Error: {0}")]
     IndexingSlicing(String),
