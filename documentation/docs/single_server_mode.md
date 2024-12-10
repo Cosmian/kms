@@ -16,6 +16,26 @@ protected during operation by running the server inside an enclave. Ask Cosmian 
 To run in single server mode, using the defaults and a SQLite database will be created. Otherwise,
 the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page]](./database.md).
 
+=== "Docker"
+
+    Run the container as follows:
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
+    ```
+
+    The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
+    container in the `/root/cosmian-kms/sqlite-data` directory.
+
+    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
+    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+
+    ```sh
+    docker run --rm -p 9998:9998 \
+    -v cosmian-kms:/root/cosmian-kms/sqlite-data \
+    --name kms ghcr.io/cosmian/kms:4.20.1
+    ```
+
 === "Ubuntu 20.04"
 
     Download package and install it:
@@ -126,26 +146,6 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     cosmian --version
     ```
 
-=== "Docker"
-
-    Run the container as follows:
-
-    ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
-    ```
-
-    The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
-    container in the `/root/cosmian-kms/sqlite-data` directory.
-
-    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
-    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
-
-    ```sh
-    docker run --rm -p 9998:9998 \
-    -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-    --name kms ghcr.io/cosmian/kms:4.20.1
-    ```
-
 ### Using client-side encrypted databases
 
 To start the KMS server with a client-side encrypted SQLite databases, pass the
@@ -191,12 +191,12 @@ databases can be used concurrently on the same KMS server.
 
     The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file.
 
-        ```toml
-        [kms_config.http_config]
-        server_url = "http://127.0.0.1:9990"
-        access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
-        database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
-        ```
+    ```toml
+    [kms_config.http_config]
+    server_url = "http://127.0.0.1:9990"
+    access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
+    database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
+    ```
 
 === "curl"
 

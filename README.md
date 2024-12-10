@@ -1,13 +1,10 @@
 # Cosmian KMS
 
-![Build status](https://github.com/Cosmian/kms/actions/workflows/build_rhel9.yml/badge.svg?branch=main)
-![Build status](https://github.com/Cosmian/kms/actions/workflows/build_generic.yml/badge.svg?branch=main)
-![Build status](https://github.com/Cosmian/kms/actions/workflows/build_windows.yml/badge.svg?branch=main)
-![Build status](https://github.com/Cosmian/kms/actions/workflows/build_docker_image.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/main.yml/badge.svg?branch=main)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
 
-The **Cosmian KMS** is a high-performance,
-[**open-source**](https://github.com/Cosmian/kms),
-[FIPS 140-3 compliant](./fips.md) server application
+The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/Cosmian/kms),
+[FIPS 140-3 compliant](./documentation/docs/fips.md) server application
 written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
