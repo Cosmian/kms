@@ -63,7 +63,7 @@ The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
     inside the container, simply run the following command:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
     ```
 
     Using [Cosmian CLI](../cosmian_cli/index.md), you can easily manage the server:

@@ -50,6 +50,9 @@ pub struct ServerParams {
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 
+    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    pub google_cse_disable_tokens_validation: bool,
+
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
     /// It should contain the external URL of this server as configured in
@@ -132,6 +135,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             authority_cert_file,
             api_token_id: conf.http.api_token_id,
+            google_cse_disable_tokens_validation: conf.google_cse_disable_tokens_validation,
             google_cse_kacls_url: conf.google_cse_kacls_url,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_admin: conf.hsm_admin,
@@ -206,6 +210,10 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
+        let x = x.field(
+            "google_cse_disable_tokens_validation",
+            &self.google_cse_disable_tokens_validation,
+        );
         let x = if let Some(google_cse_kacls_url) = &self.google_cse_kacls_url {
             x.field("google_cse_kacls_url", &google_cse_kacls_url)
         } else {
@@ -254,6 +262,7 @@ impl Clone for ServerParams {
             http_params: HttpParams::Http,
             authority_cert_file: self.authority_cert_file.clone(),
             api_token_id: self.api_token_id.clone(),
+            google_cse_disable_tokens_validation: self.google_cse_disable_tokens_validation,
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
             ms_dke_service_url: self.ms_dke_service_url.clone(),
             hsm_admin: self.hsm_admin.clone(),

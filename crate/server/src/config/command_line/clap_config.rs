@@ -18,6 +18,7 @@ impl Default for ClapConfig {
             workspace: WorkspaceConfig::default(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
+            google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: None,
             ms_dke_service_url: None,
             telemetry: TelemetryConfig::default(),
@@ -63,6 +64,15 @@ pub struct ClapConfig {
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     pub google_cse_kacls_url: Option<String>,
+
+    /// This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server.
+    #[clap(
+        long,
+        requires = "google_cse_kacls_url",
+        env = "KMS_GOOGLE_CSE_DISABLE_TOKENS_VALIDATION",
+        default_value = "false"
+    )]
+    pub google_cse_disable_tokens_validation: bool,
 
     /// This setting enables the Microsoft Double Key Encryption service feature of this server.
     ///
@@ -125,6 +135,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
+        let x = x.field(
+            "Google Workspace CSE, disable tokens validation",
+            &self.google_cse_disable_tokens_validation,
+        );
         let x = x.field(
             "Google Workspace CSE, KACLS Url",
             &self.google_cse_kacls_url,

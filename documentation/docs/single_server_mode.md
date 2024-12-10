@@ -21,11 +21,17 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     Run the container as follows:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
     ```
 
     The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
     container in the `/root/cosmian-kms/sqlite-data` directory.
+
+    FIPS version is also available:
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest
+    ```
 
     To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
     directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
@@ -33,7 +39,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     ```sh
     docker run --rm -p 9998:9998 \
     -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-    --name kms ghcr.io/cosmian/kms:4.20.1
+    --name kms ghcr.io/cosmian/kms:latest
     ```
 
 === "Ubuntu 20.04"
@@ -154,7 +160,7 @@ To start the KMS server with a client-side encrypted SQLite databases, pass the
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.20.1 \
+  --name kms ghcr.io/cosmian/kms:latest \
   --database-type=sqlite-enc
 ```
 
