@@ -14,7 +14,7 @@ protected during operation by running the server inside an enclave. Ask Cosmian 
 ### Quick start
 
 To run in single server mode, using the defaults and a SQLite database will be created. Otherwise,
-the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page]](./database.md).
+the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page](./database.md).
 
 === "Docker"
 
