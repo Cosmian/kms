@@ -55,15 +55,12 @@
 // To parse a slice
 #![feature(slice_take)]
 
-pub use error::{result::KmipResultHelper, KmipError};
+pub use error::{result::CryptoResultHelper, CryptoError};
 
-mod bytes_ser_de;
-pub use bytes_ser_de::{Deserializer, Serializer};
+pub mod crypto;
 mod error;
 pub mod kmip;
-mod safe_biguint;
-
-pub use safe_biguint::SafeBigUint;
+pub mod openssl;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {

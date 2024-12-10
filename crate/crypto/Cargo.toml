@@ -1,5 +1,5 @@
 [package]
-name = "cosmian_kmip"
+name = "cosmian_kms_crypto"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -18,26 +18,28 @@ pyo3 = ["dep:pyo3"]
 fips = []
 
 [dependencies]
-bitflags = "2.6"
-chrono = { workspace = true }
+aes-gcm-siv = "0.11.1"
+argon2 = "0.5"
+base64 = { workspace = true }
+cloudproof = { workspace = true }
 cosmian_logger = { workspace = true }
+cosmian_kmip = { path = "../kmip" }
 hex = { workspace = true }
-leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
     "serde",
     "zeroize",
 ] }
+openssl = { workspace = true }
 pyo3 = { workspace = true, optional = true }
-serde = { workspace = true, features = ["derive", "std"] }
-serde_json = { workspace = true, features = [] }
-strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+rust-ini = "0.21"
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
-time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
-zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+x509-parser = { workspace = true }
+zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

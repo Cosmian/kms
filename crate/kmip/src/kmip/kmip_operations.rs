@@ -1,6 +1,5 @@
 use std::fmt::{self, Display};
 
-use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
@@ -18,7 +17,7 @@ use super::{
         UniqueIdentifier, ValidityIndicator,
     },
 };
-use crate::error::KmipError;
+use crate::{error::KmipError, Deserializer, Serializer};
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]

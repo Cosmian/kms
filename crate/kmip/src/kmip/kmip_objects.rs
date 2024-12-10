@@ -1,8 +1,10 @@
-use std::{convert::TryFrom, fmt::Display};
+use std::{
+    convert::TryFrom,
+    fmt::Display,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
-use clap::ValueEnum;
 use num_bigint_dig::BigUint;
-use openssl::sha::sha256;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
@@ -293,11 +295,16 @@ impl Object {
         }
     }
 
-    /// Return the key signature if this is a Key
-    /// The value is the sha256 of the key block key bytes
-    pub fn key_signature(&self) -> KmipResult<[u8; 32]> {
-        self.key_block()
-            .and_then(|kb| kb.key_bytes().map(|kb| sha256(&kb)))
+    /// Return the key signature if this is a Key.
+    /// The value is the `SipHash` of the key block key bytes.
+    pub fn key_signature(&self) -> KmipResult<u64> {
+        self.key_block().and_then(|kb| {
+            kb.key_bytes().map(|kb| {
+                let mut hasher = DefaultHasher::new();
+                kb.hash(&mut hasher);
+                hasher.finish()
+            })
+        })
     }
 }
 
@@ -330,26 +337,17 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(ValueEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
-    #[value(name = "Certificate")]
     Certificate = 0x0000_0001,
-    #[value(name = "SymmetricKey")]
     SymmetricKey = 0x0000_0002,
-    #[value(name = "PublicKey")]
     PublicKey = 0x0000_0003,
-    #[value(name = "PrivateKey")]
     PrivateKey = 0x0000_0004,
-    #[value(name = "SplitKey")]
     SplitKey = 0x0000_0005,
-    #[value(name = "SecretData")]
     SecretData = 0x0000_0007,
-    #[value(name = "OpaqueObject")]
     OpaqueObject = 0x0000_0008,
-    #[value(name = "PGPKey")]
     PGPKey = 0x0000_0009,
-    #[value(name = "CertificateRequest")]
     CertificateRequest = 0x0000_000A,
 }
 
