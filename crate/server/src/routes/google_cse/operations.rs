@@ -134,6 +134,40 @@ pub struct WrapResponse {
     pub wrapped_key: String,
 }
 
+/// Validates the provided authentication and authorization tokens, and extracts the content.
+///
+/// This function takes the authentication and authorization tokens from the request,
+/// along with the CSE configuration, application context, and optional roles. It performs
+/// validation on the tokens and extracts the relevant content if the validation is successful.
+async fn get_user_and_resource_name(
+    application: &str,
+    roles: &[Role],
+    authentication_token: &str,
+    authorization_token: &str,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMS>,
+) -> KResult<(String, Option<Vec<u8>>)> {
+    if kms.params.google_cse_disable_tokens_validation {
+        debug!("get_user_and_resource_name: no token validation");
+        Ok((kms.params.default_username.clone(), None))
+    } else {
+        debug!("get_user_and_resource_name: validate_tokens");
+        let token_extracted_content = validate_tokens(
+            authentication_token,
+            authorization_token,
+            kms,
+            cse_config,
+            application,
+            Some(roles),
+        )
+        .await?;
+        Ok((
+            token_extracted_content.user,
+            token_extracted_content.resource_name,
+        ))
+    }
+}
+
 /// Wraps a Data Encryption Key (DEK) using the specified authentication and authorization tokens.
 ///
 /// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
@@ -160,13 +194,14 @@ pub async fn wrap(
     // the possible roles to wrap a key
     let roles = &[Role::Writer, Role::Upgrader];
 
-    debug!("wrap: validate_tokens");
-    let token_extracted_content = validate_tokens(
+    // get the user and resource name
+    let (user, resource_name) = get_user_and_resource_name(
+        &application,
+        roles,
         &request.authentication,
         &request.authorization,
         cse_config,
-        &application,
-        Some(roles),
+        kms,
     )
     .await?;
 
@@ -179,9 +214,9 @@ pub async fn wrap(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: token_extracted_content.resource_name,
+        authenticated_encryption_additional_data: resource_name,
     };
-    let dek = encrypt(kms, encryption_request, &token_extracted_content.user, None).await?;
+    let dek = encrypt(kms, encryption_request, &user, None).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {
@@ -260,13 +295,14 @@ pub async fn unwrap(
     // the possible roles to unwrap a key
     let roles = &[Role::Writer, Role::Reader];
 
-    debug!("unwrap: validate_tokens");
-    let token_extracted_content = validate_tokens(
+    // get the user and resource name
+    let (user, resource_name) = get_user_and_resource_name(
+        &application,
+        roles,
         &request.authentication,
         &request.authorization,
         cse_config,
-        &application,
-        Some(roles),
+        kms,
     )
     .await?;
 
@@ -274,8 +310,8 @@ pub async fn unwrap(
     let data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
-        token_extracted_content.user,
-        token_extracted_content.resource_name,
+        user,
+        resource_name,
         kms,
     )
     .await?;
@@ -340,12 +376,14 @@ pub async fn private_key_sign(
     debug!("private_key_sign: entering");
     let roles: &[Role; 1] = &[Role::Signer];
 
-    let token_extracted_content = validate_tokens(
+    // get the user and resource name
+    let (user, _resource_name) = get_user_and_resource_name(
+        "gmail",
+        roles,
         &request.authentication,
         &request.authorization,
         cse_config,
-        "gmail",
-        Some(roles),
+        kms,
     )
     .await?;
 
@@ -359,7 +397,7 @@ pub async fn private_key_sign(
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
-        token_extracted_content.user,
+        user,
         None,
         kms,
     )
@@ -445,12 +483,14 @@ pub async fn private_key_decrypt(
     debug!("private_key_decrypt: entering");
     let roles: &[Role; 1] = &[Role::Decrypter];
 
-    let token_extracted_content = validate_tokens(
+    // get the user and resource name
+    let (user, _resource_name) = get_user_and_resource_name(
+        "gmail",
+        roles,
         &request.authentication,
         &request.authorization,
         cse_config,
-        "gmail",
-        Some(roles),
+        kms,
     )
     .await?;
 
@@ -471,7 +511,7 @@ pub async fn private_key_decrypt(
     let private_key_der = cse_wrapped_key_decrypt(
         request.wrapped_private_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
-        token_extracted_content.user,
+        user,
         None,
         kms,
     )
@@ -534,16 +574,16 @@ pub async fn digest(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<DigestResponse> {
+    debug!("digest: entering");
+
     let application = get_application(&request.reason);
 
-    debug!("digest: validate_authorization_token");
-
-    let roles = [Role::Verifier];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
+        kms,
         cse_config,
         &application,
-        Some(&roles),
+        Some(&[Role::Verifier]),
     )
     .await?;
 
@@ -553,7 +593,7 @@ pub async fn digest(
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
 
-    debug!("cse_digest: encode base64 wrapped_dek");
+    debug!("digest: encode base64 wrapped_dek");
     let dek_data = cse_wrapped_key_decrypt(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
@@ -596,10 +636,12 @@ pub async fn privileged_wrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedWrapResponse> {
-    debug!("privileged-wrap: validate authentication token");
-    let user = validate_cse_authentication_token(&request.authentication, cse_config, true).await?;
+    debug!("privileged_wrap: entering");
 
-    debug!("privileged-wrap: wrap dek");
+    let user =
+        validate_cse_authentication_token(&request.authentication, cse_config, kms, true).await?;
+
+    debug!("privileged_wrap: wrap dek");
     let resource_name = request.resource_name.into_bytes();
     let encryption_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
@@ -631,7 +673,7 @@ pub async fn privileged_wrap(
     wrapped_dek.extend_from_slice(&data);
     wrapped_dek.extend_from_slice(&authenticated_encryption_tag);
 
-    debug!("privileged-wrap: exiting with success");
+    debug!("privileged_wrap: exiting with success");
     Ok(PrivilegedWrapResponse {
         wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
     })
@@ -664,11 +706,9 @@ pub async fn privileged_unwrap(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
     debug!("privileged_unwrap: entering");
-
     let user =
-        validate_cse_authentication_token(&request.authentication, cse_config, false).await?;
+        validate_cse_authentication_token(&request.authentication, cse_config, kms, false).await?;
     let resource_name = request.resource_name.into_bytes();
-    debug!("privileged_unwrap: validate_tokens");
 
     debug!("privileged_unwrap: unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
@@ -725,8 +765,8 @@ pub async fn privileged_private_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("privileged_private_key_decrypt: entering");
-    debug!("privileged_private_key_decrypt: validate_tokens");
-    let user = validate_cse_authentication_token(&request.authentication, cse_config, true).await?;
+    let user =
+        validate_cse_authentication_token(&request.authentication, cse_config, kms, true).await?;
 
     debug!("privileged_private_key_decrypt: check algorithm");
     kms_ensure!(
@@ -822,6 +862,7 @@ pub async fn rewrap(
     let roles = [Role::Migrator];
     let authorization_token = validate_cse_authorization_token(
         &request.authorization,
+        kms,
         cse_config,
         &application,
         Some(&roles),

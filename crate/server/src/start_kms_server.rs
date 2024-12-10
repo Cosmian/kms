@@ -203,7 +203,7 @@ pub async fn prepare_kms_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
+    let enable_google_cse_authentication = !kms_server.params.google_cse_disable_tokens_validation;
 
     // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
@@ -217,7 +217,7 @@ pub async fn prepare_kms_server(
             })
             .collect();
         // Add the one from google if cse is enabled
-        if enable_google_cse {
+        if enable_google_cse_authentication {
             all_jwks_uris.extend(google_cse::list_jwks_uri());
         }
 
@@ -244,8 +244,8 @@ pub async fn prepare_kms_server(
     let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
     // Get the Google Client-Side Encryption JWT authorization config
-    debug!("Enable Google CSE JWT Authorization: {enable_google_cse}");
-    let google_cse_jwt_config = if enable_google_cse {
+    debug!("Enable Google CSE JWT Authorization: {enable_google_cse_authentication}");
+    let google_cse_jwt_config = if enable_google_cse_authentication {
         let Some(jwks_manager) = jwks_manager else {
             return Err(KmsError::ServerError(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
@@ -257,9 +257,6 @@ pub async fn prepare_kms_server(
                  authenticate Google Workspace users must be configured.",
             )?,
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
-            kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
-                "The Google Workspace Client Side Encryption KACLS URL must be provided",
-            )?,
         };
         trace!("Google CSE JWT Config: {:#?}", google_cse_config);
         Some(google_cse_config)
@@ -279,7 +276,7 @@ pub async fn prepare_kms_server(
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if enable_google_cse {
+        if kms_server.params.google_cse_kacls_url.is_some() {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))

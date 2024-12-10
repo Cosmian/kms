@@ -5,6 +5,7 @@ use tracing::{debug, trace};
 
 use super::operations::Role;
 use crate::{
+    core::KMS,
     error::KmsError,
     kms_ensure,
     middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim},
@@ -138,12 +139,10 @@ pub(crate) fn decode_jwt_authorization_token(
 
 /// The configuration for Google CSE:
 ///  - JWT authentication and authorization configurations
-///  - external KACLS URL of this server configured in Google Workspace client-side encryption something like <https://cse.mydomain.com/google_cse>
 #[derive(Debug, Clone)]
 pub struct GoogleCseConfig {
     pub authentication: Arc<Vec<JwtConfig>>,
     pub authorization: HashMap<String, Arc<JwtConfig>>,
-    pub kacls_url: String,
 }
 
 /// Validate the authentication token and return the calling user
@@ -151,14 +150,23 @@ pub struct GoogleCseConfig {
 pub(crate) async fn validate_cse_authentication_token(
     authentication_token: &str,
     cse_config: &Option<GoogleCseConfig>,
+    kms: &Arc<KMS>,
     check_email: bool,
 ) -> KResult<String> {
+    debug!("validate_cse_authentication_token: entering");
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
                 .to_owned(),
         )
     })?;
+    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
+        KmsError::ServerError(
+            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
+                .to_owned(),
+        )
+    })?;
+    trace!("validate token: KACLS url {google_cse_kacls_url}");
 
     let mut decoded_token = None;
     for idp_config in cse_config.authentication.iter() {
@@ -176,10 +184,9 @@ pub(crate) async fn validate_cse_authentication_token(
     #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authentication_token.kacls_url {
         kms_ensure!(
-            kacls_url == cse_config.kacls_url,
+            &kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
-                "KACLS Urls should match: expected: {}, got: {} ",
-                cse_config.kacls_url, kacls_url
+                "KACLS Urls should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
         );
     }
@@ -211,10 +218,21 @@ pub(crate) async fn validate_cse_authentication_token(
 #[allow(unused_variables)]
 pub(crate) async fn validate_cse_authorization_token(
     authorization_token: &str,
+    kms: &Arc<KMS>,
     cse_config: &Option<GoogleCseConfig>,
     application: &str,
     roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
+    debug!("validate_cse_authorization_token: entering");
+
+    let google_cse_kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
+        KmsError::ServerError(
+            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
+                .to_owned(),
+        )
+    })?;
+    trace!("validate_cse_authorization_token: KACLS url {google_cse_kacls_url}");
+
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
@@ -257,10 +275,9 @@ pub(crate) async fn validate_cse_authorization_token(
     #[cfg(not(feature = "insecure"))]
     if let Some(kacls_url) = authorization_token.kacls_url.clone() {
         kms_ensure!(
-            kacls_url == cse_config.kacls_url,
+            &kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
-                "KACLS Urls should match: expected: {}, got: {} ",
-                cse_config.kacls_url, kacls_url
+                "KACLS Urls should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
         );
     }
@@ -284,15 +301,16 @@ pub(crate) struct TokenExtractedContent {
 pub(crate) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
+    kms: &Arc<KMS>,
     cse_config: &Option<GoogleCseConfig>,
     application: &str,
     roles: Option<&[Role]>,
 ) -> KResult<TokenExtractedContent> {
     let authentication_email =
-        validate_cse_authentication_token(authentication_token, cse_config, true).await?;
+        validate_cse_authentication_token(authentication_token, cse_config, kms, true).await?;
 
     let authorization_token =
-        validate_cse_authorization_token(authorization_token, cse_config, application, roles)
+        validate_cse_authorization_token(authorization_token, kms, cse_config, application, roles)
             .await?;
     let authorization_email = authorization_token.email.ok_or_else(|| {
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
