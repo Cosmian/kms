@@ -1,14 +1,4 @@
-use num_bigint_dig::BigUint;
-use openssl::{pkey::Private, rsa::Rsa};
-use tracing::trace;
-use zeroize::Zeroizing;
-
-#[cfg(feature = "fips")]
-use super::{FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
-use crate::{
-    crypto::{secret::SafeBigUint, KeyPair},
-    crypto_bail,
-    error::CryptoError,
+use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -17,8 +7,16 @@ use crate::{
             KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         },
     },
-    CryptoResultHelper,
+    SafeBigUint,
 };
+use num_bigint_dig::BigUint;
+use openssl::{pkey::Private, rsa::Rsa};
+use tracing::trace;
+use zeroize::Zeroizing;
+
+#[cfg(feature = "fips")]
+use super::{FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
+use crate::{crypto::KeyPair, crypto_bail, error::CryptoError, CryptoResultHelper};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set

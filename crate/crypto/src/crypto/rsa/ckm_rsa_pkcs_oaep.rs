@@ -11,6 +11,7 @@
 //!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (<https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf>)
 //!
 //! The scheme can be used for both encryption and key wrapping
+use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     md::MdRef,
     pkey::{PKey, Private, Public},
@@ -22,7 +23,7 @@ use zeroize::Zeroizing;
 use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 #[cfg(feature = "fips")]
 use crate::crypto_bail;
-use crate::{error::CryptoError, kmip::kmip_types::HashingAlgorithm};
+use crate::{error::CryptoError, openssl::hashing_algorithm_to_openssl_ref};
 
 /// Key Wrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
@@ -95,7 +96,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
     ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
-    ctx.set_rsa_oaep_md(hash_fn.try_into()?)?;
+    ctx.set_rsa_oaep_md(hashing_algorithm_to_openssl_ref(hash_fn)?)?;
     Ok((ctx, ciphertext))
 }
 
@@ -159,7 +160,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     }
 
     // The openssl hash function
-    let hash_fn: &MdRef = hash_fn.try_into()?;
+    let hash_fn: &MdRef = hashing_algorithm_to_openssl_ref(hash_fn)?;
 
     // The ciphertext has the same length as the modulus.
     let plaintext_bytes_len = usize::try_from(rsa_priv_key.size())? - 2 - 2 * hash_fn.size();
@@ -176,6 +177,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
     use openssl::pkey::PKey;
     use zeroize::Zeroizing;
 
@@ -184,7 +186,6 @@ mod tests {
             ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap,
         },
         error::CryptoError,
-        kmip::kmip_types::HashingAlgorithm,
     };
 
     #[test]

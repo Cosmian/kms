@@ -1,15 +1,14 @@
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_operations::{CreateKeyPair, Get},
+    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+};
+
 #[cfg(feature = "fips")]
 use super::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
-#[cfg(not(feature = "fips"))]
-use crate::kmip::kmip_types::CryptographicUsageMask;
-use crate::{
-    error::CryptoError,
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_operations::{CreateKeyPair, Get},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
-    },
-};
+use crate::error::CryptoError;
 
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(

@@ -1,3 +1,14 @@
+use cosmian_kmip::{
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+        },
+    },
+    SafeBigUint,
+};
 use num_bigint_dig::BigUint;
 use openssl::{
     bn::{BigNum, BigNumContext},
@@ -9,23 +20,12 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::{
-        elliptic_curves::{
-            ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
-            X448_PRIVATE_KEY_LENGTH,
-        },
-        secret::SafeBigUint,
+    crypto::elliptic_curves::{
+        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+        X448_PRIVATE_KEY_LENGTH,
     },
     crypto_bail,
     error::{result::CryptoResultHelper, CryptoError},
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
-        },
-    },
     pad_be_bytes,
 };
 
@@ -467,6 +467,11 @@ pub fn openssl_private_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    use cosmian_kmip::kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::Object,
+        kmip_types::{KeyFormatType, RecommendedCurve},
+    };
     use openssl::{
         bn::BigNum,
         ec::{EcGroup, EcKey, EcPoint},
@@ -481,16 +486,9 @@ mod tests {
     };
     #[cfg(not(feature = "fips"))]
     use crate::kmip::kmip_types::CryptographicUsageMask;
-    use crate::{
-        kmip::{
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::Object,
-            kmip_types::{KeyFormatType, RecommendedCurve},
-        },
-        openssl::{
-            kmip_private_key_to_openssl,
-            private_key::{openssl_private_key_to_kmip, pad_be_bytes},
-        },
+    use crate::openssl::{
+        kmip_private_key_to_openssl,
+        private_key::{openssl_private_key_to_kmip, pad_be_bytes},
     };
 
     fn test_private_key_conversion_pkcs(

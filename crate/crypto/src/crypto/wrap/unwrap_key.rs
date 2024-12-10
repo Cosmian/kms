@@ -1,3 +1,11 @@
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::Object,
+    kmip_types::{
+        Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask,
+        EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+    },
+};
 use openssl::pkey::{Id, PKey, Private};
 use x509_parser::nom::AsBytes;
 use zeroize::Zeroizing;
@@ -23,15 +31,6 @@ use crate::{
     },
     crypto_bail,
     error::{result::CryptoResultHelper, CryptoError},
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::Object,
-        kmip_operations::ErrorReason,
-        kmip_types::{
-            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask,
-            EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
-        },
-    },
     openssl::kmip_private_key_to_openssl,
 };
 
@@ -175,8 +174,7 @@ pub(crate) fn unwrap(
         .attributes()?
         .is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)?
     {
-        return Err(CryptoError::InvalidKmipValue(
-            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+        return Err(CryptoError::Kmip(
             "CryptographicUsageMask not authorized for UnwrapKey".to_owned(),
         ))
     }

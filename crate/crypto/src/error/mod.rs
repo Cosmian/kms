@@ -1,6 +1,7 @@
 use std::num::TryFromIntError;
 
 use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
+use cosmian_kmip::KmipError;
 use thiserror::Error;
 
 pub(crate) mod result;
@@ -99,6 +100,12 @@ impl From<TryFromIntError> for CryptoError {
     }
 }
 
+impl From<KmipError> for CryptoError {
+    fn from(e: KmipError) -> Self {
+        Self::Kmip(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -128,10 +135,10 @@ macro_rules! crypto_error {
         $crate::error::CryptoError::Default(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error:CryptoError::Default($err.to_string())
+        $crate::error::CryptoError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error:CryptoError::Default(::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::error::CryptoError::Default(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
@@ -175,10 +182,7 @@ mod tests {
 
     fn bail() -> Result<(), CryptoError> {
         let var = 43;
-        if true {
-            crypto_bail!("interpolate {var}");
-        }
-        Ok(())
+        crypto_bail!("interpolate {var}");
     }
 
     fn ensure() -> Result<(), CryptoError> {

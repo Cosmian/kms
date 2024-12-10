@@ -4,6 +4,14 @@ use cloudproof::reexport::{
     cover_crypt::{abe_policy::AccessPolicy, Covercrypt, MasterPublicKey},
     crypto_core::bytes_ser_de::Serializable,
 };
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::GetResponse,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, WrappingMethod,
+    },
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -11,15 +19,6 @@ use zeroize::Zeroizing;
 use crate::{
     crypto::cover_crypt::attributes::{access_policy_as_vendor_attribute, policy_from_attributes},
     error::CryptoError,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{ErrorReason, GetResponse},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            WrappingMethod,
-        },
-    },
 };
 
 // ------------------------------------------------------------------------------
@@ -94,24 +93,20 @@ fn prepare_symmetric_key(
         .key_bytes_and_attributes()?;
 
     let public_key = MasterPublicKey::deserialize(&public_key_bytes).map_err(|e| {
-        CryptoError::KmipError(
-            ErrorReason::Codec_Error,
-            format!("cover crypt: failed deserializing the master public key: {e}"),
-        )
+        CryptoError::Kmip(format!(
+            "cover crypt: failed deserializing the master public key: {e}"
+        ))
     })?;
 
     let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
-        CryptoError::InvalidKmipObject(
-            ErrorReason::Attribute_Not_Found,
+        CryptoError::Kmip(
             "the master public key does not have attributes with the Policy".to_owned(),
         )
     })?)?;
 
     let (sk, sk_enc) = cover_crypt
         .encaps(&policy, &public_key, access_policy)
-        .map_err(|e| {
-            CryptoError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
-        })?;
+        .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
     debug!("Generate symmetric key for CoverCrypt OK");
     Ok(CoverCryptSymmetricKey {
@@ -120,10 +115,9 @@ fn prepare_symmetric_key(
         encrypted_symmetric_key: sk_enc
             .serialize()
             .map_err(|e| {
-                CryptoError::KmipError(
-                    ErrorReason::Codec_Error,
-                    format!("cover crypt: failed serializing the encapsulation: {e}"),
-                )
+                CryptoError::Kmip(format!(
+                    "cover crypt: failed serializing the encapsulation: {e}"
+                ))
             })?
             .to_vec(),
     })
@@ -136,32 +130,28 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
         if sk.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
             || sk.key_format_type != KeyFormatType::TransparentSymmetricKey
         {
-            return Err(CryptoError::InvalidKmipObject(
-                ErrorReason::Invalid_Data_Type,
+            return Err(CryptoError::Kmip(
                 "this Secret Key does not contain an CoverCrypt key".to_owned(),
             ))
         }
 
         if sk.key_wrapping_data.is_some() {
-            return Err(CryptoError::KmipNotSupported(
-                ErrorReason::Key_Wrap_Type_Not_Supported,
+            return Err(CryptoError::Kmip(
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_owned(),
             ))
         }
         serde_json::from_slice::<Self>(match &sk.key_value.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => key,
             other => {
-                return Err(CryptoError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    format!("Invalid key material for an CoverCrypt secret key: {other}"),
-                ))
+                return Err(CryptoError::Kmip(format!(
+                    "Invalid key material for an CoverCrypt secret key: {other}"
+                )))
             }
         })
         .map_err(|e| {
-            CryptoError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed deserializing the CoverCrypt Secret Key from the Key Material {e}"),
-            )
+            CryptoError::Kmip(format!(
+                "failed deserializing the CoverCrypt Secret Key from the Key Material {e}"
+            ))
         })
     }
 }

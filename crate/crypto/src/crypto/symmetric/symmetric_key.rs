@@ -1,17 +1,14 @@
-use zeroize::Zeroizing;
-
-use crate::{
-    error::result::CryptoResult,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::Create,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            UniqueIdentifier,
-        },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::Create,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
     },
 };
+use zeroize::Zeroizing;
+
+use crate::error::result::CryptoResult;
 
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key_kmip_object(
