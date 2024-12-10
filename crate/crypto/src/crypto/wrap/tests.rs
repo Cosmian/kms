@@ -1,3 +1,12 @@
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyWrappingData,
+    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
+};
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
+    kmip_types::EncodingOption,
+};
 #[cfg(not(feature = "fips"))]
 use openssl::{
     ec::{EcGroup, EcKey},
@@ -7,11 +16,6 @@ use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(feature = "fips")]
 use crate::crypto::rsa::FIPS_PUBLIC_RSA_MASK;
-#[cfg(not(feature = "fips"))]
-use crate::kmip::{
-    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
-    kmip_types::EncodingOption,
-};
 #[cfg(not(feature = "fips"))]
 use crate::{
     crypto::{
@@ -26,10 +30,6 @@ use crate::{
         wrap::{unwrap_key::unwrap, wrap_key::wrap},
     },
     error::result::CryptoResult,
-    kmip::{
-        kmip_data_structures::KeyWrappingData,
-        kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
-    },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
 

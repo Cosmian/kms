@@ -467,6 +467,8 @@ pub fn openssl_private_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::Object,
@@ -484,8 +486,6 @@ mod tests {
     use crate::crypto::{
         elliptic_curves::FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, rsa::FIPS_PRIVATE_RSA_MASK,
     };
-    #[cfg(not(feature = "fips"))]
-    use crate::kmip::kmip_types::CryptographicUsageMask;
     use crate::openssl::{
         kmip_private_key_to_openssl,
         private_key::{openssl_private_key_to_kmip, pad_be_bytes},
