@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{kmip::kmip_types::CryptographicAlgorithm, KMS_CLI_CONF_ENV};
 
 use crate::{
     actions::attributes::SetOrDeleteAttributes,
@@ -12,7 +12,7 @@ use crate::{
 pub(crate) fn prepare_attributes(
     subcommand: &str,
     requested_attributes: &SetOrDeleteAttributes,
-) -> Vec<std::string::String> {
+) -> Vec<String> {
     let mut args = vec![subcommand.to_owned()];
 
     if let Some(id) = &requested_attributes.id {
@@ -26,7 +26,7 @@ pub(crate) fn prepare_attributes(
 
     if let Some(cryptographic_algorithm) = requested_attributes.cryptographic_algorithm {
         args.push("--cryptographic-algorithm".to_owned());
-        args.push(cryptographic_algorithm.to_string());
+        args.push(CryptographicAlgorithm::from(cryptographic_algorithm).to_string());
     }
     if let Some(cryptographic_length) = requested_attributes.cryptographic_length {
         args.push("--cryptographic-length".to_owned());

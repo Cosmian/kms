@@ -456,6 +456,8 @@ pub fn openssl_public_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "fips")]
+    use cosmian_kmip::kmip::extra::fips::{FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK};
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip::{
@@ -471,10 +473,6 @@ mod tests {
         rsa::Rsa,
     };
 
-    #[cfg(feature = "fips")]
-    use crate::crypto::{
-        elliptic_curves::FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, rsa::FIPS_PUBLIC_RSA_MASK,
-    };
     use crate::openssl::{kmip_public_key_to_openssl, public_key::openssl_public_key_to_kmip};
 
     fn test_public_key_conversion_pkcs(

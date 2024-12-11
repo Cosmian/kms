@@ -1,10 +1,8 @@
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::Object,
+    kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_client::{import_object, KmsClient};
 use cosmian_pkcs11_module::traits::Backend;
