@@ -1,6 +1,6 @@
 use clap::Parser;
 use cosmian_kms_client::{
-    kmip::{kmip_types::UniqueIdentifier, requests::create_rsa_key_pair_request},
+    kmip_2_1::{kmip_types::UniqueIdentifier, requests::create_rsa_key_pair_request},
     KmsClient,
 };
 

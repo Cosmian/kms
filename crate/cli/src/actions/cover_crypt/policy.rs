@@ -6,7 +6,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, TTLV},
     },

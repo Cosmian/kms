@@ -3,7 +3,7 @@ use std::{
     fs, path,
 };
 
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},

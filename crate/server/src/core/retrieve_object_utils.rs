@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{kmip_types::StateEnumeration, KmipOperation};
+use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
 use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use tracing::trace;
 

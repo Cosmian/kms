@@ -2,7 +2,7 @@ use cloudproof::reexport::{
     cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
     crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},

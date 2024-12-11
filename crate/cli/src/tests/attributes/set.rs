@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::{kmip::kmip_types::CryptographicAlgorithm, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{kmip_2_1::kmip_types::CryptographicAlgorithm, KMS_CLI_CONF_ENV};
 
 use crate::{
     actions::attributes::SetOrDeleteAttributes,

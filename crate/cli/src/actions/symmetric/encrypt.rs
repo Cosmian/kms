@@ -7,7 +7,7 @@ use std::{
 use clap::Parser;
 use cosmian_kms_client::{
     export_object,
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
         requests::{create_symmetric_key_kmip_object, encrypt_request},

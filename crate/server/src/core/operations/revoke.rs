@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, Revoke, RevokeResponse},
     kmip_types::{

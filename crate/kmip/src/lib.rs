@@ -62,7 +62,7 @@ pub use bytes_ser_de::{test_serialization, to_leb128_len, Deserializer, Serializ
 mod data_to_encrypt;
 pub use data_to_encrypt::DataToEncrypt;
 mod error;
-pub mod kmip;
+pub mod kmip_2_1;
 mod safe_biguint;
 
 pub use safe_biguint::SafeBigUint;

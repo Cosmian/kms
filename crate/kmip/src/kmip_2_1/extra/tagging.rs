@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     error::KmipError,
-    kmip::{extra::VENDOR_ID_COSMIAN, kmip_types::Attributes},
+    kmip_2_1::{extra::VENDOR_ID_COSMIAN, kmip_types::Attributes},
 };
 
 pub const VENDOR_ATTR_TAG: &str = "tag";

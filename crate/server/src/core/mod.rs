@@ -9,7 +9,7 @@ pub(crate) mod wrapping;
 //TODO Once the KMIP crate is refactored to remove the dependency to openssl,
 // the `interfaces` crate can depend on KMIP and this function must be moved to the `ìnterfaces` crate
 
-use cosmian_kmip::kmip::kmip_types::{
+use cosmian_kmip::kmip_2_1::kmip_types::{
     BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, PaddingMethod,
 };
 use cosmian_kms_interfaces::CryptographicAlgorithm as InterfaceCrytpAlg;

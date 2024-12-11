@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse},
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,

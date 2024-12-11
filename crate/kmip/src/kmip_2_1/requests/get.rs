@@ -1,4 +1,4 @@
-use crate::kmip::{
+use crate::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
 };

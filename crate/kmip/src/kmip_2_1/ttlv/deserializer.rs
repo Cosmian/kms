@@ -6,7 +6,7 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use crate::kmip::{
+use crate::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
 };

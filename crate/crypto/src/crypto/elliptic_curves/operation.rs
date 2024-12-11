@@ -1,10 +1,10 @@
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip::extra::fips::{
+use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{
@@ -482,13 +482,13 @@ pub fn create_approved_ecc_key_pair(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "fips")]
-    use cosmian_kmip::kmip::extra::fips::{
+    use cosmian_kmip::kmip_2_1::extra::fips::{
         FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
         FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
     };
     #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
-    use cosmian_kmip::kmip::kmip_types::{
+    use cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial;
+    use cosmian_kmip::kmip_2_1::kmip_types::{
         CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve,
     };
     #[cfg(not(feature = "fips"))]

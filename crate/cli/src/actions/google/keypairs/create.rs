@@ -2,7 +2,7 @@ use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
     export_object,
-    kmip::{
+    kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},

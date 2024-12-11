@@ -10,7 +10,7 @@ mod sqlite;
 mod store_traits;
 
 pub(crate) use cached_sqlcipher::CachedSqlCipher;
-use cosmian_kmip::kmip::kmip_objects::{Object, ObjectType};
+use cosmian_kmip::kmip_2_1::kmip_objects::{Object, ObjectType};
 pub use extra_store_params::ExtraStoreParams;
 pub use hsm::HsmStore;
 use lazy_static::lazy_static;

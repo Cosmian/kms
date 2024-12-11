@@ -6,7 +6,7 @@ use base64::{
     Engine as _,
 };
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},

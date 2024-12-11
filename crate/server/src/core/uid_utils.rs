@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_server_database::ExtraStoreParams;
 
 use crate::{

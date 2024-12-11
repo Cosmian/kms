@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    kmip::{kmip_operations::Validate, kmip_types::UniqueIdentifier},
+    kmip_2_1::{kmip_operations::Validate, kmip_types::UniqueIdentifier},
     KmipError,
 };
 

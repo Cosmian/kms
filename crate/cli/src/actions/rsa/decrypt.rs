@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{kmip::requests::decrypt_request, read_bytes_from_file, KmsClient};
+use cosmian_kms_client::{kmip_2_1::requests::decrypt_request, read_bytes_from_file, KmsClient};
 
 use crate::{
     actions::{

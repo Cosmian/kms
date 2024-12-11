@@ -1,12 +1,12 @@
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip::extra::fips::FIPS_PUBLIC_RSA_MASK;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingData,
     kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
     requests::create_symmetric_key_kmip_object,
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
     kmip_types::EncodingOption,
 };

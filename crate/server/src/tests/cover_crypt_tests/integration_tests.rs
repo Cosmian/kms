@@ -1,7 +1,7 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,

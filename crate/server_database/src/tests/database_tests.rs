@@ -4,7 +4,7 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_types::{
         CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     },

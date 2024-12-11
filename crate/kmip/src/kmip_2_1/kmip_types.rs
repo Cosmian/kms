@@ -20,7 +20,7 @@ use uuid::Uuid;
 use super::kmip_objects::ObjectType;
 use crate::{
     error::KmipError,
-    kmip::{
+    kmip_2_1::{
         extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
     },

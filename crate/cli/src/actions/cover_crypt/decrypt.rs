@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
-    kmip::{kmip_types::CryptographicParameters, requests::decrypt_request},
+    cosmian_kmip::kmip_2_1::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
+    kmip_2_1::{kmip_types::CryptographicParameters, requests::decrypt_request},
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data, KmsClient,
 };

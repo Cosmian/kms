@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{Attributes, VendorAttribute},
 };

@@ -10,7 +10,7 @@ use cloudproof_findex::{
     Location,
 };
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_types::{CryptographicAlgorithm, StateEnumeration},
         requests::create_symmetric_key_kmip_object,
         KmipOperation,

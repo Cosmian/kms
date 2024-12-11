@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
     },
     export_object,
-    kmip::requests::create_symmetric_key_kmip_object,
+    kmip_2_1::requests::create_symmetric_key_kmip_object,
     read_object_from_json_ttlv_file, write_kmip_object_to_file, ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::{

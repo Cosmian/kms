@@ -1,4 +1,4 @@
-use crate::kmip::kmip_types::CryptographicUsageMask;
+use crate::kmip_2_1::kmip_types::CryptographicUsageMask;
 
 /// ECC private key mask usage for FIPS mode: only signing usage.
 pub const FIPS_PRIVATE_ECC_MASK_SIGN: CryptographicUsageMask = CryptographicUsageMask::Sign

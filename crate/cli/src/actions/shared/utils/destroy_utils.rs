@@ -1,5 +1,5 @@
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{kmip_operations::Destroy, kmip_types::UniqueIdentifier},
+    cosmian_kmip::kmip_2_1::{kmip_operations::Destroy, kmip_types::UniqueIdentifier},
     KmsClient,
 };
 

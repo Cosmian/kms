@@ -1,5 +1,5 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},

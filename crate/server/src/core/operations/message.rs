@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader},
     kmip_operations::ErrorReason,
     kmip_types::ResultStatusEnumeration,

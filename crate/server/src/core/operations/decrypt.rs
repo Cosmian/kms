@@ -1,5 +1,5 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::BulkData,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, ErrorReason},

@@ -2,7 +2,7 @@ use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_client::{
-    kmip::kmip_types::{LinkType, Tag},
+    kmip_2_1::kmip_types::{LinkType, Tag},
     KMS_CLI_CONF_ENV,
 };
 use serde_json::Value;

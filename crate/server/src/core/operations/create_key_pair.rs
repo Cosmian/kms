@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };

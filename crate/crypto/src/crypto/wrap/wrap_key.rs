@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine};
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{
         KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
     },

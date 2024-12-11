@@ -1,6 +1,6 @@
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::RevocationReason, kmip::requests::build_revoke_key_request,
-    KmsClient,
+    cosmian_kmip::kmip_2_1::kmip_types::RevocationReason,
+    kmip_2_1::requests::build_revoke_key_request, KmsClient,
 };
 
 use crate::{

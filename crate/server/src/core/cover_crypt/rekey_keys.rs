@@ -3,7 +3,7 @@
 use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
     kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},

@@ -1,14 +1,14 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip::extra::fips::{
+use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
     FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
     FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
 };
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
+use cosmian_kmip::kmip_2_1::{
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Certify, CertifyResponse, CreateKeyPair},

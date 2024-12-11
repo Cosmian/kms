@@ -819,7 +819,7 @@ impl Export {
     /// A `ExportRequest`
     /// # Example
     /// ```
-    /// use cosmian_kmip::kmip::kmip_operations::Export;
+    /// use cosmian_kmip::kmip_2_1::kmip_operations::Export;
     ///
     /// let export_request = Export::new("1234", false, None, None);
     /// ```
@@ -979,8 +979,8 @@ impl Get {
     /// A `GetRequest`
     /// # Example
     /// ```
-    /// use cosmian_kmip::kmip::kmip_operations::Get;
-    /// use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+    /// use cosmian_kmip::kmip_2_1::kmip_operations::Get;
+    /// use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
     ///
     /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_owned()), false, None, None);
     /// ```

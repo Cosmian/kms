@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
     error::KmipError,
-    kmip::{
+    kmip_2_1::{
         kmip_operations::ErrorReason,
         kmip_types::{
             Attributes, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,

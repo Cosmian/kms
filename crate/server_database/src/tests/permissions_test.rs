@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::KmipOperation;
+use cosmian_kmip::kmip_2_1::KmipOperation;
 use uuid::Uuid;
 
 use crate::{
