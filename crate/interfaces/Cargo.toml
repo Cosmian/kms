@@ -16,9 +16,3 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true, default-features = true }
 
-[dev-dependencies]
-cosmian_logger = { workspace = true }
-tempfile = "3.14"
-tracing-subscriber = { workspace = true, default-features = false, features = [
-  "env-filter",
-] }

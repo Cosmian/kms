@@ -99,7 +99,6 @@ impl From<KmipError> for KmsClientError {
             KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -108,6 +107,13 @@ impl From<KmipError> for KmsClientError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::Deserialization(e) | KmipError::Serialization(e) => {
+                Self::KmipNotSupported(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipNotSupported(
+                ErrorReason::Codec_Error,
+                format!("Deserialization: invalid size: {actual}, expected: {expected}"),
+            ),
         }
     }
 }

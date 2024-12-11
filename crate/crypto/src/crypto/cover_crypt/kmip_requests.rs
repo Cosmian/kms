@@ -17,7 +17,7 @@ use super::attributes::{
 use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
-pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     policy: &Policy,
     tags: T,
     sensitive: bool,
@@ -39,7 +39,9 @@ pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str
 }
 
 /// Build a `Create` request for an `CoverCrypt` User Decryption Key
-pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
+pub fn build_create_covercrypt_user_decryption_key_request<
+    T: IntoIterator<Item = impl AsRef<str>>,
+>(
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
     tags: T,

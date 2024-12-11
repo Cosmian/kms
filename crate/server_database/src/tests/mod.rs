@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_crypto::crypto{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 

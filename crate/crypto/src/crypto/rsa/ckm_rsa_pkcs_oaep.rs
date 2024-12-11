@@ -11,6 +11,8 @@
 //!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (<https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf>)
 //!
 //! The scheme can be used for both encryption and key wrapping
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     md::MdRef,
@@ -19,8 +21,6 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 #[cfg(feature = "fips")]
 use crate::crypto_bail;
 use crate::{error::CryptoError, openssl::hashing_algorithm_to_openssl_ref};
