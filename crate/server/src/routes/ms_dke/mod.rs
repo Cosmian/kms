@@ -8,7 +8,7 @@ use actix_web::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
     kmip_operations::{Decrypt, Get},

@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         extra::BulkData,
         kmip_objects::ObjectType,
         kmip_operations::{

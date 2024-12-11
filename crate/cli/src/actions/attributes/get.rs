@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{AttributeReference, LinkType, Tag, UniqueIdentifier},
     },

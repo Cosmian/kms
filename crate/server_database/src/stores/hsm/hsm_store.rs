@@ -9,7 +9,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{

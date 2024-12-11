@@ -5,7 +5,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     error::{result::KmipResult, KmipError},
-    kmip::kmip_operations::ErrorReason,
+    kmip_2_1::kmip_operations::ErrorReason,
     Deserializer, Serializer,
 };
 
@@ -87,7 +87,7 @@ impl From<BulkData> for Vec<Zeroizing<Vec<u8>>> {
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use crate::kmip::extra::BulkData;
+    use crate::kmip_2_1::extra::BulkData;
 
     #[test]
     fn test_bulk_data() {

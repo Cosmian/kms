@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::{
         Object::{self, Certificate},
         ObjectType,

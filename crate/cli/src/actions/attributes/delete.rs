@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::UniqueIdentifier,
-    kmip::{
+    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
+    kmip_2_1::{
         kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
         kmip_types::{Attribute, AttributeReference, Tag},
     },

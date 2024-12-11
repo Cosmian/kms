@@ -5,7 +5,7 @@ use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kms_client::{
     cosmian_kmip::{
-        kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+        kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
         KmipError,
     },
     reexport::cosmian_http_client::HttpClientError,

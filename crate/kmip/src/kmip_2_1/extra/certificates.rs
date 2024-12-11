@@ -1,6 +1,6 @@
 use crate::{
     error::KmipError,
-    kmip::{
+    kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
         kmip_types::Attributes,

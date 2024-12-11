@@ -2,7 +2,7 @@
 
 use std::{fs, path, sync::Arc};
 
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{Import, Validate},
     kmip_types::{Attributes, CertificateType, UniqueIdentifier, ValidityIndicator},
@@ -129,7 +129,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip::kmip_objects::Object::Certificate {
+        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: root_cert.clone(),
         },
@@ -145,7 +145,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip::kmip_objects::Object::Certificate {
+        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: intermediate_cert.clone(),
         },
@@ -161,7 +161,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip::kmip_objects::Object::Certificate {
+        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: leaf1_cert.clone(),
         },

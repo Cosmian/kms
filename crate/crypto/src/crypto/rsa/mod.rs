@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_types::{
+use cosmian_kmip::kmip_2_1::kmip_types::{
     CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
 };
 

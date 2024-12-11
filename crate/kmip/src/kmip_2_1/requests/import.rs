@@ -1,4 +1,4 @@
-use crate::kmip::{
+use crate::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
     kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},

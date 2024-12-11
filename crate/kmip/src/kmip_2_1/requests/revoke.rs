@@ -1,5 +1,5 @@
 use crate::{
-    kmip::{
+    kmip_2_1::{
         kmip_operations::Revoke,
         kmip_types::{RevocationReason, UniqueIdentifier},
     },

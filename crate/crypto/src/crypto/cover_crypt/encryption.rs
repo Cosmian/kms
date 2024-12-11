@@ -11,7 +11,7 @@ use cloudproof::reexport::{
     },
 };
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},

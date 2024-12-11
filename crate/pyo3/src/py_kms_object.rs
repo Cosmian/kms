@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_operations::{EncryptResponse, GetResponse};
+use cosmian_kmip::kmip_2_1::kmip_operations::{EncryptResponse, GetResponse};
 use pyo3::{exceptions::PyException, prelude::*, types::PyBytes};
 
 #[pyclass]

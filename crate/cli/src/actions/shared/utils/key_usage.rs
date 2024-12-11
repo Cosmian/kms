@@ -1,4 +1,4 @@
-use cosmian_kms_client::kmip::kmip_types::CryptographicUsageMask;
+use cosmian_kms_client::kmip_2_1::kmip_types::CryptographicUsageMask;
 use serde::Deserialize;
 use strum::EnumIter;
 

@@ -1,4 +1,4 @@
-use cosmian_kms_client::kmip::{
+use cosmian_kms_client::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute},
 };

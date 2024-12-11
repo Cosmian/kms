@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::Create,

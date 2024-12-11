@@ -5,13 +5,13 @@ use clap::{
     Parser,
 };
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_operations::Locate,
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    kmip::kmip_objects::ObjectType,
+    kmip_2_1::kmip_objects::ObjectType,
     KmsClient,
 };
 use strum::IntoEnumIterator;

@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
-use crate::kmip::kmip_objects::{Object, ObjectType};
+use crate::kmip_2_1::kmip_objects::{Object, ObjectType};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 

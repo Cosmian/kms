@@ -2,8 +2,8 @@ use std::convert::TryFrom;
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::UniqueIdentifier,
-    kmip::{
+    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
+    kmip_2_1::{
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
             self, Attribute, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,

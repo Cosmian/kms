@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_objects::Object,
     kmip_operations::{GetAttributes, GetAttributesResponse},

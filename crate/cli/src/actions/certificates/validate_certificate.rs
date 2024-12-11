@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    kmip::{kmip_types::ValidityIndicator, requests::build_validate_certificate_request},
+    kmip_2_1::{kmip_types::ValidityIndicator, requests::build_validate_certificate_request},
     KmsClient,
 };
 

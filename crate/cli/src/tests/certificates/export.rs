@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{
-    kmip::{
+    kmip_2_1::{
         kmip_objects::Object,
         kmip_types::{Attributes, KeyFormatType, LinkType},
         ttlv::{deserializer::from_ttlv, TTLV},

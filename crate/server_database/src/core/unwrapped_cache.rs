@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use cosmian_kmip::kmip::kmip_objects::Object;
+use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use lru::LruCache;
 use tokio::sync::RwLock;
 #[cfg(test)]
@@ -118,7 +118,7 @@ mod tests {
         reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
     };
-    use cosmian_kmip::kmip::{
+    use cosmian_kmip::kmip_2_1::{
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
     use cosmian_logger::log_init;

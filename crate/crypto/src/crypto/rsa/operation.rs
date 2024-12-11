@@ -1,9 +1,9 @@
 #[cfg(feature = "fips")]
-use cosmian_kmip::kmip::extra::fips::{
+use cosmian_kmip::kmip_2_1::extra::fips::{
     FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK,
 };
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{

@@ -5,7 +5,7 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -19,7 +19,7 @@ use crate::{
 
 /// Generate KMIP JSON TTLV and send it to the KMIP server
 #[post("/kmip/2_1")]
-pub(crate) async fn kmip(
+pub(crate) async fn kmip_2_1(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMS>>,

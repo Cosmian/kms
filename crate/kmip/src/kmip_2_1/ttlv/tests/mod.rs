@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     error::{result::KmipResult, KmipError},
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
             Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
@@ -688,7 +688,7 @@ pub(crate) fn test_create() {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
-            link_type: crate::kmip::kmip_types::LinkType::ParentLink,
+            link_type: crate::kmip_2_1::kmip_types::LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_owned()),
         }]),
         ..Attributes::default()

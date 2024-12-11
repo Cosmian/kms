@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
     kmip_objects::{Object, ObjectType},
@@ -218,7 +218,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 false,
             )?)),
             MessageBatchItem::new(Operation::Locate(
-                cosmian_kmip::kmip::kmip_operations::Locate::default(),
+                cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
             )),
         ],
     };

@@ -1,5 +1,5 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,
     kmip_types::{

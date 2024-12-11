@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingData,
     kmip_types::{CryptographicAlgorithm, HashingAlgorithm, PaddingMethod},
 };

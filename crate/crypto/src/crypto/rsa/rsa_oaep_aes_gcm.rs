@@ -10,7 +10,7 @@ use crate::{
         },
     },
     error::KmipError,
-    kmip::kmip_types::HashingAlgorithm,
+    kmip_2_1::kmip_types::HashingAlgorithm,
     kmip_bail,
 };
 
@@ -123,9 +123,11 @@ mod tests {
     use openssl::{pkey::PKey, rand::rand_bytes};
 
     use crate::{
-        crypto::rsa::rsa_oaep_aes_gcm::{rsa_oaep_aes_gcm_decrypt, ckm_rsa_oaep_aes_key_wrap_encrypt},
+        crypto::rsa::rsa_oaep_aes_gcm::{
+            ckm_rsa_oaep_aes_key_wrap_encrypt, rsa_oaep_aes_gcm_decrypt,
+        },
         error::KmipError,
-        kmip::kmip_types::HashingAlgorithm,
+        kmip_2_1::kmip_types::HashingAlgorithm,
     };
 
     #[test]

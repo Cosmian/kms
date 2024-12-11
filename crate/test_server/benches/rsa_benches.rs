@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use cosmian_kms_client::{
-    kmip::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
-    reexport::cosmian_kmip::kmip::{
+    kmip_2_1::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
+    reexport::cosmian_kmip::kmip_2_1::{
         kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
         kmip_operations::Operation,
         kmip_types::{

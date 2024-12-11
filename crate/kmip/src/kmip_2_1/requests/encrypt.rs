@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use crate::{
-    kmip::{
+    kmip_2_1::{
         kmip_operations::Encrypt,
         kmip_types::{CryptographicParameters, UniqueIdentifier},
     },

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
+use cosmian_kmip::kmip_2_1::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
 use cosmian_kms_server_database::ExtraStoreParams;
 
 use super::locate_user_decryption_keys;

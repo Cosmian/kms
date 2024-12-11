@@ -10,7 +10,7 @@ use actix_http::{body::MessageBody, Request};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
 use base64::{engine::general_purpose, Engine};
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
     kmip_objects::{Object, ObjectType},

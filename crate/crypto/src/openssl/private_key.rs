@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{
@@ -468,10 +468,12 @@ pub fn openssl_private_key_to_kmip(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "fips")]
-    use cosmian_kmip::kmip::extra::fips::{FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK};
+    use cosmian_kmip::kmip_2_1::extra::fips::{
+        FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK,
+    };
     #[cfg(not(feature = "fips"))]
-    use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
-    use cosmian_kmip::kmip::{
+    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
+    use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::Object,
         kmip_types::{KeyFormatType, RecommendedCurve},

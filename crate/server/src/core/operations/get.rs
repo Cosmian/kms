@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Get, GetResponse},
     KmipOperation,
 };

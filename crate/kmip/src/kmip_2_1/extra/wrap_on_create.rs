@@ -5,7 +5,7 @@
 
 use crate::{
     error::KmipError,
-    kmip::{extra::VENDOR_ID_COSMIAN, kmip_operations::ErrorReason, kmip_types::Attributes},
+    kmip_2_1::{extra::VENDOR_ID_COSMIAN, kmip_operations::ErrorReason, kmip_types::Attributes},
 };
 
 /// The key to use to wrap the key on creation

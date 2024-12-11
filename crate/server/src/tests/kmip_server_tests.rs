@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},

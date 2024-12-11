@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
+use cosmian_kmip::kmip_2_1::kmip_types::HashingAlgorithm;
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
