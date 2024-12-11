@@ -1,23 +1,25 @@
 use std::path::PathBuf;
 
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyWrappingSpecification,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Decrypt, Encrypt, Import, Revoke, Validate},
-    kmip_types::{
-        Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
-    },
-};
 use zeroize::Zeroizing;
 
 use super::data_to_encrypt::DataToEncrypt;
-use crate::error::CryptoError;
+use crate::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Decrypt, Encrypt, Import, Revoke, Validate},
+        kmip_types::{
+            Attributes, CryptographicParameters, KeyWrapType, RevocationReason, UniqueIdentifier,
+        },
+    },
+};
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`
 pub fn build_revoke_key_request(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
-) -> Result<Revoke, CryptoError> {
+) -> Result<Revoke, KmipError> {
     Ok(Revoke {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         revocation_reason,
@@ -30,7 +32,7 @@ pub fn build_validate_certificate_request(
     certificates: &[PathBuf],
     unique_identifiers: &[String],
     date: Option<String>,
-) -> Result<Validate, CryptoError> {
+) -> Result<Validate, KmipError> {
     let certificates = if certificates.is_empty() {
         None
     } else {
@@ -40,7 +42,7 @@ pub fn build_validate_certificate_request(
                 .map(std::fs::read)
                 .collect::<Result<Vec<Vec<u8>>, _>>()
                 .map_err(|e| {
-                    CryptoError::ObjectNotFound(format!("Invalid certificate file path: {e:?}"))
+                    KmipError::ObjectNotFound(format!("Invalid certificate file path: {e:?}"))
                 })?,
         )
     };
@@ -79,15 +81,14 @@ pub fn build_encryption_request(
     nonce: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
     cryptographic_parameters: Option<CryptographicParameters>,
-) -> Result<Encrypt, CryptoError> {
+) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = Zeroizing::from(if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
             header_metadata,
             plaintext,
         }
-        .to_bytes()
-        .map_err(|e| CryptoError::Kmip(e.to_string()))?
+        .to_bytes()?
     } else {
         plaintext
     });

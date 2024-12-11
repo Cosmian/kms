@@ -49,7 +49,7 @@ impl From<KmipError> for Pkcs11Error {
         match e {
             KmipError::InvalidKmipValue(r, s)
             | KmipError::InvalidKmipObject(r, s)
-            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::KmipNotSupported(_, s)
             | KmipError::Default(s)

@@ -96,7 +96,7 @@ impl From<KmipError> for KmsClientError {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
             KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::OpenSSL(s)
