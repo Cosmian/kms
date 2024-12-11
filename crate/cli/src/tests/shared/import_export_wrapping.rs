@@ -3,7 +3,7 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_client::cosmian_kmip::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_client::cosmian_kms_crypto::cryptoelliptic_curves::operation::create_x25519_key_pair;
 use cosmian_kms_client::{
     cosmian_kmip::{
         crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},

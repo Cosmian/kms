@@ -1,8 +1,5 @@
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::generic::kmip_requests::build_revoke_key_request,
-        kmip::kmip_types::RevocationReason,
-    },
+    cosmian_kmip::kmip::kmip_types::RevocationReason, kmip::requests::build_revoke_key_request,
     KmsClient,
 };
 

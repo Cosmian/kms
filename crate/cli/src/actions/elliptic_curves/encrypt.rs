@@ -1,10 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{
-    cosmian_kmip::crypto::generic::kmip_requests::build_encryption_request, read_bytes_from_file,
-    KmsClient,
-};
+use cosmian_kms_client::{kmip::requests::encrypt_request, read_bytes_from_file, KmsClient};
 
 use crate::{
     actions::console,
@@ -57,7 +54,7 @@ impl EncryptAction {
         };
 
         // Create the kmip query
-        let encrypt_request = build_encryption_request(
+        let encrypt_request = encrypt_request(
             &id,
             None,
             data,

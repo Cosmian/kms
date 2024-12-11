@@ -19,7 +19,7 @@ test = false
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client/fips"]
+fips = ["cosmian_kms_client/fips", "cosmian_kms_crypto/fips"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -35,6 +35,7 @@ clap = { workspace = true, features = [
 cloudproof = { workspace = true }
 cosmian_config_utils = { workspace = true }
 cosmian_kms_client = { path = "../client" }
+cosmian_kms_crypto = { path = "../crypto" }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
@@ -43,7 +44,6 @@ jwt-simple = { version = "0.12", default-features = false, features = [
 ] }
 leb128 = { workspace = true }
 num-format = { workspace = true }
-oauth2 = { version = "4.4", features = ["reqwest"] }
 pem = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -58,10 +58,7 @@ x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-rt = { workspace = true }
-actix-server = { workspace = true }
 assert_cmd = "2.0"
-const-oid = { version = "0.9", features = ["db"] }
 kms_test_server = { path = "../test_server" }
 openssl = { workspace = true }
 predicates = "3.1"
@@ -82,6 +79,8 @@ assets = [["target/release/ckms", "usr/sbin/", "555"]]
 
 [package.metadata.deb.variants.fips]
 features = ["fips"]
+
+
 
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------

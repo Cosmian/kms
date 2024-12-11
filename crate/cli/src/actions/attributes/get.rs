@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_operations::{GetAttributes, GetAttributesResponse},
@@ -13,6 +13,73 @@ use strum::IntoEnumIterator;
 use tracing::{debug, trace};
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
+
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
+pub enum CLinkType {
+    /// For Certificate objects: the parent certificate for a certificate in a
+    /// certificate chain. For Public Key objects: the corresponding
+    /// certificate(s), containing the same public key.
+    Certificate,
+    /// For a Private Key object: the public key corresponding to the private
+    /// key. For a Certificate object: the public key contained in the
+    /// certificate.
+    PublicKey,
+    /// For a Public Key object: the private key corresponding to the public
+    /// key.
+    PrivateKey,
+    /// For a derived Symmetric Key or Secret Data object: the object(s) from
+    /// which the current symmetric key was derived.
+    DerivationBaseObject,
+    /// The symmetric key(s) or Secret Data object(s) that were derived from
+    /// the current object.
+    DerivedKey,
+    /// For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric
+    /// Public Key object: the key that resulted from the re-key of the current
+    /// key. For a Certificate object: the certificate that resulted from the
+    /// re- certify. Note that there SHALL be only one such replacement
+    /// object per Managed Object.
+    ReplacementObject,
+    /// For a Symmetric Key, an Asymmetric Private Key, or an Asymmetric
+    /// Public Key object: the key that was re-keyed to obtain the current key.
+    /// For a Certificate object: the certificate that was re-certified to
+    /// obtain the current certificate.
+    ReplacedObject,
+    /// For all object types: the container or other parent object corresponding
+    /// to the object.
+    Parent,
+    /// For all object types: the subordinate, derived or other child object
+    /// corresponding to the object.
+    Child,
+    /// For all object types: the previous object to this object.
+    Previous,
+    /// For all object types: the next object to this object.
+    Next,
+    PKCS12Certificate,
+    PKCS12Password,
+    /// For wrapped objects: the object that was used to wrap this object.
+    WrappingKey,
+    //Extensions 8XXXXXXX
+}
+impl From<CLinkType> for LinkType {
+    fn from(value: CLinkType) -> Self {
+        match value {
+            CLinkType::Certificate => Self::CertificateLink,
+            CLinkType::PublicKey => Self::PublicKeyLink,
+            CLinkType::PrivateKey => Self::PrivateKeyLink,
+            CLinkType::DerivationBaseObject => Self::DerivationBaseObjectLink,
+            CLinkType::DerivedKey => Self::DerivedKeyLink,
+            CLinkType::ReplacementObject => Self::ReplacementObjectLink,
+            CLinkType::ReplacedObject => Self::ReplacedObjectLink,
+            CLinkType::Parent => Self::ParentLink,
+            CLinkType::Child => Self::ChildLink,
+            CLinkType::Previous => Self::PreviousLink,
+            CLinkType::Next => Self::NextLink,
+            CLinkType::PKCS12Certificate => Self::PKCS12CertificateLink,
+            CLinkType::PKCS12Password => Self::PKCS12PasswordLink,
+            CLinkType::WrappingKey => Self::WrappingKeyLink,
+        }
+    }
+}
 
 /// Get the KMIP object attributes and tags.
 ///
@@ -51,7 +118,7 @@ pub struct GetAttributesAction {
         value_name = "LINK_TYPE",
         verbatim_doc_comment
     )]
-    attribute_link_types: Vec<LinkType>,
+    attribute_link_types: Vec<CLinkType>,
 
     /// An optional file where to export the attributes.
     /// The attributes will be in JSON TTLV format.
@@ -327,7 +394,7 @@ impl GetAttributesAction {
         }
 
         // if no link asked -> return values for all possible links
-        let link_types = if self.attribute_link_types.is_empty() {
+        let link_types: Vec<LinkType> = if self.attribute_link_types.is_empty() {
             trace!("No link type specified, returning all possible link types");
             let mut all_links = Vec::new();
             for link in LinkType::iter() {
@@ -335,7 +402,11 @@ impl GetAttributesAction {
             }
             all_links
         } else {
-            self.attribute_link_types.clone()
+            self.attribute_link_types
+                .clone()
+                .into_iter()
+                .map(LinkType::from)
+                .collect()
         };
 
         trace!("Attributes at this point: {attributes:?}",);
