@@ -34,7 +34,7 @@ use crate::{
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
 /// in `mask` is not set in `flags`, raise an error.
 ///
-/// If `mask` is None, raise error.
+/// If `mask` is None, raise an error.
 fn check_ecc_mask_against_flags(
     mask: Option<CryptographicUsageMask>,
     flags: CryptographicUsageMask,

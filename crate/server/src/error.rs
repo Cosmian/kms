@@ -7,6 +7,7 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
+use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use cosmian_kms_server_database::DbError;
 use redis::ErrorKind;
@@ -16,21 +17,66 @@ use x509_parser::prelude::{PEMError, X509Error};
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
 pub enum KmsError {
+    // Error related to X509 Certificate
+    #[error("Certificate error: {0}")]
+    Certificate(String),
+
+    // Any actions of the user that is not allowed
+    #[error("REST client connection error: {0}")]
+    ClientConnectionError(String),
+
     // When a conversion from/to bytes
     #[error("Conversion Error: {0}")]
     ConversionError(String),
 
-    // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
-    RouteNotFound(String),
+    // A failure originating from one of the cryptographic algorithms
+    #[error("Cryptographic error: {0}")]
+    CryptographicError(String),
+
+    // Any errors related to a bad behavior of the DB but not related to the user input
+    #[error("Database Error: {0}")]
+    Database(String),
+
+    #[error("{0}")]
+    Default(String),
+
+    #[error("Findex Error: {0}")]
+    Findex(String),
+
+    // When a user requests something which is a non-sense
+    #[error("Inconsistent operation: {0}")]
+    InconsistentOperation(String),
+
+    // Missing arguments in the request
+    #[error("Invalid Request: {0}")]
+    InvalidRequest(String),
+
+    // // When a user requests an item which does not exist
+    #[error("Item not found: {0}")]
+    ItemNotFound(String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    KmipError(ErrorReason, String),
 
     // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
-    // When a user requests something which is a non-sense
-    #[error("Inconsistent operation: {0}")]
-    InconsistentOperation(String),
+    #[error("Redis Error: {0}")]
+    Redis(String),
+
+    // When a user requests an endpoint which does not exist
+    #[error("Not Supported route: {0}")]
+    RouteNotFound(String),
+
+    // Any errors related to a bad behavior of the server but not related to the user input
+    #[error("Unexpected server error: {0}")]
+    ServerError(String),
+
+    // Any actions of the user which is not allowed
+    #[error("Access denied: {0}")]
+    Unauthorized(String),
 
     // When a user requests with place holder id arg.
     #[error("This KMIP server does not yet support place holder id")]
@@ -40,56 +86,11 @@ pub enum KmsError {
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
 
-    // // When a user requests an item which does not exist
-    #[error("Item not found: {0}")]
-    ItemNotFound(String),
-
-    // Missing arguments in the request
-    #[error("Invalid Request: {0}")]
-    InvalidRequest(String),
-
-    // Any errors on KMIP format due to mistake of the user
-    #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
-
-    // Any errors related to a bad behavior of the DB but not related to the user input
-    #[error("Database Error: {0}")]
-    Database(String),
-
-    // Any errors related to a bad behavior of the server but not related to the user input
-    #[error("Unexpected server error: {0}")]
-    ServerError(String),
-
-    // Any actions of the user which is not allowed
-    #[error("REST client connection error: {0}")]
-    ClientConnectionError(String),
-
-    // Any actions of the user which is not allowed
-    #[error("Access denied: {0}")]
-    Unauthorized(String),
-
-    // A failure originating from one of the cryptographic algorithms
-    #[error("Cryptographic error: {0}")]
-    CryptographicError(String),
-
-    // Error related to X509 Certificate
-    #[error("Certificate error: {0}")]
-    Certificate(String),
-
-    #[error("Redis Error: {0}")]
-    Redis(String),
-
-    #[error("Findex Error: {0}")]
-    Findex(String),
-
     #[error("Unsupported algorithm: {0}")]
     UnsupportedAlgorithm(String),
 
     #[error("Invalid URL: {0}")]
     UrlError(String),
-
-    #[error("{0}")]
-    Default(String),
 }
 
 impl KmsError {
@@ -213,7 +214,6 @@ impl From<KmipError> for KmsError {
             KmipError::KmipNotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -222,6 +222,13 @@ impl From<KmipError> for KmsError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
+            KmipError::Deserialization(e) | KmipError::Serialization(e) => {
+                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+                ErrorReason::Codec_Error,
+                format!("Deserialization: invalid size: {actual}, expected: {expected}"),
+            ),
         }
     }
 }
@@ -277,6 +284,12 @@ impl From<KmsError> for DbError {
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
         Self::Default(value.to_string())
+    }
+}
+
+impl From<CryptoError> for KmsError {
+    fn from(value: CryptoError) -> Self {
+        Self::CryptographicError(value.to_string())
     }
 }
 

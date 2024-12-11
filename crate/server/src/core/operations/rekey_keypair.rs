@@ -1,11 +1,11 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
-    crypto::cover_crypt::attributes::{policy_from_attributes, rekey_edit_action_from_attributes},
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
-    },
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
+};
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
+    policy_from_attributes, rekey_edit_action_from_attributes,
 };
 use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;

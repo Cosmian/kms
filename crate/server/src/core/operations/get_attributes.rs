@@ -1,16 +1,14 @@
-use cosmian_kmip::{
-    kmip::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
-        kmip_objects::Object,
-        kmip_operations::{GetAttributes, GetAttributesResponse},
-        kmip_types::{
-            AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
-            VendorAttribute, VendorAttributeReference,
-        },
-        KmipOperation,
+use cosmian_kmip::kmip::{
+    extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    kmip_objects::Object,
+    kmip_operations::{GetAttributes, GetAttributesResponse},
+    kmip_types::{
+        AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
+        VendorAttribute, VendorAttributeReference,
     },
-    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    KmipOperation,
 };
+use cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
 use cosmian_kms_server_database::ExtraStoreParams;
 use strum::IntoEnumIterator;
 use tracing::{debug, trace};

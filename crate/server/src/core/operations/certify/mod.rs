@@ -1,5 +1,15 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+use cosmian_kmip::kmip::{
+    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
+    kmip_types::{
+        Attributes, CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        StateEnumeration, UniqueIdentifier,
+    },
+    KmipOperation,
+};
 #[cfg(feature = "fips")]
 use cosmian_kmip::{
     crypto::{
@@ -12,20 +22,10 @@ use cosmian_kmip::{
     },
     kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask},
 };
-use cosmian_kmip::{
-    kmip::{
-        extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
-        kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
-        },
-        KmipOperation,
-    },
-    openssl::{
-        kmip_certificate_to_openssl, kmip_private_key_to_openssl, openssl_certificate_to_kmip,
-    },
+use cosmian_kms_crypto::openssl::{
+    certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
+    kmip_private_key_to_openssl, openssl_certificate_to_kmip,
+    openssl_x509_to_certificate_attributes, x509_extensions,
 };
 use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams, ObjectWithMetadata};
 use openssl::{
@@ -332,15 +332,13 @@ async fn get_subject(
                 .to_owned(),
         )
     })?;
-    let subject_name = attributes
-        .certificate_attributes
-        .as_ref()
-        .ok_or_else(|| {
+    let subject_name = certificate_attributes_to_subject_name(
+        attributes.certificate_attributes.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest(
                 "Certify from Subject: the subject name is not found in the attributes".to_owned(),
             )
-        })?
-        .subject_name()?;
+        })?,
+    )?;
 
     // If we have a public key, we can create a certificate from it
     if let Some(public_key) = public_key {
@@ -669,7 +667,7 @@ fn build_and_sign_certificate(
     attributes.key_format_type = Some(KeyFormatType::X509);
 
     // Add certificate attributes
-    let certificate_attributes = CertificateAttributes::from(&x509);
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
     attributes.certificate_attributes = Some(Box::new(certificate_attributes));
 
     Ok((

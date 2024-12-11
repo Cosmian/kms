@@ -6,16 +6,14 @@ use base64::{
     Engine as _,
 };
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
-    crypto::{
-        secret::Secret,
-        symmetric::{create_symmetric_key_kmip_object, symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    },
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::Create,
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
-    },
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::Create,
+    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    requests::create_symmetric_key_kmip_object,
+};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_interfaces::EncryptionOracle;
 use cosmian_kms_server_database::{CachedUnwrappedObject, ExtraStoreParams, MainDbParams};
@@ -140,8 +138,8 @@ impl KMS {
         // check if we have it in the cache
         match self.database.unwrapped_cache().peek(uid).await {
             Some(Ok(u)) => {
-                // Note: In theory the cache should always be in sync...
-                if *u.key_signature() == object.key_signature()? {
+                // Note: In theory, the cache should always be in sync...
+                if u.key_signature() == object.key_signature()? {
                     debug!("Unwrapped cache hit");
                     return Ok(u.unwrapped_object().clone());
                 }

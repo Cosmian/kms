@@ -1,10 +1,8 @@
-use cosmian_kmip::{
-    crypto::cover_crypt::attributes::access_policy_from_attributes,
-    kmip::{
-        kmip_operations::{Locate, LocateResponse},
-        kmip_types::{StateEnumeration, UniqueIdentifier},
-    },
+use cosmian_kmip::kmip::{
+    kmip_operations::{Locate, LocateResponse},
+    kmip_types::{StateEnumeration, UniqueIdentifier},
 };
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::access_policy_from_attributes;
 use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;
 

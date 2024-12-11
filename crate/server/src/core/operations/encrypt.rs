@@ -1,14 +1,5 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::{
-    crypto::{
-        cover_crypt::encryption::CoverCryptEncryption,
-        rsa::{
-            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
-        },
-        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
-        EncryptionSystem,
-    },
     kmip::{
         extra::BulkData,
         kmip_objects::Object,
@@ -19,13 +10,24 @@ use cosmian_kmip::{
         },
         KmipOperation,
     },
-    openssl::kmip_public_key_to_openssl,
     KmipError,
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::cryptoelliptic_curves::ecies::ecies_encrypt;
+use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::cryptorsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
+use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
+use cosmian_kms_crypto::{
+    crypto::{
+        cover_crypt::encryption::CoverCryptEncryption,
+        rsa::{
+            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
+        },
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
+        EncryptionSystem,
+    },
+    openssl::kmip_public_key_to_openssl,
+};
 use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use openssl::{
     pkey::{Id, PKey, Public},
