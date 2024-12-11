@@ -7,6 +7,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::{import_object, KmsClient};
+use cosmian_logger::log_init;
 use cosmian_pkcs11_module::traits::Backend;
 use kms_test_server::start_default_test_kms_server;
 use tracing::debug;
@@ -37,7 +38,8 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    cosmian_logger::log_init(Some("fatal,cosmian_kms_client=debug"));
+    log_init(None);
+    // log_init(Some("fatal,cosmian_kms_client=debug"));
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;

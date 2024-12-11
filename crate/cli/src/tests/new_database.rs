@@ -1,7 +1,9 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{write_json_object_to_file, KmsClient, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{
+    reexport::cosmian_config_utils::ConfigUtils, KmsClient, KMS_CLI_CONF_ENV,
+};
 use cosmian_logger::log_init;
 use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options,
@@ -162,8 +164,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     // update the CLI conf
     let mut new_conf = ctx.owner_client_conf.clone();
     new_conf.http_config.database_secret = Some(new_database_secret);
-    write_json_object_to_file(&new_conf, &ctx.owner_client_conf_path)
-        .expect("Can't write the new conf");
+    new_conf.to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
 
     // create a symmetric key in the default encrypted database
     let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
@@ -179,8 +180,9 @@ async fn test_multiple_databases() -> CliResult<()> {
     .unwrap();
 
     // go back to original conf
-    write_json_object_to_file(&ctx.owner_client_conf, &ctx.owner_client_conf_path)
-        .expect("Can't rewrite the original conf");
+    ctx.owner_client_conf
+        .to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
+
     // we should be able to export key_1 again
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -191,8 +193,8 @@ async fn test_multiple_databases() -> CliResult<()> {
     })?;
 
     // go to new conf
-    write_json_object_to_file(&new_conf, &ctx.owner_client_conf_path)
-        .expect("Can't rewrite the new conf");
+    new_conf.to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
+
     // we should be able to export key_2 again
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),

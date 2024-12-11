@@ -13,7 +13,7 @@ use crate::{
     tests::hsm::encrypt_decrypt::{test_aes_gcm, test_rsa_pkcs_oaep},
 };
 
-const KMS_HSM_CLIENT_CONF: &str = "~/.cosmian/kms_hsm.json";
+const KMS_HSM_CLIENT_CONF: &str = "~/.cosmian/kms_hsm.toml";
 
 mod encrypt_decrypt;
 mod revoke_destroy;

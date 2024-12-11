@@ -7,7 +7,7 @@ use crate::error::result::{CliResult, CliResultHelper};
 ///
 /// This secret is only displayed once and is not stored anywhere on the server.
 /// The secret must be set in the `database_secret` property
-/// of the CLI `kms.json` configuration file to use the encrypted database.
+/// of the CLI `kms.toml` configuration file to use the encrypted database.
 ///
 /// Passing the correct secret "auto-selects" the correct encrypted database:
 /// multiple encrypted databases can be used concurrently on the same KMS server.
