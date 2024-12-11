@@ -1,13 +1,11 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::{
-    crypto::cover_crypt::kmip_requests::build_create_master_keypair_request,
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
-        kmip_operations::Operation,
-        kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
-    },
+use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+    kmip_operations::Operation,
+    kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 
 use crate::{result::KResult, tests::test_utils};
 
@@ -47,10 +45,10 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
         ],
     };

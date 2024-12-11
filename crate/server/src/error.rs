@@ -223,7 +223,7 @@ impl From<KmipError> for KmsError {
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+                Self::KmipError(ErrorReason::Codec_Error, e)
             }
             KmipError::DeserializationSize(expected, actual) => Self::KmipError(
                 ErrorReason::Codec_Error,

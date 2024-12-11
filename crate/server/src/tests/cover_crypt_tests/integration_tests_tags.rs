@@ -1,22 +1,18 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::{
-            attributes::RekeyEditAction,
-            kmip_requests::{
-                build_create_master_keypair_request,
-                build_create_user_decryption_private_key_request, build_destroy_key_request,
-                build_rekey_keypair_request,
-            },
-        },
-        generic::kmip_requests::{build_decryption_request, build_encryption_request},
+use cosmian_kmip::kmip::{
+    kmip_operations::{
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip::{
-        kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-        },
-        kmip_types::{RevocationReason, UniqueIdentifier},
+    kmip_types::{RevocationReason, UniqueIdentifier},
+    requests::{decrypt_request, encrypt_request},
+};
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::RekeyEditAction,
+    kmip_requests::{
+        build_create_covercrypt_master_keypair_request,
+        build_create_covercrypt_user_decryption_key_request, build_destroy_key_request,
+        build_rekey_keypair_request,
     },
 };
 
@@ -35,7 +31,8 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag], false)?;
+    let create_key_pair =
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -63,7 +60,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
-    let request = build_encryption_request(
+    let request = encrypt_request(
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -113,7 +110,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag], false)?;
+    let create_key_pair =
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -126,7 +124,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -145,7 +143,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk_tag = "udk";
     let udk_json_tag = serde_json::to_string(&[udk_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Level::Top Secret";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         &mkp_json_tag,
         [udk_tag],
@@ -155,7 +153,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // let user_decryption_key_identifier = &create_response.unique_identifier;
 
     // decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         &udk_json_tag,
         None,
         encrypted_data,
@@ -169,8 +167,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .data
         .context("There should be decrypted data")?
         .as_slice()
-        .try_into()
-        .unwrap();
+        .try_into()?;
 
     assert_eq!(data, &decrypted_data.plaintext[..]);
     assert_eq!(header_metadata, decrypted_data.metadata);
@@ -182,7 +179,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -201,7 +198,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk1_tag = "udk1";
     let udk1_json_tag = serde_json::to_string(&[udk1_tag.to_owned()])?;
     let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         &mkp_json_tag,
         [udk1_tag],
@@ -214,7 +211,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let udk2_tag = "udk2";
     let udk2_json_tag = serde_json::to_string(&[udk2_tag.to_owned()])?;
     let access_policy = "Department::MKG && Level::Confidential";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         &mkp_json_tag,
         [udk2_tag],
@@ -223,7 +220,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let _create_response2: CreateResponse = test_utils::post(&app, &request).await?;
 
     // test user1 can decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         &udk1_json_tag,
         None,
         encrypted_data.clone(),
@@ -244,7 +241,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         &udk2_json_tag,
         None,
         encrypted_data,
@@ -295,7 +292,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
-    let request = build_encryption_request(
+    let request = encrypt_request(
         &mkp_json_tag,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -310,7 +307,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .expect("There should be encrypted data");
 
     // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
-    let request = build_decryption_request(
+    let request = decrypt_request(
         &udk1_json_tag,
         None,
         encrypted_data.clone(),
@@ -322,7 +319,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     assert!(post_ttlv_decrypt.is_err());
 
     // decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         &udk2_json_tag,
         None,
         encrypted_data,
