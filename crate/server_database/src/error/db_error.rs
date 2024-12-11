@@ -167,7 +167,7 @@ impl From<KmipError> for DbError {
         match e {
             KmipError::InvalidKmipValue(r, s)
             | KmipError::InvalidKmipObject(r, s)
-            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::KmipNotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)

@@ -39,7 +39,7 @@ pub enum KmipError {
     InvalidTag(String),
 
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip(ErrorReason, String),
 
     #[error("Kmip Not Supported: {0}: {1}")]
     KmipNotSupported(ErrorReason, String),
@@ -64,8 +64,8 @@ impl KmipError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
+            Self::Kmip(_r, e) => Self::Kmip(reason, e.clone()),
+            e => Self::Kmip(reason, e.to_string()),
         }
     }
 }
@@ -78,14 +78,14 @@ impl From<Vec<u8>> for KmipError {
 
 impl From<TtlvError> for KmipError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
 #[cfg(feature = "pyo3")]
 impl From<pyo3::PyErr> for KmipError {
     fn from(e: pyo3::PyErr) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip(ErrorReason::Codec_Error, e.to_string())
     }
 }
 #[cfg(feature = "pyo3")]
@@ -127,13 +127,13 @@ macro_rules! kmip_ensure {
 #[macro_export]
 macro_rules! kmip_error {
     ($msg:literal) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
+        $crate::error::KmipError::Kmip($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $err.to_string())
+        $crate::error::KmipError::Kmip($crate::kmip::kmip_operations::ErrorReason::General_Failure, $err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::error::KmipError::Kmip($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 

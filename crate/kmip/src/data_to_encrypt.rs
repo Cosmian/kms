@@ -1,6 +1,4 @@
-use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
-
-use crate::{error::CryptoError, kmip::kmip_operations::ErrorReason};
+use crate::{error::KmipError, kmip::kmip_operations::ErrorReason, Deserializer, Serializer};
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///
@@ -28,7 +26,7 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
-    pub fn to_bytes(&self) -> Result<Vec<u8>, CryptoError> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, KmipError> {
         // Compute the size of the buffer
         let mut mem_size = 1 // for encryption policy
             + 1 // for metadata
@@ -59,7 +57,7 @@ impl DataToEncrypt {
         Ok(bytes)
     }
 
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, CryptoError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, KmipError> {
         let mut de = Deserializer::new(bytes);
 
         // Read the encryption policy
@@ -68,7 +66,7 @@ impl DataToEncrypt {
             .map(|ep| (!ep.is_empty()).then_some(ep))?
             .map(|ep| {
                 String::from_utf8(ep).map_err(|e| {
-                    CryptoError::KmipError(
+                    KmipError::Kmip(
                         ErrorReason::Invalid_Message,
                         format!("failed deserializing the encryption policy string: {e}"),
                     )
