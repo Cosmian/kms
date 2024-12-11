@@ -1,5 +1,19 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
+use cosmian_kmip::kmip::{
+    extra::BulkData,
+    kmip_objects::Object,
+    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+        PaddingMethod, StateEnumeration, UniqueIdentifier,
+    },
+    KmipOperation,
+};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
+use cosmian_kms_crypto::{
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
@@ -9,22 +23,8 @@ use cosmian_kmip::{
         symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
         DecryptionSystem,
     },
-    kmip::{
-        extra::BulkData,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
-        },
-        KmipOperation,
-    },
     openssl::kmip_private_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::cryptoelliptic_curves::ecies::ecies_decrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::cryptorsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};

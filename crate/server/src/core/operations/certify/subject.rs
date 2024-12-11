@@ -3,13 +3,11 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use cosmian_kmip::{
-    kmip::{
-        kmip_objects::Object,
-        kmip_types::{Attributes, UniqueIdentifier},
-    },
-    openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions},
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, UniqueIdentifier},
 };
+use cosmian_kms_crypto::openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions};
 use cosmian_kms_server_database::ObjectWithMetadata;
 use openssl::{
     pkey::{PKey, Public},

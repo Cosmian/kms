@@ -1,11 +1,11 @@
-use cosmian_kmip::{
-    crypto::wrap::{key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block},
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
-        kmip_objects::ObjectType,
-        kmip_types::{CryptographicUsageMask, LinkType, StateEnumeration},
-        KmipOperation,
-    },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
+    kmip_objects::ObjectType,
+    kmip_types::{CryptographicUsageMask, LinkType, StateEnumeration},
+    KmipOperation,
+};
+use cosmian_kms_crypto::crypto::wrap::{
+    key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
 };
 use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::debug;

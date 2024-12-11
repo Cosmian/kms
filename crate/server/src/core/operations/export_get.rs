@@ -9,11 +9,11 @@ use cosmian_kmip::{
         },
         KmipOperation,
     },
-    openssl::{
-        kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
-        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
-    },
     KmipError,
+};
+use cosmian_kms_crypto::openssl::{
+    kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
+    openssl_private_key_to_kmip, openssl_public_key_to_kmip,
 };
 use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 #[cfg(not(feature = "fips"))]

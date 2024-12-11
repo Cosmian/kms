@@ -3,19 +3,17 @@
 use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
-use cosmian_kmip::{
-    crypto::cover_crypt::{
-        attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
-        master_keys::{
-            covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
-        },
-        user_key::UserDecryptionKeysHandler,
+use cosmian_kmip::kmip::{
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
+    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
+};
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
+    master_keys::{
+        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
     },
-    kmip::{
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-        kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
-    },
+    user_key::UserDecryptionKeysHandler,
 };
 use cosmian_kms_server_database::ExtraStoreParams;
 use tracing::trace;

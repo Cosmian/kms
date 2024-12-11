@@ -2,23 +2,21 @@ use std::collections::HashSet;
 
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
-use cosmian_kmip::{
-    kmip::{
-        kmip_objects::{
-            Object::{self, Certificate},
-            ObjectType,
-        },
-        kmip_operations::{Import, ImportResponse},
-        kmip_types::{
-            Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm,
-            KeyFormatType, KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration,
-            UniqueIdentifier,
-        },
+use cosmian_kmip::kmip::{
+    kmip_objects::{
+        Object::{self, Certificate},
+        ObjectType,
     },
-    openssl::{
-        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
-        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+    kmip_operations::{Import, ImportResponse},
+    kmip_types::{
+        Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType,
+        KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
     },
+};
+use cosmian_kms_crypto::openssl::{
+    kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
+    openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+    openssl_x509_to_certificate_attributes,
 };
 use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
 use openssl::{
@@ -157,7 +155,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // parse the certificate as an openssl object to convert it to the pivot
     let certificate = X509::from_der(&certificate_der_bytes)?;
-    let certificate_attributes = CertificateAttributes::from(&certificate);
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&certificate);
 
     // convert the certificate to a KMIP object
     let object = openssl_certificate_to_kmip(&certificate)?;
@@ -498,7 +496,7 @@ fn process_pkcs12(
             certificate_id.to_owned(),
             leaf_certificate,
             leaf_certificate_tags,
-            CertificateAttributes::from(&openssl_cert),
+            openssl_x509_to_certificate_attributes(&openssl_cert),
         )
     };
 
@@ -518,7 +516,7 @@ fn process_pkcs12(
                 Uuid::new_v4().to_string(),
                 chain_certificate,
                 chain_certificate_tags,
-                CertificateAttributes::from(&openssl_cert),
+                openssl_x509_to_certificate_attributes(&openssl_cert),
             ));
         }
     }
