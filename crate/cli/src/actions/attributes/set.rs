@@ -13,6 +13,7 @@ use cosmian_kms_client::{
     KmsClient,
 };
 use serde::Deserialize;
+use strum::EnumIter;
 use tracing::{info, trace};
 
 use crate::{
@@ -25,7 +26,7 @@ use crate::{
 };
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(ValueEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone, Copy, Debug, EnumIter)]
 pub enum CCryptographicAlgorithm {
     AES,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
@@ -189,8 +190,9 @@ impl SetOrDeleteAttributes {
         }
 
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
-            let attribute =
-                Attribute::CryptographicAlgorithm(cryptographic_algorithm.clone().into());
+            let attribute = Attribute::CryptographicAlgorithm(CryptographicAlgorithm::from(
+                cryptographic_algorithm.to_owned(),
+            ));
             result.push(attribute);
         }
 

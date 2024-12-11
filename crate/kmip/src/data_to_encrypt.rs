@@ -97,9 +97,6 @@ mod tests {
 
     #[test]
     fn test_ser_de() {
-        #[cfg(feature = "fips")]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
         // full
         {
             let data_to_encrypt = DataToEncrypt {

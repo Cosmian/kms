@@ -18,6 +18,9 @@ pub enum AttributesCommands {
     Delete(DeleteAttributesAction),
 }
 
+#[cfg(test)]
+pub use set::CCryptographicAlgorithm;
+
 impl AttributesCommands {
     /// Process the Attributes commands action.
     ///

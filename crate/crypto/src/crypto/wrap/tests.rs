@@ -1,3 +1,5 @@
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::FIPS_PUBLIC_RSA_MASK;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyWrappingData,
     kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
@@ -15,8 +17,6 @@ use openssl::{
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
-#[cfg(feature = "fips")]
-use crate::crypto::rsa::FIPS_PUBLIC_RSA_MASK;
 use crate::{
     crypto::wrap::{unwrap_key::unwrap, wrap_key::wrap},
     error::result::CryptoResult,

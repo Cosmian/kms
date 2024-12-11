@@ -1,18 +1,13 @@
 #![allow(dead_code)]
 
 use cosmian_kms_client::{
-    reexport::cosmian_kmip::{
-        crypto::{
-            generic::kmip_requests::{build_decryption_request, build_encryption_request},
-            rsa::kmip_requests::create_rsa_key_pair_request,
-        },
-        kmip::{
-            kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
-            kmip_operations::Operation,
-            kmip_types::{
-                CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
-                ProtocolVersion,
-            },
+    kmip::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
+    reexport::cosmian_kmip::kmip::{
+        kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+        kmip_operations::Operation,
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+            ProtocolVersion,
         },
     },
     KmsClient,
@@ -286,7 +281,7 @@ pub(crate) async fn encrypt(
     cryptographic_parameters: &CryptographicParameters,
 ) -> Vec<u8> {
     // Create the kmip query
-    let encrypt_request = build_encryption_request(
+    let encrypt_request = encrypt_request(
         pk,
         None,
         cleartext,
@@ -310,7 +305,7 @@ pub(crate) async fn decrypt(
     cryptographic_parameters: &CryptographicParameters,
 ) {
     // Create the kmip query
-    let decrypt_request = build_decryption_request(
+    let decrypt_request = decrypt_request(
         sk,
         None,
         ciphertext.to_vec(),
@@ -338,7 +333,7 @@ pub(crate) async fn message_encrypt(
     cryptographic_parameters: &CryptographicParameters,
 ) -> MessageResponse {
     // Create the kmip query
-    let encrypt_request = build_encryption_request(
+    let encrypt_request = encrypt_request(
         pk,
         None,
         plaintext.to_vec(),
@@ -375,7 +370,7 @@ pub(crate) async fn message_decrypt(
     cryptographic_parameters: &CryptographicParameters,
 ) -> MessageResponse {
     // Create the kmip query
-    let decrypt_request = build_decryption_request(
+    let decrypt_request = decrypt_request(
         sk,
         None,
         ciphertext.to_vec(),
