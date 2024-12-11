@@ -70,7 +70,7 @@ impl UnwrappedCache {
             // invalidate the value in cache if the signature is different
             match cache.peek(uid) {
                 Some(Ok(cached_object)) => {
-                    if *cached_object.key_signature() != key_signature {
+                    if cached_object.key_signature() != key_signature {
                         trace!("Invalidating the cache for {}", uid);
                         cache.pop(uid);
                     }
@@ -118,8 +118,9 @@ mod tests {
         reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
     };
-    use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
-    use cosmian_kms_crypto::crypto::symmetric::create_symmetric_key_kmip_object;
+    use cosmian_kmip::kmip::{
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+    };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;

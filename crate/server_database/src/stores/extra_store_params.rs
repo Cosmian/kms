@@ -1,4 +1,6 @@
-use cosmian_kms_crypto::crypto{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
