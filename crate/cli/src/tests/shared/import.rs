@@ -146,7 +146,8 @@ pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
 pub(crate) async fn test_generate_export_import() -> CliResult<()> {
     use crate::actions::symmetric::keys::create_key::CreateKeyAction;
 
-    cosmian_logger::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
+    cosmian_logger::log_init(None);
+    // cosmian_logger::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test

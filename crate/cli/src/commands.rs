@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::{Parser, Subcommand};
+use cosmian_config_utils::ConfigUtils;
 use cosmian_kms_client::{KmsClient, KmsClientConfig};
 use cosmian_logger::log_init;
 use tracing::info;
@@ -25,7 +26,7 @@ struct KmsCli {
     command: KmsActions,
 
     #[clap(flatten)]
-    pub(crate) opts: KmsOptions,
+    pub(crate) kms_options: KmsOptions,
 }
 
 #[derive(Parser, Debug)]
@@ -35,7 +36,7 @@ pub struct KmsOptions {
     /// This is an alternative to the env variable `KMS_CLI_CONF`.
     /// Takes precedence over `KMS_CLI_CONF` env variable.
     #[arg(short, long)]
-    conf: Option<PathBuf>,
+    conf_path: Option<PathBuf>,
 
     /// The URL of the KMS
     #[arg(long, action)]
@@ -46,7 +47,7 @@ pub struct KmsOptions {
     /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
     /// running an invalid or insecure SSL certificate
     #[arg(long)]
-    pub(crate) accept_invalid_certs: Option<bool>,
+    pub(crate) accept_invalid_certs: bool,
 
     /// Output the JSON KMIP request and response.
     /// This is useful to understand JSON POST requests and responses
@@ -60,28 +61,30 @@ impl KmsOptions {
     /// # Errors
     /// - If the configuration file is not found or invalid
     pub fn prepare_config(&self) -> CliResult<KmsClientConfig> {
-        let mut conf = KmsClientConfig::load(&KmsClientConfig::location(self.conf.clone())?)?;
+        let mut config =
+            KmsClientConfig::from_toml(&KmsClientConfig::location(self.conf_path.clone())?)?;
 
         // Override configuration file with command line options
-        if self.url.is_some() {
-            info!("Override URL from configuration file with: {:?}", self.url);
-            conf.http_config.server_url = self.url.clone().unwrap_or_default();
+        if let Some(url) = self.url.clone() {
+            info!("Override URL from configuration file with: {:?}", url);
+            config.http_config.server_url = url;
         }
-        if self.accept_invalid_certs.is_some() {
+        if self.accept_invalid_certs {
             info!(
                 "Override accept_invalid_certs from configuration file with: {:?}",
                 self.accept_invalid_certs
             );
-            conf.http_config.accept_invalid_certs = self.accept_invalid_certs.unwrap_or_default();
+            config.http_config.accept_invalid_certs = true;
         }
         if self.print_json {
             info!(
                 "Override json from configuration file with: {:?}",
                 self.print_json
             );
-            conf.print_json = Some(self.print_json);
+            config.print_json = Some(self.print_json);
         }
-        Ok(conf)
+
+        Ok(config)
     }
 }
 
@@ -115,25 +118,26 @@ pub enum KmsActions {
 
 impl KmsActions {
     /// Process the command line arguments
+    ///
     /// # Errors
     /// - If the configuration file is not found or invalid
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub async fn process(&self, kms_rest_client: &mut KmsClient) -> CliResult<()> {
         match self {
+            Self::AccessRights(action) => action.process(kms_rest_client).await,
+            Self::Attributes(action) => action.process(kms_rest_client).await,
             Self::Bench(action) => action.process(Arc::new(kms_rest_client.clone())).await,
-            Self::Locate(action) => action.process(kms_rest_client).await,
             #[cfg(not(feature = "fips"))]
             Self::Cc(action) => action.process(kms_rest_client).await,
-            Self::Ec(action) => action.process(kms_rest_client).await,
-            Self::Rsa(action) => action.process(kms_rest_client).await,
-            Self::Sym(action) => action.process(kms_rest_client).await,
-            Self::AccessRights(action) => action.process(kms_rest_client).await,
             Self::Certificates(action) => action.process(kms_rest_client).await,
-            Self::NewDatabase(action) => action.process(kms_rest_client).await,
-            Self::ServerVersion(action) => action.process(kms_rest_client).await,
-            Self::Attributes(action) => action.process(kms_rest_client).await,
+            Self::Ec(action) => action.process(kms_rest_client).await,
             Self::Google(action) => action.process(kms_rest_client).await,
-            Self::Login(action) => action.process(&kms_rest_client.config).await,
-            Self::Logout(action) => action.process(&kms_rest_client.config),
+            Self::Locate(action) => action.process(kms_rest_client).await,
+            Self::Login(action) => action.process(&mut kms_rest_client.config).await,
+            Self::Logout(action) => action.process(&mut kms_rest_client.config),
+            Self::NewDatabase(action) => action.process(kms_rest_client).await,
+            Self::Rsa(action) => action.process(kms_rest_client).await,
+            Self::ServerVersion(action) => action.process(kms_rest_client).await,
+            Self::Sym(action) => action.process(kms_rest_client).await,
         }
     }
 }
@@ -141,15 +145,26 @@ impl KmsActions {
 /// Main entry point for the CLI
 /// # Errors
 /// - If the configuration file is not found or invalid
-#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity, clippy::print_stdout)]
 pub async fn ckms_main() -> CliResult<()> {
     log_init(None);
-    let opts = KmsCli::parse();
-    let conf = opts.opts.prepare_config()?;
+    let cli_opts = KmsCli::parse();
+    let config = cli_opts.kms_options.prepare_config()?;
 
     // Instantiate the KMS client
-    let kms_rest_client = KmsClient::new(conf)?;
-    opts.command.process(&kms_rest_client).await?;
+    let mut kms_rest_client = KmsClient::new(config)?;
+    cli_opts.command.process(&mut kms_rest_client).await?;
+
+    // Post-process the login/logout actions: save KMS configuration
+    // The reason why it is done here is that the login/logout actions are also call by meta Cosmian CLI using its own configuration file
+    let conf_path = KmsClientConfig::location(cli_opts.kms_options.conf_path.clone())?;
+    match cli_opts.command {
+        KmsActions::Login(_) | KmsActions::Logout(_) => {
+            kms_rest_client.config.to_toml(&conf_path)?;
+            println!("Saving configuration to: {conf_path:?}");
+        }
+        _ => {}
+    }
 
     Ok(())
 }

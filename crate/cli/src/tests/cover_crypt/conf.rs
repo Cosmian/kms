@@ -31,12 +31,12 @@ pub(crate) async fn test_bad_conf() -> CliResult<()> {
     cmd.assert().failure();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "notfound.json");
+    cmd.env(KMS_CLI_CONF_ENV, "notfound.toml");
 
     cmd.arg("ec").args(vec!["keys", "create"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Configuration file \"notfound.json\" specified in KMS_CLI_CONF environment variable does \
+        "Configuration file \"notfound.toml\" specified in KMS_CLI_CONF environment variable does \
          not exist",
     ));
 

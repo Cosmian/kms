@@ -9,8 +9,9 @@ use std::{
 use actix_server::ServerHandle;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
-    kms_client_bail, kms_client_error, reexport::cosmian_http_client::HttpClientConfig,
-    write_json_object_to_file, GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
+    kms_client_bail, kms_client_error,
+    reexport::{cosmian_config_utils::ConfigUtils, cosmian_http_client::HttpClientConfig},
+    GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
 };
 use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
@@ -248,13 +249,12 @@ pub async fn start_test_server_with_options(
         .expect("server timeout");
 
     if db_config.database_type.clone().unwrap() == "sqlite-enc" {
-        // Configure a database and create the kms json file
+        // Configure a database and create the kms toml file
         let database_secret = kms_rest_client.new_database().await?;
 
         // Rewrite the conf with the correct database secret
         owner_client_conf.http_config.database_secret = Some(database_secret);
-        write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
-            .expect("Can't write owner CLI conf path");
+        owner_client_conf.to_toml(&PathBuf::from(&owner_client_conf_path))?;
     }
 
     // generate a user conf
@@ -411,7 +411,7 @@ fn generate_owner_conf(
     let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     // Create a conf
-    let owner_client_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
+    let owner_client_conf_path = format!("/tmp/owner_kms_{}.toml", server_params.port);
 
     let gmail_api_conf: Option<GmailApiConf> = std::env::var("TEST_GMAIL_API_CONF")
         .ok()
@@ -456,9 +456,8 @@ fn generate_owner_conf(
         // We use the private key since the private key is the public key with additional information.
         ..KmsClientConfig::default()
     };
-    // write the conf to a file
-    write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
-        .expect("Can't write owner CLI conf path");
+
+    owner_client_conf.to_toml(&PathBuf::from(&owner_client_conf_path))?;
 
     Ok((owner_client_conf_path, owner_client_conf))
 }
@@ -487,8 +486,8 @@ fn generate_user_conf(
     user_conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
 
     // write the user conf
-    let user_conf_path = format!("/tmp/user_kms_{port}.json");
-    write_json_object_to_file(&user_conf, &user_conf_path)?;
+    let user_conf_path = format!("/tmp/user_kms_{port}.toml");
+    user_conf.to_toml(&PathBuf::from(&user_conf_path))?;
 
     // return the path
     Ok(user_conf_path)
@@ -504,7 +503,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
 
     let mut invalid_conf = correct_conf.clone();
     // and a temp file
-    let invalid_conf_path = "/tmp/invalid_conf.json".to_owned();
+    let invalid_conf_path = "/tmp/invalid_conf.toml".to_owned();
     // Generate a wrong token with valid group id
     let secrets = b64
         .decode(
@@ -521,8 +520,12 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
     secrets.key = db_key; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.http_config.database_secret = Some(token);
-    write_json_object_to_file(&invalid_conf, &invalid_conf_path)
-        .expect("Can't write CONF_PATH_BAD_KEY");
+
+    // write the invalid conf
+    invalid_conf
+        .to_toml(&PathBuf::from(&invalid_conf_path))
+        .unwrap();
+
     invalid_conf_path
 }
 

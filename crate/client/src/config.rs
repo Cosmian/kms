@@ -2,14 +2,13 @@ use std::path::PathBuf;
 
 use cosmian_config_utils::{location, ConfigUtils};
 use cosmian_http_client::HttpClientConfig;
-use cosmian_logger::reexport::tracing::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::KmsClientError;
 
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
-pub(crate) const KMS_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/kms.json";
-pub(crate) const KMS_CLI_CONF_PATH: &str = ".cosmian/kms.json";
+pub(crate) const KMS_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/kms.toml";
+pub(crate) const KMS_CLI_CONF_PATH: &str = ".cosmian/kms.toml";
 
 /// The configuration that is used by the google command
 /// to perform actions over Gmail API.
@@ -31,8 +30,6 @@ pub struct GmailApiConf {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct KmsClientConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub conf_path: Option<PathBuf>,
     pub http_config: HttpClientConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gmail_api_conf: Option<GmailApiConf>,
@@ -48,7 +45,6 @@ impl Default for KmsClientConfig {
                 server_url: "http://0.0.0.0:9998".to_owned(),
                 ..HttpClientConfig::default()
             },
-            conf_path: None,
             gmail_api_conf: None,
             print_json: None,
         }
@@ -56,26 +52,13 @@ impl Default for KmsClientConfig {
 }
 
 impl KmsClientConfig {
-    pub fn location(config: Option<PathBuf>) -> Result<PathBuf, KmsClientError> {
+    pub fn location(conf_path: Option<PathBuf>) -> Result<PathBuf, KmsClientError> {
         Ok(location(
-            config,
+            conf_path,
             KMS_CLI_CONF_ENV,
             KMS_CLI_CONF_PATH,
             KMS_CLI_CONF_DEFAULT_SYSTEM_PATH,
         )?)
-    }
-
-    pub fn load(config: &PathBuf) -> Result<KmsClientConfig, KmsClientError> {
-        match KmsClientConfig::from_json(config) {
-            Ok(config) => Ok(config),
-            Err(e) => {
-                warn!(
-                    "Error loading KMS client configuration from JSON format: {}",
-                    e
-                );
-                Ok(KmsClientConfig::from_toml(config)?)
-            }
-        }
     }
 }
 
@@ -96,16 +79,12 @@ mod tests {
 
     #[test]
     pub(crate) fn test_save() {
-        let conf_path = Path::new("/tmp/kms.json").to_path_buf();
+        let conf_path = Path::new("/tmp/kms.toml").to_path_buf();
         log_init(None);
-        let conf = KmsClientConfig {
-            conf_path: Some(conf_path.clone()),
-            ..Default::default()
-        };
+        let conf = KmsClientConfig::default();
         conf.to_toml(&conf_path).unwrap();
 
-        let loaded_config = KmsClientConfig::load(&conf_path).unwrap();
-        assert_eq!(loaded_config.conf_path, conf.conf_path);
+        let _loaded_config = KmsClientConfig::from_toml(&conf_path).unwrap();
     }
 
     #[test]
@@ -113,17 +92,17 @@ mod tests {
         log_init(None);
         // valid conf
         unsafe {
-            env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.json");
+            env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::load(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
 
         // another valid conf
         unsafe {
-            env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms_partial.json");
+            env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms_partial.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::load(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
 
         // Default conf file
         unsafe {
@@ -131,7 +110,7 @@ mod tests {
         }
         let _ = fs::remove_file(get_default_conf_path(KMS_CLI_CONF_PATH).unwrap());
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::load(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
         assert!(get_default_conf_path(KMS_CLI_CONF_PATH).unwrap().exists());
 
         // invalid conf
@@ -139,7 +118,10 @@ mod tests {
             env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.bad.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        let e = KmsClientConfig::load(&conf_path).err().unwrap().to_string();
+        let e = KmsClientConfig::from_toml(&conf_path)
+            .err()
+            .unwrap()
+            .to_string();
         assert!(e.contains("missing field `server_url`"));
 
         // with a file
@@ -147,8 +129,8 @@ mod tests {
             env::remove_var(KMS_CLI_CONF_ENV);
         }
         let conf_path =
-            KmsClientConfig::location(Some(PathBuf::from("../../test_data/configs/kms.json")))
+            KmsClientConfig::location(Some(PathBuf::from("../../test_data/configs/kms.toml")))
                 .unwrap();
-        assert!(KmsClientConfig::load(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
     }
 }
