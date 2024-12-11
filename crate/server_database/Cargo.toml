@@ -13,7 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = "0.1"
-clap = { workspace = true }
+clap = { workspace = true, features = ["std", "cargo"] }
 cloudproof = { workspace = true }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_kmip = { path = "../kmip" }
@@ -50,16 +50,13 @@ thiserror = { workspace = true }
 tiny-keccak = "2.0.2"
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
-url = { workspace = true }
 uuid = { workspace = true }
+url = { workspace = true }
 version-compare = "0.2.0"
 zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_logger = { workspace = true }
-rand_chacha = "0.3.1"
 tempfile = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, default-features = false, features = [
-    "env-filter",
-] }
+

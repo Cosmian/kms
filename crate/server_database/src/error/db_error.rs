@@ -3,6 +3,7 @@ use std::array::TryFromSliceError;
 use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_kmip::{kmip::kmip_operations::ErrorReason, KmipError};
+use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use redis::ErrorKind;
 use thiserror::Error;
@@ -10,21 +11,21 @@ use thiserror::Error;
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Clone)]
 pub enum DbError {
-    // When a conversion from/to bytes
-    #[error("Conversion Error: {0}")]
-    ConversionError(String),
+    // Error related to X509 Certificate
+    #[error("Certificate error: {0}")]
+    Certificate(String),
 
     // Any actions of the user that is not allowed
     #[error("REST client connection error: {0}")]
     ClientConnectionError(String),
 
+    // When a conversion from/to bytes
+    #[error("Conversion Error: {0}")]
+    ConversionError(String),
+
     // A failure originating from one of the cryptographic algorithms
     #[error("Cryptographic error: {0}")]
     CryptographicError(String),
-
-    // Error related to X509 Certificate
-    #[error("Certificate error: {0}")]
-    Certificate(String),
 
     // Any errors related to a bad behavior of the DB but not related to the user input
     #[error("Database Error: {0}")]
@@ -82,12 +83,12 @@ pub enum DbError {
     #[error("This KMIP server does not yet support place holder id")]
     UnsupportedPlaceholder,
 
-    #[error("Invalid URL: {0}")]
-    UrlError(String),
-
     // When a user requests with protection masks arg.
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
+
+    #[error("Invalid URL: {0}")]
+    UrlError(String),
 }
 
 impl From<std::string::FromUtf8Error> for DbError {
@@ -180,12 +181,18 @@ impl From<KmipError> for DbError {
             KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
             KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+                Self::KmipError(ErrorReason::Codec_Error, e)
             }
             KmipError::DeserializationSize(expected, actual) => Self::KmipError(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
         }
+    }
+}
+
+impl From<CryptoError> for DbError {
+    fn from(e: CryptoError) -> Self {
+        Self::CryptographicError(e.to_string())
     }
 }

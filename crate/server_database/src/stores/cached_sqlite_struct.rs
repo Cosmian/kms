@@ -8,7 +8,9 @@ use std::{
     time::SystemTime,
 };
 
-use cosmian_kms_crypto::crypto{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
 use sqlx::{Pool, Sqlite};
 use tracing::{debug, info, trace};
 
@@ -510,307 +512,307 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cosmian_kms_crypto::crypto {
-    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-};
-use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    ConnectOptions,
-};
-
-use super::{FSCNeighborEntry, FreeableSqliteCache, KMSSqliteCache};
-
-#[test]
-pub(crate) fn test_fsc_new() {
-    let fsc = FreeableSqliteCache::new(10);
-    assert_eq!(fsc.head, 0);
-    assert_eq!(fsc.tail, 0);
-    assert_eq!(fsc.length, 0);
-    assert_eq!(fsc.size, 0);
-}
-
-#[test]
-pub(crate) fn test_fsc_push() {
-    let mut fsc = FreeableSqliteCache::new(10);
-    assert_eq!(fsc.push(1), 0);
-    assert_eq!(fsc.push(2), 1);
-    assert_eq!(fsc.push(3), 2);
-
-    assert_eq!(fsc.head, 0);
-    assert_eq!(fsc.tail, 2);
-    assert_eq!(fsc.length, 3);
-    assert_eq!(fsc.size, 3);
-    assert!(fsc.entries[0].chained);
-    assert!(fsc.entries[1].chained);
-    assert!(fsc.entries[2].chained);
-    assert_eq!(fsc.entries[0].val, 1);
-    assert_eq!(fsc.entries[1].val, 2);
-    assert_eq!(fsc.entries[2].val, 3);
-    assert_eq!(fsc.entries[0].next, FSCNeighborEntry::Chained(1));
-    assert_eq!(fsc.entries[0].prev, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
-    assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(1));
-}
-
-#[test]
-pub(crate) fn test_fsc_pop() {
-    let mut fsc = FreeableSqliteCache::new(10);
-    assert_eq!(fsc.push(1), 0);
-    assert_eq!(fsc.push(2), 1);
-    assert_eq!(fsc.push(3), 2);
-
-    assert_eq!(fsc.pop().unwrap(), 1);
-
-    assert_eq!(fsc.head, 1);
-    assert_eq!(fsc.tail, 2);
-    assert_eq!(fsc.length, 2);
-    assert_eq!(fsc.size, 3);
-
-    assert!(!fsc.entries[0].chained);
-
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
-
-    assert_eq!(fsc.push(4), 3);
-
-    assert_eq!(fsc.head, 1);
-    assert_eq!(fsc.tail, 3);
-    assert_eq!(fsc.length, 3);
-    assert_eq!(fsc.size, 4);
-
-    assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Chained(3));
-    assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(1));
-    assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(2));
-
-    assert_eq!(fsc.pop().unwrap(), 2);
-    assert_eq!(fsc.pop().unwrap(), 3);
-    assert_eq!(fsc.pop().unwrap(), 4);
-
-    assert_eq!(fsc.length, 0);
-    assert_eq!(fsc.size, 4);
-
-    fsc.pop().unwrap_err();
-
-    assert_eq!(fsc.push(5), 4);
-
-    assert_eq!(fsc.head, 4);
-    assert_eq!(fsc.tail, 4);
-    assert_eq!(fsc.length, 1);
-    assert_eq!(fsc.size, 5);
-
-    assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
-
-    assert_eq!(fsc.pop().unwrap(), 5);
-}
-
-#[test]
-pub(crate) fn test_fsc_uncache() {
-    let mut fsc = FreeableSqliteCache::new(10);
-    assert_eq!(fsc.push(1), 0);
-    assert_eq!(fsc.push(2), 1);
-    assert_eq!(fsc.push(3), 2);
-    assert_eq!(fsc.push(4), 3);
-
-    assert!(fsc.uncache(4).is_err());
-
-    fsc.uncache(2).unwrap();
-
-    assert_eq!(fsc.head, 0);
-    assert_eq!(fsc.tail, 3);
-    assert_eq!(fsc.length, 3);
-    assert_eq!(fsc.size, 4);
-
-    assert!(!fsc.entries[2].chained);
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
-    assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
-
-    fsc.uncache(0).unwrap();
-
-    assert_eq!(fsc.head, 1);
-    assert_eq!(fsc.tail, 3);
-    assert_eq!(fsc.length, 2);
-    assert_eq!(fsc.size, 4);
-
-    assert!(!fsc.entries[0].chained);
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
-
-    fsc.uncache(3).unwrap();
-
-    assert_eq!(fsc.head, 1);
-    assert_eq!(fsc.tail, 1);
-    assert_eq!(fsc.length, 1);
-    assert_eq!(fsc.size, 4);
-
-    assert!(!fsc.entries[3].chained);
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
-
-    fsc.uncache(1).unwrap();
-
-    assert_eq!(fsc.length, 0);
-    assert_eq!(fsc.size, 4);
-
-    assert!(!fsc.entries[1].chained);
+    use cosmian_kms_crypto::crypto::{
+        secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+    };
+    use sqlx::{
+        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+        ConnectOptions,
+    };
+
+    use super::{FSCNeighborEntry, FreeableSqliteCache, KMSSqliteCache};
+
+    #[test]
+    pub(crate) fn test_fsc_new() {
+        let fsc = FreeableSqliteCache::new(10);
+        assert_eq!(fsc.head, 0);
+        assert_eq!(fsc.tail, 0);
+        assert_eq!(fsc.length, 0);
+        assert_eq!(fsc.size, 0);
+    }
+
+    #[test]
+    pub(crate) fn test_fsc_push() {
+        let mut fsc = FreeableSqliteCache::new(10);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+
+        assert_eq!(fsc.head, 0);
+        assert_eq!(fsc.tail, 2);
+        assert_eq!(fsc.length, 3);
+        assert_eq!(fsc.size, 3);
+        assert!(fsc.entries[0].chained);
+        assert!(fsc.entries[1].chained);
+        assert!(fsc.entries[2].chained);
+        assert_eq!(fsc.entries[0].val, 1);
+        assert_eq!(fsc.entries[1].val, 2);
+        assert_eq!(fsc.entries[2].val, 3);
+        assert_eq!(fsc.entries[0].next, FSCNeighborEntry::Chained(1));
+        assert_eq!(fsc.entries[0].prev, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
+        assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(1));
+    }
+
+    #[test]
+    pub(crate) fn test_fsc_pop() {
+        let mut fsc = FreeableSqliteCache::new(10);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+
+        assert_eq!(fsc.pop().unwrap(), 1);
+
+        assert_eq!(fsc.head, 1);
+        assert_eq!(fsc.tail, 2);
+        assert_eq!(fsc.length, 2);
+        assert_eq!(fsc.size, 3);
+
+        assert!(!fsc.entries[0].chained);
+
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
+
+        assert_eq!(fsc.push(4), 3);
+
+        assert_eq!(fsc.head, 1);
+        assert_eq!(fsc.tail, 3);
+        assert_eq!(fsc.length, 3);
+        assert_eq!(fsc.size, 4);
+
+        assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Chained(3));
+        assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(1));
+        assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(2));
+
+        assert_eq!(fsc.pop().unwrap(), 2);
+        assert_eq!(fsc.pop().unwrap(), 3);
+        assert_eq!(fsc.pop().unwrap(), 4);
+
+        assert_eq!(fsc.length, 0);
+        assert_eq!(fsc.size, 4);
+
+        fsc.pop().unwrap_err();
+
+        assert_eq!(fsc.push(5), 4);
+
+        assert_eq!(fsc.head, 4);
+        assert_eq!(fsc.tail, 4);
+        assert_eq!(fsc.length, 1);
+        assert_eq!(fsc.size, 5);
+
+        assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
+
+        assert_eq!(fsc.pop().unwrap(), 5);
+    }
+
+    #[test]
+    pub(crate) fn test_fsc_uncache() {
+        let mut fsc = FreeableSqliteCache::new(10);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
+
+        assert!(fsc.uncache(4).is_err());
+
+        fsc.uncache(2).unwrap();
+
+        assert_eq!(fsc.head, 0);
+        assert_eq!(fsc.tail, 3);
+        assert_eq!(fsc.length, 3);
+        assert_eq!(fsc.size, 4);
+
+        assert!(!fsc.entries[2].chained);
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
+        assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
+
+        fsc.uncache(0).unwrap();
+
+        assert_eq!(fsc.head, 1);
+        assert_eq!(fsc.tail, 3);
+        assert_eq!(fsc.length, 2);
+        assert_eq!(fsc.size, 4);
+
+        assert!(!fsc.entries[0].chained);
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
+
+        fsc.uncache(3).unwrap();
+
+        assert_eq!(fsc.head, 1);
+        assert_eq!(fsc.tail, 1);
+        assert_eq!(fsc.length, 1);
+        assert_eq!(fsc.size, 4);
+
+        assert!(!fsc.entries[3].chained);
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
+
+        fsc.uncache(1).unwrap();
+
+        assert_eq!(fsc.length, 0);
+        assert_eq!(fsc.size, 4);
+
+        assert!(!fsc.entries[1].chained);
 
-    assert!(fsc.uncache(1).is_err());
-    fsc.pop().unwrap_err();
-
-    assert_eq!(fsc.push(5), 4);
-    assert_eq!(fsc.head, 4);
-    assert_eq!(fsc.tail, 4);
-    assert_eq!(fsc.length, 1);
-    assert_eq!(fsc.size, 5);
-
-    assert!(fsc.entries[4].chained);
-    assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
-}
-
-#[test]
-pub(crate) fn test_fsc_recache() {
-    let mut fsc = FreeableSqliteCache::new(10);
-    assert_eq!(fsc.push(1), 0);
-    assert_eq!(fsc.push(2), 1);
-    assert_eq!(fsc.push(3), 2);
-    assert_eq!(fsc.push(4), 3);
-
-    assert!(fsc.recache(4).is_err());
-    assert!(fsc.recache(3).is_err());
-
-    fsc.uncache(2).unwrap();
-
-    assert_eq!(fsc.head, 0);
-    assert_eq!(fsc.tail, 3);
-    assert_eq!(fsc.length, 3);
-    assert_eq!(fsc.size, 4);
-
-    assert!(!fsc.entries[2].chained);
-    assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
-    assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
-    assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
-
-    fsc.recache(2).unwrap();
-    assert!(fsc.recache(2).is_err());
-
-    assert_eq!(fsc.head, 0);
-    assert_eq!(fsc.tail, 2);
-    assert_eq!(fsc.length, 4);
-    assert_eq!(fsc.size, 4);
-
-    assert!(fsc.entries[2].chained);
-    assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(3));
-    assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Chained(2));
-    assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
-
-    fsc.uncache(0).unwrap();
-    fsc.uncache(1).unwrap();
-    fsc.uncache(2).unwrap();
-    fsc.uncache(3).unwrap();
-    fsc.recache(3).unwrap();
-
-    assert_eq!(fsc.head, 3);
-    assert_eq!(fsc.tail, 3);
-    assert_eq!(fsc.length, 1);
-    assert_eq!(fsc.size, 4);
-
-    assert!(fsc.entries[3].chained);
-    assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
-    assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Nil);
-}
-
-#[tokio::test]
-async fn test_sqlite_cache() {
-    let cache = KMSSqliteCache::new(2);
-
-    assert_eq!(cache.max_size, 2);
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
-
-    let password = Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap();
-
-    let sqlite = connect().await.expect("Can't create database");
-    let sqlite2 = connect().await.expect("Can't create database");
-    let sqlite3 = connect().await.expect("Can't create database");
-
-    cache.save(1, &password, sqlite).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
-    cache.save(2, &password, sqlite2).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
-    assert!(cache.opened(1).unwrap());
-    assert!(cache.opened(2).unwrap());
-
-    assert!(cache.exists(1).unwrap());
-
-    let sqlite2 = connect().await.expect("Can't create database");
-    cache.save(2, &password, sqlite2).await.unwrap(); // double saved = ok
-
-    cache.release(2).unwrap();
-    assert!(cache.release(2).is_err()); // not twice
-
-    assert!(cache.exists(2).unwrap());
-    assert!(cache.opened(2).unwrap()); // still opened
-
-    assert!(!cache.exists(3).unwrap());
-    cache.save(3, &password, sqlite3).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
-    assert!(cache.opened(3).unwrap()); // still opened
-    assert!(!cache.opened(2).unwrap()); // not opened anymore
-    assert!(cache.exists(2).unwrap());
-
-    let sqlite2 = connect().await.expect("Can't create database");
-    cache.save(2, &password, sqlite2).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
-    assert!(cache.opened(2).unwrap());
-
-    cache.get(4, &password).unwrap_err();
-    cache
-        .get(1, &Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap())
-        .unwrap_err(); // bad &password
-    cache.get(1, &password).unwrap(); // 2 uses of sqlite1
-
-    let sqlite4 = connect().await.expect("Can't create database");
-    cache.save(4, &password, sqlite4).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
-    assert!(cache.opened(1).unwrap());
-
-    cache.release(1).unwrap(); // 1 uses of sqlite1
-
-    let sqlite5 = connect().await.expect("Can't create database");
-    cache.save(5, &password, sqlite5).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
-    assert!(cache.opened(1).unwrap());
-
-    cache.release(1).unwrap(); // 0 uses of sqlite1
-    assert!(cache.opened(1).unwrap());
-
-    let sqlite6 = connect().await.expect("Can't create database");
-    cache.save(6, &password, sqlite6).await.unwrap();
-    assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
-    assert!(!cache.opened(1).unwrap());
-    assert!(cache.exists(1).unwrap());
-
-    cache.get(1, &password).unwrap_err(); // get after close
-}
-
-async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {
-    let options = SqliteConnectOptions::from_str("sqlite::memory:")?
-        .pragma("journal_mode", "OFF")
-        .busy_timeout(Duration::from_secs(120))
-        .create_if_missing(true)
-        // disable logging of each query
-        .disable_statement_logging();
-
-    SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
-        .await
-}
+        assert!(fsc.uncache(1).is_err());
+        fsc.pop().unwrap_err();
+
+        assert_eq!(fsc.push(5), 4);
+        assert_eq!(fsc.head, 4);
+        assert_eq!(fsc.tail, 4);
+        assert_eq!(fsc.length, 1);
+        assert_eq!(fsc.size, 5);
+
+        assert!(fsc.entries[4].chained);
+        assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
+    }
+
+    #[test]
+    pub(crate) fn test_fsc_recache() {
+        let mut fsc = FreeableSqliteCache::new(10);
+        assert_eq!(fsc.push(1), 0);
+        assert_eq!(fsc.push(2), 1);
+        assert_eq!(fsc.push(3), 2);
+        assert_eq!(fsc.push(4), 3);
+
+        assert!(fsc.recache(4).is_err());
+        assert!(fsc.recache(3).is_err());
+
+        fsc.uncache(2).unwrap();
+
+        assert_eq!(fsc.head, 0);
+        assert_eq!(fsc.tail, 3);
+        assert_eq!(fsc.length, 3);
+        assert_eq!(fsc.size, 4);
+
+        assert!(!fsc.entries[2].chained);
+        assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(3));
+        assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Chained(0));
+        assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
+
+        fsc.recache(2).unwrap();
+        assert!(fsc.recache(2).is_err());
+
+        assert_eq!(fsc.head, 0);
+        assert_eq!(fsc.tail, 2);
+        assert_eq!(fsc.length, 4);
+        assert_eq!(fsc.size, 4);
+
+        assert!(fsc.entries[2].chained);
+        assert_eq!(fsc.entries[2].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[2].prev, FSCNeighborEntry::Chained(3));
+        assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Chained(2));
+        assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(1));
+
+        fsc.uncache(0).unwrap();
+        fsc.uncache(1).unwrap();
+        fsc.uncache(2).unwrap();
+        fsc.uncache(3).unwrap();
+        fsc.recache(3).unwrap();
+
+        assert_eq!(fsc.head, 3);
+        assert_eq!(fsc.tail, 3);
+        assert_eq!(fsc.length, 1);
+        assert_eq!(fsc.size, 4);
+
+        assert!(fsc.entries[3].chained);
+        assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
+        assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Nil);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_cache() {
+        let cache = KMSSqliteCache::new(2);
+
+        assert_eq!(cache.max_size, 2);
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
+
+        let password = Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap();
+
+        let sqlite = connect().await.expect("Can't create database");
+        let sqlite2 = connect().await.expect("Can't create database");
+        let sqlite3 = connect().await.expect("Can't create database");
+
+        cache.save(1, &password, sqlite).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
+        cache.save(2, &password, sqlite2).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
+        assert!(cache.opened(1).unwrap());
+        assert!(cache.opened(2).unwrap());
+
+        assert!(cache.exists(1).unwrap());
+
+        let sqlite2 = connect().await.expect("Can't create database");
+        cache.save(2, &password, sqlite2).await.unwrap(); // double saved = ok
+
+        cache.release(2).unwrap();
+        assert!(cache.release(2).is_err()); // not twice
+
+        assert!(cache.exists(2).unwrap());
+        assert!(cache.opened(2).unwrap()); // still opened
+
+        assert!(!cache.exists(3).unwrap());
+        cache.save(3, &password, sqlite3).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
+        assert!(cache.opened(3).unwrap()); // still opened
+        assert!(!cache.opened(2).unwrap()); // not opened anymore
+        assert!(cache.exists(2).unwrap());
+
+        let sqlite2 = connect().await.expect("Can't create database");
+        cache.save(2, &password, sqlite2).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
+        assert!(cache.opened(2).unwrap());
+
+        cache.get(4, &password).unwrap_err();
+        cache
+            .get(1, &Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap())
+            .unwrap_err(); // bad &password
+        cache.get(1, &password).unwrap(); // 2 uses of sqlite1
+
+        let sqlite4 = connect().await.expect("Can't create database");
+        cache.save(4, &password, sqlite4).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
+        assert!(cache.opened(1).unwrap());
+
+        cache.release(1).unwrap(); // 1 uses of sqlite1
+
+        let sqlite5 = connect().await.expect("Can't create database");
+        cache.save(5, &password, sqlite5).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
+        assert!(cache.opened(1).unwrap());
+
+        cache.release(1).unwrap(); // 0 uses of sqlite1
+        assert!(cache.opened(1).unwrap());
+
+        let sqlite6 = connect().await.expect("Can't create database");
+        cache.save(6, &password, sqlite6).await.unwrap();
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
+        assert!(!cache.opened(1).unwrap());
+        assert!(cache.exists(1).unwrap());
+
+        cache.get(1, &password).unwrap_err(); // get after close
+    }
+
+    async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
+            .pragma("journal_mode", "OFF")
+            .busy_timeout(Duration::from_secs(120))
+            .create_if_missing(true)
+            // disable logging of each query
+            .disable_statement_logging();
+
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+    }
 }

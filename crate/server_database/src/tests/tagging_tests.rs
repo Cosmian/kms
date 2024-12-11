@@ -4,15 +4,12 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            StateEnumeration,
-        },
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
     },
+    requests::create_symmetric_key_kmip_object,
 };
 use uuid::Uuid;
 
@@ -34,7 +31,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    // create symmetric key
+    // create a symmetric key
     let symmetric_key =
         create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
 

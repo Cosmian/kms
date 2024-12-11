@@ -7,13 +7,13 @@ use std::{
 
 use async_trait::async_trait;
 use clap::crate_version;
-use cosmian_kmip::{
-    crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    kmip::{
-        kmip_objects::Object,
-        kmip_types::{Attributes, StateEnumeration},
-        KmipOperation,
-    },
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, StateEnumeration},
+    KmipOperation,
+};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},

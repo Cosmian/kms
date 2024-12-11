@@ -1,17 +1,15 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::{
-            attributes::{access_policy_from_attributes, policy_from_attributes},
-            user_key::UserDecryptionKeysHandler,
-        },
-        KeyPair,
+use cosmian_kmip::kmip::{
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Create, CreateKeyPair, Get},
+    kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
+};
+use cosmian_kms_crypto::crypto::{
+    cover_crypt::{
+        attributes::{access_policy_from_attributes, policy_from_attributes},
+        user_key::UserDecryptionKeysHandler,
     },
-    kmip::{
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, CreateKeyPair, Get},
-        kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
-    },
+    KeyPair,
 };
 use cosmian_kms_server_database::ExtraStoreParams;
 

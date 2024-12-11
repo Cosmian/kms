@@ -4,12 +4,10 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_types::{CryptographicAlgorithm, StateEnumeration},
-        KmipOperation,
-    },
+use cosmian_kmip::kmip::{
+    kmip_types::{CryptographicAlgorithm, StateEnumeration},
+    requests::create_symmetric_key_kmip_object,
+    KmipOperation,
 };
 use uuid::Uuid;
 

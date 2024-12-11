@@ -10,14 +10,12 @@ use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
-use cosmian_kmip::{
-    crypto::{password_derivation::derive_key_from_password, secret::Secret},
-    kmip::{
-        kmip_objects::Object,
-        kmip_types::{Attributes, StateEnumeration},
-        KmipOperation,
-    },
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, StateEnumeration},
+    KmipOperation,
 };
+use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -79,7 +77,7 @@ impl RedisWithFindex {
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
     ) -> DbResult<Self> {
-        // derive a Findex Key
+        // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
             &mut findex_key,

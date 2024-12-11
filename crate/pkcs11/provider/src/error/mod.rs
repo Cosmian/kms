@@ -53,7 +53,6 @@ impl From<KmipError> for Pkcs11Error {
             KmipError::NotSupported(s)
             | KmipError::KmipNotSupported(_, s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -62,6 +61,13 @@ impl From<KmipError> for Pkcs11Error {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::Deserialization(_) | KmipError::Serialization(_) => {
+                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+                ErrorReason::Codec_Error,
+                format!("Expected size: {}, Actual size: {}", expected, actual),
+            ),
         }
     }
 }
