@@ -15,11 +15,12 @@ name = "cosmian_kms"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }
+cosmian_kms_crypto = { path = "../crypto" }
 pyo3 = { workspace = true, features = [
-  "extension-module",
-  "abi3",
-  "abi3-py37",
-  "generate-import-lib",
+    "extension-module",
+    "abi3",
+    "abi3-py37",
+    "generate-import-lib",
 ] }
 pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
 serde_json = { workspace = true }
