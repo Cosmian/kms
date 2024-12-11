@@ -11,6 +11,7 @@ use cosmian_kms_client::{
     reexport::cosmian_http_client::HttpClientError,
     KmsClientError,
 };
+use cosmian_kms_crypto::CryptoError;
 use hex::FromHexError;
 use thiserror::Error;
 
@@ -21,96 +22,96 @@ pub mod result;
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
 pub enum CliError {
-    // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
-    RouteNotFound(String),
-
-    // When a user requests something not supported by the server
-    #[error("Not Supported: {0}")]
-    NotSupported(String),
-
-    // When a user requests something which is a non-sense
-    #[error("Inconsistent operation: {0}")]
-    InconsistentOperation(String),
-
-    // When a user requests an id which does not exist
-    #[error("Item not found: {0}")]
-    ItemNotFound(String),
-
-    // Missing arguments in the request
-    #[error("Invalid Request: {0}")]
-    InvalidRequest(String),
-
-    // Any errors on KMIP format due to mistake of the user
-    #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
-
-    // Any errors related to a bad behavior of the server but not related to the user input
-    #[error("Server error: {0}")]
-    ServerError(String),
-
-    // Any actions of the user which is not allowed
-    #[error("Access denied: {0}")]
-    Unauthorized(String),
-
-    // A cryptographic error
-    #[error("Cryptographic error: {0}")]
-    Cryptographic(String),
+    // Configuration errors
+    #[error(transparent)]
+    ConfigUtilsError(#[from] ConfigUtilsError),
 
     // Conversion errors
     #[error("Conversion error: {0}")]
     Conversion(String),
 
-    // Other errors
-    #[error("invalid options: {0}")]
-    UserError(String),
+    #[error(transparent)]
+    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
+
+    // A cryptographic error
+    #[error("Cryptographic error: {0}")]
+    Cryptographic(String),
 
     // Other errors
     #[error("{0}")]
     Default(String),
 
-    // Url parsing errors
     #[error(transparent)]
-    UrlParsing(#[from] url::ParseError),
+    DerError(#[from] der::Error),
 
-    // Configuration errors
     #[error(transparent)]
-    ConfigUtilsError(#[from] ConfigUtilsError),
+    FromHexError(#[from] FromHexError),
+
+    #[cfg(test)]
+    #[error(transparent)]
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
 
     // When an error occurs fetching Gmail API
     #[error("Error interacting with Gmail API: {0}")]
     GmailApiError(String),
 
     #[error(transparent)]
-    SerdeJsonError(#[from] serde_json::Error),
+    HttpClientError(#[from] HttpClientError),
 
-    #[error(transparent)]
-    DerError(#[from] der::Error),
+    // When a user requests something, which is nonsense
+    #[error("Inconsistent operation: {0}")]
+    InconsistentOperation(String),
 
-    #[error(transparent)]
-    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
+    // Missing arguments in the request
+    #[error("Invalid Request: {0}")]
+    InvalidRequest(String),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
 
-    #[error(transparent)]
-    Utf8Error(#[from] Utf8Error),
+    // When a user requests an id which does not exist
+    #[error("Item not found: {0}")]
+    ItemNotFound(String),
 
-    #[error(transparent)]
-    TryFromIntError(#[from] TryFromIntError),
-
-    #[error(transparent)]
-    HttpClientError(#[from] HttpClientError),
-
-    #[error(transparent)]
-    FromHexError(#[from] FromHexError),
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    KmipError(ErrorReason, String),
 
     #[error(transparent)]
     KmsClientError(#[from] KmsClientError),
 
-    #[cfg(test)]
+    // When a user requests something not supported by the server
+    #[error("Not Supported: {0}")]
+    NotSupported(String),
+
+    // When a user requests an endpoint which does not exist
+    #[error("Not Supported route: {0}")]
+    RouteNotFound(String),
+
     #[error(transparent)]
-    FromUtf8Error(#[from] std::string::FromUtf8Error),
+    SerdeJsonError(#[from] serde_json::Error),
+
+    // Any errors related to a bad behavior of the server but not related to the user input
+    #[error("Server error: {0}")]
+    ServerError(String),
+
+    #[error(transparent)]
+    TryFromIntError(#[from] TryFromIntError),
+
+    // Any actions of the user which is not allowed
+    #[error("Access denied: {0}")]
+    Unauthorized(String),
+
+    // Url parsing errors
+    #[error(transparent)]
+    UrlParsing(#[from] url::ParseError),
+
+    // Other errors
+    #[error("invalid options: {0}")]
+    UserError(String),
+
+    #[error(transparent)]
+    Utf8Error(#[from] Utf8Error),
 }
 
 impl CliError {
@@ -145,7 +146,6 @@ impl From<KmipError> for CliError {
             KmipError::KmipNotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -154,7 +154,20 @@ impl From<KmipError> for CliError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(t) => Self::Conversion(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::Deserialization(_) | KmipError::Serialization(_) => {
+                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+                ErrorReason::Codec_Error,
+                format!("Deserialization: invalid size: {actual}, expected: {expected}"),
+            ),
         }
+    }
+}
+
+impl From<CryptoError> for CliError {
+    fn from(e: CryptoError) -> Self {
+        Self::Cryptographic(e.to_string())
     }
 }
 
@@ -238,10 +251,7 @@ mod tests {
 
     fn bail() -> CliResult<()> {
         let var = 43;
-        if true {
-            cli_bail!("interpolate {var}");
-        }
-        Ok(())
+        cli_bail!("interpolate {var}");
     }
 
     fn ensure() -> CliResult<()> {

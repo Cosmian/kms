@@ -6,20 +6,17 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{
-        generic::kmip_requests::build_encryption_request,
-        symmetric::{
-            create_symmetric_key_kmip_object,
-            symmetric_ciphers::{encrypt, random_key, random_nonce, Mode, SymCipher},
-        },
-        wrap::wrap_key_block,
-    },
     export_object,
     kmip::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
+        requests::{create_symmetric_key_kmip_object, encrypt_request},
     },
     read_bytes_from_file, ExportObjectParams, KmsClient,
+};
+use cosmian_kms_crypto::crypto::{
+    symmetric::symmetric_ciphers::{encrypt, random_key, random_nonce, Mode, SymCipher},
+    wrap::wrap_key_block,
 };
 use zeroize::Zeroizing;
 
@@ -208,7 +205,7 @@ impl EncryptAction {
         authenticated_data: Option<Vec<u8>>,
     ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), CliError> {
         // Create the kmip query
-        let encrypt_request = build_encryption_request(
+        let encrypt_request = encrypt_request(
             data_encryption_key_id,
             None,
             plaintext,

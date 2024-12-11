@@ -3,12 +3,12 @@ use std::fmt::Display;
 use base64::{engine::general_purpose, Engine as _};
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
-        kmip::kmip_types::CryptographicAlgorithm,
-    },
+    cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm,
     import_object,
-    kmip::kmip_types::UniqueIdentifier,
+    kmip::{
+        kmip_types::UniqueIdentifier,
+        requests::{create_symmetric_key_kmip_object, symmetric_key_create_request},
+    },
     KmsClient,
 };
 

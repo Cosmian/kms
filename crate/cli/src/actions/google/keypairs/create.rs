@@ -1,9 +1,6 @@
 use base64::{engine::general_purpose, Engine};
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{
-        certificates::EXTENSION_CONFIG, rsa::kmip_requests::create_rsa_key_pair_request,
-    },
     export_object,
     kmip::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
@@ -14,9 +11,11 @@ use cosmian_kms_client::{
             CryptographicParameters, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier, VendorAttribute,
         },
+        requests::create_rsa_key_pair_request,
     },
     ExportObjectParams, KmsClient,
 };
+use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 

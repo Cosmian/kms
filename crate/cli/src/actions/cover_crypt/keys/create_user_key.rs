@@ -1,9 +1,7 @@
 use clap::Parser;
 use cloudproof::reexport::cover_crypt::abe_policy::AccessPolicy;
-use cosmian_kms_client::{
-    cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_user_decryption_private_key_request,
-    KmsClient,
-};
+use cosmian_kms_client::KmsClient;
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_user_decryption_key_request;
 
 use crate::{
     actions::console,
@@ -27,7 +25,7 @@ use crate::{
 ///
 ///    `(Department::MKG && Security Level::Confidential) || (Department::HR && Security Level::Protected)`
 ///
-/// The policy used in these example is
+/// The policy used in these examples is
 /// ```json
 ///     {
 ///        "Security Level::<": [
@@ -75,7 +73,7 @@ impl CreateUserKeyAction {
             .with_context(|| "bad access policy syntax")?;
 
         // Create the kmip query
-        let create_user_key = build_create_user_decryption_private_key_request(
+        let create_user_key = build_create_covercrypt_user_decryption_key_request(
             &self.access_policy,
             &self.master_private_key_id,
             &self.tags,

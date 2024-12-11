@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::UniqueIdentifier,
     kmip::{
@@ -23,6 +23,52 @@ use crate::{
     cli_bail,
     error::result::CliResult,
 };
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(ValueEnum, Clone, Debug)]
+pub enum CCryptographicAlgorithm {
+    AES,
+    /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
+    /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
+    /// To use  `CKM_RSA_AES_KEY_WRAP` from PKCS#11, use and RSA key with AES as the algorithm
+    /// See <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226908
+    RSA,
+    ECDSA,
+    ECDH,
+    EC,
+    ChaCha20,
+    ChaCha20Poly1305,
+    SHA3224,
+    SHA3256,
+    SHA3384,
+    SHA3512,
+    Ed25519,
+    Ed448,
+    CoverCrypt,
+    CoverCryptBulk,
+}
+
+impl From<CCryptographicAlgorithm> for CryptographicAlgorithm {
+    fn from(value: CCryptographicAlgorithm) -> Self {
+        match value {
+            CCryptographicAlgorithm::AES => Self::AES,
+            CCryptographicAlgorithm::RSA => Self::RSA,
+            CCryptographicAlgorithm::ECDSA => Self::ECDSA,
+            CCryptographicAlgorithm::ECDH => Self::ECDH,
+            CCryptographicAlgorithm::EC => Self::EC,
+            CCryptographicAlgorithm::ChaCha20 => Self::ChaCha20,
+            CCryptographicAlgorithm::ChaCha20Poly1305 => Self::ChaCha20Poly1305,
+            CCryptographicAlgorithm::SHA3224 => Self::SHA3224,
+            CCryptographicAlgorithm::SHA3256 => Self::SHA3256,
+            CCryptographicAlgorithm::SHA3384 => Self::SHA3384,
+            CCryptographicAlgorithm::SHA3512 => Self::SHA3512,
+            CCryptographicAlgorithm::Ed25519 => Self::Ed25519,
+            CCryptographicAlgorithm::Ed448 => Self::Ed448,
+            CCryptographicAlgorithm::CoverCrypt => Self::CoverCrypt,
+            CCryptographicAlgorithm::CoverCryptBulk => Self::CoverCryptBulk,
+        }
+    }
+}
 
 #[derive(Parser, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct VendorAttributeCli {
@@ -91,7 +137,7 @@ pub struct SetOrDeleteAttributes {
 
     /// The cryptographic algorithm used by the key.
     #[clap(long, short = 'a')]
-    pub(crate) cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    pub(crate) cryptographic_algorithm: Option<CCryptographicAlgorithm>,
 
     /// The length of the cryptographic key.
     #[clap(long)]
@@ -143,7 +189,8 @@ impl SetOrDeleteAttributes {
         }
 
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
-            let attribute = Attribute::CryptographicAlgorithm(cryptographic_algorithm.to_owned());
+            let attribute =
+                Attribute::CryptographicAlgorithm(cryptographic_algorithm.clone().into());
             result.push(attribute);
         }
 

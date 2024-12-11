@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kms_client::{
-    cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request,
-    KmsClient,
-};
+use cosmian_kms_client::KmsClient;
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 
 use crate::{
     actions::{
@@ -49,7 +47,7 @@ use crate::{
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateMasterKeyPairAction {
-    /// The JSON policy specifications file to use to generate the master keys.
+    /// The JSON policy specifications file to use to generate the keys.
     /// See the inline doc of the `create-master-key-pair` command for details.
     #[clap(long = "policy-specifications", short = 's', group = "policy")]
     policy_specifications_file: Option<PathBuf>,
@@ -83,7 +81,7 @@ impl CreateMasterKeyPairAction {
 
         // Create the kmip query
         let create_key_pair =
-            build_create_master_keypair_request(&policy, &self.tags, self.sensitive)?;
+            build_create_covercrypt_master_keypair_request(&policy, &self.tags, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client
