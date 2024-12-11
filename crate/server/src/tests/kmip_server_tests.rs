@@ -1,27 +1,22 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::{
-    crypto::{
-        elliptic_curves::{
-            kmip_requests::{
-                create_ec_key_pair_request, get_private_key_request, get_public_key_request,
-            },
-            operation::to_ec_public_key,
-            CURVE_25519_Q_LENGTH_BITS,
-        },
-        symmetric::symmetric_key_create_request,
+use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Get, Import},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
+        LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
     },
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Get, Import},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
-            LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
-        },
+    requests::{
+        create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
+        symmetric_key_create_request,
     },
+};
+use cosmian_kms_crypto::crypto::{
+    elliptic_curves::operation::to_ec_public_key, CURVE_25519_Q_LENGTH_BITS,
 };
 use tracing::trace;
 use uuid::Uuid;
@@ -50,7 +45,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check secret key
     let sk_response = kms
         .get(
-            get_private_key_request(
+            get_ec_private_key_request(
                 response
                     .private_key_unique_identifier
                     .as_str()
@@ -107,7 +102,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check public key
     let pk_response = kms
         .get(
-            get_public_key_request(
+            get_ec_public_key_request(
                 response
                     .public_key_unique_identifier
                     .as_str()
@@ -328,7 +323,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // check that we can get the private and public key
     // check secret key
     kms.get(
-        get_private_key_request(
+        get_ec_private_key_request(
             response
                 .private_key_unique_identifier
                 .as_str()
@@ -341,7 +336,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     // check public key
     kms.get(
-        get_public_key_request(
+        get_ec_public_key_request(
             response
                 .public_key_unique_identifier
                 .as_str()
@@ -357,7 +352,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // check public key
     let sk_response = kms
         .get(
-            get_private_key_request(
+            get_ec_private_key_request(
                 response
                     .private_key_unique_identifier
                     .as_str()
@@ -371,7 +366,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let pk_response = kms
         .get(
-            get_public_key_request(
+            get_ec_public_key_request(
                 response
                     .public_key_unique_identifier
                     .as_str()

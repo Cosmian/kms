@@ -1,5 +1,13 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::{
+    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+    FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+    FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
+};
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
 use cosmian_kmip::kmip::{
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
     kmip_objects::{Object, ObjectType},
@@ -9,18 +17,6 @@ use cosmian_kmip::kmip::{
         StateEnumeration, UniqueIdentifier,
     },
     KmipOperation,
-};
-#[cfg(feature = "fips")]
-use cosmian_kmip::{
-    crypto::{
-        elliptic_curves::{
-            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
-            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-        },
-        rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
-    },
-    kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask},
 };
 use cosmian_kms_crypto::openssl::{
     certificate_attributes_to_subject_name, kmip_certificate_to_openssl,

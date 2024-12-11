@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
-use cosmian_kmip::{
-    crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_messages::{Message, MessageBatchItem, MessageHeader},
-        kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
-        kmip_types::{
-            OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-            UniqueIdentifier,
-        },
+use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_messages::{Message, MessageBatchItem, MessageHeader},
+    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
+    kmip_types::{
+        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+        UniqueIdentifier,
     },
+    requests::create_ec_key_pair_request,
 };
 
 use crate::{
