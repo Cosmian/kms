@@ -1,3 +1,7 @@
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::{
+    FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK,
+};
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -14,8 +18,6 @@ use openssl::{pkey::Private, rsa::Rsa};
 use tracing::trace;
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use super::{FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 use crate::{crypto::KeyPair, crypto_bail, error::CryptoError, CryptoResultHelper};
 
 #[cfg(feature = "fips")]

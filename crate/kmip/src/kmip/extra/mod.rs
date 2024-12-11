@@ -1,7 +1,10 @@
 mod bulk_data;
 mod certificates;
+#[cfg(feature = "fips")]
+pub mod fips;
 pub mod tagging;
 mod wrap_on_create;
+
 pub use bulk_data::BulkData;
 
 /// The vendor ID to use for Cosmian specific attributes

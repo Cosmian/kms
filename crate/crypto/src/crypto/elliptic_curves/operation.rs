@@ -1,3 +1,8 @@
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::{
+    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+    FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+};
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -19,11 +24,6 @@ use openssl::{
 use tracing::trace;
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use crate::crypto::elliptic_curves::{
-    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
-    FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-};
 use crate::{
     crypto::KeyPair,
     crypto_bail,
@@ -481,6 +481,11 @@ pub fn create_approved_ecc_key_pair(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "fips")]
+    use cosmian_kmip::kmip::extra::fips::{
+        FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+        FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+    };
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
     use cosmian_kmip::kmip::kmip_types::{
@@ -498,14 +503,7 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use super::{create_x25519_key_pair, create_x448_key_pair};
     #[cfg(feature = "fips")]
-    use crate::crypto::elliptic_curves::{
-        operation::create_ed448_key_pair,
-        {
-            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
-            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-        },
-    };
+    use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(not(feature = "fips"))]
     use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};

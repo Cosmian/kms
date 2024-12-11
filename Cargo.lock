@@ -1389,15 +1389,13 @@ dependencies = [
 name = "cosmian_kms_cli"
 version = "4.20.1"
 dependencies = [
- "actix-rt",
- "actix-server",
  "assert_cmd",
  "base64 0.21.7",
  "clap",
  "cloudproof",
- "const-oid",
  "cosmian_config_utils",
  "cosmian_kms_client",
+ "cosmian_kms_crypto",
  "cosmian_logger",
  "der",
  "hex",
@@ -1405,7 +1403,6 @@ dependencies = [
  "kms_test_server",
  "leb128",
  "num-format",
- "oauth2",
  "openssl",
  "pem",
  "predicates",
@@ -1474,10 +1471,7 @@ name = "cosmian_kms_interfaces"
 version = "4.20.1"
 dependencies = [
  "async-trait",
- "cosmian_logger",
- "tempfile",
  "thiserror 2.0.3",
- "tracing-subscriber",
  "zeroize",
 ]
 

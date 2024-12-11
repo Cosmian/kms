@@ -1,3 +1,5 @@
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     pkey::{PKey, Private, Public},
@@ -5,8 +7,6 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 use crate::{
     crypto::{
         rsa::ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},

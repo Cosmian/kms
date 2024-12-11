@@ -6,7 +6,7 @@ mod database_permissions;
 use std::{collections::HashMap, sync::Arc};
 
 use cloudproof::reexport::crypto_core::FixedSizeCBytes;
-use cosmian_kms_crypto::secret::Secret;
+use cosmian_kms_crypto::Secret;
 use cosmian_kms_interfaces::HSM;
 use tokio::sync::RwLock;
 

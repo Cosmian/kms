@@ -1,8 +1,4 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kmip::{
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
@@ -25,6 +21,10 @@ use cosmian_kmip::{
     },
     openssl::kmip_private_key_to_openssl,
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::cryptoelliptic_curves::ecies::ecies_decrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::cryptorsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};

@@ -222,9 +222,9 @@ pub fn openssl_private_key_to_kmip(
         cryptographic_usage_mask
     };
 
-    #[cfg(not(feature = "fips"))]
     // Legacy PKCS12 is the same as PKCS12 for the private key,
     // which will be exported as PKCS#8
+    #[cfg(not(feature = "fips"))]
     let key_format_type = if key_format_type == KeyFormatType::Pkcs12Legacy {
         KeyFormatType::PKCS12
     } else {
@@ -467,6 +467,8 @@ pub fn openssl_private_key_to_kmip(
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "fips")]
+    use cosmian_kmip::kmip::extra::fips::{FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK};
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip::{
@@ -482,10 +484,6 @@ mod tests {
         rsa::Rsa,
     };
 
-    #[cfg(feature = "fips")]
-    use crate::crypto::{
-        elliptic_curves::FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, rsa::FIPS_PRIVATE_RSA_MASK,
-    };
     use crate::openssl::{
         kmip_private_key_to_openssl,
         private_key::{openssl_private_key_to_kmip, pad_be_bytes},

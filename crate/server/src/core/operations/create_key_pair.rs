@@ -1,10 +1,6 @@
 use std::collections::HashSet;
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::operation::{
-    create_x25519_key_pair, create_x448_key_pair,
-};
 use cosmian_kmip::{
     crypto::{
         cover_crypt::master_keys::create_master_keypair,
@@ -18,6 +14,10 @@ use cosmian_kmip::{
         kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
         kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
     },
+};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::cryptoelliptic_curves::operation::{
+    create_x25519_key_pair, create_x448_key_pair,
 };
 use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
 #[cfg(not(feature = "fips"))]

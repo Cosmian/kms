@@ -14,49 +14,9 @@ pub enum DbError {
     #[error("Conversion Error: {0}")]
     ConversionError(String),
 
-    // When a user requests an endpoint which does not exist
-    #[error("Not Supported route: {0}")]
-    RouteNotFound(String),
-
-    // When a user requests something not supported by the server
-    #[error("Not Supported: {0}")]
-    NotSupported(String),
-
-    // When a user requests something which is a nonsense
-    #[error("Inconsistent operation: {0}")]
-    InconsistentOperation(String),
-
-    // When a user requests with placeholder id arg.
-    #[error("This KMIP server does not yet support place holder id")]
-    UnsupportedPlaceholder,
-
-    // When a user requests with protection masks arg.
-    #[error("This KMIP server does not yet support protection masks")]
-    UnsupportedProtectionMasks,
-
-    // When a user requests an item which does not exist
-    #[error("Item not found: {0}")]
-    ItemNotFound(String),
-
-    // Missing arguments in the request
-    #[error("Invalid Request: {0}")]
-    InvalidRequest(String),
-
-    // Any errors related to a bad behavior of the DB but not related to the user input
-    #[error("Database Error: {0}")]
-    DatabaseError(String),
-
-    // Any errors related to a bad behavior of the server but not related to the user input
-    #[error("Unexpected server error: {0}")]
-    ServerError(String),
-
-    // Any actions of the user which is not allowed
+    // Any actions of the user that is not allowed
     #[error("REST client connection error: {0}")]
     ClientConnectionError(String),
-
-    // Any actions of the user which is not allowed
-    #[error("Access denied: {0}")]
-    Unauthorized(String),
 
     // A failure originating from one of the cryptographic algorithms
     #[error("Cryptographic error: {0}")]
@@ -66,28 +26,68 @@ pub enum DbError {
     #[error("Certificate error: {0}")]
     Certificate(String),
 
-    #[error("Redis Error: {0}")]
-    Redis(String),
+    // Any errors related to a bad behavior of the DB but not related to the user input
+    #[error("Database Error: {0}")]
+    DatabaseError(String),
+
+    // Default error
+    #[error("{0}")]
+    Default(String),
 
     #[error("Findex Error: {0}")]
     Findex(String),
 
-    #[error("Invalid URL: {0}")]
-    UrlError(String),
+    // When a user requests something, which is nonsense
+    #[error("Inconsistent operation: {0}")]
+    InconsistentOperation(String),
 
-    #[error("Ext. store error: {0}")]
-    Store(String),
+    // Missing arguments in the request
+    #[error("Invalid Request: {0}")]
+    InvalidRequest(String),
 
-    #[error("Proteccio error: {0}")]
-    Proteccio(String),
+    // When a user requests an item which does not exist
+    #[error("Item not found: {0}")]
+    ItemNotFound(String),
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
 
-    // Default error
-    #[error("{0}")]
-    Default(String),
+    // When a user requests something not supported by the server
+    #[error("Not Supported: {0}")]
+    NotSupported(String),
+
+    #[error("Proteccio error: {0}")]
+    Proteccio(String),
+
+    #[error("Redis Error: {0}")]
+    Redis(String),
+
+    // When a user requests an endpoint which does not exist
+    #[error("Not Supported route: {0}")]
+    RouteNotFound(String),
+
+    // Any errors related to a bad behavior of the server but not related to the user input
+    #[error("Unexpected server error: {0}")]
+    ServerError(String),
+
+    #[error("Ext. store error: {0}")]
+    Store(String),
+
+    // Any actions of the user which is not allowed
+    #[error("Access denied: {0}")]
+    Unauthorized(String),
+
+    // When a user requests with placeholder id arg.
+    #[error("This KMIP server does not yet support place holder id")]
+    UnsupportedPlaceholder,
+
+    #[error("Invalid URL: {0}")]
+    UrlError(String),
+
+    // When a user requests with protection masks arg.
+    #[error("This KMIP server does not yet support protection masks")]
+    UnsupportedProtectionMasks,
 }
 
 impl From<std::string::FromUtf8Error> for DbError {
@@ -171,7 +171,6 @@ impl From<KmipError> for DbError {
             KmipError::KmipNotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -180,6 +179,13 @@ impl From<KmipError> for DbError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
             KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
+            KmipError::Deserialization(e) | KmipError::Serialization(e) => {
+                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+                ErrorReason::Codec_Error,
+                format!("Deserialization: invalid size: {actual}, expected: {expected}"),
+            ),
         }
     }
 }
