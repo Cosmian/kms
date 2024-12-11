@@ -1482,6 +1482,7 @@ dependencies = [
  "cloudproof",
  "cosmian_kmip",
  "cosmian_kms_client",
+ "cosmian_kms_crypto",
  "pyo3",
  "pyo3-asyncio",
  "pyo3-build-config",

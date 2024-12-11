@@ -2,29 +2,24 @@ use cloudproof::reexport::{
     cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy},
     crypto_core::bytes_ser_de::Deserializer,
 };
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::{
-            attributes::RekeyEditAction,
-            kmip_requests::{
-                build_create_master_keypair_request,
-                build_create_user_decryption_private_key_request, build_destroy_key_request,
-                build_import_decryption_private_key_request, build_import_private_key_request,
-                build_import_public_key_request, build_rekey_keypair_request,
-            },
-        },
-        generic::kmip_requests::{
-            build_decryption_request, build_encryption_request, build_revoke_key_request,
-        },
-        symmetric::symmetric_key_create_request,
-    },
-    kmip::{
-        kmip_operations::Get,
-        kmip_types::{CryptographicAlgorithm, RevocationReason},
+use cosmian_kmip::kmip::{
+    kmip_operations::Get,
+    kmip_types::{CryptographicAlgorithm, RevocationReason},
+    requests::{
+        build_revoke_key_request, decrypt_request, encrypt_request, symmetric_key_create_request,
     },
 };
 use cosmian_kms_client::{
     reexport::cosmian_http_client::HttpClientConfig, KmsClient as RustKmsClient, KmsClientConfig,
+};
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::RekeyEditAction,
+    kmip_requests::{
+        build_create_covercrypt_master_keypair_request,
+        build_create_covercrypt_user_decryption_key_request, build_destroy_key_request,
+        build_import_decryption_private_key_request, build_import_private_key_request,
+        build_import_public_key_request, build_rekey_keypair_request,
+    },
 };
 use pyo3::{
     exceptions::{PyException, PyTypeError},
@@ -149,9 +144,12 @@ impl KmsClient {
         let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
-        let request =
-            build_create_master_keypair_request(&policy, tags.unwrap_or_default(), sensitive)
-                .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request = build_create_covercrypt_master_keypair_request(
+            &policy,
+            tags.unwrap_or_default(),
+            sensitive,
+        )
+        .map_err(|e| PyException::new_err(e.to_string()))?;
 
         // Clone client to avoid lifetime error
         let client = self.0.clone();
@@ -445,7 +443,7 @@ impl KmsClient {
         tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_create_user_decryption_private_key_request(
+        let request = build_create_covercrypt_user_decryption_key_request(
             access_policy,
             master_secret_key_identifier,
             tags.unwrap_or_default()
@@ -540,7 +538,7 @@ impl KmsClient {
         authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_encryption_request(
+        let request = encrypt_request(
             &public_key_identifier.0,
             Some(access_policy),
             data,
@@ -580,7 +578,7 @@ impl KmsClient {
         authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_decryption_request(
+        let request = decrypt_request(
             &user_key_identifier.0,
             None,
             encrypted_data,
@@ -763,9 +761,8 @@ impl KmsClient {
         key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request =
-            build_encryption_request(&key_identifier.0, None, data, None, None, None, None)
-                .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request = encrypt_request(&key_identifier.0, None, data, None, None, None, None)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
@@ -795,7 +792,7 @@ impl KmsClient {
         authentication_encryption_tag: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_decryption_request(
+        let request = decrypt_request(
             &key_identifier.0,
             iv_counter_nonce,
             encrypted_data,
