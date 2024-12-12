@@ -64,20 +64,20 @@ pub enum CLinkType {
 impl Display for CLinkType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CLinkType::Certificate => write!(f, "certificate"),
-            CLinkType::PublicKey => write!(f, "public-key"),
-            CLinkType::PrivateKey => write!(f, "private-key"),
-            CLinkType::DerivationBaseObject => write!(f, "derivation-base-object"),
-            CLinkType::DerivedKey => write!(f, "derived-key"),
-            CLinkType::ReplacementObject => write!(f, "replacement-object"),
-            CLinkType::ReplacedObject => write!(f, "replaced-object"),
-            CLinkType::Parent => write!(f, "parent"),
-            CLinkType::Child => write!(f, "child"),
-            CLinkType::Previous => write!(f, "previous"),
-            CLinkType::Next => write!(f, "next"),
-            CLinkType::PKCS12Certificate => write!(f, "pkcs12-certificate"),
-            CLinkType::PKCS12Password => write!(f, "pkcs12-password"),
-            CLinkType::WrappingKey => write!(f, "wrapping-key"),
+            Self::Certificate => write!(f, "certificate"),
+            Self::PublicKey => write!(f, "public-key"),
+            Self::PrivateKey => write!(f, "private-key"),
+            Self::DerivationBaseObject => write!(f, "derivation-base-object"),
+            Self::DerivedKey => write!(f, "derived-key"),
+            Self::ReplacementObject => write!(f, "replacement-object"),
+            Self::ReplacedObject => write!(f, "replaced-object"),
+            Self::Parent => write!(f, "parent"),
+            Self::Child => write!(f, "child"),
+            Self::Previous => write!(f, "previous"),
+            Self::Next => write!(f, "next"),
+            Self::PKCS12Certificate => write!(f, "pkcs12-certificate"),
+            Self::PKCS12Password => write!(f, "pkcs12-password"),
+            Self::WrappingKey => write!(f, "wrapping-key"),
         }
     }
 }

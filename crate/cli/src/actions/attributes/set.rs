@@ -68,7 +68,7 @@ impl Display for CCryptographicAlgorithm {
             Self::Covercrypt => "covercrypt",
             Self::CovercryptBulk => "covercrypt-bulk",
         };
-        write!(f, "{}", value)
+        write!(f, "{value}")
     }
 }
 
