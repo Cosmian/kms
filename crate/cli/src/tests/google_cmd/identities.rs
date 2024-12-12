@@ -114,7 +114,7 @@ fn insert_identities(
 
 pub(crate) fn create_gmail_api_conf(ctx: &TestsContext) -> Result<String, CliError> {
     // New configuration path with Gmail API configuration
-    let owner_client_conf_path = TempDir::new()?.path().join("kms_gmail_api_conf.json");
+    let owner_client_conf_path = TempDir::new()?.path().join("kms_gmail_api_conf.toml");
     std::fs::create_dir_all(owner_client_conf_path.parent().unwrap())?;
 
     // Override default client configuration

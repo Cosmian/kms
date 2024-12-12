@@ -1412,7 +1412,6 @@ dependencies = [
  "kms_test_server",
  "leb128",
  "num-format",
- "oauth2",
  "openssl",
  "pem",
  "predicates",

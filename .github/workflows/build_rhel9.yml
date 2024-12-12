@@ -99,7 +99,7 @@ jobs:
       - name: Pre-cleanup
         run: |
           set -x
-          rm -rf /tmp/sqlite-data /tmp/tmp.json
+          rm -rf /tmp/sqlite-data /tmp/tmp.toml
 
       - name: Build and tests
         env:
