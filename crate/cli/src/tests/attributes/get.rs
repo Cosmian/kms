@@ -1,13 +1,11 @@
 use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kms_client::{
-    kmip_2_1::kmip_types::{LinkType, Tag},
-    KMS_CLI_CONF_ENV,
-};
+use cosmian_kms_client::{kmip_2_1::kmip_types::Tag, KMS_CLI_CONF_ENV};
 use serde_json::Value;
 
 use crate::{
+    actions::attributes::CLinkType,
     error::{
         result::{CliResult, CliResultHelper},
         CliError,
@@ -19,7 +17,7 @@ pub(crate) fn get_attributes(
     cli_conf_path: &str,
     uid: &str,
     attribute_tags: &[Tag],
-    attribute_link_types: &[LinkType],
+    attribute_link_types: &[CLinkType],
 ) -> CliResult<HashMap<String, Value>> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [

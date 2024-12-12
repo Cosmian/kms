@@ -19,6 +19,8 @@ pub enum AttributesCommands {
 }
 
 #[cfg(test)]
+pub use get::CLinkType;
+#[cfg(test)]
 pub use set::CCryptographicAlgorithm;
 
 impl AttributesCommands {

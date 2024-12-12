@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
@@ -37,16 +37,39 @@ pub enum CCryptographicAlgorithm {
     ECDSA,
     ECDH,
     EC,
-    ChaCha20,
-    ChaCha20Poly1305,
+    Chacha20,
+    Chacha20Poly1305,
     SHA3224,
     SHA3256,
     SHA3384,
     SHA3512,
     Ed25519,
     Ed448,
-    CoverCrypt,
-    CoverCryptBulk,
+    Covercrypt,
+    CovercryptBulk,
+}
+
+impl Display for CCryptographicAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::AES => "aes",
+            Self::RSA => "rsa",
+            Self::ECDSA => "ecdsa",
+            Self::ECDH => "ecdh",
+            Self::EC => "ec",
+            Self::Chacha20 => "chacha20",
+            Self::Chacha20Poly1305 => "chacha20-poly1305",
+            Self::SHA3224 => "sha3224",
+            Self::SHA3256 => "sha3256",
+            Self::SHA3384 => "sha3384",
+            Self::SHA3512 => "sha3512",
+            Self::Ed25519 => "ed25519",
+            Self::Ed448 => "ed448",
+            Self::Covercrypt => "covercrypt",
+            Self::CovercryptBulk => "covercrypt-bulk",
+        };
+        write!(f, "{}", value)
+    }
 }
 
 impl From<CCryptographicAlgorithm> for CryptographicAlgorithm {
@@ -57,16 +80,16 @@ impl From<CCryptographicAlgorithm> for CryptographicAlgorithm {
             CCryptographicAlgorithm::ECDSA => Self::ECDSA,
             CCryptographicAlgorithm::ECDH => Self::ECDH,
             CCryptographicAlgorithm::EC => Self::EC,
-            CCryptographicAlgorithm::ChaCha20 => Self::ChaCha20,
-            CCryptographicAlgorithm::ChaCha20Poly1305 => Self::ChaCha20Poly1305,
+            CCryptographicAlgorithm::Chacha20 => Self::ChaCha20,
+            CCryptographicAlgorithm::Chacha20Poly1305 => Self::ChaCha20Poly1305,
             CCryptographicAlgorithm::SHA3224 => Self::SHA3224,
             CCryptographicAlgorithm::SHA3256 => Self::SHA3256,
             CCryptographicAlgorithm::SHA3384 => Self::SHA3384,
             CCryptographicAlgorithm::SHA3512 => Self::SHA3512,
             CCryptographicAlgorithm::Ed25519 => Self::Ed25519,
             CCryptographicAlgorithm::Ed448 => Self::Ed448,
-            CCryptographicAlgorithm::CoverCrypt => Self::CoverCrypt,
-            CCryptographicAlgorithm::CoverCryptBulk => Self::CoverCryptBulk,
+            CCryptographicAlgorithm::Covercrypt => Self::CoverCrypt,
+            CCryptographicAlgorithm::CovercryptBulk => Self::CoverCryptBulk,
         }
     }
 }
