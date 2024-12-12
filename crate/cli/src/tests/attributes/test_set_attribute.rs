@@ -8,7 +8,9 @@ use tracing::trace;
 
 use crate::{
     actions::{
-        attributes::{CCryptographicAlgorithm, SetOrDeleteAttributes, VendorAttributeCli},
+        attributes::{
+            CCryptographicAlgorithm, CLinkType, SetOrDeleteAttributes, VendorAttributeCli,
+        },
         certificates::Algorithm,
         shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
         symmetric::keys::create_key::CreateKeyAction,
@@ -29,9 +31,9 @@ fn get_all_attribute_tags() -> Vec<Tag> {
     tags
 }
 
-fn get_all_link_types() -> Vec<LinkType> {
+fn get_all_link_types() -> Vec<CLinkType> {
     let mut links = Vec::new();
-    for link_type in LinkType::iter() {
+    for link_type in CLinkType::iter() {
         links.push(link_type);
     }
     links

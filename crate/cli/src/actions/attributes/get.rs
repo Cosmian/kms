@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt::Display, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
@@ -9,12 +9,12 @@ use cosmian_kms_client::{
     write_bytes_to_file, KmsClient,
 };
 use serde_json::Value;
-use strum::IntoEnumIterator;
+use strum::{EnumIter, IntoEnumIterator};
 use tracing::{debug, trace};
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq, EnumIter)]
 pub enum CLinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
@@ -60,6 +60,28 @@ pub enum CLinkType {
     WrappingKey,
     //Extensions 8XXXXXXX
 }
+
+impl Display for CLinkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CLinkType::Certificate => write!(f, "certificate"),
+            CLinkType::PublicKey => write!(f, "public-key"),
+            CLinkType::PrivateKey => write!(f, "private-key"),
+            CLinkType::DerivationBaseObject => write!(f, "derivation-base-object"),
+            CLinkType::DerivedKey => write!(f, "derived-key"),
+            CLinkType::ReplacementObject => write!(f, "replacement-object"),
+            CLinkType::ReplacedObject => write!(f, "replaced-object"),
+            CLinkType::Parent => write!(f, "parent"),
+            CLinkType::Child => write!(f, "child"),
+            CLinkType::Previous => write!(f, "previous"),
+            CLinkType::Next => write!(f, "next"),
+            CLinkType::PKCS12Certificate => write!(f, "pkcs12-certificate"),
+            CLinkType::PKCS12Password => write!(f, "pkcs12-password"),
+            CLinkType::WrappingKey => write!(f, "wrapping-key"),
+        }
+    }
+}
+
 impl From<CLinkType> for LinkType {
     fn from(value: CLinkType) -> Self {
         match value {
