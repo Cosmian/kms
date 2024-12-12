@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use cosmian_kms_client::{
-    kmip::kmip_types::{Attribute, UniqueIdentifier},
+    kmip_2_1::kmip_types::{Attribute, UniqueIdentifier},
     reexport::cosmian_kms_access::access::{
         AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
     },

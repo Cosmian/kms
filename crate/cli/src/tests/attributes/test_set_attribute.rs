@@ -1,4 +1,4 @@
-use cosmian_kms_client::kmip::{
+use cosmian_kms_client::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute},
 };
@@ -8,7 +8,9 @@ use tracing::trace;
 
 use crate::{
     actions::{
-        attributes::{SetOrDeleteAttributes, VendorAttributeCli},
+        attributes::{
+            CCryptographicAlgorithm, CLinkType, SetOrDeleteAttributes, VendorAttributeCli,
+        },
         certificates::Algorithm,
         shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
         symmetric::keys::create_key::CreateKeyAction,
@@ -29,9 +31,9 @@ fn get_all_attribute_tags() -> Vec<Tag> {
     tags
 }
 
-fn get_all_link_types() -> Vec<LinkType> {
+fn get_all_link_types() -> Vec<CLinkType> {
     let mut links = Vec::new();
-    for link_type in LinkType::iter() {
+    for link_type in CLinkType::iter() {
         links.push(link_type);
     }
     links
@@ -77,7 +79,7 @@ fn get_and_check_attributes(
                 .unwrap()
                 .clone(),
         )?;
-        assert_eq!(algo, cryptographic_algorithm);
+        assert_eq!(algo, cryptographic_algorithm.into());
     }
     if let Some(key_usage) = &requested_attributes.key_usage {
         let get_key_usage: CryptographicUsageMask = serde_json::from_value(
@@ -234,7 +236,7 @@ fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> CliResult<()> {
     }
 
     // Test cryptographic algorithm one by one
-    for cryptographic_algorithm in CryptographicAlgorithm::iter() {
+    for cryptographic_algorithm in CCryptographicAlgorithm::iter() {
         let requested_attributes = SetOrDeleteAttributes {
             id: Some(uid.to_owned()),
             cryptographic_algorithm: Some(cryptographic_algorithm),

@@ -1,25 +1,20 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::{
-    crypto::elliptic_curves::{
-        kmip_requests::{
-            create_ec_key_pair_request, get_private_key_request, get_public_key_request,
-        },
-        operation::to_ec_public_key,
-        CURVE_25519_Q_LENGTH_BITS,
+use cosmian_kmip::kmip_2_1::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_messages::{Message, MessageBatchItem, MessageHeader},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{ErrorReason, Import, Operation},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
+        LinkedObjectIdentifier, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+        UniqueIdentifier,
     },
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_messages::{Message, MessageBatchItem, MessageHeader},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{ErrorReason, Import, Operation},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-            UniqueIdentifier,
-        },
-    },
+    requests::{create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request},
+};
+use cosmian_kms_crypto::crypto::elliptic_curves::{
+    operation::to_ec_public_key, CURVE_25519_Q_LENGTH_BITS,
 };
 
 use crate::{
@@ -49,7 +44,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check secret key
     let sk_response = kms
         .get(
-            get_private_key_request(
+            get_ec_private_key_request(
                 response
                     .private_key_unique_identifier
                     .as_str()
@@ -108,7 +103,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check public key
     let pk_response = kms
         .get(
-            get_public_key_request(
+            get_ec_public_key_request(
                 response
                     .public_key_unique_identifier
                     .as_str()
@@ -223,7 +218,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 false,
             )?)),
             MessageBatchItem::new(Operation::Locate(
-                cosmian_kmip::kmip::kmip_operations::Locate::default(),
+                cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
             )),
         ],
     };

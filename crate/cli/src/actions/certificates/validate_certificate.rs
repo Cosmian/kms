@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::generic::kmip_requests::build_validate_certificate_request,
-    kmip::kmip_types::ValidityIndicator, KmsClient,
+    kmip_2_1::{kmip_types::ValidityIndicator, requests::build_validate_certificate_request},
+    KmsClient,
 };
 
 use crate::{actions::console, error::result::CliResult};
@@ -11,8 +11,8 @@ use crate::{actions::console, error::result::CliResult};
 /// Validate a certificate.
 ///
 /// A certificate or a chain of certificates is validated.
-/// It means that the certificate chain is valid in terms of time, well signed,
-/// complete, and no components has been flagged as removed.
+/// It means that the certificate chain is valid in terms of time, well-signed,
+/// complete, and no components have been flagged as removed.
 #[derive(Parser, Debug)]
 pub struct ValidateCertificatesAction {
     /// One or more Certificates filepath.

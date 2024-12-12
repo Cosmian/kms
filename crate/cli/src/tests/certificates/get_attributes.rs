@@ -1,4 +1,4 @@
-use cosmian_kms_client::kmip::kmip_types::{LinkType, Tag};
+use cosmian_kms_client::kmip_2_1::kmip_types::{LinkType, Tag};
 use kms_test_server::start_default_test_kms_server;
 use tracing::debug;
 

@@ -11,7 +11,7 @@ use actix_web::{
     web::{self, Data},
     App,
 };
-use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
+use cosmian_kmip::kmip_2_1::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
@@ -70,7 +70,7 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .service(routes::kmip::kmip)
+        .service(routes::kmip::kmip_2_1)
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access);
 

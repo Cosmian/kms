@@ -1,14 +1,31 @@
 use std::num::TryFromIntError;
 
-use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use thiserror::Error;
 
-use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
+use crate::kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
 
 pub(crate) mod result;
 
 #[derive(Error, Debug)]
 pub enum KmipError {
+    #[error("Conversion Error: {0}")]
+    ConversionError(String),
+
+    #[error("{0}")]
+    Default(String),
+
+    #[error("Derivation error: {0}")]
+    Derivation(String),
+
+    #[error("Deserialization error: {0}")]
+    Deserialization(String),
+
+    #[error("Deserialization: invalid size: {1}, expected: {0}")]
+    DeserializationSize(usize, usize),
+
+    #[error("Indexing slicing Error: {0}")]
+    IndexingSlicing(String),
+
     #[error("Invalid KMIP value: {0}: {1}")]
     InvalidKmipValue(ErrorReason, String),
 
@@ -21,8 +38,8 @@ pub enum KmipError {
     #[error("Invalid tag: {0}")]
     InvalidTag(String),
 
-    #[error("Derivation error: {0}")]
-    Derivation(String),
+    #[error("{0}: {1}")]
+    Kmip(ErrorReason, String),
 
     #[error("Kmip Not Supported: {0}: {1}")]
     KmipNotSupported(ErrorReason, String),
@@ -30,37 +47,25 @@ pub enum KmipError {
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
-    #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
-
-    #[error("Conversion Error: {0}")]
-    ConversionError(String),
-
-    #[error("Indexing slicing Error: {0}")]
-    IndexingSlicing(String),
-
-    #[error("{0}")]
-    Default(String),
-
-    #[error("OpenSSL Error: {0}")]
-    OpenSSL(String),
-
     #[error("Object Not Found: {0}")]
     ObjectNotFound(String),
 
-    #[error(transparent)]
-    TryFromSliceError(#[from] std::array::TryFromSliceError),
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    TryFromSliceError(#[from] std::array::TryFromSliceError),
 }
 
 impl KmipError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
+            Self::Kmip(_r, e) => Self::Kmip(reason, e.clone()),
+            e => Self::Kmip(reason, e.to_string()),
         }
     }
 }
@@ -73,50 +78,20 @@ impl From<Vec<u8>> for KmipError {
 
 impl From<TtlvError> for KmipError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for KmipError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
-    }
-}
-
-impl From<CryptoCoreError> for KmipError {
-    fn from(e: CryptoCoreError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
 #[cfg(feature = "pyo3")]
 impl From<pyo3::PyErr> for KmipError {
     fn from(e: pyo3::PyErr) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip(ErrorReason::Codec_Error, e.to_string())
     }
 }
 #[cfg(feature = "pyo3")]
 impl From<KmipError> for pyo3::PyErr {
     fn from(e: KmipError) -> Self {
         pyo3::exceptions::PyException::new_err(e.to_string())
-    }
-}
-
-impl From<openssl::error::ErrorStack> for KmipError {
-    fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::OpenSSL(format!("Error: {e}. Details: {e:?}"))
-    }
-}
-
-impl From<pkcs8::spki::Error> for KmipError {
-    fn from(e: pkcs8::spki::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
-
-impl From<pkcs8::Error> for KmipError {
-    fn from(e: pkcs8::Error) -> Self {
-        Self::ConversionError(e.to_string())
     }
 }
 
@@ -152,13 +127,13 @@ macro_rules! kmip_ensure {
 #[macro_export]
 macro_rules! kmip_error {
     ($msg:literal) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
+        $crate::error::KmipError::Kmip($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $err.to_string())
+        $crate::error::KmipError::Kmip($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, $err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::error::KmipError::Kmip($crate::kmip_2_1::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
@@ -202,10 +177,7 @@ mod tests {
 
     fn bail() -> Result<(), KmipError> {
         let var = 43;
-        if true {
-            kmip_bail!("interpolate {var}");
-        }
-        Ok(())
+        kmip_bail!("interpolate {var}");
     }
 
     fn ensure() -> Result<(), KmipError> {

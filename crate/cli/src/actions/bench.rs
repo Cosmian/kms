@@ -6,7 +6,7 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_client::{
-    kmip::{
+    kmip_2_1::{
         extra::BulkData,
         kmip_operations::{Decrypt, Encrypt},
         kmip_types::{

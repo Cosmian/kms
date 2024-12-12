@@ -5,7 +5,7 @@ use actix_web::{
     web::{Data, Json, Path},
     HttpRequest,
 };
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
 };

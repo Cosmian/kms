@@ -8,7 +8,7 @@ use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
     },

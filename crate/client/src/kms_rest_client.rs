@@ -1,5 +1,5 @@
 use cosmian_http_client::HttpClient;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse},
     kmip_operations::{
         DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     },
 };
 // re-export the kmip module as kmip
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,

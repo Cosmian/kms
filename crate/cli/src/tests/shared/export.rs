@@ -4,12 +4,12 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    kmip::kmip_types::{BlockCipherMode, KeyFormatType},
+    kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
     read_bytes_from_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_client::{
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::KeyMaterial,
         kmip_types::{CryptographicAlgorithm, RecommendedCurve},
     },

@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, Import, ReKey, ReKeyResponse},
     kmip_types::{StateEnumeration, UniqueIdentifier},

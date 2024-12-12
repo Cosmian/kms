@@ -5,7 +5,7 @@ use std::{
 
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::Certify,
         kmip_types::{
@@ -13,7 +13,7 @@ use cosmian_kms_client::{
             LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
-    kmip::kmip_types::{
+    kmip_2_1::kmip_types::{
         CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, RecommendedCurve,
     },
     read_bytes_from_file, KmsClient,

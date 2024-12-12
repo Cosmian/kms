@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{SetAttribute, SetAttributeResponse},
     kmip_types::{Attribute, UniqueIdentifier},

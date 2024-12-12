@@ -9,10 +9,11 @@ use std::{
 use actix_server::ServerHandle;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    kms_client_bail, kms_client_error,
-    reexport::cosmian_http_client::HttpClientConfig,
+    kms_client_bail, kms_client_error, reexport::cosmian_http_client::HttpClientConfig,
     write_json_object_to_file, GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
+};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_server::{
     config::{ClapConfig, HttpConfig, HttpParams, JwtAuthConfig, MainDBConfig, ServerParams},

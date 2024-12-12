@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_kmip::kmip::{kmip_types::StateEnumeration, KmipOperation};
+use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
 
 use super::Database;
 use crate::{error::DbResult, stores::ExtraStoreParams};

@@ -8,7 +8,9 @@ use std::{
     time::SystemTime,
 };
 
-use cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
 use sqlx::{Pool, Sqlite};
 use tracing::{debug, info, trace};
 
@@ -300,7 +302,7 @@ impl KMSSqliteCache {
         if let Some(item) = item {
             if !item.closed {
                 // Sqlite is already saved and opened
-                return Ok(())
+                return Ok(());
             }
 
             trace!("CachedSQLCipher: reopen group_id={id}");
@@ -510,7 +512,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cosmian_kmip::crypto::{
+    use cosmian_kms_crypto::crypto::{
         secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
     };
     use sqlx::{

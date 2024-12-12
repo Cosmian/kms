@@ -5,31 +5,28 @@ use std::{
 };
 
 use clap::Parser;
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_client::cosmian_kmip::crypto::symmetric::symmetric_ciphers::{
-    CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
-};
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::{
-        generic::kmip_requests::build_decryption_request,
-        symmetric::{
-            create_symmetric_key_kmip_object,
-            symmetric_ciphers::{
-                decrypt, Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH,
-                AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
-                RFC5649_16_MAC_LENGTH,
-            },
-        },
-        wrap::unwrap_key_block,
-    },
     export_object,
-    kmip::{
+    kmip_2_1::{
         kmip_data_structures::KeyWrappingData,
         kmip_types::{
             BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
         },
+        requests::{create_symmetric_key_kmip_object, decrypt_request},
     },
     read_bytes_from_file, ExportObjectParams, KmsClient,
+};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{
+    CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
+};
+use cosmian_kms_crypto::crypto::{
+    symmetric::symmetric_ciphers::{
+        decrypt, Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH,
+        AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
+        RFC5649_16_MAC_LENGTH,
+    },
+    wrap::unwrap_key_block,
 };
 use tracing::trace;
 use zeroize::Zeroizing;
@@ -226,7 +223,7 @@ impl DecryptAction {
             .collect::<Vec<_>>();
 
         // Create the kmip query
-        let decrypt_request = build_decryption_request(
+        let decrypt_request = decrypt_request(
             key_id,
             Some(nonce),
             ciphertext,

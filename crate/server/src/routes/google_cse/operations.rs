@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Decrypt, Encrypt},
     kmip_types::{BlockCipherMode, CryptographicParameters, UniqueIdentifier},
 };

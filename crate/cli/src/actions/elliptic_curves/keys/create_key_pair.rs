@@ -1,10 +1,7 @@
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
-        kmip::kmip_types::RecommendedCurve,
-    },
-    kmip::kmip_types::UniqueIdentifier,
+    cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve,
+    kmip_2_1::{kmip_types::UniqueIdentifier, requests::create_ec_key_pair_request},
     KmsClient,
 };
 

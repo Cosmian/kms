@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use cosmian_kms_client::{
-    reexport::cosmian_kmip::kmip::{
+    reexport::cosmian_kmip::kmip_2_1::{
         extra::BulkData,
         kmip_objects::ObjectType,
         kmip_operations::{Create, Decrypt, Encrypt},
