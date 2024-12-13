@@ -7,7 +7,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use cloudproof::reexport::crypto_core::FixedSizeCBytes;
 use cosmian_kms_crypto::crypto::secret::Secret;
-use cosmian_kms_interfaces::{HsmStore, ObjectsStore, PermissionsStore, HSM};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use tokio::sync::RwLock;
 
 use crate::error::DbResult;
@@ -29,7 +29,6 @@ pub struct Database {
     /// The "no-prefix" DB is registered under the empty string
     objects: RwLock<HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>>,
     /// The permissions store is used to check if a user has the right to perform an operation
-    //TODO use this store to check permissions in retrieve, update, delete, etc.
     permissions: Arc<dyn PermissionsStore + Sync + Send>,
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
@@ -40,15 +39,12 @@ impl Database {
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
-        //TODO once ObjectStore is refactored into the `plugins` crate, a map of prefix-> Object Stores can be passed here
-        hsm: Option<Arc<dyn HSM + Sync + Send>>,
-        hsm_admin: &str,
+        object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
     ) -> DbResult<Self> {
-        // main database
+        // main/default database
         let db = Self::instantiate_main_database(main_db_params, clear_db_on_start).await?;
-        if let Some(hsm) = hsm {
-            db.register_objects_store("hsm", Arc::new(HsmStore::new(hsm, hsm_admin)))
-                .await;
+        for (prefix, store) in object_stores {
+            db.register_objects_store(&prefix, store).await;
         }
         Ok(db)
     }

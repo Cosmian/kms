@@ -2,13 +2,13 @@ mod kmip;
 mod other_kms_methods;
 mod permissions;
 
-use std::collections::HashMap;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use cosmian_kms_interfaces::HSM;
-use cosmian_kms_interfaces::{EncryptionOracle, HsmEncryptionOracle};
+use cosmian_kms_interfaces::{EncryptionOracle, HsmEncryptionOracle, HsmStore, ObjectsStore, HSM};
 use cosmian_kms_server_database::Database;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
@@ -45,11 +45,8 @@ impl KMS {
     /// A new KMS instance.
     #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: ServerParams) -> KResult<Self> {
-        //TODO once the Store traits can be move to the `Interfaces` crate, the single HSM instantiation can be
-        // de-hardcoded.  The underlying code allows the ise of multiple Stores and Encryption Oracles
-        // for multiple prefixes.
-
-        let hsm = if server_params.slot_passwords.is_empty() {
+        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
+        let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
             None
         } else {
             if server_params
@@ -84,11 +81,18 @@ impl KMS {
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("The main database parameters are not specified".to_owned())
         })?;
+        let mut object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>> =
+            HashMap::new();
+        if let Some(hsm) = hsm.as_ref() {
+            object_stores.insert(
+                "hsm".to_owned(),
+                Arc::new(HsmStore::new(hsm.clone(), &server_params.hsm_admin)),
+            );
+        }
         let database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
-            hsm.clone(),
-            &server_params.hsm_admin,
+            object_stores,
         )
         .await?;
 

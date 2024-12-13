@@ -112,7 +112,7 @@ impl UnwrappedCache {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     use cloudproof::reexport::crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
@@ -135,7 +135,7 @@ mod tests {
         let dir = TempDir::new()?;
 
         let main_db_params = MainDbParams::Sqlite(dir.path().to_owned());
-        let database = Database::instantiate(&main_db_params, true, None, "").await?;
+        let database = Database::instantiate(&main_db_params, true, HashMap::new()).await?;
 
         let mut rng = CsRng::from_entropy();
 
