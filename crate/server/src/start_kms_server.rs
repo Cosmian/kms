@@ -203,7 +203,8 @@ pub async fn prepare_kms_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse_authentication = !kms_server.params.google_cse_disable_tokens_validation;
+    let enable_google_cse_authentication = kms_server.params.google_cse_kacls_url.is_some()
+        && !kms_server.params.google_cse_disable_tokens_validation;
 
     // Prepare the JWT configurations and the JWKS manager if the server is using JWT for authentication.
     let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
