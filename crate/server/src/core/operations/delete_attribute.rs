@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
     kmip_types::{Attribute, AttributeReference, Tag, UniqueIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
@@ -16,7 +18,7 @@ pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("Delete attribute: {}", serde_json::to_string(&request)?);
 
@@ -28,9 +30,14 @@ pub(crate) async fn delete_attribute(
         .as_str()
         .context("Delete Attribute: the unique identifier must be a string")?;
 
-    let mut owm =
-        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
-            .await?;
+    let mut owm = retrieve_object_for_operation(
+        uid_or_tags,
+        KmipOperation::GetAttributes,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
     trace!("Delete Attribute: Retrieved object for: {}", owm.object());
 
     let mut attributes = owm.attributes().to_owned();
@@ -118,7 +125,7 @@ pub(crate) async fn delete_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
+    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 
     if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         *object_attributes = attributes.clone();

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
@@ -49,7 +49,7 @@ pub trait ObjectsStore {
     fn filename(&self, group_id: u128) -> Option<PathBuf>;
 
     /// Migrate the database to the latest version
-    async fn migrate(&self, params: Option<&(dyn SessionParams + 'static)>) -> InterfaceResult<()>;
+    async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()>;
 
     /// Create the given Object in the database.
     ///
@@ -63,21 +63,21 @@ pub trait ObjectsStore {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String>;
 
     /// Retrieve an object from the database.
     async fn retrieve(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>>;
 
     /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>>;
 
     /// Update an object in the database.
@@ -89,7 +89,7 @@ pub trait ObjectsStore {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// Update the state of an object in the database.
@@ -97,7 +97,7 @@ pub trait ObjectsStore {
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// Delete an object from the database.
@@ -105,7 +105,7 @@ pub trait ObjectsStore {
     async fn delete(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// Perform an atomic set of operation on the database
@@ -117,7 +117,7 @@ pub trait ObjectsStore {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>>;
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -125,14 +125,14 @@ pub trait ObjectsStore {
         &self,
         uid: &str,
         owner: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool>;
 
     /// List the `uid` of all the objects that have the given `tags`
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>>;
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -143,6 +143,6 @@ pub trait ObjectsStore {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>>;
 }

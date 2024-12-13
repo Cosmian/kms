@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{SetAttribute, SetAttributeResponse},
     kmip_types::{Attribute, UniqueIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::{debug, trace};
 
 use crate::{
@@ -17,7 +19,7 @@ pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SetAttributeResponse> {
     trace!("Set attribute: {}", serde_json::to_string(&request)?);
 
@@ -29,9 +31,14 @@ pub(crate) async fn set_attribute(
         .as_str()
         .context("Set Attribute: the unique identifier must be a string")?;
 
-    let mut owm: ObjectWithMetadata =
-        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
-            .await?;
+    let mut owm: ObjectWithMetadata = retrieve_object_for_operation(
+        uid_or_tags,
+        KmipOperation::GetAttributes,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
     trace!("Set Attribute: Retrieved object for: {}", owm.object());
 
     let mut attributes = owm.attributes_mut().clone();
@@ -85,7 +92,7 @@ pub(crate) async fn set_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
+    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
 
     match owm.object().object_type() {
         ObjectType::PublicKey

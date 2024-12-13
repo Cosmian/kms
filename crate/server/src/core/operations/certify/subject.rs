@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, UniqueIdentifier},
 };
 use cosmian_kms_crypto::openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions};
-use cosmian_kms_server_database::ObjectWithMetadata;
+use cosmian_kms_interfaces::ObjectWithMetadata;
 use openssl::{
     pkey::{PKey, Public},
     x509::{X509Extension, X509Name, X509NameRef, X509Req, X509},

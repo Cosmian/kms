@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader},
     kmip_operations::ErrorReason,
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
@@ -24,7 +26,7 @@ pub(crate) async fn message(
     kms: &KMS,
     request: Message,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<MessageResponse> {
     trace!("Entering message KMIP operation: {request}");
 
@@ -36,7 +38,7 @@ pub(crate) async fn message(
 
         #[allow(clippy::large_futures)]
         let (result_status, result_reason, result_message, response_payload) =
-            match dispatch(kms, &ttlv, owner, params).await {
+            match dispatch(kms, &ttlv, owner, params.clone()).await {
                 Ok(operation) => (
                     ResultStatusEnumeration::Success,
                     None,

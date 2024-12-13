@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyBlock,
     kmip_objects::ObjectType,
@@ -7,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::wrap::{
     recover_wrapped_key, unwrap_key_block, update_key_block_with_unwrapped_key,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
@@ -32,7 +34,7 @@ pub(crate) async fn unwrap_key(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
@@ -80,13 +82,13 @@ async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     unwrapping_key_uid: &String,
 ) -> KResult<()> {
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
-        .retrieve_object(unwrapping_key_uid, params)
+        .retrieve_object(unwrapping_key_uid, params.clone())
         .await
         .context("wrap using KMS")?;
     let unwrapping_key = unwrapping_key.ok_or_else(|| {
@@ -117,7 +119,7 @@ async fn unwrap_using_kms(
             };
             let unwrapping_key = kms
                 .database
-                .retrieve_object(&sk_id, params)
+                .retrieve_object(&sk_id, params.clone())
                 .await
                 .context("wrap using KMS")?;
             unwrapping_key.ok_or_else(|| {
@@ -172,7 +174,7 @@ async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
@@ -191,7 +193,7 @@ async fn unwrap_using_encryption_oracle(
     //check permissions
     if !kms
         .database
-        .is_object_owned_by(&unwrapping_key_uid, user, params)
+        .is_object_owned_by(&unwrapping_key_uid, user, params.clone())
         .await?
     {
         let ops = kms

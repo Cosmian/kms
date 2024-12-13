@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::BulkData,
@@ -25,7 +27,7 @@ use cosmian_kms_crypto::{
     },
     openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -47,7 +49,7 @@ pub(crate) async fn decrypt(
     kms: &KMS,
     request: Decrypt,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DecryptResponse> {
     trace!("decrypt: {}", serde_json::to_string(&request)?);
     let data = request.data.as_ref().ok_or_else(|| {
@@ -59,7 +61,7 @@ pub(crate) async fn decrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Decrypt")?;
     debug!("Decrypt: candidate uids: {uids:?}");
@@ -78,10 +80,14 @@ pub(crate) async fn decrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+            if !kms
+                .database
+                .is_object_owned_by(&uid, user, params.clone())
+                .await?
+            {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params)
+                    .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops
                     .iter()
@@ -97,7 +103,7 @@ pub(crate) async fn decrypt(
         //Default database
         let owm = kms
             .database
-            .retrieve_object(&uid, params)
+            .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
                 KmsError::KmipError(
@@ -116,7 +122,7 @@ pub(crate) async fn decrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params)
+                .list_user_operations_on_object(&uid, user, false, params.clone())
                 .await?;
             if !ops
                 .iter()

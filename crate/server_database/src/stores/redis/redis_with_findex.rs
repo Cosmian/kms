@@ -117,7 +117,7 @@ impl RedisWithFindex {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> Result<RedisDbObject, DbError> {
         // additions to the index
         let mut index_additions = HashMap::new();
@@ -239,10 +239,7 @@ impl ObjectsStore for RedisWithFindex {
         None
     }
 
-    async fn migrate(
-        &self,
-        _params: Option<&(dyn SessionParams + 'static)>,
-    ) -> InterfaceResult<()> {
+    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
         unimplemented!("Redis-with-Findex does not support migrate operation");
     }
 
@@ -258,7 +255,7 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
             .prepare_object_for_create(uid, owner, object, attributes, tags)
@@ -277,7 +274,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {
             o.map(|o| {
@@ -296,7 +293,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         Ok(self
             .objects_db
@@ -315,7 +312,7 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self
             .prepare_object_for_update(uid, object, attributes, tags)
@@ -328,7 +325,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         uid: &str,
         state: StateEnumeration,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
@@ -338,7 +335,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn delete(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(_db_object) = self.objects_db.object_get(uid).await? {
             self.objects_db.object_delete(uid).await?;
@@ -350,7 +347,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
@@ -365,7 +362,7 @@ impl ObjectsStore for RedisWithFindex {
                             attributes,
                             tags.as_ref(),
                             *state,
-                            params,
+                            params.clone(),
                         )
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
@@ -407,7 +404,7 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         uid: &str,
         owner: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool> {
         let object = self
             .objects_db
@@ -420,7 +417,7 @@ impl ObjectsStore for RedisWithFindex {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         let keywords = tags
             .iter()
@@ -451,7 +448,7 @@ impl ObjectsStore for RedisWithFindex {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
@@ -535,7 +532,7 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
@@ -566,7 +563,7 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions_db
@@ -581,7 +578,7 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
@@ -598,7 +595,7 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
@@ -613,7 +610,7 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db

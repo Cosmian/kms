@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
+    sync::Arc,
 };
 
 use async_trait::async_trait;
@@ -115,10 +116,7 @@ impl ObjectsStore for PgPool {
         None
     }
 
-    async fn migrate(
-        &self,
-        _params: Option<&(dyn SessionParams + 'static)>,
-    ) -> InterfaceResult<()> {
+    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
         trace!("Migrate database");
         // Get the context rows
         match sqlx::query(get_pgsql_query!("select-context"))
@@ -166,7 +164,7 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -197,7 +195,7 @@ impl ObjectsStore for PgPool {
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(retrieve_(uid, &self.pool).await?)
     }
@@ -205,7 +203,7 @@ impl ObjectsStore for PgPool {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         Ok(retrieve_tags_(uid, &self.pool).await?)
     }
@@ -216,7 +214,7 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let mut tx = self
             .pool
@@ -241,7 +239,7 @@ impl ObjectsStore for PgPool {
         &self,
         uid: &str,
         state: StateEnumeration,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -272,7 +270,7 @@ impl ObjectsStore for PgPool {
     async fn delete(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -303,7 +301,7 @@ impl ObjectsStore for PgPool {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -334,7 +332,7 @@ impl ObjectsStore for PgPool {
         &self,
         uid: &str,
         owner: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool> {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
@@ -342,7 +340,7 @@ impl ObjectsStore for PgPool {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         Ok(list_uids_from_tags_(tags, &self.pool).await?)
     }
@@ -353,7 +351,7 @@ impl ObjectsStore for PgPool {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         Ok(find_(
             researched_attributes,
@@ -371,7 +369,7 @@ impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         Ok(list_user_granted_access_rights_(user, &self.pool).await?)
     }
@@ -379,7 +377,7 @@ impl PermissionsStore for PgPool {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(list_accesses_(uid, &self.pool).await?)
     }
@@ -389,7 +387,7 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -404,7 +402,7 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
             return Err(InterfaceError::Db(
@@ -419,7 +417,7 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
     }

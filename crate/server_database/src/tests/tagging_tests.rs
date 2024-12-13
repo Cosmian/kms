@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
@@ -18,7 +18,7 @@ use crate::{db_error, error::DbResult};
 
 pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
-    db_params: Option<&(dyn SessionParams + 'static)>,
+    db_params: Option<Arc<dyn SessionParams>>,
     verify_attributes: bool,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
@@ -42,14 +42,14 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(&uid, &uid_);
 
     //recover the object from DB and check that the vendor attributes contain the tags
     let owm = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
 
@@ -70,19 +70,19 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(StateEnumeration::Active, owm.state());
     assert!(&symmetric_key == owm.object());
 
-    let tags = db.retrieve_tags(owm.id(), db_params).await?;
+    let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert_eq!(tags.len(), 2);
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
 
     // find this object from tags as owner using tag1
     let res = db
-        .list_uids_for_tags(&HashSet::from(["tag1".to_owned()]), db_params)
+        .list_uids_for_tags(&HashSet::from(["tag1".to_owned()]), db_params.clone())
         .await?;
 
     assert_eq!(res.len(), 1);
     let owm = db
-        .retrieve(res.iter().next().unwrap(), db_params)
+        .retrieve(res.iter().next().unwrap(), db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
@@ -92,17 +92,17 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     }
     assert_eq!(owm.state(), StateEnumeration::Active);
 
-    let tags = db.retrieve_tags(owm.id(), db_params).await?;
+    let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
 
     // find this object from tags as owner using tag2
     let res = db
-        .list_uids_for_tags(&HashSet::from(["tag2".to_owned()]), db_params)
+        .list_uids_for_tags(&HashSet::from(["tag2".to_owned()]), db_params.clone())
         .await?;
     assert_eq!(res.len(), 1);
     let owm = db
-        .retrieve(res.iter().next().unwrap(), db_params)
+        .retrieve(res.iter().next().unwrap(), db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
@@ -111,7 +111,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         assert_eq!(owm.attributes(), &expected_attributes);
     }
     assert_eq!(owm.state(), StateEnumeration::Active);
-    let tags = db.retrieve_tags(owm.id(), db_params).await?;
+    let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
 
@@ -119,12 +119,12 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     let res = db
         .list_uids_for_tags(
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(res.len(), 1);
     let owm = db
-        .retrieve(res.iter().next().unwrap(), db_params)
+        .retrieve(res.iter().next().unwrap(), db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(owm.id(), uid);
@@ -133,7 +133,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
         assert_eq!(owm.attributes(), &expected_attributes);
     }
     assert_eq!(owm.state(), StateEnumeration::Active);
-    let tags = db.retrieve_tags(owm.id(), db_params).await?;
+    let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
 
@@ -141,7 +141,7 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     let res = db
         .list_uids_for_tags(
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned(), "tag3".to_owned()]),
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(res.len(), 0);

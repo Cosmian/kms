@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
@@ -11,7 +13,7 @@ use cosmian_kms_crypto::crypto::{
     },
     KeyPair,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 
 use super::KMS;
 use crate::{error::KmsError, kms_bail, result::KResult};
@@ -25,7 +27,7 @@ pub(crate) async fn create_user_decryption_key(
     cover_crypt: Covercrypt,
     create_request: &Create,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Object> {
     create_user_decryption_key_(
         kmip_server,
@@ -42,7 +44,7 @@ async fn create_user_decryption_key_(
     cover_crypt: Covercrypt,
     create_attributes: &Attributes,
     _user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Object> {
     // Recover the access policy
     let access_policy = access_policy_from_attributes(create_attributes)?;
@@ -113,7 +115,7 @@ pub(crate) async fn create_user_decryption_key_pair(
     cover_crypt: Covercrypt,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<KeyPair> {
     // create user decryption key
     let private_key_attributes = create_key_pair_request
@@ -130,7 +132,7 @@ pub(crate) async fn create_user_decryption_key_pair(
         cover_crypt,
         private_key_attributes,
         owner,
-        params,
+        params.clone(),
     )
     .await?;
 

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyWrappingSpecification},
     kmip_objects::ObjectType,
@@ -7,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::wrap::{
     key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
@@ -34,7 +36,7 @@ pub(crate) async fn wrap_key(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
@@ -84,13 +86,13 @@ async fn wrap_using_kms(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     wrapping_key_uid: &str,
 ) -> Result<(), KmsError> {
     // fetch the wrapping key
     let wrapping_key = kms
         .database
-        .retrieve_object(wrapping_key_uid, params)
+        .retrieve_object(wrapping_key_uid, params.clone())
         .await
         .context("wrap using KMS")?;
     let wrapping_key = wrapping_key.ok_or_else(|| {
@@ -112,7 +114,7 @@ async fn wrap_using_kms(
             // fetch the private key
             let wrapping_key = kms
                 .database
-                .retrieve_object(&pk_id, params)
+                .retrieve_object(&pk_id, params.clone())
                 .await
                 .context("wrapping using the KMS")?;
             wrapping_key.ok_or_else(|| {
@@ -178,14 +180,14 @@ async fn wrap_using_encryption_oracle(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     wrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
     //check permissions
     if !kms
         .database
-        .is_object_owned_by(wrapping_key_uid, user, params)
+        .is_object_owned_by(wrapping_key_uid, user, params.clone())
         .await?
     {
         let ops = kms

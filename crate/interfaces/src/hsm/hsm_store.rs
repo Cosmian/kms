@@ -45,10 +45,7 @@ impl ObjectsStore for HsmStore {
         None
     }
 
-    async fn migrate(
-        &self,
-        _params: Option<&(dyn SessionParams + 'static)>,
-    ) -> InterfaceResult<()> {
+    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
         Ok(())
     }
 
@@ -63,7 +60,7 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         _tags: &HashSet<String>,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         if owner != self.hsm_admin {
             return Err(InterfaceError::InvalidRequest(
@@ -116,7 +113,7 @@ impl ObjectsStore for HsmStore {
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the uid into a slot_id and key id
         let (slot_id, key_id) = parse_uid(uid)?;
@@ -134,7 +131,7 @@ impl ObjectsStore for HsmStore {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         // Not supported for HSMs
         Ok(HashSet::new())
@@ -146,7 +143,7 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
@@ -158,7 +155,7 @@ impl ObjectsStore for HsmStore {
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
@@ -169,7 +166,7 @@ impl ObjectsStore for HsmStore {
     async fn delete(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
@@ -180,7 +177,7 @@ impl ObjectsStore for HsmStore {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
@@ -218,7 +215,7 @@ impl ObjectsStore for HsmStore {
         &self,
         _uid: &str,
         owner: &str,
-        _params: Option<&(dyn SessionParams + 'static)>,
+        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool> {
         debug!(
             "Is {owner} is the owner of {_uid}? {}",
@@ -230,7 +227,7 @@ impl ObjectsStore for HsmStore {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         todo!()
     }
@@ -241,7 +238,7 @@ impl ObjectsStore for HsmStore {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         todo!()
     }

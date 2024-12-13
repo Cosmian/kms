@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_objects::Object,
@@ -9,7 +11,7 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation,
 };
 use cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use strum::IntoEnumIterator;
 use tracing::{debug, trace};
 
@@ -29,7 +31,7 @@ pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<GetAttributesResponse> {
     trace!("Get attributes: {}", serde_json::to_string(&request)?);
 
@@ -41,9 +43,14 @@ pub(crate) async fn get_attributes(
         .as_str()
         .context("Get Attributes: the unique identifier must be a string")?;
 
-    let owm =
-        retrieve_object_for_operation(uid_or_tags, KmipOperation::GetAttributes, kms, user, params)
-            .await?;
+    let owm = retrieve_object_for_operation(
+        uid_or_tags,
+        KmipOperation::GetAttributes,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
     trace!(
         "Get Attributes: Retrieved object for get attributes: {}",
         owm.object()
@@ -153,7 +160,7 @@ pub(crate) async fn get_attributes(
                 attribute_name,
             }) => {
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
-                    let tags = kms.database.retrieve_tags(owm.id(), params).await?;
+                    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
                     res.add_vendor_attribute(VendorAttribute {
                         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
                         attribute_name: VENDOR_ATTR_TAG.to_owned(),

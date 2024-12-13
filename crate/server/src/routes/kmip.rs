@@ -9,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::info;
 
 use crate::{
@@ -34,7 +34,7 @@ pub(crate) async fn kmip_2_1(
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     #[allow(clippy::large_futures)]
-    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
+    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params).await?;
     Ok(Json(ttlv))
 }
 
@@ -49,7 +49,7 @@ async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&SqlCipherSessionParams>,
+    database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
         let req = from_ttlv::<Message>(ttlv)?;

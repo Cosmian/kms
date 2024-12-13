@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
@@ -16,7 +19,7 @@ pub trait PermissionsStore {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>>;
 
     /// List all the KMIP operations granted per `user`
@@ -24,7 +27,7 @@ pub trait PermissionsStore {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>>;
 
     /// Grant to `user` the ability to perform the KMIP `operations`
@@ -34,7 +37,7 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// Remove to `user` the ability to perform the KMIP `operations`
@@ -44,7 +47,7 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// List all the KMIP operations that have been granted to a user on an object
@@ -56,6 +59,6 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
 }

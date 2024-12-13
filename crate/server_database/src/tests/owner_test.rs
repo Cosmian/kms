@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
@@ -16,7 +16,7 @@ use crate::{db_error, error::DbResult};
 
 pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
-    db_params: Option<&(dyn SessionParams + 'static)>,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
@@ -36,19 +36,22 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
-    assert!(db.is_object_owned_by(&uid, owner, db_params).await?);
     assert!(
-        !db.is_object_owned_by(&uid, "INVALID OWNER", db_params)
+        db.is_object_owned_by(&uid, owner, db_params.clone())
+            .await?
+    );
+    assert!(
+        !db.is_object_owned_by(&uid, "INVALID OWNER", db_params.clone())
             .await?
     );
 
     // Retrieve the object and check the owner
     let obj = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(StateEnumeration::Active, obj.state());
@@ -60,13 +63,13 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         &uid,
         user_id_1,
         HashSet::from([KmipOperation::Get]),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     // User `userid` should only have the `Get` operation
     let operations = db
-        .list_user_operations_on_object(&uid, user_id_1, false, db_params)
+        .list_user_operations_on_object(&uid, user_id_1, false, db_params.clone())
         .await?;
     assert_eq!(operations.len(), 1);
     assert!(operations.contains(&KmipOperation::Get));
@@ -77,7 +80,7 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         &uid,
         user_id_2,
         HashSet::from([KmipOperation::Get]),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
@@ -86,27 +89,29 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
         &uid,
         user_id_2,
         HashSet::from([KmipOperation::Get]),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     // User `userid` should only have the `Get` operation
     let operations = db
-        .list_user_operations_on_object(&uid, user_id_2, false, db_params)
+        .list_user_operations_on_object(&uid, user_id_2, false, db_params.clone())
         .await?;
     assert_eq!(operations.len(), 1);
     assert!(operations.contains(&KmipOperation::Get));
     assert!(!operations.contains(&KmipOperation::Create));
 
     // We should still be able to find the object by its owner
-    let objects = db.find(None, None, owner, true, db_params).await?;
+    let objects = db.find(None, None, owner, true, db_params.clone()).await?;
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _) = &objects[0];
     assert_eq!(o_uid, &uid);
     assert_eq!(o_state, &StateEnumeration::Active);
 
     // We should not be able to find the object by specifying  that user_id_2 is the owner
-    let objects = db.find(None, None, user_id_2, true, db_params).await?;
+    let objects = db
+        .find(None, None, user_id_2, true, db_params.clone())
+        .await?;
     assert!(objects.is_empty());
 
     let objects = db

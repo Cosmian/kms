@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
@@ -18,7 +18,7 @@ use cosmian_kms_crypto::openssl::{
     openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     openssl_x509_to_certificate_attributes,
 };
-use cosmian_kms_server_database::{AtomicOperation, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -38,7 +38,7 @@ pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
@@ -55,10 +55,12 @@ pub(crate) async fn import(
     }
     // process the request based on the object type
     let (uid, operations) = match request.object.object_type() {
-        ObjectType::SymmetricKey => process_symmetric_key(kms, request, owner, params).await?,
+        ObjectType::SymmetricKey => {
+            process_symmetric_key(kms, request, owner, params.clone()).await?
+        }
         ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => process_public_key(kms, request, owner, params).await?,
-        ObjectType::PrivateKey => process_private_key(kms, request, owner, params).await?,
+        ObjectType::PublicKey => process_public_key(kms, request, owner, params.clone()).await?,
+        ObjectType::PrivateKey => process_private_key(kms, request, owner, params.clone()).await?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -78,7 +80,7 @@ pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -196,7 +198,7 @@ async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -274,7 +276,7 @@ async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Recover user tags.
     let mut attributes = request.attributes;

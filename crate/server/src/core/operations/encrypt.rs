@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::{
     kmip_2_1::{
@@ -28,7 +30,7 @@ use cosmian_kms_crypto::{
     },
     openssl::kmip_public_key_to_openssl,
 };
-use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -53,7 +55,7 @@ pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<EncryptResponse> {
     trace!("Encrypt: {}", serde_json::to_string(&request)?);
 
@@ -67,7 +69,7 @@ pub(crate) async fn encrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Encrypt")?;
     debug!("Encrypt: candidate uids: {uids:?}");
@@ -86,10 +88,14 @@ pub(crate) async fn encrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+            if !kms
+                .database
+                .is_object_owned_by(&uid, user, params.clone())
+                .await?
+            {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params)
+                    .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops
                     .iter()
@@ -103,7 +109,7 @@ pub(crate) async fn encrypt(
         }
         let owm = kms
             .database
-            .retrieve_object(&uid, params)
+            .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
@@ -115,7 +121,7 @@ pub(crate) async fn encrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params)
+                .list_user_operations_on_object(&uid, user, false, params.clone())
                 .await?;
             if !ops
                 .iter()
@@ -151,7 +157,7 @@ pub(crate) async fn encrypt(
         Object::Certificate { .. } => {}
         _ => {
             owm.set_object(
-                kms.get_unwrapped(owm.id(), owm.object(), user, params)
+                kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
                     .await?,
             );
         }

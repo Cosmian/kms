@@ -143,9 +143,10 @@ impl ObjectsStore for CachedSqlCipher {
         Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
-    async fn migrate(&self, params: Option<&(dyn SessionParams + 'static)>) -> InterfaceResult<()> {
+    async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params = <dyn SessionParams>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params =
+                <dyn SessionParams>::downcast_ref::<SqlCipherSessionParams>(params.as_ref());
             let pool = self.pre_query(params.group_id, &params.key).await?;
 
             trace!("Migrate database");
@@ -200,11 +201,12 @@ impl ObjectsStore for CachedSqlCipher {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -242,11 +244,12 @@ impl ObjectsStore for CachedSqlCipher {
     async fn retrieve(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = retrieve_(uid, &*pool).await;
             self.post_query(params.group_id)?;
@@ -261,11 +264,12 @@ impl ObjectsStore for CachedSqlCipher {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = retrieve_tags_(uid, &*pool).await;
             self.post_query(params.group_id)?;
@@ -283,11 +287,12 @@ impl ObjectsStore for CachedSqlCipher {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -326,11 +331,12 @@ impl ObjectsStore for CachedSqlCipher {
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -367,11 +373,12 @@ impl ObjectsStore for CachedSqlCipher {
     async fn delete(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -409,11 +416,12 @@ impl ObjectsStore for CachedSqlCipher {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -448,11 +456,12 @@ impl ObjectsStore for CachedSqlCipher {
         &self,
         uid: &str,
         owner: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<bool> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = is_object_owned_by_(uid, owner, &*pool).await;
             self.post_query(params.group_id)?;
@@ -467,11 +476,12 @@ impl ObjectsStore for CachedSqlCipher {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_uids_for_tags_(tags, &*pool).await;
             self.post_query(params.group_id)?;
@@ -489,12 +499,13 @@ impl ObjectsStore for CachedSqlCipher {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         trace!("cached sqlcipher: find: {:?}", researched_attributes);
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(
                 researched_attributes,
@@ -519,11 +530,12 @@ impl PermissionsStore for CachedSqlCipher {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_user_granted_access_rights_(user, &*pool).await;
             self.post_query(params.group_id)?;
@@ -538,11 +550,12 @@ impl PermissionsStore for CachedSqlCipher {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_accesses_(uid, &*pool).await;
             self.post_query(params.group_id)?;
@@ -559,11 +572,12 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -585,11 +599,12 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
                 return Err(InterfaceError::Db(
@@ -611,13 +626,14 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         use super::sqlite::list_user_access_rights_on_object_;
 
         if let Some(params) = params {
-            let params =
-                <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(params);
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret =
                 list_user_access_rights_on_object_(uid, user, no_inherited_access, &*pool).await;

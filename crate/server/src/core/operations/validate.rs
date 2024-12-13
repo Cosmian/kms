@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, path,
+    sync::Arc,
 };
 
 use cosmian_kmip::kmip_2_1::{
@@ -9,7 +10,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{UniqueIdentifier, ValidityIndicator},
     KmipOperation,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use openssl::{
     asn1::Asn1Time,
     stack::Stack,
@@ -72,7 +73,7 @@ pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {}", request);
 
@@ -618,7 +619,7 @@ async fn certificates_by_uid(
     unique_identifiers: Vec<UniqueIdentifier>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<Vec<u8>>> {
     debug!("certificates_by_uid: entering: {unique_identifiers:?}");
     let mut results = Vec::new();
@@ -626,7 +627,7 @@ async fn certificates_by_uid(
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::Certificate("as_str returned None in certificates_by_uid".to_owned())
         })?;
-        let result = certificate_by_uid(unique_identifier, kms, user, params).await?;
+        let result = certificate_by_uid(unique_identifier, kms, user, params.clone()).await?;
         results.push(result);
     }
     Ok(results)
@@ -637,7 +638,7 @@ async fn certificate_by_uid(
     unique_identifier: &str,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<u8>> {
     let uid_owm = retrieve_object_for_operation(
         unique_identifier,

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
 use cosmian_kms_interfaces::SessionParams;
@@ -16,7 +19,7 @@ impl Database {
     pub async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         Ok(self
             .permissions
@@ -29,7 +32,7 @@ impl Database {
     pub async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permissions
@@ -44,7 +47,7 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         Ok(self
             .permissions
@@ -59,7 +62,7 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         Ok(self
             .permissions
@@ -76,7 +79,7 @@ impl Database {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<&(dyn SessionParams + 'static)>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions

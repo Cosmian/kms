@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
@@ -18,7 +18,7 @@ use crate::{db_error, error::DbResult};
 
 pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
-    db_params: Option<&(dyn SessionParams + 'static)>,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
@@ -39,15 +39,18 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
-    assert!(db.is_object_owned_by(&uid, owner, db_params).await?);
+    assert!(
+        db.is_object_owned_by(&uid, owner, db_params.clone())
+            .await?
+    );
 
     // Retrieve object with valid owner with `Get` operation type - OK
     let obj = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(StateEnumeration::Active, obj.state());
@@ -66,7 +69,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -85,7 +88,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -105,7 +108,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -124,7 +127,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -146,7 +149,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -165,7 +168,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
             Some(StateEnumeration::Active),
             owner,
             true,
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert!(found.is_empty());

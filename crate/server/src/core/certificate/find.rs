@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_types::{LinkType, LinkedObjectIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
 use crate::{
@@ -24,7 +26,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
     certificate_id: Option<String>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
     trace!(
         "Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}",
@@ -38,7 +40,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             KmipOperation::Certify,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
         let private_key = retrieve_object_for_operation(
@@ -58,7 +60,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             KmipOperation::Certify,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
         let certificate = retrieve_certificate_for_private_key(
@@ -79,7 +81,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             KmipOperation::Certify,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
         let private_key = retrieve_private_key_for_certificate(
@@ -105,7 +107,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<ObjectWithMetadata, KmsError> {
     trace!(
         "Retrieving certificate for private key: {}",
@@ -138,7 +140,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
             operation_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?
     };
@@ -169,7 +171,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<ObjectWithMetadata, KmsError> {
     trace!(
         "Retrieving private key for certificate: certificate_uid_or_tags: {:?}",
@@ -180,7 +182,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params,
+        params.clone(),
     )
     .await?;
 
@@ -204,7 +206,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
             operation_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?
     };
@@ -228,7 +230,7 @@ async fn find_link_in_public_key(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
     let public_key_owm = retrieve_object_for_operation(

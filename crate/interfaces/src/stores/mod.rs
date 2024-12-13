@@ -15,5 +15,3 @@ impl dyn SessionParams + 'static {
         unsafe { &*(self as *const dyn SessionParams as *const T) }
     }
 }
-
-pub type OptionalSessionParams<'a> = Option<&'a (dyn SessionParams + 'static)>;

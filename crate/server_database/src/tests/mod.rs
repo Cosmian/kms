@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
+use cosmian_kms_interfaces::SessionParams;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 
@@ -109,21 +110,21 @@ pub(crate) async fn test_sql_cipher() -> DbResult<()> {
     // generate a database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
 
-    let params = SqlCipherSessionParams {
+    let params: Arc<dyn SessionParams> = Arc::new(SqlCipherSessionParams {
         group_id: 0,
         key: db_key.clone(),
-    };
+    });
 
-    json_access(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    find_attributes(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    owner(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    permissions(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    tags(&get_sql_cipher(&dir_path)?, Some(&params), true).await?;
-    tx_and_list(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    atomic(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    upsert(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    crud(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
-    list_uids_for_tags_test(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    json_access(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    find_attributes(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    owner(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    permissions(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    tags(&get_sql_cipher(&dir_path)?, Some(params.clone()), true).await?;
+    tx_and_list(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    atomic(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    upsert(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    crud(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
+    list_uids_for_tags_test(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
     Ok(())
 }
 

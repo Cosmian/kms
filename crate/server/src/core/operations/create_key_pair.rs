@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
@@ -17,7 +17,7 @@ use cosmian_kms_crypto::crypto::{
     rsa::operation::create_rsa_key_pair,
     KeyPair,
 };
-use cosmian_kms_server_database::{AtomicOperation, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -29,7 +29,7 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 

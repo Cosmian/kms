@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kmip::{
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
@@ -15,7 +17,7 @@ use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
     openssl_private_key_to_kmip, openssl_public_key_to_kmip,
 };
-use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 #[cfg(not(feature = "fips"))]
 use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{
@@ -48,7 +50,7 @@ pub(crate) async fn export_get(
     request: impl Into<Export>,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
     trace!("export-get: {}", serde_json::to_string(&request)?);
@@ -60,7 +62,8 @@ pub(crate) async fn export_get(
         .as_str()
         .context("Export: unique_identifier or tags must be a string")?;
     let mut owm =
-        retrieve_object_for_operation(uid_or_tags, operation_type, kms, user, params).await?;
+        retrieve_object_for_operation(uid_or_tags, operation_type, kms, user, params.clone())
+            .await?;
 
     // The object cannot be exported if it is sensitive and is not wrapped on export,
     if owm.attributes().sensitive && request.key_wrapping_specification.is_none() {
@@ -75,7 +78,15 @@ pub(crate) async fn export_get(
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
-            post_process_private_key(kms, operation_type, user, params, &request, &mut owm).await?;
+            post_process_private_key(
+                kms,
+                operation_type,
+                user,
+                params.clone(),
+                &request,
+                &mut owm,
+            )
+            .await?;
         }
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -97,7 +108,7 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params,
+                    params.clone(),
                 )
                 .await?;
             }
@@ -122,7 +133,7 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params,
+                    params.clone(),
                 )
                 .await?;
             }
@@ -141,14 +152,14 @@ pub(crate) async fn export_get(
                         operation_type,
                         kms,
                         user,
-                        params,
+                        params.clone(),
                     )
                     .await?;
                     post_process_private_key(
                         kms,
                         operation_type,
                         user,
-                        params,
+                        params.clone(),
                         &Export {
                             unique_identifier: Some(UniqueIdentifier::TextString(
                                 owm.id().to_owned(),
@@ -201,7 +212,7 @@ async fn post_process_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -241,7 +252,7 @@ async fn post_process_private_key(
             },
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
     }
@@ -259,10 +270,17 @@ async fn post_process_active_private_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // First perform any necessary unwrapping to the expected type
-    transform_to_key_wrap_type(object_with_metadata, key_wrap_type, kms, user, params).await?;
+    transform_to_key_wrap_type(
+        object_with_metadata,
+        key_wrap_type,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
 
     let mut attributes = object_with_metadata.attributes().clone();
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
@@ -288,7 +306,7 @@ async fn post_process_active_private_key(
             key_format_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await
     }
@@ -386,10 +404,17 @@ async fn process_public_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // perform any necessary unwrapping
-    transform_to_key_wrap_type(object_with_metadata, key_wrap_type, kms, user, params).await?;
+    transform_to_key_wrap_type(
+        object_with_metadata,
+        key_wrap_type,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
 
     //make a copy of the existing attributes
     let mut attributes = object_with_metadata.attributes().clone();
@@ -416,7 +441,7 @@ async fn process_public_key(
             key_format_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await
     }
@@ -501,7 +526,7 @@ async fn transform_to_key_wrap_type(
     key_wrap_type: &Option<KeyWrapType>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(), KmsError> {
     if let Some(key_wrap_type) = key_wrap_type {
         if *key_wrap_type == KeyWrapType::NotWrapped {
@@ -525,7 +550,7 @@ async fn process_covercrypt_key(
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
@@ -594,7 +619,7 @@ async fn process_symmetric_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     trace!(
         "process_symmetric_key: object_with_metadata: {}",
@@ -602,7 +627,14 @@ async fn process_symmetric_key(
     );
 
     // First check is any unwrapping needs to be done
-    transform_to_key_wrap_type(object_with_metadata, key_wrap_type, kms, user, params).await?;
+    transform_to_key_wrap_type(
+        object_with_metadata,
+        key_wrap_type,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
 
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
 
@@ -677,7 +709,7 @@ async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -687,9 +719,14 @@ async fn build_pkcs12_for_private_key(
         request.key_format_type
     );
 
-    let mut cert_owm =
-        retrieve_certificate_for_private_key(private_key_owm, operation_type, kms, user, params)
-            .await?;
+    let mut cert_owm = retrieve_certificate_for_private_key(
+        private_key_owm,
+        operation_type,
+        kms,
+        user,
+        params.clone(),
+    )
+    .await?;
     let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
 
     trace!("building chain from leaf certificate:  {}", cert_owm.id());
@@ -708,7 +745,7 @@ async fn build_pkcs12_for_private_key(
             operation_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
         let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
@@ -774,7 +811,7 @@ async fn post_process_pkcs7(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
     owm: ObjectWithMetadata,
 ) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl
@@ -795,7 +832,7 @@ async fn post_process_pkcs7(
         operation_type,
         kms,
         user,
-        params,
+        params.clone(),
     )
     .await?;
     let private_key_id = public_key_owm
@@ -807,7 +844,7 @@ async fn post_process_pkcs7(
             operation_type,
             kms,
             user,
-            params,
+            params.clone(),
         )
         .await?;
         let pkey = kmip_private_key_to_openssl(private_key_owm.object())
@@ -825,7 +862,7 @@ async fn post_process_pkcs7(
                 operation_type,
                 kms,
                 user,
-                params,
+                params.clone(),
             )
             .await?;
             let certificate = kmip_certificate_to_openssl(cert_owm.object())

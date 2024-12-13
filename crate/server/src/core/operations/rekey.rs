@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, Import, ReKey, ReKeyResponse},
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{
@@ -17,7 +19,7 @@ pub(crate) async fn rekey(
     kms: &KMS,
     request: ReKey,
     owner: &str,
-    params: Option<&SqlCipherSessionParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
 
@@ -37,7 +39,7 @@ pub(crate) async fn rekey(
 
     for owm in kms
         .database
-        .retrieve_objects(uid_or_tags, params)
+        .retrieve_objects(uid_or_tags, params.clone())
         .await?
         .into_values()
     {
@@ -67,10 +69,13 @@ pub(crate) async fn rekey(
             attributes: new_object.attributes()?.clone(),
             object: new_object,
         };
-        let (uid, operations) = process_symmetric_key(kms, import_request, owner, params).await?;
+        let (uid, operations) =
+            process_symmetric_key(kms, import_request, owner, params.clone()).await?;
 
         // execute the operations
-        kms.database.atomic(owner, &operations, params).await?;
+        kms.database
+            .atomic(owner, &operations, params.clone())
+            .await?;
 
         // return the uid
         debug!("Re-key symmetric key with uid: {uid}");
