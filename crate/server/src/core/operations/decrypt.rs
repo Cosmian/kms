@@ -27,14 +27,13 @@ use cosmian_kms_crypto::{
     },
     openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
+use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        to_cryptographic_algorithm,
         uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
     },
@@ -219,7 +218,7 @@ async fn decrypt_using_encryption_oracle(
             request
                 .cryptographic_parameters
                 .as_ref()
-                .and_then(|cp| to_cryptographic_algorithm(cp).transpose())
+                .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
                 .transpose()?,
             request.authenticated_encryption_additional_data.as_deref(),
         )

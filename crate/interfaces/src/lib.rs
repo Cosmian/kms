@@ -3,9 +3,7 @@ mod error;
 mod hsm;
 mod stores;
 
-pub use encryption_oracle::{
-    CryptographicAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata,
-};
+pub use encryption_oracle::{CryptoAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata};
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
     HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
