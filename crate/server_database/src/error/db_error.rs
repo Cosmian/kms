@@ -147,7 +147,10 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for DbError {
 
 impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
-        Self::Store(value.to_string())
+        match value {
+            InterfaceError::Db(s) => Self::Store(s),
+            x => Self::Store(x.to_string()),
+        }
     }
 }
 
@@ -194,5 +197,11 @@ impl From<KmipError> for DbError {
 impl From<CryptoError> for DbError {
     fn from(e: CryptoError) -> Self {
         Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<DbError> for InterfaceError {
+    fn from(value: DbError) -> Self {
+        Self::Db(value.to_string())
     }
 }

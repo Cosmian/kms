@@ -17,7 +17,7 @@ use cosmian_kms_crypto::crypto::{
     rsa::operation::create_rsa_key_pair,
     KeyPair,
 };
-use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
+use cosmian_kms_server_database::{AtomicOperation, SqlCipherSessionParams};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -29,7 +29,7 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 

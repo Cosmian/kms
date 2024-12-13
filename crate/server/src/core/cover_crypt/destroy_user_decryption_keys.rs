@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 
 use super::locate_user_decryption_keys;
 use crate::{
@@ -14,7 +14,7 @@ pub(crate) async fn destroy_user_decryption_keys(
     master_private_key_id: &str,
     kms: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {

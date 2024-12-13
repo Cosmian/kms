@@ -19,7 +19,7 @@ use cosmian_kms_server::{
     config::{ClapConfig, HttpConfig, HttpParams, JwtAuthConfig, MainDBConfig, ServerParams},
     start_kms_server::start_kms_server,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 use tracing::{info, trace};
@@ -516,8 +516,8 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
                 .clone(),
         )
         .expect("Can't decode token");
-    let mut secrets =
-        serde_json::from_slice::<ExtraStoreParams>(&secrets).expect("Can't deserialize token");
+    let mut secrets = serde_json::from_slice::<SqlCipherSessionParams>(&secrets)
+        .expect("Can't deserialize token");
     secrets.key = db_key; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.http_config.database_secret = Some(token);

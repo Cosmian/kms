@@ -10,7 +10,7 @@ use cosmian_kmip::kmip_2_1::{
     },
     kmip_types::StateEnumeration,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 
 use crate::{
     core::{operations, KMS},
@@ -36,7 +36,7 @@ impl KMS {
         &self,
         request: Import,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<ImportResponse> {
         operations::import(self, request, user, params).await
     }
@@ -68,7 +68,7 @@ impl KMS {
         &self,
         request: Certify,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<CertifyResponse> {
         operations::certify(self, request, user, params).await
     }
@@ -85,7 +85,7 @@ impl KMS {
         &self,
         request: Create,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<CreateResponse> {
         operations::create(self, request, user, params).await
     }
@@ -109,7 +109,7 @@ impl KMS {
         &self,
         request: CreateKeyPair,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<CreateKeyPairResponse> {
         operations::create_key_pair(self, request, user, params).await
     }
@@ -136,7 +136,7 @@ impl KMS {
         &self,
         request: Decrypt,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<DecryptResponse> {
         operations::decrypt(self, request, user, params).await
     }
@@ -150,7 +150,7 @@ impl KMS {
         &self,
         request: Destroy,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<DestroyResponse> {
         operations::destroy_operation(self, request, user, params).await
     }
@@ -187,7 +187,7 @@ impl KMS {
         &self,
         request: Encrypt,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<EncryptResponse> {
         operations::encrypt(self, request, user, params).await
     }
@@ -204,7 +204,7 @@ impl KMS {
         &self,
         request: Export,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<ExportResponse> {
         operations::export(self, request, user, params).await
     }
@@ -234,7 +234,7 @@ impl KMS {
         &self,
         request: Get,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<GetResponse> {
         operations::get(self, request, user, params).await
     }
@@ -253,7 +253,7 @@ impl KMS {
         &self,
         request: GetAttributes,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<GetAttributesResponse> {
         operations::get_attributes(self, request, user, params).await
     }
@@ -263,7 +263,7 @@ impl KMS {
         &self,
         request: SetAttribute,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<SetAttributeResponse> {
         operations::set_attribute(self, request, user, params).await
     }
@@ -273,7 +273,7 @@ impl KMS {
         &self,
         request: DeleteAttribute,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<DeleteAttributeResponse> {
         operations::delete_attribute(self, request, user, params).await
     }
@@ -372,7 +372,7 @@ impl KMS {
         &self,
         request: Locate,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<LocateResponse> {
         operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
     }
@@ -407,7 +407,7 @@ impl KMS {
         &self,
         request: ReKeyKeyPair,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
         operations::rekey_keypair(self, request, user, params).await
     }
@@ -425,7 +425,7 @@ impl KMS {
         &self,
         request: ReKey,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<ReKeyResponse> {
         operations::rekey(self, request, user, params).await
     }
@@ -434,7 +434,7 @@ impl KMS {
         &self,
         request: Message,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<MessageResponse> {
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
@@ -444,7 +444,7 @@ impl KMS {
         &self,
         request: Validate,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<ValidateResponse> {
         operations::validate_operation(self, request, user, params).await
     }
@@ -465,7 +465,7 @@ impl KMS {
         &self,
         request: Revoke,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<RevokeResponse> {
         operations::revoke_operation(self, request, user, params).await
     }

@@ -1,28 +1,26 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip_2_1::KmipOperation;
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
 
-use crate::{
-    error::DbResult,
-    stores::{ExtraStoreParams, ObjectsStore, PermissionsStore},
-};
+use crate::error::DbResult;
 
 pub(crate) async fn permissions<DB: ObjectsStore + PermissionsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    permissions_users(db_and_params).await?;
-    permissions_wildcard(db_and_params).await?;
+    permissions_users(db, db_params).await?;
+    permissions_wildcard(db, db_params).await?;
     Ok(())
 }
 
 async fn permissions_users<DB: ObjectsStore + PermissionsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let user_id_1 = Uuid::new_v4().to_string();
     let user_id_2 = Uuid::new_v4().to_string();
@@ -132,11 +130,9 @@ async fn permissions_users<DB: ObjectsStore + PermissionsStore>(
 }
 
 async fn permissions_wildcard<DB: ObjectsStore + PermissionsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
-
     let user_id = Uuid::new_v4().to_string();
     let uid = Uuid::new_v4().to_string();
 

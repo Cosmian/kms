@@ -20,7 +20,7 @@ use crate::{
     error::DbResult,
     stores::{
         additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
-        CachedSqlCipher, ExtraStoreParams, MySqlPool, PgPool, RedisWithFindex, SqlitePool,
+        CachedSqlCipher, MySqlPool, PgPool, RedisWithFindex, SqlCipherSessionParams, SqlitePool,
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     },
     tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
@@ -41,47 +41,40 @@ pub(crate) fn get_redis_url() -> String {
     )
 }
 
-fn get_sql_cipher(
-    dir: &Path,
-    db_key: &Secret<AES_256_GCM_KEY_LENGTH>,
-) -> DbResult<(CachedSqlCipher, Option<ExtraStoreParams>)> {
+fn get_sql_cipher(dir: &Path) -> DbResult<CachedSqlCipher> {
     let db = CachedSqlCipher::instantiate(dir, true)?;
-    let params = ExtraStoreParams {
-        group_id: 0,
-        key: db_key.clone(),
-    };
-    Ok((db, Some(params)))
+    Ok(db)
 }
 
-async fn get_sqlite(db_file: &Path) -> DbResult<(SqlitePool, Option<ExtraStoreParams>)> {
-    Ok((SqlitePool::instantiate(db_file, true).await?, None))
+async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
+    SqlitePool::instantiate(db_file, true).await
 }
 
 // To run local tests with a Postgres in Docker, run
 // docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432  -d postgres
-async fn get_pgsql() -> DbResult<(PgPool, Option<ExtraStoreParams>)> {
+async fn get_pgsql() -> DbResult<PgPool> {
     let postgres_url =
         option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
     let pg = PgPool::instantiate(postgres_url, true).await?;
-    Ok((pg, None))
+    Ok(pg)
 }
 
 // To run local tests with a MariaDB in Docker, run
 // docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
-async fn get_mysql() -> DbResult<(MySqlPool, Option<ExtraStoreParams>)> {
+async fn get_mysql() -> DbResult<MySqlPool> {
     let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
-    Ok((my_sql, None))
+    Ok(my_sql)
 }
 
 // To run local tests with a Redis in Docker (and local storage - needed for transactions), run
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
-async fn get_redis_with_findex() -> DbResult<(RedisWithFindex, Option<ExtraStoreParams>)> {
+async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new_random()?;
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
-    Ok((redis_findex, None))
+    Ok(redis_findex)
 }
 
 #[tokio::test]
@@ -89,16 +82,16 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
-    json_access(&get_redis_with_findex().await?).await?;
-    find_attributes(&get_redis_with_findex().await?).await?;
-    owner(&get_redis_with_findex().await?).await?;
-    permissions(&get_redis_with_findex().await?).await?;
-    tags(&get_redis_with_findex().await?, false).await?;
-    tx_and_list(&get_redis_with_findex().await?).await?;
-    atomic(&get_redis_with_findex().await?).await?;
-    upsert(&get_redis_with_findex().await?).await?;
-    crud(&get_redis_with_findex().await?).await?;
-    list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
+    json_access(&get_redis_with_findex().await?, None).await?;
+    find_attributes(&get_redis_with_findex().await?, None).await?;
+    owner(&get_redis_with_findex().await?, None).await?;
+    permissions(&get_redis_with_findex().await?, None).await?;
+    tags(&get_redis_with_findex().await?, None, false).await?;
+    tx_and_list(&get_redis_with_findex().await?, None).await?;
+    atomic(&get_redis_with_findex().await?, None).await?;
+    upsert(&get_redis_with_findex().await?, None).await?;
+    crud(&get_redis_with_findex().await?, None).await?;
+    list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
     Ok(())
 }
 
@@ -116,16 +109,21 @@ pub(crate) async fn test_sql_cipher() -> DbResult<()> {
     // generate a database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
 
-    json_access(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    find_attributes(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    owner(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    permissions(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    tags(&get_sql_cipher(&dir_path, &db_key)?, true).await?;
-    tx_and_list(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    atomic(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    upsert(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    crud(&get_sql_cipher(&dir_path, &db_key)?).await?;
-    list_uids_for_tags_test(&get_sql_cipher(&dir_path, &db_key)?).await?;
+    let params = SqlCipherSessionParams {
+        group_id: 0,
+        key: db_key.clone(),
+    };
+
+    json_access(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    find_attributes(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    owner(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    permissions(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    tags(&get_sql_cipher(&dir_path)?, Some(&params), true).await?;
+    tx_and_list(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    atomic(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    upsert(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    crud(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
+    list_uids_for_tags_test(&get_sql_cipher(&dir_path)?, Some(&params)).await?;
     Ok(())
 }
 
@@ -138,47 +136,47 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
         std::fs::remove_file(&db_file)?;
     }
 
-    json_access(&get_sqlite(&db_file).await?).await?;
-    find_attributes(&get_sqlite(&db_file).await?).await?;
-    owner(&get_sqlite(&db_file).await?).await?;
-    permissions(&get_sqlite(&db_file).await?).await?;
-    tags(&get_sqlite(&db_file).await?, true).await?;
-    tx_and_list(&get_sqlite(&db_file).await?).await?;
-    atomic(&get_sqlite(&db_file).await?).await?;
-    upsert(&get_sqlite(&db_file).await?).await?;
-    crud(&get_sqlite(&db_file).await?).await?;
-    list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
+    json_access(&get_sqlite(&db_file).await?, None).await?;
+    find_attributes(&get_sqlite(&db_file).await?, None).await?;
+    owner(&get_sqlite(&db_file).await?, None).await?;
+    permissions(&get_sqlite(&db_file).await?, None).await?;
+    tags(&get_sqlite(&db_file).await?, None, true).await?;
+    tx_and_list(&get_sqlite(&db_file).await?, None).await?;
+    atomic(&get_sqlite(&db_file).await?, None).await?;
+    upsert(&get_sqlite(&db_file).await?, None).await?;
+    crud(&get_sqlite(&db_file).await?, None).await?;
+    list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_postgresql() -> DbResult<()> {
-    json_access(&get_pgsql().await?).await?;
-    find_attributes(&get_pgsql().await?).await?;
-    owner(&get_pgsql().await?).await?;
-    permissions(&get_pgsql().await?).await?;
-    tags(&get_pgsql().await?, true).await?;
-    tx_and_list(&get_pgsql().await?).await?;
-    atomic(&get_pgsql().await?).await?;
-    upsert(&get_pgsql().await?).await?;
-    crud(&get_pgsql().await?).await?;
-    list_uids_for_tags_test(&get_pgsql().await?).await?;
+    json_access(&get_pgsql().await?, None).await?;
+    find_attributes(&get_pgsql().await?, None).await?;
+    owner(&get_pgsql().await?, None).await?;
+    permissions(&get_pgsql().await?, None).await?;
+    tags(&get_pgsql().await?, None, true).await?;
+    tx_and_list(&get_pgsql().await?, None).await?;
+    atomic(&get_pgsql().await?, None).await?;
+    upsert(&get_pgsql().await?, None).await?;
+    crud(&get_pgsql().await?, None).await?;
+    list_uids_for_tags_test(&get_pgsql().await?, None).await?;
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_mysql() -> DbResult<()> {
     log_init(None);
-    json_access(&get_mysql().await?).await?;
-    find_attributes(&get_mysql().await?).await?;
-    owner(&get_mysql().await?).await?;
-    permissions(&get_mysql().await?).await?;
-    tags(&get_mysql().await?, true).await?;
-    tx_and_list(&get_mysql().await?).await?;
-    atomic(&get_mysql().await?).await?;
-    upsert(&get_mysql().await?).await?;
-    crud(&get_mysql().await?).await?;
-    list_uids_for_tags_test(&get_mysql().await?).await?;
+    json_access(&get_mysql().await?, None).await?;
+    find_attributes(&get_mysql().await?, None).await?;
+    owner(&get_mysql().await?, None).await?;
+    permissions(&get_mysql().await?, None).await?;
+    tags(&get_mysql().await?, None, true).await?;
+    tx_and_list(&get_mysql().await?, None).await?;
+    atomic(&get_mysql().await?, None).await?;
+    upsert(&get_mysql().await?, None).await?;
+    crud(&get_mysql().await?, None).await?;
+    list_uids_for_tags_test(&get_mysql().await?, None).await?;
     Ok(())
 }
 

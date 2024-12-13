@@ -7,21 +7,19 @@ use std::{collections::HashMap, sync::Arc};
 
 use cloudproof::reexport::crypto_core::FixedSizeCBytes;
 use cosmian_kms_crypto::crypto::secret::Secret;
-use cosmian_kms_interfaces::HSM;
+use cosmian_kms_interfaces::{HsmStore, ObjectsStore, PermissionsStore, HSM};
 use tokio::sync::RwLock;
 
-use crate::{error::DbResult, stores::HsmStore};
+use crate::error::DbResult;
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
-mod object_with_metadata;
 mod unwrapped_cache;
-pub use object_with_metadata::ObjectWithMetadata;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
 use crate::stores::{
-    CachedSqlCipher, MySqlPool, ObjectsStore, PermissionsStore, PgPool, RedisWithFindex,
-    SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+    CachedSqlCipher, MySqlPool, PgPool, RedisWithFindex, SqlitePool,
+    REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
 };
 
 /// The `Database` struct represents the core database functionalities, including object management,

@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Create, CreateResponse},
     kmip_types::{EncryptionKeyInformation, UniqueIdentifier},
 };
-use cosmian_kms_server_database::{CachedUnwrappedObject, ExtraStoreParams};
+use cosmian_kms_server_database::{CachedUnwrappedObject, SqlCipherSessionParams};
 use tracing::{debug, trace};
 
 use crate::{
@@ -18,7 +18,7 @@ pub(crate) async fn create(
     kms: &KMS,
     mut request: Create,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<CreateResponse> {
     trace!("Create: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {

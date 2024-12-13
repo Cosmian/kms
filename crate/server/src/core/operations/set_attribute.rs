@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attribute, UniqueIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
 use tracing::{debug, trace};
 
 use crate::{
@@ -17,7 +17,7 @@ pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<SetAttributeResponse> {
     trace!("Set attribute: {}", serde_json::to_string(&request)?);
 

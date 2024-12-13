@@ -28,7 +28,7 @@ use cosmian_kms_crypto::{
     },
     openssl::kmip_public_key_to_openssl,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -53,7 +53,7 @@ pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<EncryptResponse> {
     trace!("Encrypt: {}", serde_json::to_string(&request)?);
 

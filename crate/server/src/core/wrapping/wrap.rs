@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::wrap::{
     key_data_to_wrap, update_key_block_with_wrapped_key, wrap_key_block,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::debug;
 
 use crate::{
@@ -34,7 +34,7 @@ pub(crate) async fn wrap_key(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
@@ -84,7 +84,7 @@ async fn wrap_using_kms(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     wrapping_key_uid: &str,
 ) -> Result<(), KmsError> {
     // fetch the wrapping key
@@ -178,7 +178,7 @@ async fn wrap_using_encryption_oracle(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     wrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {

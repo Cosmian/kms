@@ -1,8 +1,5 @@
 //! The HSM Store is a store that allows to create, retrieve, update and delete objects on an HSM.
 //! It is the link between the database and the HSM.
-//TODO This file should be moved to the plugins crate, as soon a the Sore traits are moved there
-// The Store traits require a refactoring of the KMIP crate to be moved so that the KMIP crate does
-// not pull openssl as a dependency
 
 #![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
@@ -19,14 +16,13 @@ use cosmian_kmip::{
     },
     SafeBigUint,
 };
-use cosmian_kms_interfaces::{HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, KeyMaterial, HSM};
 use num_bigint_dig::BigUint;
 use tracing::debug;
 use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    db_bail, error::DbResult, stores::ObjectsStore, AtomicOperation, DbError, ExtraStoreParams,
-    ObjectWithMetadata,
+    AtomicOperation, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
+    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams, HSM,
 };
 
 pub struct HsmStore {
@@ -49,7 +45,10 @@ impl ObjectsStore for HsmStore {
         None
     }
 
-    async fn migrate(&self, _params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn migrate(
+        &self,
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         Ok(())
     }
 
@@ -64,38 +63,38 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         _tags: &HashSet<String>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<String> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<String> {
         if owner != self.hsm_admin {
-            return Err(DbError::InvalidRequest(
+            return Err(InterfaceError::InvalidRequest(
                 "Only the HSM Admin can create HSM objects".to_owned(),
             ));
         }
         // try converting the rest of the uid into a slot_id
         let uid = uid.as_ref().ok_or_else(|| {
-            DbError::InvalidRequest(
+            InterfaceError::InvalidRequest(
                 "An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
                     .to_string(),
             )
         })?;
         let (slot_id, key_id) = parse_uid(uid)?;
         if object.object_type() != ObjectType::SymmetricKey {
-            return Err(DbError::InvalidRequest(
+            return Err(InterfaceError::InvalidRequest(
                 "Only symmetric keys can be created on the HSM in this server".to_owned(),
             ));
         }
         let algorithm = attributes.cryptographic_algorithm.as_ref().ok_or_else(|| {
-            DbError::InvalidRequest(
+            InterfaceError::InvalidRequest(
                 "Create: HSM keys must have a cryptographic algorithm specified".to_owned(),
             )
         })?;
         if *algorithm != CryptographicAlgorithm::AES {
-            return Err(DbError::InvalidRequest(
+            return Err(InterfaceError::InvalidRequest(
                 "Only AES symmetric keys can be created on the HSM in this server".to_owned(),
             ));
         }
         let key_length = attributes.cryptographic_length.as_ref().ok_or_else(|| {
-            DbError::InvalidRequest(
+            InterfaceError::InvalidRequest(
                 "Symmetric key must have a cryptographic length specified".to_owned(),
             )
         })?;
@@ -104,7 +103,9 @@ impl ObjectsStore for HsmStore {
                 slot_id,
                 key_id.as_bytes(),
                 HsmKeyAlgorithm::AES,
-                usize::try_from(*key_length)?,
+                usize::try_from(*key_length).map_err(|e| {
+                    InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                })?,
                 attributes.sensitive,
             )
             .await?;
@@ -115,8 +116,8 @@ impl ObjectsStore for HsmStore {
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Option<ObjectWithMetadata>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the uid into a slot_id and key id
         let (slot_id, key_id) = parse_uid(uid)?;
         Ok(
@@ -133,8 +134,8 @@ impl ObjectsStore for HsmStore {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
         // Not supported for HSMs
         Ok(HashSet::new())
     }
@@ -145,10 +146,10 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         // not supported for HSMs
-        Err(DbError::InvalidRequest(
+        Err(InterfaceError::InvalidRequest(
             "Update object is not supported for HSMs".to_owned(),
         ))
     }
@@ -157,15 +158,19 @@ impl ObjectsStore for HsmStore {
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         // not supported for HSMs
-        Err(DbError::InvalidRequest(
+        Err(InterfaceError::InvalidRequest(
             "Update state is not supported for HSMs".to_owned(),
         ))
     }
 
-    async fn delete(&self, uid: &str, params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn delete(
+        &self,
+        uid: &str,
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
         Ok(())
@@ -175,12 +180,12 @@ impl ObjectsStore for HsmStore {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<String>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
             if user != self.hsm_admin {
-                return Err(DbError::InvalidRequest(
+                return Err(InterfaceError::InvalidRequest(
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
                 ));
             }
@@ -192,7 +197,9 @@ impl ObjectsStore for HsmStore {
                     sk_id.as_bytes(),
                     pk_id.as_bytes(),
                     HsmKeypairAlgorithm::RSA,
-                    usize::try_from(attributes.cryptographic_length.unwrap_or(2048))?,
+                    usize::try_from(attributes.cryptographic_length.unwrap_or(2048)).map_err(
+                        |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
+                    )?,
                     attributes.sensitive,
                 )
                 .await?;
@@ -202,15 +209,17 @@ impl ObjectsStore for HsmStore {
             ]);
         }
 
-        db_bail!("HSM atomic operations only support RSA keypair creations for now");
+        Err(InterfaceError::InvalidRequest(
+            "HSM atomic operations only support RSA keypair creations for now".to_owned(),
+        ))
     }
 
     async fn is_object_owned_by(
         &self,
         _uid: &str,
         owner: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<bool> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<bool> {
         debug!(
             "Is {owner} is the owner of {_uid}? {}",
             owner == self.hsm_admin
@@ -221,8 +230,8 @@ impl ObjectsStore for HsmStore {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
         todo!()
     }
 
@@ -232,8 +241,8 @@ impl ObjectsStore for HsmStore {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         todo!()
     }
 }
@@ -279,18 +288,18 @@ fn is_rsa_keypair_creation(
 }
 
 /// Parse the `uid` into a `slot_id` and `key_id`
-fn parse_uid(uid: &str) -> Result<(usize, String), DbError> {
+fn parse_uid(uid: &str) -> Result<(usize, String), InterfaceError> {
     let (slot_id, key_id) = uid
         .trim_start_matches("hsm::")
         .split_once("::")
         .ok_or_else(|| {
-            DbError::InvalidRequest(
+            InterfaceError::InvalidRequest(
                 "An HSM request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
                     .to_owned(),
             )
         })?;
     let slot_id = slot_id.parse::<usize>().map_err(|e| {
-        DbError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
+        InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
     })?;
     Ok((slot_id, key_id.to_owned()))
 }
@@ -299,10 +308,11 @@ fn to_object_with_metadata(
     hsm_object: &HsmObject,
     uid: &str,
     user: &str,
-) -> DbResult<ObjectWithMetadata> {
+) -> InterfaceResult<ObjectWithMetadata> {
     match hsm_object.key_material() {
         KeyMaterial::AesKey(bytes) => {
-            let length: i32 = i32::try_from(bytes.len())? * 8;
+            let length: i32 = 8 * i32::try_from(bytes.len())
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")))?;
             let mut attributes = Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 cryptographic_length: Some(length),
@@ -320,7 +330,9 @@ fn to_object_with_metadata(
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
             tags.insert("_kk".to_owned());
-            attributes.set_tags(tags)?;
+            attributes
+                .set_tags(tags)
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey { key: bytes.clone() };
             let object = Object::SymmetricKey {
                 key_block: KeyBlock {
@@ -331,7 +343,11 @@ fn to_object_with_metadata(
                         attributes: Some(attributes.clone()),
                     },
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    cryptographic_length: Some(i32::try_from(bytes.len())? * 8),
+                    cryptographic_length: Some(
+                        8 * i32::try_from(bytes.len()).map_err(|e| {
+                            InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                        })?,
+                    ),
                     key_wrapping_data: None,
                 },
             };
@@ -346,7 +362,11 @@ fn to_object_with_metadata(
         KeyMaterial::RsaPrivateKey(km) => {
             let mut attributes = Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(i32::try_from(km.modulus.len())? * 8),
+                cryptographic_length: Some(
+                    8 * i32::try_from(km.modulus.len()).map_err(|e| {
+                        InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                    })?,
+                ),
                 object_type: Some(ObjectType::PrivateKey),
                 // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
@@ -359,7 +379,9 @@ fn to_object_with_metadata(
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
             tags.insert("_sk".to_owned());
-            attributes.set_tags(tags)?;
+            attributes
+                .set_tags(tags)
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentRSAPrivateKey {
                 modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
                 private_exponent: Some(Box::new(SafeBigUint::from_bytes_be(
@@ -389,7 +411,11 @@ fn to_object_with_metadata(
                         attributes: Some(attributes.clone()),
                     },
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    cryptographic_length: Some(i32::try_from(km.modulus.len())? * 8),
+                    cryptographic_length: Some(
+                        8 * i32::try_from(km.modulus.len()).map_err(|e| {
+                            InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                        })?,
+                    ),
                     key_wrapping_data: None,
                 },
             };
@@ -404,7 +430,11 @@ fn to_object_with_metadata(
         KeyMaterial::RsaPublicKey(km) => {
             let mut attributes = Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(i32::try_from(km.modulus.len())? * 8),
+                cryptographic_length: Some(
+                    i32::try_from(km.modulus.len()).map_err(|e| {
+                        InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                    })? * 8,
+                ),
                 object_type: Some(ObjectType::PrivateKey),
                 // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
@@ -417,7 +447,9 @@ fn to_object_with_metadata(
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
             tags.insert("_sk".to_owned());
-            attributes.set_tags(tags)?;
+            attributes
+                .set_tags(tags)
+                .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = TransparentRSAPublicKey {
                 modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
                 public_exponent: Box::new(BigUint::from_bytes_be(km.public_exponent.as_slice())),
@@ -431,7 +463,11 @@ fn to_object_with_metadata(
                         attributes: Some(attributes.clone()),
                     },
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    cryptographic_length: Some(i32::try_from(km.modulus.len())? * 8),
+                    cryptographic_length: Some(
+                        i32::try_from(km.modulus.len()).map_err(|e| {
+                            InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
+                        })? * 8,
+                    ),
                     key_wrapping_data: None,
                 },
             };

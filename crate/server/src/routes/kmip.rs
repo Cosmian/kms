@@ -9,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::info;
 
 use crate::{
@@ -49,7 +49,7 @@ async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraStoreParams>,
+    database_params: Option<&SqlCipherSessionParams>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
         let req = from_ttlv::<Message>(ttlv)?;

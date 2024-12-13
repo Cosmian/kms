@@ -3,7 +3,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attribute, AttributeReference, Tag, UniqueIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use crate::{
@@ -16,7 +16,7 @@ pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("Delete attribute: {}", serde_json::to_string(&request)?);
 

@@ -12,7 +12,17 @@ description = "Crate exposing APIs for plugins to the Cosmian KMS"
 doctest = false
 
 [dependencies]
+cosmian_kmip = { path = "../kmip" }
 async-trait = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 zeroize = { workspace = true, default-features = true }
 

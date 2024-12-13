@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
     policy_from_attributes, rekey_edit_action_from_attributes,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use crate::{
@@ -21,7 +21,7 @@ pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 

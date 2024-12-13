@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
 use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
@@ -20,7 +20,7 @@ pub(crate) async fn retrieve_object_for_operation(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
         "get_key: key_uid_or_tags: {uid_or_tags:?}, user: {user}, operation_type: \
@@ -65,7 +65,7 @@ pub(crate) async fn user_has_permission(
     owm: &ObjectWithMetadata,
     operation_type: &KmipOperation,
     kms: &KMS,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<bool> {
     if user == owm.owner() {
         return Ok(true)

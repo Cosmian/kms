@@ -15,7 +15,7 @@ use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
     openssl_private_key_to_kmip, openssl_public_key_to_kmip,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
 #[cfg(not(feature = "fips"))]
 use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{
@@ -48,7 +48,7 @@ pub(crate) async fn export_get(
     request: impl Into<Export>,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
     trace!("export-get: {}", serde_json::to_string(&request)?);
@@ -201,7 +201,7 @@ async fn post_process_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -259,7 +259,7 @@ async fn post_process_active_private_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // First perform any necessary unwrapping to the expected type
     transform_to_key_wrap_type(object_with_metadata, key_wrap_type, kms, user, params).await?;
@@ -386,7 +386,7 @@ async fn process_public_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // perform any necessary unwrapping
     transform_to_key_wrap_type(object_with_metadata, key_wrap_type, kms, user, params).await?;
@@ -501,7 +501,7 @@ async fn transform_to_key_wrap_type(
     key_wrap_type: &Option<KeyWrapType>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> Result<(), KmsError> {
     if let Some(key_wrap_type) = key_wrap_type {
         if *key_wrap_type == KeyWrapType::NotWrapped {
@@ -525,7 +525,7 @@ async fn process_covercrypt_key(
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
@@ -594,7 +594,7 @@ async fn process_symmetric_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     trace!(
         "process_symmetric_key: object_with_metadata: {}",
@@ -677,7 +677,7 @@ async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -774,7 +774,7 @@ async fn post_process_pkcs7(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     owm: ObjectWithMetadata,
 ) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl

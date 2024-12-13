@@ -15,7 +15,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
     },
     user_key::UserDecryptionKeysHandler,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use super::KMS;
@@ -37,7 +37,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     msk_uid: String,
     owner: &str,
     action: RekeyEditAction,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
 
@@ -172,7 +172,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 pub(crate) async fn update_master_keys(
     server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     msk_uid: String,
     mutator: impl Fn(&mut Policy, &mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
 ) -> KResult<((String, Object), (String, Object))> {
@@ -193,7 +193,7 @@ async fn get_master_keys_and_policy(
     kmip_server: &KMS,
     msk_uid: String,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
     let msk = kmip_server
@@ -240,7 +240,7 @@ async fn get_master_keys_and_policy(
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
 ) -> KResult<()> {
@@ -275,7 +275,7 @@ async fn update_all_active_usk(
     cover_crypt: Covercrypt,
     msk_obj: &KmipKeyUidObject,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // Search the user decryption keys that need to be refreshed
     let locate_response = locate_user_decryption_keys(
@@ -315,7 +315,7 @@ async fn update_usk(
     user_decryption_key_uid: &str,
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     //fetch the user decryption key
     let get_response = kmip_server

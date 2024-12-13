@@ -14,4 +14,7 @@ pub enum InterfaceError {
 
     #[error("HSM Error: {0}")]
     Hsm(String),
+
+    #[error("Database Error: {0}")]
+    Db(String),
 }

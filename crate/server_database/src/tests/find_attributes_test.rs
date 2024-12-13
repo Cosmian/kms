@@ -12,20 +12,16 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::create_symmetric_key_kmip_object,
 };
+use cosmian_kms_interfaces::{ObjectsStore, SessionParams};
 use uuid::Uuid;
 
-use crate::{
-    db_error,
-    error::DbResult,
-    stores::{ExtraStoreParams, ObjectsStore},
-};
+use crate::{db_error, error::DbResult};
 
 pub(crate) async fn find_attributes<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";

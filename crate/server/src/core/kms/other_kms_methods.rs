@@ -16,7 +16,7 @@ use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_interfaces::EncryptionOracle;
-use cosmian_kms_server_database::{CachedUnwrappedObject, ExtraStoreParams, MainDbParams};
+use cosmian_kms_server_database::{CachedUnwrappedObject, MainDbParams, SqlCipherSessionParams};
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -62,7 +62,7 @@ impl KMS {
         };
 
         // Encode ExtraDatabaseParams
-        let params = ExtraStoreParams {
+        let params = SqlCipherSessionParams {
             group_id: uid,
             key: Secret::new_random()?,
         };
@@ -84,7 +84,7 @@ impl KMS {
     pub(crate) fn get_sqlite_enc_secrets(
         &self,
         req_http: &HttpRequest,
-    ) -> KResult<Option<ExtraStoreParams>> {
+    ) -> KResult<Option<SqlCipherSessionParams>> {
         if !self.is_using_sqlite_enc() {
             return Ok(None);
         }
@@ -101,7 +101,7 @@ impl KMS {
         })?;
 
         Ok(Some(
-            serde_json::from_slice::<ExtraStoreParams>(&secrets).map_err(|e| {
+            serde_json::from_slice::<SqlCipherSessionParams>(&secrets).map_err(|e| {
                 KmsError::Unauthorized(format!("DatabaseSecret header cannot be read: {e}"))
             })?,
         ))
@@ -121,7 +121,7 @@ impl KMS {
         uid: &str,
         object: &Object,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<Object> {
         // Is this an unwrapped key?
         if object
@@ -287,7 +287,7 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;

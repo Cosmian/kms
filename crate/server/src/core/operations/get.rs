@@ -2,7 +2,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Get, GetResponse},
     KmipOperation,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use crate::{
@@ -20,7 +20,7 @@ pub(crate) async fn get(
     kms: &KMS,
     request: Get,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<GetResponse> {
     trace!("Get: {}", serde_json::to_string(&request)?);
     let response = export_get(kms, request, KmipOperation::Get, user, params)

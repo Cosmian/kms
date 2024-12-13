@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
     KmipOperation,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
@@ -28,7 +28,7 @@ pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<DestroyResponse> {
     // there must be an identifier
     let unique_identifier = request
@@ -48,7 +48,7 @@ pub(crate) async fn recursively_destroy_key(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -199,7 +199,7 @@ async fn destroy_key_core(
     object: &mut Object,
     state: StateEnumeration,
     kms: &KMS,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     // map the state to the new state
     let new_state = match state {

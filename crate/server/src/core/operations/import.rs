@@ -18,7 +18,7 @@ use cosmian_kms_crypto::openssl::{
     openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     openssl_x509_to_certificate_attributes,
 };
-use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
+use cosmian_kms_server_database::{AtomicOperation, SqlCipherSessionParams};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -38,7 +38,7 @@ pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
@@ -78,7 +78,7 @@ pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -196,7 +196,7 @@ async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -274,7 +274,7 @@ async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Recover user tags.
     let mut attributes = request.attributes;

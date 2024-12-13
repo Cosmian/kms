@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 
 use crate::{
     core::KMS,
@@ -31,7 +31,7 @@ pub(crate) fn has_prefix(uid: &str) -> Option<&str> {
 pub(crate) async fn uids_from_unique_identifier(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<HashSet<String>> {
     let uid_or_tags = unique_identifier
         .as_str()

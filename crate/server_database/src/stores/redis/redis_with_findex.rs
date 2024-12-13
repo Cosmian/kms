@@ -16,6 +16,10 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation,
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
+use cosmian_kms_interfaces::{
+    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+    SessionParams,
+};
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -27,12 +31,7 @@ use super::{
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::{
-        redis::objects_db::RedisOperation,
-        store_traits::{ObjectsStore, PermissionsStore},
-        ExtraStoreParams,
-    },
-    AtomicOperation, ObjectWithMetadata,
+    stores::redis::objects_db::RedisOperation,
 };
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
@@ -118,7 +117,7 @@ impl RedisWithFindex {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> Result<RedisDbObject, DbError> {
         // additions to the index
         let mut index_additions = HashMap::new();
@@ -240,7 +239,10 @@ impl ObjectsStore for RedisWithFindex {
         None
     }
 
-    async fn migrate(&self, _params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn migrate(
+        &self,
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         unimplemented!("Redis-with-Findex does not support migrate operation");
     }
 
@@ -256,8 +258,8 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<String> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<String> {
         let (uid, db_object) = self
             .prepare_object_for_create(uid, owner, object, attributes, tags)
             .await?;
@@ -275,9 +277,9 @@ impl ObjectsStore for RedisWithFindex {
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Option<ObjectWithMetadata>> {
-        self.objects_db.object_get(uid).await.map(|o| {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+        Ok(self.objects_db.object_get(uid).await.map(|o| {
             o.map(|o| {
                 ObjectWithMetadata::new(
                     uid.to_owned(),
@@ -287,15 +289,15 @@ impl ObjectsStore for RedisWithFindex {
                     o.attributes.unwrap_or_default(),
                 )
             })
-        })
+        })?)
     }
 
     /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
         Ok(self
             .objects_db
             .object_get(uid)
@@ -313,8 +315,8 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         let db_object = self
             .prepare_object_for_update(uid, object, attributes, tags)
             .await?;
@@ -326,14 +328,18 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         uid: &str,
         state: StateEnumeration,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
-    async fn delete(&self, uid: &str, _params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn delete(
+        &self,
+        uid: &str,
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         if let Some(_db_object) = self.objects_db.object_get(uid).await? {
             self.objects_db.object_delete(uid).await?;
         }
@@ -344,8 +350,8 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<String>> {
+        params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<String>> {
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
             match operation {
@@ -393,7 +399,7 @@ impl ObjectsStore for RedisWithFindex {
                 }
             }
         }
-        self.objects_db.atomic(&redis_operations).await
+        Ok(self.objects_db.atomic(&redis_operations).await?)
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -401,8 +407,8 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         uid: &str,
         owner: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<bool> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
@@ -414,8 +420,8 @@ impl ObjectsStore for RedisWithFindex {
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
         let keywords = tags
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
@@ -424,16 +430,17 @@ impl ObjectsStore for RedisWithFindex {
         let res = self
             .findex
             .search(&self.findex_key.to_bytes(), &self.label, keywords)
-            .await?;
+            .await
+            .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
         // we want the intersection of all the locations
         let locations = intersect_all(res.values().cloned());
-        locations
+        Ok(locations
             .into_iter()
             .map(|location| {
                 String::from_utf8(location.to_vec())
                     .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
-            .collect::<DbResult<HashSet<String>>>()
+            .collect::<DbResult<HashSet<String>>>()?)
     }
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -444,8 +451,8 @@ impl ObjectsStore for RedisWithFindex {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags();
@@ -471,7 +478,8 @@ impl ObjectsStore for RedisWithFindex {
         let res = self
             .findex
             .search(&self.findex_key.to_bytes(), &self.label, keywords)
-            .await?;
+            .await
+            .map_err(|e| db_error!(format!("Error while searching for attributes: {e:?}")))?;
         trace!("find: res: {:?}", res);
         // we want the intersection of all the locations
         let locations = intersect_all(res.values().cloned());
@@ -527,8 +535,8 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         let permissions = self
             .permissions_db
             .list_user_permissions(&self.findex_key, user)
@@ -558,11 +566,12 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        self.permissions_db
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
+        Ok(self
+            .permissions_db
             .list_object_permissions(&self.findex_key, uid)
-            .await
+            .await?)
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
@@ -572,8 +581,8 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
                 .add(&self.findex_key, uid, user, *operation)
@@ -589,8 +598,8 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         for operation in &operation_types {
             self.permissions_db
                 .remove(&self.findex_key, uid, user, *operation)
@@ -604,8 +613,8 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<KmipOperation>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions_db
             .get(&self.findex_key, uid, user, no_inherited_access)

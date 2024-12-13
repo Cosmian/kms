@@ -59,6 +59,7 @@ actix-server = { version = "2.5", default-features = false }
 actix-web = { version = "4.9", default-features = false }
 async-trait = "0.1"
 base64 = "0.21"
+bitflags = "2.6"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cloudproof = "3.0"

@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     },
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 
 use crate::{
     core::{operations, KMS},
@@ -23,7 +23,7 @@ pub(crate) async fn locate_user_decryption_keys(
     cover_crypt_policy_attributes_to_revoke: Option<Vec<Attribute>>,
     state: Option<StateEnumeration>,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<Option<Vec<String>>> {
     // Convert the policy attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {

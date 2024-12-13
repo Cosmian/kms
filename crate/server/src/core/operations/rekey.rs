@@ -3,7 +3,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Create, Import, ReKey, ReKeyResponse},
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::{debug, trace};
 
 use crate::{
@@ -17,7 +17,7 @@ pub(crate) async fn rekey(
     kms: &KMS,
     request: ReKey,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
 

@@ -6,7 +6,7 @@ use cosmian_kmip::kmip_2_1::{
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
@@ -15,7 +15,7 @@ pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraStoreParams>,
+    database_params: Option<&SqlCipherSessionParams>,
 ) -> KResult<Operation> {
     Ok(match ttlv.tag.as_str() {
         "Certify" => {

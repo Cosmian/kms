@@ -10,22 +10,20 @@ use cosmian_kmip::kmip_2_1::{
     },
     requests::create_symmetric_key_kmip_object,
 };
+use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, SessionParams};
 use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
     db_bail,
     error::{DbError, DbResult},
-    stores::{ExtraStoreParams, ObjectsStore},
-    AtomicOperation,
 };
 
 pub(crate) async fn tx_and_list<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -97,11 +95,10 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
 }
 
 pub(crate) async fn atomic<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -214,11 +211,10 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
 }
 
 pub(crate) async fn upsert<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -293,11 +289,10 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
 }
 
 pub(crate) async fn crud<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<&(dyn SessionParams + 'static)>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
 

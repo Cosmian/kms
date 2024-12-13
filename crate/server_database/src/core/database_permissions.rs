@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
+use cosmian_kms_interfaces::SessionParams;
 
 use super::Database;
-use crate::{error::DbResult, stores::ExtraStoreParams};
+use crate::error::DbResult;
 
 /// Methods that manipulate permissions
 impl Database {
@@ -15,11 +16,12 @@ impl Database {
     pub async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
-        self.permissions
+        Ok(self
+            .permissions
             .list_user_operations_granted(user, params)
-            .await
+            .await?)
     }
 
     /// List all the KMIP operations granted per `user` on the given object
@@ -27,11 +29,12 @@ impl Database {
     pub async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        self.permissions
+        Ok(self
+            .permissions
             .list_object_operations_granted(uid, params)
-            .await
+            .await?)
     }
 
     /// Grant the ability to `user` to perform the KMIP `operations`
@@ -41,11 +44,12 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> DbResult<()> {
-        self.permissions
+        Ok(self
+            .permissions
             .grant_operations(uid, user, operations, params)
-            .await
+            .await?)
     }
 
     /// Remove the ability to `user` to perform the `operations`
@@ -55,11 +59,12 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> DbResult<()> {
-        self.permissions
+        Ok(self
+            .permissions
             .remove_operations(uid, user, operations, params)
-            .await
+            .await?)
     }
 
     /// List all the operations that have been granted to a user on an object
@@ -71,10 +76,11 @@ impl Database {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&(dyn SessionParams + 'static)>,
     ) -> DbResult<HashSet<KmipOperation>> {
-        self.permissions
+        Ok(self
+            .permissions
             .list_user_operations_on_object(uid, user, no_inherited_access, params)
-            .await
+            .await?)
     }
 }

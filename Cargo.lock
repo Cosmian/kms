@@ -1471,7 +1471,12 @@ name = "cosmian_kms_interfaces"
 version = "4.20.1"
 dependencies = [
  "async-trait",
+ "cosmian_kmip",
+ "num-bigint-dig",
+ "serde",
+ "serde_json",
  "thiserror 2.0.3",
+ "tracing",
  "zeroize",
 ]
 
@@ -1561,7 +1566,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru",
- "num-bigint-dig",
  "num_cpus",
  "rawsql",
  "redis",

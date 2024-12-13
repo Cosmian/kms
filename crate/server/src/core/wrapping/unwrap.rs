@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::wrap::{
     recover_wrapped_key, unwrap_key_block, update_key_block_with_unwrapped_key,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::debug;
 
 use crate::{
@@ -32,7 +32,7 @@ pub(crate) async fn unwrap_key(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<()> {
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("unwrap_key: key wrapping data is missing".to_owned())
@@ -80,7 +80,7 @@ async fn unwrap_using_kms(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     unwrapping_key_uid: &String,
 ) -> KResult<()> {
     // fetch the wrapping key
@@ -172,7 +172,7 @@ async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {

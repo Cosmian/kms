@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use crate::{
@@ -24,7 +24,7 @@ pub(crate) async fn message(
     kms: &KMS,
     request: Message,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<MessageResponse> {
     trace!("Entering message KMIP operation: {request}");
 

@@ -5,7 +5,7 @@ use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::debug;
 
 use crate::{
@@ -24,7 +24,7 @@ impl KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -66,7 +66,7 @@ impl KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -107,7 +107,7 @@ impl KMS {
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<Vec<UserAccessResponse>> {
         let object_id = object_id
             .as_str()
@@ -143,7 +143,7 @@ impl KMS {
     pub(crate) async fn list_owned_objects(
         &self,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
         let list = self.database.find(None, None, owner, true, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
@@ -154,7 +154,7 @@ impl KMS {
     pub(crate) async fn list_access_rights_obtained(
         &self,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<&SqlCipherSessionParams>,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
         let list = self
             .database

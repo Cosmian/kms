@@ -18,7 +18,7 @@ pyo3 = ["dep:pyo3"]
 fips = []
 
 [dependencies]
-bitflags = "2.6"
+bitflags = { workspace = true }
 chrono = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }

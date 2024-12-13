@@ -3,7 +3,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::access_policy_from_attributes;
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_server_database::SqlCipherSessionParams;
 use tracing::trace;
 
 use crate::{core::KMS, result::KResult};
@@ -13,7 +13,7 @@ pub(crate) async fn locate(
     request: Locate,
     state: Option<StateEnumeration>,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<LocateResponse> {
     trace!("Locate request: {}", request);
     // Find all the objects that match the attributes

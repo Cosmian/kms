@@ -11,6 +11,10 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, StateEnumeration},
     KmipOperation,
 };
+use cosmian_kms_interfaces::{
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore, SessionParams,
+};
 use serde_json::Value;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions, PgRow},
@@ -25,10 +29,9 @@ use crate::{
     migrate::do_migration,
     stores::{
         locate_query::{query_from_attributes, PgSqlPlaceholder},
-        store_traits::{ObjectsStore, PermissionsStore},
-        DBObject, ExtraStoreParams, PGSQL_QUERIES,
+        DBObject, PGSQL_QUERIES,
     },
-    AtomicOperation, ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[macro_export]
@@ -45,20 +48,21 @@ macro_rules! get_pgsql_query {
     };
 }
 
-impl TryFrom<&PgRow> for ObjectWithMetadata {
-    type Error = DbError;
-
-    fn try_from(row: &PgRow) -> Result<Self, Self::Error> {
-        let id = row.get::<String, _>(0);
-        let db_object: DBObject = serde_json::from_value(row.get::<Value, _>(1))
-            .context("failed deserializing the object")?;
-        let object = Object::post_fix(db_object.object_type, db_object.object);
-        let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
-            .context("failed deserializing the Attributes")?;
-        let owner = row.get::<String, _>(3);
-        let state = StateEnumeration::try_from(row.get::<String, _>(4))?;
-        Ok(Self::new(id, object, owner, state, attributes))
-    }
+/// Convert a row from the database into an `ObjectWithMetadata`
+/// This function is used to convert the result of a `SELECT` query
+/// into an `ObjectWithMetadata`
+fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
+    let id = row.get::<String, _>(0);
+    let db_object: DBObject = serde_json::from_value(row.get::<Value, _>(1))
+        .context("failed deserializing the object")?;
+    let object = Object::post_fix(db_object.object_type, db_object.object);
+    let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
+        .context("failed deserializing the Attributes")?;
+    let owner = row.get::<String, _>(3);
+    let state = StateEnumeration::try_from(row.get::<String, _>(4))?;
+    Ok(ObjectWithMetadata::new(
+        id, object, owner, state, attributes,
+    ))
 }
 
 #[derive(Clone)]
@@ -111,21 +115,26 @@ impl ObjectsStore for PgPool {
         None
     }
 
-    async fn migrate(&self, _params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn migrate(
+        &self,
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         trace!("Migrate database");
         // Get the context rows
         match sqlx::query(get_pgsql_query!("select-context"))
             .fetch_optional(&self.pool)
-            .await?
+            .await
+            .map_err(|e| db_error!("Failed to fetch the context row from the database: {e}"))?
         {
             None => {
                 trace!("No context row found, migrating from scratch");
-                return migrate_(
+                migrate_(
                     &self.pool,
                     KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
                     "insert-context",
                 )
-                .await;
+                .await?;
+                return Ok(());
             }
             Some(context_row) => {
                 let last_kms_version_run = context_row.get::<String, _>(0);
@@ -141,7 +150,8 @@ impl ObjectsStore for PgPool {
                 );
 
                 if do_migration(&last_kms_version_run, current_kms_version, &state)? {
-                    return migrate_(&self.pool, current_kms_version, "update-context").await;
+                    migrate_(&self.pool, current_kms_version, "update-context").await?;
+                    return Ok(())
                 }
             }
         }
@@ -156,38 +166,48 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<String> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<String> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
         let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                db_bail!("creation of object failed: {e}");
+                return Err(InterfaceError::Db(format!(
+                    "creation of object failed: {e}"
+                )));
             }
         };
-        tx.commit().await?;
+        tx.commit()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to commit the transaction: {e}")))?;
         Ok(uid)
     }
 
     async fn retrieve(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Option<ObjectWithMetadata>> {
-        retrieve_(uid, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+        Ok(retrieve_(uid, &self.pool).await?)
     }
 
     async fn retrieve_tags(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
-        retrieve_tags_(uid, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
+        Ok(retrieve_tags_(uid, &self.pool).await?)
     }
 
     async fn update_object(
@@ -196,17 +216,23 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
-        let mut tx = self.pool.begin().await?;
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
         match update_object_(uid, object, attributes, tags, &mut tx).await {
             Ok(()) => {
-                tx.commit().await?;
+                tx.commit().await.map_err(|e| {
+                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                })?;
                 Ok(())
             }
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                db_bail!("update of object failed: {}", e);
+                Err(InterfaceError::Db(format!("update of object failed: {e}")))
             }
         }
     }
@@ -215,38 +241,60 @@ impl ObjectsStore for PgPool {
         &self,
         uid: &str,
         state: StateEnumeration,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
         match update_state_(uid, state, &mut tx).await {
             Ok(()) => {
-                tx.commit().await?;
+                tx.commit().await.map_err(|e| {
+                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                })?;
                 Ok(())
             }
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                db_bail!("update of the state of object {uid} failed: {e}");
+                Err(InterfaceError::Db(format!(
+                    "update of the state of object {uid} failed: {e}"
+                )))
             }
         }
     }
 
-    async fn delete(&self, uid: &str, _params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn delete(
+        &self,
+        uid: &str,
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
         match delete_(uid, &mut tx).await {
             Ok(()) => {
-                tx.commit().await?;
+                tx.commit().await.map_err(|e| {
+                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                })?;
                 Ok(())
             }
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                db_bail!("delete of object failed: {}", e);
+                Err(InterfaceError::Db(format!("delete of object failed: {e}")))
             }
         }
     }
@@ -255,21 +303,29 @@ impl ObjectsStore for PgPool {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<String>> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<String>> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
         match atomic_(user, operations, &mut tx).await {
             Ok(v) => {
-                tx.commit().await?;
+                tx.commit().await.map_err(|e| {
+                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                })?;
                 Ok(v)
             }
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                Err(e)
+                Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
             }
         }
     }
@@ -278,17 +334,17 @@ impl ObjectsStore for PgPool {
         &self,
         uid: &str,
         owner: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<bool> {
-        is_object_owned_by_(uid, owner, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<bool> {
+        Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
-        list_uids_from_tags_(tags, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<String>> {
+        Ok(list_uids_from_tags_(tags, &self.pool).await?)
     }
 
     async fn find(
@@ -297,16 +353,16 @@ impl ObjectsStore for PgPool {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
-        find_(
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
+        Ok(find_(
             researched_attributes,
             state,
             user,
             user_must_be_owner,
             &self.pool,
         )
-        .await
+        .await?)
     }
 }
 
@@ -315,17 +371,17 @@ impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
-        list_user_granted_access_rights_(user, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+        Ok(list_user_granted_access_rights_(user, &self.pool).await?)
     }
 
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        list_accesses_(uid, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
+        Ok(list_accesses_(uid, &self.pool).await?)
     }
 
     async fn grant_operations(
@@ -333,13 +389,14 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
-
-        insert_access_(uid, user, operation_types, &self.pool).await
+        Ok(insert_access_(uid, user, operation_types, &self.pool).await?)
     }
 
     async fn remove_operations(
@@ -347,13 +404,14 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<()> {
         if is_migration_in_progress_(&self.pool).await? {
-            db_bail!("Migration in progress. Please retry later");
+            return Err(InterfaceError::Db(
+                "Migration in progress. Please retry later".to_owned(),
+            ));
         }
-
-        remove_access_(uid, user, operation_types, &self.pool).await
+        Ok(remove_access_(uid, user, operation_types, &self.pool).await?)
     }
 
     async fn list_user_operations_on_object(
@@ -361,9 +419,9 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<KmipOperation>> {
-        list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await
+        _params: Option<&(dyn SessionParams + 'static)>,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
+        Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
     }
 }
 
@@ -418,7 +476,7 @@ where
         .fetch_optional(executor)
         .await?;
     if let Some(row) = row {
-        return Ok(Some(ObjectWithMetadata::try_from(&row)?));
+        return Ok(Some(pg_row_to_owm(&row)?));
     }
     Ok(None)
 }

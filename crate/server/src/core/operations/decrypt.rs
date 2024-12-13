@@ -25,7 +25,7 @@ use cosmian_kms_crypto::{
     },
     openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_server_database::{ObjectWithMetadata, SqlCipherSessionParams};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -47,7 +47,7 @@ pub(crate) async fn decrypt(
     kms: &KMS,
     request: Decrypt,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<&SqlCipherSessionParams>,
 ) -> KResult<DecryptResponse> {
     trace!("decrypt: {}", serde_json::to_string(&request)?);
     let data = request.data.as_ref().ok_or_else(|| {
