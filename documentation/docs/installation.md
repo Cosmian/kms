@@ -49,10 +49,10 @@
     ```console title="On local machine"
     wget https://package.cosmian.com/cli/0.1.0/macos_arm-release.zip
     unzip macos_arm-release.zip
-    cp /macos_arm-release/release/cosmian /usr/local/bin/
+    cp ./macos_arm-release/release/cosmian /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian
     cosmian --version
-    cp /macos_arm-release/release/cosmian_gui /usr/local/bin/
+    cp ./macos_arm-release/release/cosmian_gui /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_gui
     ```
 
@@ -61,10 +61,10 @@
     ```console title="On local machine"
     wget https://package.cosmian.com/cli/0.1.0/macos_intel-release.zip
     unzip macos_intel-release.zip
-    cp /macos_intel-release/release/cosmian /usr/local/bin/
+    cp ./macos_intel-release/release/cosmian /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian
     cosmian --version
-    cp /macos_intel-release/release/cosmian_gui /usr/local/bin/
+    cp ./macos_intel-release/release/cosmian_gui /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_gui
     ```
 
