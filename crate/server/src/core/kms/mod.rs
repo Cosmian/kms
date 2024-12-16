@@ -2,12 +2,8 @@ mod kmip;
 mod other_kms_methods;
 mod permissions;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::sync::Arc;
 use std::{collections::HashMap, sync::Arc};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use cosmian_kms_interfaces::HSM;
 use cosmian_kms_interfaces::{EncryptionOracle, HsmEncryptionOracle, HsmStore, ObjectsStore, HSM};
 use cosmian_kms_server_database::Database;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
