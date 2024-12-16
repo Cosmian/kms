@@ -25,27 +25,27 @@ lru = { workspace = true }
 num_cpus = "1.16.0"
 rawsql = "0.1"
 redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.8.2", default-features = false, features = [
-    "json",
-    "runtime-tokio-native-tls",
-    "mysql",
-    "postgres",
-    "sqlite",
+  "json",
+  "runtime-tokio-native-tls",
+  "mysql",
+  "postgres",
+  "sqlite",
 ] }
 thiserror = { workspace = true }
 tiny-keccak = "2.0.2"
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
-uuid = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }
 version-compare = "0.2.0"
 zeroize = { workspace = true }
 
@@ -53,4 +53,3 @@ zeroize = { workspace = true }
 cosmian_logger = { workspace = true }
 tempfile = { workspace = true }
 tracing = { workspace = true }
-

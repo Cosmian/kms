@@ -15,13 +15,13 @@ cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p PASSWORD 
 ```
 
 If multiple administrators will be generating key-pairs for users, ensure that each administrator has the appropriate access rights to the imported certificate chain elements:
+
 - the issuer certificate ID (given when importing the Certificate Authority)
 - the issuer private key ID
 - the issuer public key ID
 
 In order to get the issuer private ID and issuer public key ID, run the following command:
 `cosmian kms -- get-attributes -i issuer_ca_certificate`
-
 
 You'll use the ID of the issuer's private key (imported from the certificate chain) to later sign users' public keys and create their certificates.
 

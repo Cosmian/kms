@@ -22,14 +22,14 @@ aes-gcm-siv = "0.11.1"
 argon2 = "0.5"
 base64 = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_logger = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
+cosmian_logger = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { workspace = true }
 pyo3 = { workspace = true, optional = true }

@@ -3,7 +3,8 @@
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/main.yml/badge.svg?branch=main)
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
 
-The **Cosmian KMS** is a high-performance, [**open-source**](https://github.com/Cosmian/kms),
+The **Cosmian KMS** is a high-performance,
+[**open-source**](https://github.com/Cosmian/kms),
 [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
 written in [**Rust**](https://www.rust-lang.org/) that presents some unique features, such as:
 

@@ -1,4 +1,4 @@
-pub mod object_with_metadata;
+pub(crate) mod object_with_metadata;
 mod objects_store;
 mod permissions_store;
 

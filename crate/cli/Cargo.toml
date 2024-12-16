@@ -24,13 +24,13 @@ fips = ["cosmian_kms_client/fips", "cosmian_kms_crypto/fips"]
 [dependencies]
 base64 = { workspace = true }
 clap = { workspace = true, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
 cloudproof = { workspace = true }
 cosmian_config_utils = { workspace = true }
@@ -40,7 +40,7 @@ cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
 jwt-simple = { version = "0.12", default-features = false, features = [
-    "pure-rust",
+  "pure-rust",
 ] }
 leb128 = { workspace = true }
 num-format = { workspace = true }
@@ -80,8 +80,6 @@ assets = [["target/release/ckms", "usr/sbin/", "555"]]
 [package.metadata.deb.variants.fips]
 features = ["fips"]
 
-
-
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------
 
@@ -90,7 +88,7 @@ features = ["fips"]
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-    { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true

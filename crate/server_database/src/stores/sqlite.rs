@@ -54,7 +54,7 @@ macro_rules! get_sqlite_query {
 /// It is used in the `retrieve_` function
 /// # Arguments
 /// * `row` - The row to convert
-/// # Returnså
+/// # Returns
 /// The `ObjectWithMetadata` corresponding to the row
 fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);

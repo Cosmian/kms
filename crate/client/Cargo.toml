@@ -17,11 +17,11 @@ fips = ["cosmian_kmip/fips"]
 
 [dependencies]
 cloudproof = { workspace = true }
-cosmian_http_client = { workspace = true }
 cosmian_config_utils = { workspace = true }
-cosmian_logger = { workspace = true }
+cosmian_http_client = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_access = { path = "../access" }
+cosmian_logger = { workspace = true }
 der = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true, features = ["default", "json", "native-tls"] }

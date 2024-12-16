@@ -24,10 +24,10 @@ cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 pyo3 = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive", "std"] }

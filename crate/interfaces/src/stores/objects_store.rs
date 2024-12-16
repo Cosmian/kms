@@ -12,7 +12,7 @@ use crate::{stores::SessionParams, InterfaceResult, ObjectWithMetadata};
 pub enum AtomicOperation {
     /// Create (uid, object, attributes, tags) - the state will be active
     Create((String, Object, Attributes, HashSet<String>)),
-    // /// Upsert (uid, object, attributes, tags, state) - the state be updated
+    /// Upsert (uid, object, attributes, tags, state) - the state be updated
     Upsert(
         (
             String,
