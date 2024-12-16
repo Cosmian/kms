@@ -1,11 +1,11 @@
-use cosmian_kmip::{
-    crypto::cover_crypt::attributes::access_policy_from_attributes,
-    kmip::{
-        kmip_operations::{Locate, LocateResponse},
-        kmip_types::{StateEnumeration, UniqueIdentifier},
-    },
+use std::sync::Arc;
+
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::{Locate, LocateResponse},
+    kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::access_policy_from_attributes;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{core::KMS, result::KResult};
@@ -15,7 +15,7 @@ pub(crate) async fn locate(
     request: Locate,
     state: Option<StateEnumeration>,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<LocateResponse> {
     trace!("Locate request: {}", request);
     // Find all the objects that match the attributes

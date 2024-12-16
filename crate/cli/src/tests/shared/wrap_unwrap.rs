@@ -10,7 +10,7 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod},
+    cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
     read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 use cosmian_logger::log_init;

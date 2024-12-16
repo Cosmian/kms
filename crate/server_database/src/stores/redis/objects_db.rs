@@ -13,7 +13,7 @@ use cloudproof_findex::{
     Keyword, Location,
 };
 use cosmian_kmip::{
-    kmip::{
+    kmip_2_1::{
         kmip_objects::{Object, ObjectType},
         kmip_types::{Attributes, StateEnumeration},
     },

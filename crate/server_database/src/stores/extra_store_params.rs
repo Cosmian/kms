@@ -1,13 +1,16 @@
-use cosmian_kmip::crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
+use cosmian_kms_interfaces::SessionParams;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-pub struct ExtraStoreParams {
+pub struct SqlCipherSessionParams {
     pub group_id: u128,
     pub key: Secret<AES_256_GCM_KEY_LENGTH>,
 }
 
-impl Serialize for ExtraStoreParams {
+impl Serialize for SqlCipherSessionParams {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -20,7 +23,9 @@ impl Serialize for ExtraStoreParams {
     }
 }
 
-impl<'de> Deserialize<'de> for ExtraStoreParams {
+impl SessionParams for SqlCipherSessionParams {}
+
+impl<'de> Deserialize<'de> for SqlCipherSessionParams {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

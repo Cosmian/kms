@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
-    CryptographicAlgorithm, EncryptedContent, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
+    CryptoAlgorithm, EncryptedContent, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
     HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, HSM,
 };
 use zeroize::Zeroizing;
@@ -129,7 +129,7 @@ impl HSM for Proteccio {
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: CryptographicAlgorithm,
+        algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<EncryptedContent> {
         let slot = self.get_slot(slot_id)?;
@@ -143,7 +143,7 @@ impl HSM for Proteccio {
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: CryptographicAlgorithm,
+        algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;

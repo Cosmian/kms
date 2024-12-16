@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]

@@ -12,7 +12,7 @@ use crate::{
 pub(crate) fn prepare_attributes(
     subcommand: &str,
     requested_attributes: &SetOrDeleteAttributes,
-) -> Vec<std::string::String> {
+) -> Vec<String> {
     let mut args = vec![subcommand.to_owned()];
 
     if let Some(id) = &requested_attributes.id {

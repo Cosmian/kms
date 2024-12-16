@@ -1,7 +1,7 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
-use cosmian_kmip::kmip::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kmip::kmip_2_1::kmip_types::{RevocationReason, StateEnumeration, UniqueIdentifier};
+use cosmian_kms_interfaces::SessionParams;
 
 use super::locate_user_decryption_keys;
 use crate::{
@@ -16,7 +16,7 @@ pub(crate) async fn revoke_user_decryption_keys(
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>, // keys that should be skipped
+    params: Option<Arc<dyn SessionParams>>, // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
     if let Some(ids) = locate_user_decryption_keys(
@@ -25,7 +25,7 @@ pub(crate) async fn revoke_user_decryption_keys(
         None,
         Some(StateEnumeration::Active),
         owner,
-        params,
+        params.clone(),
     )
     .await?
     {
@@ -36,7 +36,7 @@ pub(crate) async fn revoke_user_decryption_keys(
                 compromise_occurrence_date,
                 kms,
                 owner,
-                params,
+                params.clone(),
                 ids_to_skip.clone(),
             )
             .await?;

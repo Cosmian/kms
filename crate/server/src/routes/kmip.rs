@@ -5,11 +5,11 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::info;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 /// Generate KMIP JSON TTLV and send it to the KMIP server
 #[post("/kmip/2_1")]
-pub(crate) async fn kmip(
+pub(crate) async fn kmip_2_1(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMS>>,
@@ -34,7 +34,7 @@ pub(crate) async fn kmip(
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     #[allow(clippy::large_futures)]
-    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params.as_ref()).await?;
+    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params).await?;
     Ok(Json(ttlv))
 }
 
@@ -49,7 +49,7 @@ async fn handle_ttlv(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraStoreParams>,
+    database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
         let req = from_ttlv::<Message>(ttlv)?;

@@ -71,7 +71,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
     );
     let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     match &object.key_block()?.key_value.key_material {
-        cosmian_kms_client::cosmian_kmip::kmip::kmip_data_structures::KeyMaterial::ByteString(
+        cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(
             v,
         ) => {
             assert!(v.is_empty());

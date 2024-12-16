@@ -1,33 +1,29 @@
-use std::{cmp::min, collections::HashSet, default::Default};
+use std::{cmp::min, collections::HashSet, default::Default, sync::Arc};
 
 #[cfg(feature = "fips")]
-use cosmian_kmip::{
-    crypto::{
-        elliptic_curves::{
-            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
-            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-        },
-        rsa::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
-    },
-    kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask},
+use cosmian_kmip::kmip_2_1::extra::fips::{
+    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+    FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+    FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
 };
-use cosmian_kmip::{
-    kmip::{
-        extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
-        kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, KeyFormatType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
-        },
-        KmipOperation,
+#[cfg(feature = "fips")]
+use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
+use cosmian_kmip::kmip_2_1::{
+    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
+    kmip_types::{
+        Attributes, CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        StateEnumeration, UniqueIdentifier,
     },
-    openssl::{
-        kmip_certificate_to_openssl, kmip_private_key_to_openssl, openssl_certificate_to_kmip,
-    },
+    KmipOperation,
 };
-use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_crypto::openssl::{
+    certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
+    kmip_private_key_to_openssl, openssl_certificate_to_kmip,
+    openssl_x509_to_certificate_attributes, x509_extensions,
+};
+use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
@@ -66,7 +62,7 @@ pub(crate) async fn certify(
     kms: &KMS,
     request: Certify,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<CertifyResponse> {
     trace!("Certify: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -77,9 +73,9 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = get_subject(kms, &request, user, params).await?;
+    let subject = get_subject(kms, &request, user, params.clone()).await?;
     trace!("Subject name: {:?}", subject.subject_name());
-    let issuer = get_issuer(&subject, kms, &request, user, params).await?;
+    let issuer = get_issuer(&subject, kms, &request, user, params.clone()).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
@@ -263,7 +259,7 @@ async fn get_subject(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
@@ -332,15 +328,13 @@ async fn get_subject(
                 .to_owned(),
         )
     })?;
-    let subject_name = attributes
-        .certificate_attributes
-        .as_ref()
-        .ok_or_else(|| {
+    let subject_name = certificate_attributes_to_subject_name(
+        attributes.certificate_attributes.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest(
                 "Certify from Subject: the subject name is not found in the attributes".to_owned(),
             )
-        })?
-        .subject_name()?;
+        })?,
+    )?;
 
     // If we have a public key, we can create a certificate from it
     if let Some(public_key) = public_key {
@@ -415,7 +409,7 @@ async fn get_issuer<'a>(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) =
         request
@@ -456,7 +450,7 @@ async fn fetch_object_from_attributes(
     kms: &KMS,
     attributes: &Attributes,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = retrieve_object_for_operation(
@@ -476,7 +470,7 @@ async fn issuer_for_self_signed_certificate<'a>(
     subject: &'a Subject,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {
@@ -517,7 +511,7 @@ async fn issuer_for_self_signed_certificate<'a>(
                 kms,
                 public_key.attributes(),
                 user,
-                params,
+                params.clone(),
             )
             .await?
             .ok_or_else(|| {
@@ -533,7 +527,7 @@ async fn issuer_for_self_signed_certificate<'a>(
                 kms,
                 public_key.attributes(),
                 user,
-                params,
+                params.clone(),
             )
             .await?;
             match certificate {
@@ -669,7 +663,7 @@ fn build_and_sign_certificate(
     attributes.key_format_type = Some(KeyFormatType::X509);
 
     // Add certificate attributes
-    let certificate_attributes = CertificateAttributes::from(&x509);
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
     attributes.certificate_attributes = Some(Box::new(certificate_attributes));
 
     Ok((

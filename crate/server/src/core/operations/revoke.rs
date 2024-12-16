@@ -1,7 +1,7 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, Revoke, RevokeResponse},
     kmip_types::{
@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     },
     KmipOperation,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{
@@ -28,7 +28,7 @@ pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<RevokeResponse> {
     // there must be an identifier
     let unique_identifier = request
@@ -74,11 +74,11 @@ pub(crate) async fn recursively_revoke_key(
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Revoke")?;
 
@@ -88,10 +88,14 @@ pub(crate) async fn recursively_revoke_key(
         // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
         if let Some(prefix) = has_prefix(&uid) {
             // ensure user can revoke
-            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+            if !kms
+                .database
+                .is_object_owned_by(&uid, user, params.clone())
+                .await?
+            {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params)
+                    .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops.iter().any(|p| KmipOperation::Revoke == *p) {
                     continue
@@ -99,7 +103,7 @@ pub(crate) async fn recursively_revoke_key(
             }
             if kms
                 .database
-                .update_state(&uid, StateEnumeration::Deactivated, params)
+                .update_state(&uid, StateEnumeration::Deactivated, params.clone())
                 .await
                 .is_ok()
             {
@@ -115,7 +119,7 @@ pub(crate) async fn recursively_revoke_key(
             )));
         }
         //retrieve the object
-        let Some(owm) = kms.database.retrieve_object(&uid, params).await? else {
+        let Some(owm) = kms.database.retrieve_object(&uid, params.clone()).await? else {
             continue
         };
 
@@ -135,7 +139,7 @@ pub(crate) async fn recursively_revoke_key(
         if user != owm.owner() {
             let permissions = kms
                 .database
-                .list_user_operations_on_object(owm.id(), user, false, params)
+                .list_user_operations_on_object(owm.id(), user, false, params.clone())
                 .await?;
             if !permissions.contains(&KmipOperation::Revoke) {
                 continue
@@ -152,7 +156,7 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params,
+                    params.clone(),
                 )
                 .await?;
             }
@@ -167,7 +171,7 @@ pub(crate) async fn recursively_revoke_key(
                         compromise_occurrence_date,
                         kms,
                         user,
-                        params,
+                        params.clone(),
                         ids_to_skip.clone(),
                     )
                     .await?;
@@ -186,7 +190,7 @@ pub(crate) async fn recursively_revoke_key(
                             compromise_occurrence_date,
                             kms,
                             user,
-                            params,
+                            params.clone(),
                             ids_to_skip.clone(),
                         )
                         .await?;
@@ -198,7 +202,7 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params,
+                    params.clone(),
                 )
                 .await?;
             }
@@ -219,7 +223,7 @@ pub(crate) async fn recursively_revoke_key(
                             compromise_occurrence_date,
                             kms,
                             user,
-                            params,
+                            params.clone(),
                             ids_to_skip.clone(),
                         )
                         .await?;
@@ -231,7 +235,7 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params,
+                    params.clone(),
                 )
                 .await?;
             }
@@ -264,7 +268,7 @@ async fn revoke_key_core(
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     let state = match revocation_reason {
         RevocationReason::Enumeration(e) => match e {

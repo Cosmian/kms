@@ -2,7 +2,7 @@ use std::io;
 
 use cosmian_http_client::HttpClientError;
 use cosmian_kmip::{
-    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
 use thiserror::Error;
@@ -96,10 +96,9 @@ impl From<KmipError> for KmsClientError {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
             KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -108,6 +107,13 @@ impl From<KmipError> for KmsClientError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::Deserialization(e) | KmipError::Serialization(e) => {
+                Self::KmipNotSupported(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipNotSupported(
+                ErrorReason::Codec_Error,
+                format!("Deserialization: invalid size: {actual}, expected: {expected}"),
+            ),
         }
     }
 }

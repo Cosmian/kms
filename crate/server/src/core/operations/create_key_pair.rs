@@ -1,25 +1,23 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
+    kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
+};
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::operation::{
+use cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_x25519_key_pair, create_x448_key_pair,
 };
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::master_keys::create_master_keypair,
-        elliptic_curves::operation::{
-            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
-        },
-        rsa::operation::create_rsa_key_pair,
-        KeyPair,
+use cosmian_kms_crypto::crypto::{
+    cover_crypt::master_keys::create_master_keypair,
+    elliptic_curves::operation::{
+        create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
     },
-    kmip::{
-        kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
-        kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
-    },
+    rsa::operation::create_rsa_key_pair,
+    KeyPair,
 };
-use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
+use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -31,7 +29,7 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<CreateKeyPairResponse> {
     trace!("Create key pair: {}", serde_json::to_string(&request)?);
 

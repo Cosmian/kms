@@ -2,11 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::generic::kmip_requests::build_decryption_request,
-        kmip::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
-    },
-    kmip::kmip_types::CryptographicParameters,
+    cosmian_kmip::kmip_2_1::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
+    kmip_2_1::{kmip_types::CryptographicParameters, requests::decrypt_request},
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data, KmsClient,
 };
@@ -73,7 +70,7 @@ impl DecryptAction {
         };
 
         // Create the kmip query
-        let decrypt_request = build_decryption_request(
+        let decrypt_request = decrypt_request(
             &id,
             None,
             data,

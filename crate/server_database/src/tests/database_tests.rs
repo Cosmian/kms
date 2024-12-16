@@ -1,31 +1,29 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::kmip_types::{
+use cosmian_kmip::kmip_2_1::{
+    kmip_types::{
         CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     },
+    requests::create_symmetric_key_kmip_object,
 };
+use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, SessionParams};
 use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
     db_bail,
     error::{DbError, DbResult},
-    stores::{ExtraStoreParams, ObjectsStore},
-    AtomicOperation,
 };
 
 pub(crate) async fn tx_and_list<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -65,9 +63,9 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
             HashSet::new(),
         )),
     ];
-    db.atomic(owner, &operations, db_params).await?;
+    db.atomic(owner, &operations, db_params.clone()).await?;
 
-    let list = db.find(None, None, owner, true, db_params).await?;
+    let list = db.find(None, None, owner, true, db_params.clone()).await?;
     match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_1, uid_);
@@ -83,10 +81,10 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
         None => db_bail!("The object 2, uid_2 should be in the list"),
     }
 
-    db.delete(&uid_1, db_params).await?;
-    db.delete(&uid_2, db_params).await?;
+    db.delete(&uid_1, db_params.clone()).await?;
+    db.delete(&uid_2, db_params.clone()).await?;
 
-    if db.retrieve(&uid_1, db_params).await?.is_some() {
+    if db.retrieve(&uid_1, db_params.clone()).await?.is_some() {
         db_bail!("The object 1 should have been deleted");
     }
     if db.retrieve(&uid_2, db_params).await?.is_some() {
@@ -97,11 +95,10 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
 }
 
 pub(crate) async fn atomic<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -144,11 +141,11 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
                 HashSet::new(),
             )),
         ],
-        db_params,
+        db_params.clone(),
     )
     .await?;
-    assert!(db.retrieve(&uid_1, db_params).await?.is_some());
-    assert!(db.retrieve(&uid_2, db_params).await?.is_some());
+    assert!(db.retrieve(&uid_1, db_params.clone()).await?.is_some());
+    assert!(db.retrieve(&uid_2, db_params.clone()).await?.is_some());
 
     // create the uid 1 twice. This should fail
     let atomic = db
@@ -168,7 +165,7 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
                     HashSet::new(),
                 )),
             ],
-            db_params,
+            db_params.clone(),
         )
         .await;
     atomic.unwrap_err();
@@ -192,12 +189,12 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
                 StateEnumeration::Deactivated,
             )),
         ],
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     assert_eq!(
-        db.retrieve(&uid_1, db_params)
+        db.retrieve(&uid_1, db_params.clone())
             .await?
             .expect("uid_1 should be in the db")
             .state(),
@@ -214,11 +211,10 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
 }
 
 pub(crate) async fn upsert<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
@@ -241,12 +237,12 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     let owm = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
     assert_eq!(StateEnumeration::Active, owm.state());
@@ -268,12 +264,12 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
             Some(HashSet::new()),
             StateEnumeration::Deactivated,
         ))],
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     let owm = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
     assert_eq!(StateEnumeration::Deactivated, owm.state());
@@ -286,18 +282,17 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
         LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
-    db.delete(&uid, db_params).await?;
+    db.delete(&uid, db_params.clone()).await?;
     assert!(db.retrieve(&uid, db_params).await?.is_none());
 
     Ok(())
 }
 
 pub(crate) async fn crud<DB: ObjectsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
 
@@ -305,7 +300,7 @@ pub(crate) async fn crud<DB: ObjectsStore>(
 
     // test non-existent row (with very high probability)
     if db
-        .retrieve(&Uuid::new_v4().to_string(), db_params)
+        .retrieve(&Uuid::new_v4().to_string(), db_params.clone())
         .await?
         .is_some()
     {
@@ -330,13 +325,13 @@ pub(crate) async fn crud<DB: ObjectsStore>(
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
-            db_params,
+            db_params.clone(),
         )
         .await?;
     assert_eq!(&uid, &uid_);
 
     let obj = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
     assert_eq!(StateEnumeration::Active, obj.state());
@@ -353,12 +348,12 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         &symmetric_key,
         symmetric_key.attributes()?,
         None,
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     let obj = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
     assert_eq!(StateEnumeration::Active, obj.state());
@@ -372,17 +367,17 @@ pub(crate) async fn crud<DB: ObjectsStore>(
         LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
-    db.update_state(&uid, StateEnumeration::Deactivated, db_params)
+    db.update_state(&uid, StateEnumeration::Deactivated, db_params.clone())
         .await?;
 
     let obj = db
-        .retrieve(&uid, db_params)
+        .retrieve(&uid, db_params.clone())
         .await?
         .expect("uid should be in the db");
     assert_eq!(StateEnumeration::Deactivated, obj.state());
     assert!(&symmetric_key == obj.object());
 
-    db.delete(&uid, db_params).await?;
+    db.delete(&uid, db_params.clone()).await?;
 
     if db.retrieve(&uid, db_params).await?.is_some() {
         db_bail!("The object should have been deleted");

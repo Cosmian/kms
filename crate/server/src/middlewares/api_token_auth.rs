@@ -8,7 +8,7 @@ use actix_web::{
     Error, HttpResponse,
 };
 use base64::Engine;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
 };
 use tracing::{debug, error, trace};

@@ -11,7 +11,7 @@ cargo build --bin ckms
 
 ## Usage
 
-[Usage](../../documentation/docs/cli/cli.md)
+[Usage](https://docs.cosmian.com/cosmian_cli/)
 
 ## Testing
 

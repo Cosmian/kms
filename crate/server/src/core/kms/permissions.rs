@@ -1,11 +1,14 @@
-use std::collections::{BTreeSet, HashSet};
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+};
 
 use actix_web::{HttpMessage, HttpRequest};
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_interfaces::SessionParams;
 use tracing::debug;
 
 use crate::{
@@ -24,7 +27,7 @@ impl KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -34,7 +37,11 @@ impl KMS {
             .context("unique_identifier is not a string")?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if !self.database.is_object_owned_by(uid, owner, params).await? {
+        if !self
+            .database
+            .is_object_owned_by(uid, owner, params.clone())
+            .await?
+        {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
@@ -66,7 +73,7 @@ impl KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -76,7 +83,11 @@ impl KMS {
             .context("unique_identifier is not a string")?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if !self.database.is_object_owned_by(uid, owner, params).await? {
+        if !self
+            .database
+            .is_object_owned_by(uid, owner, params.clone())
+            .await?
+        {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
@@ -107,7 +118,7 @@ impl KMS {
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<Vec<UserAccessResponse>> {
         let object_id = object_id
             .as_str()
@@ -116,7 +127,7 @@ impl KMS {
         // only the owner can list the permission of an object
         if !self
             .database
-            .is_object_owned_by(object_id, owner, params)
+            .is_object_owned_by(object_id, owner, params.clone())
             .await?
         {
             kms_bail!(KmsError::Unauthorized(format!(
@@ -143,7 +154,7 @@ impl KMS {
     pub(crate) async fn list_owned_objects(
         &self,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
         let list = self.database.find(None, None, owner, true, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
@@ -154,7 +165,7 @@ impl KMS {
     pub(crate) async fn list_access_rights_obtained(
         &self,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
         let list = self
             .database

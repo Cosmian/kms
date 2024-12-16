@@ -29,15 +29,13 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
-        kmip_types::{
-            Attribute, AttributeReference, CryptographicAlgorithm, Link, LinkType,
-            LinkedObjectIdentifier, Tag, UniqueIdentifier,
-        },
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
+    kmip_types::{
+        Attribute, AttributeReference, CryptographicAlgorithm, Link, LinkType,
+        LinkedObjectIdentifier, Tag, UniqueIdentifier,
     },
+    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;

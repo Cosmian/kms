@@ -6,8 +6,7 @@ use async_trait::async_trait;
 use zeroize::Zeroizing;
 
 use crate::{
-    encryption_oracle::EncryptedContent, CryptographicAlgorithm, InterfaceResult, KeyMetadata,
-    KeyType,
+    encryption_oracle::EncryptedContent, CryptoAlgorithm, InterfaceResult, KeyMetadata, KeyType,
 };
 
 /// Supported key algorithms
@@ -175,7 +174,7 @@ pub trait HSM: Send + Sync {
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: CryptographicAlgorithm,
+        algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<EncryptedContent>;
 
@@ -191,7 +190,7 @@ pub trait HSM: Send + Sync {
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: CryptographicAlgorithm,
+        algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
 

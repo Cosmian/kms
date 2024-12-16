@@ -1,7 +1,7 @@
 use std::{ptr, sync::Arc};
 
 use cosmian_kms_interfaces::{
-    CryptographicAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
+    CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
@@ -19,12 +19,12 @@ pub enum ProteccioEncryptionAlgorithm {
     RsaOaep,
 }
 
-impl From<CryptographicAlgorithm> for ProteccioEncryptionAlgorithm {
-    fn from(algorithm: CryptographicAlgorithm) -> Self {
+impl From<CryptoAlgorithm> for ProteccioEncryptionAlgorithm {
+    fn from(algorithm: CryptoAlgorithm) -> Self {
         match algorithm {
-            CryptographicAlgorithm::AesGcm => ProteccioEncryptionAlgorithm::AesGcm,
-            CryptographicAlgorithm::RsaPkcsV15 => ProteccioEncryptionAlgorithm::RsaPkcsV15,
-            CryptographicAlgorithm::RsaOaep => ProteccioEncryptionAlgorithm::RsaOaep,
+            CryptoAlgorithm::AesGcm => ProteccioEncryptionAlgorithm::AesGcm,
+            CryptoAlgorithm::RsaPkcsV15 => ProteccioEncryptionAlgorithm::RsaPkcsV15,
+            CryptoAlgorithm::RsaOaep => ProteccioEncryptionAlgorithm::RsaOaep,
         }
     }
 }

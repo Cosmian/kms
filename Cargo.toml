@@ -4,6 +4,7 @@ members = [
   "crate/access",
   "crate/cli",
   "crate/client",
+  "crate/crypto",
   "crate/interfaces",
   "crate/kmip",
   "crate/pyo3",
@@ -25,9 +26,9 @@ version = "4.20.1"
 edition = "2021"
 rust-version = "1.71.0"
 authors = [
-    "Bruno Grieder <bruno.grieder@cosmian.com>",
-    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
-    "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
+  "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -58,27 +59,28 @@ actix-server = { version = "2.5", default-features = false }
 actix-web = { version = "4.9", default-features = false }
 async-trait = "0.1"
 base64 = "0.21"
+bitflags = "2.6"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cloudproof = "3.0"
+cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
 der = { version = "0.7", default-features = false }
-env_logger = "0.11"
 hex = { version = "0.4", default-features = false }
+lazy_static = "1.5"
 leb128 = "0.2"
 log = { version = "0.4", default-features = false }
 lru = "0.12.5"
-native-tls = "0.2"
 num_cpus = "1.16"
 num-format = "0.4"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
 pem = "3.0"
 pyo3 = { version = "0.20", default-features = false }
+rand = "0.8"
 reqwest = { version = "0.11", default-features = false }
-rustls = "0.21"
 serde = "1.0"
 serde_json = "1.0"
 sha3 = { version = "0.10", default-features = false }
