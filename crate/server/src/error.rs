@@ -10,7 +10,6 @@ use cosmian_kmip::{
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
 use cosmian_kms_server_database::DbError;
-use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
@@ -157,12 +156,6 @@ impl From<std::num::TryFromIntError> for KmsError {
     }
 }
 
-impl From<sqlx::Error> for KmsError {
-    fn from(e: sqlx::Error) -> Self {
-        Self::Database(e.to_string())
-    }
-}
-
 impl From<std::io::Error> for KmsError {
     fn from(e: std::io::Error) -> Self {
         Self::ServerError(e.to_string())
@@ -236,18 +229,6 @@ impl From<KmipError> for KmsError {
 impl From<SendError<ServerHandle>> for KmsError {
     fn from(e: SendError<ServerHandle>) -> Self {
         Self::ServerError(format!("Failed to send the server handle: {e}"))
-    }
-}
-
-impl From<redis::RedisError> for KmsError {
-    fn from(err: redis::RedisError) -> Self {
-        Self::Redis(err.to_string())
-    }
-}
-
-impl From<KmsError> for redis::RedisError {
-    fn from(val: KmsError) -> Self {
-        Self::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 

@@ -12,17 +12,17 @@ description = "Crate containing the database for the Cosmian KMS server and the 
 doctest = false
 
 [dependencies]
-async-trait = "0.1"
+async-trait = { workspace = true }
 clap = { workspace = true, features = ["std", "cargo"] }
 cloudproof = { workspace = true }
-cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+cloudproof_findex = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }
 hex = { workspace = true }
-lazy_static = "1.5"
+lazy_static = { workspace = true }
 lru = { workspace = true }
-num_cpus = "1.16.0"
+num_cpus = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.23", features = [
   "aio",
