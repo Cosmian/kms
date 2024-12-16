@@ -26,6 +26,7 @@ mod import_utils;
 mod kms_rest_client;
 
 pub mod reexport {
+    pub use cosmian_config_utils;
     pub use cosmian_http_client;
     pub use cosmian_kmip;
     pub use cosmian_kms_access;

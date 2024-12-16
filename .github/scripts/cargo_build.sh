@@ -115,7 +115,7 @@ else
 fi
 
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true
-rm -f /tmp/*.json
+rm -f /tmp/*.toml
 
 export RUST_LOG="cosmian_kms_cli=debug,cosmian_kms_server=debug"
 
