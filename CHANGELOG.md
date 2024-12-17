@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2024-12-17
+
+### 🐛 Bug Fixes
+
+- Save cli configuration if login/logout have been called (#4)
+
+### 📚 Documentation
+
+- Fix typo
+
 ## [0.1.0] - 2024-12-04
 
 ### 🚀 Features

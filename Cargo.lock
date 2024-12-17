@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_gui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "cosmian_cli",
