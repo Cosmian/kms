@@ -19,12 +19,13 @@ pub enum FindexActions {
 
 impl FindexActions {
     /// Combine Findex with KMS encryption
+    ///
     /// # Errors
     /// Returns an error if the action fails
     #[allow(clippy::future_not_send)]
     pub async fn run(
         &self,
-        findex_rest_client: FindexRestClient,
+        findex_rest_client: &mut FindexRestClient,
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<()> {
         match self {

@@ -21,7 +21,7 @@ pub struct DeleteDatasetAction {
 
 impl DeleteDatasetAction {
     #[allow(clippy::future_not_send, clippy::print_stdout)]
-    pub(crate) async fn run(&self, findex_rest_client: FindexRestClient) -> CosmianResult<()> {
+    pub(crate) async fn run(&self, findex_rest_client: &FindexRestClient) -> CosmianResult<()> {
         let uuids = Uuids::from(self.uuid.clone());
         findex_rest_client
             .delete_entries(&self.index_id, &uuids)

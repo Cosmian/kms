@@ -17,10 +17,10 @@ test = false
 fips = ["cosmian_cli/fips"]
 
 [dependencies]
-clap = "4.4"
+clap = "4.5"
 cosmian_cli = { path = "../cli" }
 klask = { git = "https://github.com/Cosmian/klask.git" }
-tokio = { version = "1.34", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.5", features = ["winnt", "winuser"] }
+winapi = { version = "0.3.9", features = ["winnt", "winuser"] }
