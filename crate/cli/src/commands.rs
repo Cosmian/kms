@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_config_utils::ConfigUtils;
-use cosmian_findex_cli::reexports::cosmian_findex_client::FindexRestClient;
+use cosmian_findex_cli::{CoreFindexActions, reexports::cosmian_findex_client::FindexRestClient};
 use cosmian_kms_cli::{KmsActions, reexport::cosmian_kms_client::KmsClient};
 use cosmian_logger::log_init;
 use tracing::{info, trace};
@@ -19,10 +19,10 @@ use crate::{
 pub struct Cli {
     /// Configuration file location
     ///
-    /// This is an alternative to the env variable `KMS_CLI_CONF`.
-    /// Takes precedence over `KMS_CLI_CONF` env variable.
-    #[arg(short, long)]
-    conf: Option<PathBuf>,
+    /// This is an alternative to the env variable `COSMIAN_CLI_CONF_PATH`.
+    /// Takes precedence over `COSMIAN_CLI_CONF_PATH` env variable.
+    #[arg(short, env = "COSMIAN_CLI_CONF_PATH", long)]
+    conf_path: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: CliCommands,
@@ -36,12 +36,12 @@ pub struct Cli {
     /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
     /// running an invalid or insecure SSL certificate
     #[arg(long)]
-    pub kms_accept_invalid_certs: Option<bool>,
+    pub kms_accept_invalid_certs: bool,
 
     /// Output the KMS JSON KMIP request and response.
     /// This is useful to understand JSON POST requests and responses
     /// required to programmatically call the KMS on the `/kmip/2_1` endpoint
-    #[arg(long, default_value = "false")]
+    #[arg(long)]
     pub kms_print_json: bool,
 
     /// The URL of the Findex server
@@ -53,7 +53,7 @@ pub struct Cli {
     /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
     /// running an invalid or insecure SSL certificate
     #[arg(long)]
-    pub findex_accept_invalid_certs: Option<bool>,
+    pub findex_accept_invalid_certs: bool,
 }
 
 #[derive(Subcommand)]
@@ -84,65 +84,74 @@ pub enum CliCommands {
 /// - The command-line arguments cannot be parsed.
 /// - The configuration file cannot be located or loaded.
 /// - Any of the subcommands fail during their execution.
-#[allow(clippy::future_not_send)]
+#[allow(clippy::future_not_send, clippy::cognitive_complexity)]
 pub async fn cosmian_main() -> CosmianResult<()> {
     log_init(None);
     info!("Starting Cosmian CLI");
     let cli = Cli::parse();
 
-    let conf_path = ClientConf::location(cli.conf)?;
-    let mut conf = ClientConf::from_toml(&conf_path)?;
+    let conf_path = ClientConf::location(cli.conf_path)?;
+    let mut config = ClientConf::from_toml(&conf_path)?;
 
-    // Override the configuration with the CLI arguments
-    let mut has_been_overridden = false;
+    // Handle KMS configuration
     if let Some(url) = cli.kms_url.clone() {
-        conf.kms_config.http_config.server_url = url;
-        has_been_overridden = true;
+        config.kms_config.http_config.server_url = url;
     }
-    if let Some(accept_invalid_certs) = cli.kms_accept_invalid_certs {
-        conf.kms_config.http_config.accept_invalid_certs = accept_invalid_certs;
-        has_been_overridden = true;
+    if cli.kms_accept_invalid_certs {
+        config.kms_config.http_config.accept_invalid_certs = true;
     }
-    if let Some(url) = cli.findex_url.clone() {
-        if let Some(findex_conf) = conf.findex_config.as_mut() {
-            findex_conf.http_config.server_url = url;
-            has_been_overridden = true;
+    config.kms_config.print_json = Some(cli.kms_print_json);
+
+    // Handle Findex server configuration
+    if let Some(findex_config) = config.findex_config.as_mut() {
+        if let Some(url) = cli.findex_url.clone() {
+            findex_config.http_config.server_url = url;
+        }
+        if cli.findex_accept_invalid_certs {
+            findex_config.http_config.accept_invalid_certs = true;
         }
     }
-    if let Some(accept_invalid_certs) = cli.findex_accept_invalid_certs {
-        if let Some(findex_conf) = conf.findex_config.as_mut() {
-            findex_conf.http_config.accept_invalid_certs = accept_invalid_certs;
-            has_been_overridden = true;
-        }
-    }
-    conf.kms_config.print_json = Some(cli.kms_print_json);
-    if has_been_overridden {
-        conf.to_toml(&conf_path)?;
-    }
 
-    trace!("Configuration: {conf:?}");
+    trace!("Configuration: {config:?}");
 
-    // Instantiate the KMS and Findex clients
-    let kms_rest_client = KmsClient::new(conf.kms_config)?;
+    // Instantiate the KMS client
+    let mut kms_rest_client = KmsClient::new(config.kms_config.clone())?;
 
-    match cli.command {
+    match &cli.command {
         CliCommands::Markdown(action) => {
             let command = <Cli as CommandFactory>::command();
             action.process(&command)?;
             return Ok(())
         }
         CliCommands::Kms(kms_actions) => {
-            kms_actions.process(&kms_rest_client).await?;
+            kms_actions.process(&mut kms_rest_client).await?;
+            config.kms_config = kms_rest_client.config.clone();
         }
         CliCommands::FindexServer(findex_actions) => {
-            let findex_config = conf.findex_config.ok_or_else(|| {
+            let findex_config = config.findex_config.as_ref().ok_or_else(|| {
                 cli_error!("Findex server configuration is missing in the configuration file")
             })?;
-            let findex_rest_client = FindexRestClient::new(findex_config)?;
+            let mut findex_rest_client = FindexRestClient::new(findex_config.clone())?;
             findex_actions
-                .run(findex_rest_client, &kms_rest_client)
+                .run(&mut findex_rest_client, &kms_rest_client)
                 .await?;
+            config.findex_config = Some(findex_rest_client.config.clone());
         }
+    }
+
+    // Save the configuration
+    match cli.command {
+        CliCommands::Kms(KmsActions::Login(_) | KmsActions::Logout(_)) => {
+            config.to_toml(&conf_path)?;
+            info!("Saving configuration to: {conf_path:?}");
+        }
+        CliCommands::FindexServer(FindexActions::Findex(
+            CoreFindexActions::Login(_) | CoreFindexActions::Logout(_),
+        )) => {
+            config.to_toml(&conf_path)?;
+            info!("Saving configuration to: {conf_path:?}");
+        }
+        _ => {}
     }
 
     Ok(())

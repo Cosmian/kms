@@ -71,23 +71,22 @@ impl SearchAndDecryptAction {
     #[allow(clippy::future_not_send, clippy::print_stdout)]
     pub(crate) async fn run(
         &self,
-        findex_rest_client: FindexRestClient,
+        findex_rest_client: &FindexRestClient,
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<()> {
-        let results =
-            instantiate_findex(findex_rest_client.clone(), &self.findex_parameters.index_id)
-                .await?
-                .search(
-                    &self.findex_parameters.user_key()?,
-                    &self.findex_parameters.label(),
-                    self.keyword
-                        .clone()
-                        .into_iter()
-                        .map(|word| Keyword::from(word.as_bytes()))
-                        .collect::<Keywords>(),
-                    &|_| async move { Ok(false) },
-                )
-                .await?;
+        let results = instantiate_findex(findex_rest_client, &self.findex_parameters.index_id)
+            .await?
+            .search(
+                &self.findex_parameters.user_key()?,
+                &self.findex_parameters.label(),
+                self.keyword
+                    .clone()
+                    .into_iter()
+                    .map(|word| Keyword::from(word.as_bytes()))
+                    .collect::<Keywords>(),
+                &|_| async move { Ok(false) },
+            )
+            .await?;
         trace!("Index search results: {results}");
 
         let mut uuids = Vec::new();

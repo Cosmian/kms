@@ -6,7 +6,7 @@ CLI used to manage the Cosmian KMS.
 ### Usage
 `cosmian <subcommand> [options]`
 ### Arguments
-`--conf [-c] <CONF>` Configuration file location
+`--conf-path [-c] <CONF_PATH>` Configuration file location
 
 `--kms-url <KMS_URL>` The URL of the KMS
 
@@ -16,7 +16,7 @@ Possible values:  `"true", "false"`
 
 `--kms-print-json <KMS_PRINT_JSON>` Output the KMS JSON KMIP request and response. This is useful to understand JSON POST requests and responses required to programmatically call the KMS on the `/kmip/2_1` endpoint
 
-Possible values:  `"true", "false"` [default: `"false"`]
+Possible values:  `"true", "false"`
 
 `--findex-url <FINDEX_URL>` The URL of the Findex server
 
@@ -200,13 +200,11 @@ Get the KMIP object attributes and tags.
 To specify multiple attributes, use the option multiple times.
 If not specified, all possible attributes are returned.
 
-Possible values:  `"ActivationDate", "ApplicationData", "ApplicationNamespace", "ApplicationSpecific_Information", "ArchiveDate", "AsynchronousCorrelation_Value", "AsynchronousIndicator", "Attribute", "AttributeName", "AttributeValue", "Authentication", "BatchCount", "BatchErrorContinuationOption", "BatchItem", "BatchOrderOption", "BlockCipherMode", "CancellationResult", "Certificate", "CertificateRequest", "CertificateRequestType", "CertificateType", "CertificateValue", "CompromiseDate", "CompromiseOccurrenceDate", "ContactInformation", "Credential", "CredentialType", "CredentialValue", "CriticalityIndicator", "CRTCoefficient", "CryptographicAlgorithm", "CryptographicDomainParameters", "CryptographicLength", "CryptographicParameters", "CryptographicUsageMask", "D", "DeactivationDate", "DerivationData", "DerivationMethod", "DerivationParameters", "DestroyDate", "Digest", "DigestValue", "EncryptionKeyInformation", "G", "HashingAlgorithm", "InitialDate", "InitializationVector", "IterationCount", "IVCounterNonce", "J", "Key", "KeyBlock", "KeyCompressionType", "KeyFormatType", "KeyMaterial", "KeyPartIdentifier", "KeyValue", "KeyWrappingData", "KeyWrappingSpecification", "LastChangeDate", "LeaseTime", "Link", "LinkType", "LinkedObjectIdentifier", "MACSignature", "MACSignatureKey_Information", "MaximumItems", "MaximumResponseSize", "MessageExtension", "Modulus", "Name", "NameType", "NameValue", "ObjectGroup", "ObjectType", "Offset", "OpaqueDataType", "OpaqueDataValue", "OpaqueObject", "Operation", "P", "PaddingMethod", "PrimeExponentP", "PrimeExponentQ", "PrimeFieldSize", "PrivateExponent", "PrivateKey", "PrivateKeyUniqueIdentifier", "ProcessStartDate", "ProtectStopDate", "ProtocolVersion", "ProtocolVersionMajor", "ProtocolVersionMinor", "PublicExponent", "PublicKey", "PublicKeyUniqueIdentifier", "PutFunction", "Q", "QString", "Qlength", "QueryFunction", "RecommendedCurve", "ReplacedUniqueIdentifier", "RequestHeader", "RequestMessage", "RequestPayload", "ResponseHeader", "ResponseMessage", "ResponsePayload", "ResultMessage", "ResultReason", "ResultStatus", "RevocationMessage", "RevocationReason", "RevocationReasonCode", "KeyRoleType", "Salt", "SecretData", "SecretDataType", "ServerInformation", "SplitKey", "SplitKeyMethod", "SplitKeyParts", "SplitKeyThreshold", "State", "StorageStatusMask", "SymmetricKey", "TimeStamp", "UniqueBatchItemID", "UniqueIdentifier", "UsageLimits", "UsageLimitsCount", "UsageLimitsTotal", "UsageLimitsUnit", "Username", "ValidityDate", "ValidityIndicator", "VendorExtension", "VendorIdentification", "WrappingMethod", "X", "Y", "Password", "DeviceIdentifier", "EncodingOption", "ExtensionInformation", "ExtensionName", "ExtensionTag", "ExtensionType", "Fresh", "MachineIdentifier", "MediaIdentifier", "NetworkIdentifier", "ObjectGroupMember", "CertificateLength", "DigitalSignatureAlgorithm", "CertificateSerialNumber", "DeviceSerialNumber", "IssuerAlternativeName", "IssuerDistinguishedName", "SubjectAlternativeName", "SubjectDistinguishedName", "X509CertificateIdentifier", "X509CertificateIssuer", "X509CertificateSubject", "KeyValueLocation", "KeyValueLocationValue", "KeyValueLocationType", "KeyValuePresent", "OriginalCreationDate", "PGPKey", "PGPKeyVersion", "AlternativeName", "AlternativeNameValue", "AlternativeNameType", "Data", "SignatureData", "DataLength", "RandomIV", "MACData", "AttestationType", "Nonce", "NonceID", "NonceValue", "AttestationMeasurement", "AttestationAssertion", "IVLength", "TagLength", "FixedFieldLength", "CounterLength", "InitialCounterValue", "InvocationFieldLength", "AttestationCapableIndicator", "OffsetItems", "LocatedItems", "CorrelationValue", "InitIndicator", "FinalIndicator", "RNGParameters", "RNGAlgorithm", "DRBGAlgorithm", "FIPS186Variation", "PredictionResistance", "RandomNumberGenerator", "ValidationInformation", "ValidationAuthorityType", "ValidationAuthorityCountry", "ValidationAuthorityURI", "ValidationVersionMajor", "ValidationVersionMinor", "ValidationType", "ValidationLevel", "ValidationCertificateIdentifier", "ValidationCertificateURI", "ValidationVendorURI", "ValidationProfile", "ProfileInformation", "ProfileName", "ServerURI", "ServerPort", "StreamingCapability", "AsynchronousCapability", "AttestationCapability", "UnwrapMode", "DestroyAction", "ShreddingAlgorithm", "RNGMode", "ClientRegistrationMethod", "CapabilityInformation", "KeyWrapType", "BatchUndoCapability", "BatchContinueCapability", "PKCS12FriendlyName", "Description", "Comment", "AuthenticatedEncryptionAdditionalData", "AuthenticatedEncryptionTag", "SaltLength", "MaskGenerator", "MaskGeneratorHashingAlgorithm", "PSource", "TrailerField", "ClientCorrelationValue", "ServerCorrelationValue", "DigestedData", "CertificateSubjectCN", "CertificateSubjectO", "CertificateSubjectOU", "CertificateSubjectEmail", "CertificateSubjectC", "CertificateSubjectST", "CertificateSubjectL", "CertificateSubjectUID", "CertificateSubjectSerialNumber", "CertificateSubjectTitle", "CertificateSubjectDC", "CertificateSubjectDNQualifier", "CertificateIssuerCN", "CertificateIssuerO", "CertificateIssuerOU", "CertificateIssuerEmail", "CertificateIssuerC", "CertificateIssuerST", "CertificateIssuerL", "CertificateIssuerUID", "CertificateIssuerSerialNumber", "CertificateIssuerTitle", "CertificateIssuerDC", "CertificateIssuerDNQualifier", "Sensitive", "AlwaysSensitive", "Extractable", "NeverExtractable", "ReplaceExisting", "Attributes", "CommonAttributes", "PrivateKeyAttributes", "PublicKeyAttributes", "ExtensionEnumeration", "ExtensionAttribute", "ExtensionParentStructureTag", "ExtensionDescription", "ServerName", "ServerSerialNumber", "ServerVersion", "ServerLoad", "ProductName", "BuildLevel", "BuildDate", "ClusterInfo", "AlternateFailoverEndpoints", "ShortUniqueIdentifier", "Reserved", "Tag", "CertificateRequestUniqueIdentifier", "NISTKeyType", "AttributeReference", "CurrentAttribute", "NewAttribute", "CertificateRequestValue", "LogMessage", "ProfileVersion", "ProfileVersionMajor", "ProfileVersionMinor", "ProtectionLevel", "ProtectionPeriod", "QuantumSafe", "QuantumSafeCapability", "Ticket", "TicketType", "TicketValue", "RequestCount", "Rights", "Objects", "Operations", "Right", "EndpointRole", "DefaultsInformation", "ObjectDefaults", "Ephemeral", "ServerHashedPassword", "OneTimePassword", "HashedPassword", "AdjustmentType", "PKCS11Interface", "PKCS11Function", "PKCS11InputParameters", "PKCS11OutputParameters", "PKCS11ReturnCode", "ProtectionStorageMask", "ProtectionStorageMasks", "InteropFunction", "InteropIdentifier", "AdjustmentValue", "CommonProtectionStorageMasks", "PrivateProtectionStorageMasks", "PublicProtectionStorageMasks"`
-
 `--link-type [-l] <LINK_TYPE>` Filter on retrieved links. Only if KMIP tag `LinkType` is used in `attribute` parameter.
 To specify multiple attributes, use the option multiple times.
 If not specified, all possible link types are returned.
 
-Possible values:  `"CertificateLink", "PublicKeyLink", "PrivateKeyLink", "DerivationBaseObjectLink", "DerivedKeyLink", "ReplacementObjectLink", "ReplacedObjectLink", "ParentLink", "ChildLink", "PreviousLink", "NextLink", "PKCS12CertificateLink", "PKCS12PasswordLink", "WrappingKeyLink"`
+Possible values:  `"certificate", "public-key", "private-key", "derivation-base-object", "derived-key", "replacement-object", "replaced-object", "parent", "child", "previous", "next", "pkcs12-certificate", "pkcs12-password", "wrapping-key"`
 
 `--output-file [-o] <OUTPUT_FILE>` An optional file where to export the attributes.
 The attributes will be in JSON TTLV format.
@@ -230,7 +228,7 @@ Set the KMIP object attributes.
 
 `--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
 
-Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1", "HMACSHA224", "HMACSHA256", "HMACSHA384", "HMACSHA512", "HMACMD5", "DH", "ECDH", "ECMQV", "Blowfish", "Camellia", "CAST5", "IDEA", "MARS", "RC2", "RC4", "RC5", "SKIPJACK", "Twofish", "EC", "OneTimePad", "ChaCha20", "Poly1305", "ChaCha20Poly1305", "SHA3224", "SHA3256", "SHA3384", "SHA3512", "HMACSHA3224", "HMACSHA3256", "HMACSHA3384", "HMACSHA3512", "SHAKE128", "SHAKE256", "ARIA", "SEED", "SM2", "SM3", "SM4", "GOSTR34102012", "GOSTR34112012", "GOSTR34132015", "GOST2814789", "XMSS", "SPHINCS_256", "Page166Of230McEliece", "McEliece6960119", "McEliece8192128", "Ed25519", "Ed448", "CoverCrypt", "CoverCryptBulk"`
+Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
 
 `--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
@@ -277,7 +275,7 @@ Delete the KMIP object attributes.
 
 `--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
 
-Possible values:  `"DES", "THREE_DES", "AES", "RSA", "DSA", "ECDSA", "HMACSHA1", "HMACSHA224", "HMACSHA256", "HMACSHA384", "HMACSHA512", "HMACMD5", "DH", "ECDH", "ECMQV", "Blowfish", "Camellia", "CAST5", "IDEA", "MARS", "RC2", "RC4", "RC5", "SKIPJACK", "Twofish", "EC", "OneTimePad", "ChaCha20", "Poly1305", "ChaCha20Poly1305", "SHA3224", "SHA3256", "SHA3384", "SHA3512", "HMACSHA3224", "HMACSHA3256", "HMACSHA3384", "HMACSHA3512", "SHAKE128", "SHAKE256", "ARIA", "SEED", "SM2", "SM3", "SM4", "GOSTR34102012", "GOSTR34112012", "GOSTR34132015", "GOST2814789", "XMSS", "SPHINCS_256", "Page166Of230McEliece", "McEliece6960119", "McEliece8192128", "Ed25519", "Ed448", "CoverCrypt", "CoverCryptBulk"`
+Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
 
 `--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
@@ -307,8 +305,6 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--attribute <ATTRIBUTE>` The attributes or tags to retrieve.
 To specify multiple attributes, use the option multiple times.
-
-Possible values:  `"ActivationDate", "ApplicationData", "ApplicationNamespace", "ApplicationSpecific_Information", "ArchiveDate", "AsynchronousCorrelation_Value", "AsynchronousIndicator", "Attribute", "AttributeName", "AttributeValue", "Authentication", "BatchCount", "BatchErrorContinuationOption", "BatchItem", "BatchOrderOption", "BlockCipherMode", "CancellationResult", "Certificate", "CertificateRequest", "CertificateRequestType", "CertificateType", "CertificateValue", "CompromiseDate", "CompromiseOccurrenceDate", "ContactInformation", "Credential", "CredentialType", "CredentialValue", "CriticalityIndicator", "CRTCoefficient", "CryptographicAlgorithm", "CryptographicDomainParameters", "CryptographicLength", "CryptographicParameters", "CryptographicUsageMask", "D", "DeactivationDate", "DerivationData", "DerivationMethod", "DerivationParameters", "DestroyDate", "Digest", "DigestValue", "EncryptionKeyInformation", "G", "HashingAlgorithm", "InitialDate", "InitializationVector", "IterationCount", "IVCounterNonce", "J", "Key", "KeyBlock", "KeyCompressionType", "KeyFormatType", "KeyMaterial", "KeyPartIdentifier", "KeyValue", "KeyWrappingData", "KeyWrappingSpecification", "LastChangeDate", "LeaseTime", "Link", "LinkType", "LinkedObjectIdentifier", "MACSignature", "MACSignatureKey_Information", "MaximumItems", "MaximumResponseSize", "MessageExtension", "Modulus", "Name", "NameType", "NameValue", "ObjectGroup", "ObjectType", "Offset", "OpaqueDataType", "OpaqueDataValue", "OpaqueObject", "Operation", "P", "PaddingMethod", "PrimeExponentP", "PrimeExponentQ", "PrimeFieldSize", "PrivateExponent", "PrivateKey", "PrivateKeyUniqueIdentifier", "ProcessStartDate", "ProtectStopDate", "ProtocolVersion", "ProtocolVersionMajor", "ProtocolVersionMinor", "PublicExponent", "PublicKey", "PublicKeyUniqueIdentifier", "PutFunction", "Q", "QString", "Qlength", "QueryFunction", "RecommendedCurve", "ReplacedUniqueIdentifier", "RequestHeader", "RequestMessage", "RequestPayload", "ResponseHeader", "ResponseMessage", "ResponsePayload", "ResultMessage", "ResultReason", "ResultStatus", "RevocationMessage", "RevocationReason", "RevocationReasonCode", "KeyRoleType", "Salt", "SecretData", "SecretDataType", "ServerInformation", "SplitKey", "SplitKeyMethod", "SplitKeyParts", "SplitKeyThreshold", "State", "StorageStatusMask", "SymmetricKey", "TimeStamp", "UniqueBatchItemID", "UniqueIdentifier", "UsageLimits", "UsageLimitsCount", "UsageLimitsTotal", "UsageLimitsUnit", "Username", "ValidityDate", "ValidityIndicator", "VendorExtension", "VendorIdentification", "WrappingMethod", "X", "Y", "Password", "DeviceIdentifier", "EncodingOption", "ExtensionInformation", "ExtensionName", "ExtensionTag", "ExtensionType", "Fresh", "MachineIdentifier", "MediaIdentifier", "NetworkIdentifier", "ObjectGroupMember", "CertificateLength", "DigitalSignatureAlgorithm", "CertificateSerialNumber", "DeviceSerialNumber", "IssuerAlternativeName", "IssuerDistinguishedName", "SubjectAlternativeName", "SubjectDistinguishedName", "X509CertificateIdentifier", "X509CertificateIssuer", "X509CertificateSubject", "KeyValueLocation", "KeyValueLocationValue", "KeyValueLocationType", "KeyValuePresent", "OriginalCreationDate", "PGPKey", "PGPKeyVersion", "AlternativeName", "AlternativeNameValue", "AlternativeNameType", "Data", "SignatureData", "DataLength", "RandomIV", "MACData", "AttestationType", "Nonce", "NonceID", "NonceValue", "AttestationMeasurement", "AttestationAssertion", "IVLength", "TagLength", "FixedFieldLength", "CounterLength", "InitialCounterValue", "InvocationFieldLength", "AttestationCapableIndicator", "OffsetItems", "LocatedItems", "CorrelationValue", "InitIndicator", "FinalIndicator", "RNGParameters", "RNGAlgorithm", "DRBGAlgorithm", "FIPS186Variation", "PredictionResistance", "RandomNumberGenerator", "ValidationInformation", "ValidationAuthorityType", "ValidationAuthorityCountry", "ValidationAuthorityURI", "ValidationVersionMajor", "ValidationVersionMinor", "ValidationType", "ValidationLevel", "ValidationCertificateIdentifier", "ValidationCertificateURI", "ValidationVendorURI", "ValidationProfile", "ProfileInformation", "ProfileName", "ServerURI", "ServerPort", "StreamingCapability", "AsynchronousCapability", "AttestationCapability", "UnwrapMode", "DestroyAction", "ShreddingAlgorithm", "RNGMode", "ClientRegistrationMethod", "CapabilityInformation", "KeyWrapType", "BatchUndoCapability", "BatchContinueCapability", "PKCS12FriendlyName", "Description", "Comment", "AuthenticatedEncryptionAdditionalData", "AuthenticatedEncryptionTag", "SaltLength", "MaskGenerator", "MaskGeneratorHashingAlgorithm", "PSource", "TrailerField", "ClientCorrelationValue", "ServerCorrelationValue", "DigestedData", "CertificateSubjectCN", "CertificateSubjectO", "CertificateSubjectOU", "CertificateSubjectEmail", "CertificateSubjectC", "CertificateSubjectST", "CertificateSubjectL", "CertificateSubjectUID", "CertificateSubjectSerialNumber", "CertificateSubjectTitle", "CertificateSubjectDC", "CertificateSubjectDNQualifier", "CertificateIssuerCN", "CertificateIssuerO", "CertificateIssuerOU", "CertificateIssuerEmail", "CertificateIssuerC", "CertificateIssuerST", "CertificateIssuerL", "CertificateIssuerUID", "CertificateIssuerSerialNumber", "CertificateIssuerTitle", "CertificateIssuerDC", "CertificateIssuerDNQualifier", "Sensitive", "AlwaysSensitive", "Extractable", "NeverExtractable", "ReplaceExisting", "Attributes", "CommonAttributes", "PrivateKeyAttributes", "PublicKeyAttributes", "ExtensionEnumeration", "ExtensionAttribute", "ExtensionParentStructureTag", "ExtensionDescription", "ServerName", "ServerSerialNumber", "ServerVersion", "ServerLoad", "ProductName", "BuildLevel", "BuildDate", "ClusterInfo", "AlternateFailoverEndpoints", "ShortUniqueIdentifier", "Reserved", "Tag", "CertificateRequestUniqueIdentifier", "NISTKeyType", "AttributeReference", "CurrentAttribute", "NewAttribute", "CertificateRequestValue", "LogMessage", "ProfileVersion", "ProfileVersionMajor", "ProfileVersionMinor", "ProtectionLevel", "ProtectionPeriod", "QuantumSafe", "QuantumSafeCapability", "Ticket", "TicketType", "TicketValue", "RequestCount", "Rights", "Objects", "Operations", "Right", "EndpointRole", "DefaultsInformation", "ObjectDefaults", "Ephemeral", "ServerHashedPassword", "OneTimePassword", "HashedPassword", "AdjustmentType", "PKCS11Interface", "PKCS11Function", "PKCS11InputParameters", "PKCS11OutputParameters", "PKCS11ReturnCode", "ProtectionStorageMask", "ProtectionStorageMasks", "InteropFunction", "InteropIdentifier", "AdjustmentValue", "CommonProtectionStorageMasks", "PrivateProtectionStorageMasks", "PublicProtectionStorageMasks"`
 
 
 
@@ -1852,22 +1848,22 @@ Handle Findex server actions
 
 **`delete-dataset`** [[2.3]](#23-cosmian-findex-server-delete-dataset)  Delete encrypted entries. (Indexes are not deleted)
 
-**`index`** [[2.4]](#24-cosmian-findex-server-index)  Index new keywords
+**`datasets`** [[2.4]](#24-cosmian-findex-server-datasets)  Manage encrypted datasets
 
 **`delete`** [[2.5]](#25-cosmian-findex-server-delete)  Delete indexed keywords
 
-**`search`** [[2.6]](#26-cosmian-findex-server-search)  Findex: Search keywords.
+**`index`** [[2.6]](#26-cosmian-findex-server-index)  Index new keywords
 
-**`server-version`** [[2.7]](#27-cosmian-findex-server-server-version)  Print the version of the server
-
-**`login`** [[2.8]](#28-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2`
+**`login`** [[2.7]](#27-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2`
 authorization code flow.
 
-**`logout`** [[2.9]](#29-cosmian-findex-server-logout)  Logout from the Identity Provider.
+**`logout`** [[2.8]](#28-cosmian-findex-server-logout)  Logout from the Identity Provider.
 
-**`permissions`** [[2.10]](#210-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
+**`permissions`** [[2.9]](#29-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
 
-**`datasets`** [[2.11]](#211-cosmian-findex-server-datasets)  Manage encrypted datasets
+**`search`** [[2.10]](#210-cosmian-findex-server-search)  Findex: Search keywords.
+
+**`server-version`** [[2.11]](#211-cosmian-findex-server-server-version)  Print the version of the server
 
 ---
 
@@ -1946,20 +1942,64 @@ Delete encrypted entries. (Indexes are not deleted)
 
 ---
 
-## 2.4 cosmian findex-server index
+## 2.4 cosmian findex-server datasets
 
-Index new keywords
+Manage encrypted datasets
 
 ### Usage
-`cosmian findex-server index [options]`
+`cosmian findex-server datasets <subcommand>`
+
+### Subcommands
+
+**`add`** [[2.4.1]](#241-cosmian-findex-server-datasets-add)  Add datasets entries
+
+**`delete`** [[2.4.2]](#242-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
+
+**`get`** [[2.4.3]](#243-cosmian-findex-server-datasets-get)  Get datasets entries using corresponding entries UUID. Returns the entries
+
+---
+
+## 2.4.1 cosmian findex-server datasets add
+
+Add datasets entries
+
+### Usage
+`cosmian findex-server datasets add [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
+`--index-id <INDEX_ID>` The index ID
 
-`--label [-l] <LABEL>` The Findex label
+` [-D] <ENTRIES>` The entries to add under the format `KEY=VALUE` where: - `KEY` is a UUID - `VALUE` is a base64 encoded string
 
-`--index-id [-i] <INDEX_ID>` The index ID
 
-`--csv <CSV>` The path to the CSV file containing the data to index
+
+---
+
+## 2.4.2 cosmian findex-server datasets delete
+
+Delete datasets entries using corresponding entries UUID
+
+### Usage
+`cosmian findex-server datasets delete [options]`
+### Arguments
+`--index-id <INDEX_ID>` The index ID
+
+`--uuids <UUIDS>` The entries UUIDs to delete
+
+
+
+---
+
+## 2.4.3 cosmian findex-server datasets get
+
+Get datasets entries using corresponding entries UUID. Returns the entries
+
+### Usage
+`cosmian findex-server datasets get [options]`
+### Arguments
+`--index-id <INDEX_ID>` The index id
+
+`--uuids <UUIDS>` The entries uuids
+
 
 
 
@@ -1984,7 +2024,121 @@ Delete indexed keywords
 
 ---
 
-## 2.6 cosmian findex-server search
+## 2.6 cosmian findex-server index
+
+Index new keywords
+
+### Usage
+`cosmian findex-server index [options]`
+### Arguments
+`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
+
+`--label [-l] <LABEL>` The Findex label
+
+`--index-id [-i] <INDEX_ID>` The index ID
+
+`--csv <CSV>` The path to the CSV file containing the data to index
+
+
+
+---
+
+## 2.7 cosmian findex-server login
+
+Login to the Identity Provider of the Findex server using the `OAuth2`
+authorization code flow.
+
+### Usage
+`cosmian findex-server login`
+
+
+---
+
+## 2.8 cosmian findex-server logout
+
+Logout from the Identity Provider.
+
+### Usage
+`cosmian findex-server logout`
+
+
+---
+
+## 2.9 cosmian findex-server permissions
+
+Manage the users permissions to the indexes
+
+### Usage
+`cosmian findex-server permissions <subcommand>`
+
+### Subcommands
+
+**`create`** [[2.9.1]](#291-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
+
+**`list`** [[2.9.2]](#292-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
+
+**`grant`** [[2.9.3]](#293-cosmian-findex-server-permissions-grant)  Grant permission on a index
+
+**`revoke`** [[2.9.4]](#294-cosmian-findex-server-permissions-revoke)  Revoke user permission
+
+---
+
+## 2.9.1 cosmian findex-server permissions create
+
+Create a new index. It results on an `admin` permission on a new index
+
+### Usage
+`cosmian findex-server permissions create`
+
+
+---
+
+## 2.9.2 cosmian findex-server permissions list
+
+List user's permission. Returns a list of indexes with their permissions
+
+### Usage
+`cosmian findex-server permissions list [options]`
+### Arguments
+`--user <USER>` The user identifier to allow
+
+
+
+---
+
+## 2.9.3 cosmian findex-server permissions grant
+
+Grant permission on a index
+
+### Usage
+`cosmian findex-server permissions grant [options]`
+### Arguments
+`--user <USER>` The user identifier to allow
+
+`--index-id <INDEX_ID>` The index ID
+
+`--permission <PERMISSION>`
+
+
+---
+
+## 2.9.4 cosmian findex-server permissions revoke
+
+Revoke user permission
+
+### Usage
+`cosmian findex-server permissions revoke [options]`
+### Arguments
+`--user <USER>` The user identifier to revoke
+
+`--index-id <INDEX_ID>` The index id
+
+
+
+
+---
+
+## 2.10 cosmian findex-server search
 
 Findex: Search keywords.
 
@@ -2003,170 +2157,12 @@ Findex: Search keywords.
 
 ---
 
-## 2.7 cosmian findex-server server-version
+## 2.11 cosmian findex-server server-version
 
 Print the version of the server
 
 ### Usage
 `cosmian findex-server server-version`
-
-
----
-
-## 2.8 cosmian findex-server login
-
-Login to the Identity Provider of the Findex server using the `OAuth2`
-authorization code flow.
-
-### Usage
-`cosmian findex-server login`
-
-
----
-
-## 2.9 cosmian findex-server logout
-
-Logout from the Identity Provider.
-
-### Usage
-`cosmian findex-server logout`
-
-
----
-
-## 2.10 cosmian findex-server permissions
-
-Manage the users permissions to the indexes
-
-### Usage
-`cosmian findex-server permissions <subcommand>`
-
-### Subcommands
-
-**`create`** [[2.10.1]](#2101-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
-
-**`list`** [[2.10.2]](#2102-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
-
-**`grant`** [[2.10.3]](#2103-cosmian-findex-server-permissions-grant)  Grant permission on a index
-
-**`revoke`** [[2.10.4]](#2104-cosmian-findex-server-permissions-revoke)  Revoke user permission
-
----
-
-## 2.10.1 cosmian findex-server permissions create
-
-Create a new index. It results on an `admin` permission on a new index
-
-### Usage
-`cosmian findex-server permissions create`
-
-
----
-
-## 2.10.2 cosmian findex-server permissions list
-
-List user's permission. Returns a list of indexes with their permissions
-
-### Usage
-`cosmian findex-server permissions list [options]`
-### Arguments
-`--user <USER>` The user identifier to allow
-
-
-
----
-
-## 2.10.3 cosmian findex-server permissions grant
-
-Grant permission on a index
-
-### Usage
-`cosmian findex-server permissions grant [options]`
-### Arguments
-`--user <USER>` The user identifier to allow
-
-`--index-id <INDEX_ID>` The index ID
-
-`--permission <PERMISSION>`
-
-
----
-
-## 2.10.4 cosmian findex-server permissions revoke
-
-Revoke user permission
-
-### Usage
-`cosmian findex-server permissions revoke [options]`
-### Arguments
-`--user <USER>` The user identifier to revoke
-
-`--index-id <INDEX_ID>` The index id
-
-
-
-
----
-
-## 2.11 cosmian findex-server datasets
-
-Manage encrypted datasets
-
-### Usage
-`cosmian findex-server datasets <subcommand>`
-
-### Subcommands
-
-**`add`** [[2.11.1]](#2111-cosmian-findex-server-datasets-add)  Add datasets entries
-
-**`delete`** [[2.11.2]](#2112-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
-
-**`get`** [[2.11.3]](#2113-cosmian-findex-server-datasets-get)  Get datasets entries using corresponding entries UUID. Returns the entries
-
----
-
-## 2.11.1 cosmian findex-server datasets add
-
-Add datasets entries
-
-### Usage
-`cosmian findex-server datasets add [options]`
-### Arguments
-`--index-id <INDEX_ID>` The index ID
-
-` [-D] <ENTRIES>` The entries to add under the format `KEY=VALUE` where: - `KEY` is a UUID - `VALUE` is a base64 encoded string
-
-
-
----
-
-## 2.11.2 cosmian findex-server datasets delete
-
-Delete datasets entries using corresponding entries UUID
-
-### Usage
-`cosmian findex-server datasets delete [options]`
-### Arguments
-`--index-id <INDEX_ID>` The index ID
-
-`--uuids <UUIDS>` The entries UUIDs to delete
-
-
-
----
-
-## 2.11.3 cosmian findex-server datasets get
-
-Get datasets entries using corresponding entries UUID. Returns the entries
-
-### Usage
-`cosmian findex-server datasets get [options]`
-### Arguments
-`--index-id <INDEX_ID>` The index id
-
-`--uuids <UUIDS>` The entries uuids
-
-
 
 
 

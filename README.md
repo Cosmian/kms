@@ -25,7 +25,7 @@ docker run -p 9998:9998 --rm --name kms ghcr.io/cosmian/kms
 ```
 
 > [!NOTE]:
-> The KMS server can also be installed using these [instructions](https://docs.cosmian./key_management_system/installation).
+> The KMS server can also be installed using these [instructions](https://docs.cosmian.com/key_management_system/single_server_mode/#quick-start).
 
 In the same manner, you can run a Findex server (using Docker image) on `http://localhost:6668`:
 

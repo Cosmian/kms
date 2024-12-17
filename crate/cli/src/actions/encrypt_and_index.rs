@@ -269,7 +269,7 @@ impl EncryptAndIndexAction {
     #[allow(clippy::future_not_send, clippy::print_stdout)]
     pub async fn run(
         &self,
-        findex_rest_client: FindexRestClient,
+        findex_rest_client: &FindexRestClient,
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<()> {
         let nonce = self
