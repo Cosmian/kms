@@ -12,6 +12,9 @@ rust-version.workspace = true
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_kms_client/fips", "cosmian_kms_server/fips"]
+
 [[bench]]
 name = "benches"
 harness = false

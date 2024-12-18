@@ -69,7 +69,7 @@ Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that
 inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Then, use the CLI to issue commands to the KMS.

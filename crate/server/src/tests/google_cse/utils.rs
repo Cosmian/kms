@@ -22,13 +22,18 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
         pub id_token: String,
     }
 
-    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID")
-        .map_err(|e| KmsError::ServerError(format!("Failed to get Google OAuth client ID: {e}")))?;
+    let client_id = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_ID").map_err(|e| {
+        KmsError::ServerError(format!("Failed to get TEST_GOOGLE_OAUTH_CLIENT_ID: {e}"))
+    })?;
     let client_secret = std::env::var("TEST_GOOGLE_OAUTH_CLIENT_SECRET").map_err(|e| {
-        KmsError::ServerError(format!("Failed to get Google OAuth client secret: {e}"))
+        KmsError::ServerError(format!(
+            "Failed to get TEST_GOOGLE_OAUTH_CLIENT_SECRET: {e}"
+        ))
     })?;
     let refresh_token = std::env::var("TEST_GOOGLE_OAUTH_REFRESH_TOKEN").map_err(|e| {
-        KmsError::ServerError(format!("Failed to get Google OAuth refresh token: {e}"))
+        KmsError::ServerError(format!(
+            "Failed to get TEST_GOOGLE_OAUTH_REFRESH_TOKEN: {e}"
+        ))
     })?;
 
     assert!(!client_id.is_empty());
@@ -70,6 +75,5 @@ pub(crate) async fn google_cse_auth() -> KResult<GoogleCseConfig> {
     Ok(GoogleCseConfig {
         authentication: vec![jwt_config].into(),
         authorization: google_cse::jwt_authorization_config(&jwks_manager),
-        kacls_url: "http://0.0.0.0:9998/google_cse".to_owned(),
     })
 }
