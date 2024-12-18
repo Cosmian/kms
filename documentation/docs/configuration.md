@@ -10,9 +10,6 @@ By default, the server expects to find:
 ## Example without authentication
 
 ```toml
-[kms_config]
-print_json = false
-
 [kms_config.http_config]
 server_url = "http://0.0.0.0:9998"
 
@@ -23,9 +20,6 @@ server_url = "http://0.0.0.0:6668"
 ## Example with PKCS12 authentication
 
 ```toml
-[kms_config]
-print_json = false
-
 [kms_config.http_config]
 server_url = "http://0.0.0.0:9990"
 ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
@@ -41,9 +35,6 @@ ssl_client_pkcs12_password = "password"
 ## Example with OpenID authentication
 
 ```toml
-[kms_config]
-print_json = false
-
 [kms_config.http_config]
 server_url = "http://0.0.0.0:9998"
 access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
@@ -63,9 +54,6 @@ access_token = "eyJhbGciOiJSUzI1...OjPY84GRMmvpYZfyaJbDDql3A"
 ## Example with S/MIME Gmail service account configuration for KMS server
 
 ```toml
-[kms_config]
-print_json = false
-
 [kms_config.http_config]
 server_url = "http://0.0.0.0:9998"
 access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
