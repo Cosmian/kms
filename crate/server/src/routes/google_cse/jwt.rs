@@ -166,7 +166,7 @@ pub(crate) async fn validate_cse_authentication_token(
                 .to_owned(),
         )
     })?;
-    trace!("validate token: KACLS url {google_cse_kacls_url}");
+    trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
     let mut decoded_token = None;
     for idp_config in cse_config.authentication.iter() {
@@ -186,7 +186,7 @@ pub(crate) async fn validate_cse_authentication_token(
         kms_ensure!(
             &kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
-                "KACLS Urls should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
         );
     }
@@ -231,7 +231,7 @@ pub(crate) async fn validate_cse_authorization_token(
                 .to_owned(),
         )
     })?;
-    trace!("validate_cse_authorization_token: KACLS url {google_cse_kacls_url}");
+    trace!("validate_cse_authorization_token: KACLS URL {google_cse_kacls_url}");
 
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
@@ -277,7 +277,7 @@ pub(crate) async fn validate_cse_authorization_token(
         kms_ensure!(
             &kacls_url == google_cse_kacls_url,
             KmsError::Unauthorized(format!(
-                "KACLS Urls should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
             ))
         );
     }

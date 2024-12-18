@@ -73,7 +73,7 @@ pub(crate) async fn get_status(
     Ok(Json(operations::get_status(kacls_url)))
 }
 
-fn get_cse_input_params<T>(
+fn prepare_post_params<T>(
     info_msg: &str,
     request: Json<T>,
     cse_config: Data<Option<GoogleCseConfig>>,
@@ -94,7 +94,7 @@ pub(crate) async fn digest(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("digest", request, cse_config);
+    let (request, cse_config) = prepare_post_params("digest", request, cse_config);
 
     match operations::digest(request, &cse_config, &kms)
         .await
@@ -112,7 +112,7 @@ pub(crate) async fn privileged_private_key_decrypt(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) =
-        get_cse_input_params("privilegedprivatekeydecrypt", request, cse_config);
+        prepare_post_params("privilegedprivatekeydecrypt", request, cse_config);
     let kms = kms.into_inner();
 
     match operations::privileged_private_key_decrypt(request, &cse_config, &kms)
@@ -130,7 +130,7 @@ pub(crate) async fn privileged_unwrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("privilegedunwrap", request, cse_config);
+    let (request, cse_config) = prepare_post_params("privilegedunwrap", request, cse_config);
 
     match operations::privileged_unwrap(request, &cse_config, &kms)
         .await
@@ -147,7 +147,7 @@ pub(crate) async fn privileged_wrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("privilegedwrap", request, cse_config);
+    let (request, cse_config) = prepare_post_params("privilegedwrap", request, cse_config);
 
     match operations::privileged_wrap(request, &cse_config, &kms)
         .await
@@ -164,7 +164,7 @@ pub(crate) async fn rewrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("rewrap", request, cse_config);
+    let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
 
     match operations::rewrap(request, &cse_config, &kms)
         .await
@@ -202,7 +202,7 @@ pub(crate) async fn wrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("wrap", request, cse_config);
+    let (request, cse_config) = prepare_post_params("wrap", request, cse_config);
     let kms = kms.into_inner();
 
     match operations::wrap(request, &cse_config, &kms).await.map(Json) {
@@ -221,7 +221,7 @@ pub(crate) async fn unwrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("unwrap", request, cse_config);
+    let (request, cse_config) = prepare_post_params("unwrap", request, cse_config);
     let kms = kms.into_inner();
 
     match operations::unwrap(request, &cse_config, &kms)
@@ -242,7 +242,7 @@ pub(crate) async fn private_key_sign(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("privatekeysign", request, cse_config);
+    let (request, cse_config) = prepare_post_params("privatekeysign", request, cse_config);
     let kms = kms.into_inner();
 
     match operations::private_key_sign(request, &cse_config, &kms)
@@ -263,7 +263,7 @@ pub(crate) async fn private_key_decrypt(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let (request, cse_config) = get_cse_input_params("privatekeydecrypt", request, cse_config);
+    let (request, cse_config) = prepare_post_params("privatekeydecrypt", request, cse_config);
     let kms = kms.into_inner();
 
     match operations::private_key_decrypt(request, &cse_config, &kms)

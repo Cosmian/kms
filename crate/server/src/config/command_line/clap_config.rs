@@ -140,7 +140,7 @@ impl fmt::Debug for ClapConfig {
             &self.google_cse_disable_tokens_validation,
         );
         let x = x.field(
-            "Google Workspace CSE, KACLS Url",
+            "Google Workspace CSE, KACLS URL",
             &self.google_cse_kacls_url,
         );
         let x = x.field(
