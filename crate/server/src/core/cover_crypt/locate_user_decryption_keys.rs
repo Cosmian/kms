@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
+use cosmian_cover_crypt::api::Covercrypt::abe_policy::Attribute;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,

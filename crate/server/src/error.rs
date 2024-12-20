@@ -174,8 +174,8 @@ impl From<serde_json::Error> for KmsError {
     }
 }
 
-impl From<cloudproof::reexport::cover_crypt::Error> for KmsError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
+impl From<cosmian_cover_crypt::api::Covercrypt::Error> for KmsError {
+    fn from(e: cosmian_cover_crypt::api::Covercrypt::Error) -> Self {
         Self::InvalidRequest(e.to_string())
     }
 }

@@ -51,8 +51,8 @@ impl From<Vec<u8>> for CryptoError {
     }
 }
 
-impl From<cloudproof::reexport::cover_crypt::Error> for CryptoError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
+impl From<cosmian_cover_crypt::Error> for CryptoError {
+    fn from(e: cosmian_cover_crypt::Error) -> Self {
         Self::Default(e.to_string())
     }
 }

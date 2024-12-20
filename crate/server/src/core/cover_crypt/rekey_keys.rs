@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::{
+use cosmian_cover_crypt::api::Covercrypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
 use cosmian_kmip::kmip_2_1::{
@@ -72,7 +72,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 msk_uid,
                 |policy, msk, _mpk| {
                     let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.prune_master_secret_key(&ap, policy, msk)?;
+                    cover_crypt.prune_master_secret_key(msk, &ap)?;
                     Ok(())
                 },
             ))

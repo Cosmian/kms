@@ -1,6 +1,6 @@
-use cloudproof::reexport::{
-    cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
-    crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
+use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_cover_crypt::{
+    api::Covercrypt, traits::PkeAc, CleartextHeader, EncryptedHeader, UserSecretKey, XEnc,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -54,6 +54,10 @@ impl CovercryptDecryption {
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
         let encrypted_block = de.finalize();
+        let ctx = (
+            encrypted_header.encapsulation,
+            encrypted_header.encrypted_metadata.expect("todo"),
+        );
 
         let header = encrypted_header
             .decrypt(&self.cover_crypt, user_decryption_key, aead)
@@ -61,18 +65,18 @@ impl CovercryptDecryption {
 
         let cleartext = Zeroizing::from(
             self.cover_crypt
-                .decrypt(&header.symmetric_key, &encrypted_block, aead)
+                .decrypt(&user_decryption_key, &ctx)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?,
         );
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
             &self.user_decryption_key_uid,
-            cleartext.len(),
+            cleartext.expect("todo").len(),
             encrypted_bytes.len(),
         );
 
-        Ok((header, cleartext))
+        Ok((header.expect("todo"), cleartext.expect("todo")))
     }
 
     /// Decrypt multiple LEB128-serialized payloads
@@ -104,6 +108,7 @@ impl CovercryptDecryption {
         encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
+        ctx: &(XEnc, Vec<u8>),
     ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
         let mut de = Deserializer::new(encrypted_bytes);
         let mut ser = Serializer::new();
@@ -132,6 +137,10 @@ impl CovercryptDecryption {
                 let encrypted_block = de_chunk.finalize();
                 (encrypted_header, encrypted_block)
             };
+            let ctx = (
+                encrypted_header.encapsulation,
+                encrypted_header.encrypted_metadata.expect("todo"),
+            );
 
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, aead)
@@ -139,7 +148,7 @@ impl CovercryptDecryption {
 
             let cleartext = self
                 .cover_crypt
-                .decrypt(&header.symmetric_key, &encrypted_block, aead)
+                .decrypt(user_decryption_key, &ctx)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
             // All the headers are the same
@@ -148,17 +157,17 @@ impl CovercryptDecryption {
             debug!(
                 "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
                 self.user_decryption_key_uid,
-                cleartext.len(),
-                encrypted_block.len(),
+                cleartext.iter().len(),
+                encrypted_header.length(),
             );
 
-            ser.write_vec(&cleartext)?;
+            ser.write_vec(&cleartext.expect("todo"))?;
         }
 
         let cleartext_header = cleartext_header
             .ok_or_else(|| CryptoError::Kmip("unable to recover any header".to_owned()))?;
 
-        Ok((cleartext_header, ser.finalize()))
+        Ok((cleartext_header.expect("todo"), ser.finalize()))
     }
 }
 
@@ -174,6 +183,12 @@ impl DecryptionSystem for CovercryptDecryption {
         let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
             CryptoError::Kmip("The decryption request should contain encrypted data".to_owned())
         })?;
+        let mut de = Deserializer::new(encrypted_bytes);
+        let encrypted_header: EncryptedHeader = EncryptedHeader::read(&mut de)?;
+        let ctx = (
+            encrypted_header.encapsulation,
+            encrypted_header.encrypted_metadata.expect("todo"),
+        );
 
         let (header, plaintext) = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
@@ -184,6 +199,7 @@ impl DecryptionSystem for CovercryptDecryption {
                 encrypted_bytes.as_slice(),
                 request.authenticated_encryption_additional_data.as_deref(),
                 &user_decryption_key,
+                &ctx,
             )?
         } else {
             self.decrypt(
