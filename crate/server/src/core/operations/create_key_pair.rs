@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},

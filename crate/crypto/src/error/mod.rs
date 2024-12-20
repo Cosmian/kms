@@ -1,6 +1,7 @@
 use std::num::TryFromIntError;
 
-use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
+use cloudproof::reexport::crypto_core::reexport::pkcs8;
+use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::KmipError;
 use thiserror::Error;
 
@@ -43,17 +44,14 @@ pub enum CryptoError {
 
     #[error(transparent)]
     TryFromSliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    Covercrypt(#[from] cosmian_cover_crypt::Error),
 }
 
 impl From<Vec<u8>> for CryptoError {
     fn from(value: Vec<u8>) -> Self {
         Self::ConversionError(format!("Failed converting Vec<u8>: {value:?}"))
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for CryptoError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::Default(e.to_string())
     }
 }
 

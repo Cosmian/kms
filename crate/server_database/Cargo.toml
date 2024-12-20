@@ -13,7 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-clap = { workspace = true, features = ["std", "cargo"] }
+clap = { workspace = true }
 cloudproof = { workspace = true }
 cloudproof_findex = { workspace = true }
 cosmian_kmip = { path = "../kmip" }

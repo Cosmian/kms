@@ -35,9 +35,9 @@ impl CovercryptCommands {
     ///
     /// This function can return an error if any of the underlying actions encounter an error.
     ///
-    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+    pub async fn process(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
         match self {
-            Self::Policy(command) => command.process(kms_rest_client).await?,
+            Self::Policy(command) => command.process(kms_rest_client, ap).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,

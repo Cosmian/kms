@@ -179,7 +179,7 @@ pub async fn wrap(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: token_extracted_content.resource_name,
+        ad: token_extracted_content.resource_name,
     };
     let dek = encrypt(kms, encryption_request, &token_extracted_content.user, None).await?;
 
@@ -609,7 +609,7 @@ pub async fn privileged_wrap(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_name),
+        ad: Some(resource_name),
     };
     let dek = encrypt(kms, encryption_request, &user, None).await?;
 
@@ -855,7 +855,7 @@ pub async fn rewrap(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_name.clone().into_bytes()),
+        ad: Some(resource_name.clone().into_bytes()),
     };
     let encrypt_response = encrypt(kms, encryption_request, &user, None).await?;
 
@@ -954,7 +954,7 @@ async fn cse_wrapped_key_decrypt(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
+        ad: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
     let key = decrypt(kms, decryption_request, &user, None).await?;

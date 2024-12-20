@@ -67,7 +67,7 @@ impl DecryptCertificateAction {
         let decrypt_request = Decrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(ciphertext),
-            authenticated_encryption_additional_data: self
+            ad: self
                 .authentication_data
                 .clone()
                 .map(|s| s.as_bytes().to_vec()),

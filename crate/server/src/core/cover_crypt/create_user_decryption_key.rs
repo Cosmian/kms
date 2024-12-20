@@ -1,16 +1,13 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::{
-    cover_crypt::{
-        attributes::{access_policy_from_attributes, policy_from_attributes},
-        user_key::UserDecryptionKeysHandler,
-    },
+    cover_crypt::{attributes::access_policy_from_attributes, user_key::UserDecryptionKeysHandler},
     KeyPair,
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -83,11 +80,7 @@ async fn create_user_decryption_key_(
         // The master key should be a CoverCrypt secret key
         if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
             continue;
-        }
-        // a master key should have policies in the attributes
-        if policy_from_attributes(attributes).is_err() {
-            continue;
-        }
+        };
 
         let master_private_key = owm.object();
         if master_private_key.key_wrapping_data().is_some() {
@@ -95,7 +88,7 @@ async fn create_user_decryption_key_(
                 "The server can't create a decryption key: the master private key is wrapped"
                     .to_owned()
             ));
-        }
+        };
 
         return UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
             .create_user_decryption_key_object(&access_policy, Some(create_attributes), owm.id())

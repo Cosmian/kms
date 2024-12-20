@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_objects::{Object, ObjectType},
@@ -33,33 +33,15 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-
-    //
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("confidential", EncryptionHint::Classic),
-            ("secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
+    let cc = Covercrypt::default();
+    let (msk, _mpk) = cc.setup()?;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
 
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -239,30 +221,14 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    //
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("confidential", EncryptionHint::Classic),
-            ("secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
+
+    let cc = Covercrypt::default();
+    let (msk, _mpk) = cc.setup()?;
 
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -481,30 +447,12 @@ async fn test_abe_json_access() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("confidential", EncryptionHint::Classic),
-            ("secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
 
-    let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
+    let cc = Covercrypt::default();
+    let (msk, _mpk) = cc.setup()?;
 
     // Create CC master key pair
-    let master_keypair =
-        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+    let master_keypair = build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -538,6 +486,7 @@ async fn test_abe_json_access() -> KResult<()> {
     assert_eq!(locate_response.located_items.unwrap(), 0);
 
     // Create a decryption key
+    let secret_mkg_fin_access_policy = "(Department::MKG|| Department::FIN) && Level::secret";
     let cr = kms
         .create(
             build_create_covercrypt_user_decryption_key_request(
@@ -577,29 +526,13 @@ async fn test_import_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("confidential", EncryptionHint::Classic),
-            ("secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
+    let cc = Covercrypt::default();
+    let (msk, _) = cc.setup()?;
 
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )

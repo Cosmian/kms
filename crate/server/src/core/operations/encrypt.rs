@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_2_1::{
         extra::BulkData,
@@ -202,12 +202,7 @@ async fn encrypt_using_encryption_oracle(
         .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
         .transpose()?;
     let encrypted_content = encryption_oracle
-        .encrypt(
-            uid,
-            data,
-            ca.clone(),
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
+        .encrypt(uid, data, ca.clone(), request.ad.as_deref())
         .await?;
     let ciphertext_len = encrypted_content.ciphertext.len();
     debug!("Encrypted using oracle: algorithm: {ca:?}, ciphertext length: {ciphertext_len}");
@@ -274,10 +269,7 @@ pub(crate) fn encrypt_bulk(
 
     match owm.object() {
         Object::SymmetricKey { .. } => {
-            let aad = request
-                .authenticated_encryption_additional_data
-                .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+            let aad = request.ad.as_deref().unwrap_or(EMPTY_SLICE);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
                 let (key_bytes, cipher) = get_cipher_and_key(&request, owm)?;
@@ -338,10 +330,7 @@ fn encrypt_with_symmetric_key(
         .iv_counter_nonce
         .clone()
         .unwrap_or(random_nonce(aead)?);
-    let aad = request
-        .authenticated_encryption_additional_data
-        .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+    let aad = request.ad.as_deref().unwrap_or(EMPTY_SLICE);
     let (ciphertext, tag) = sym_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

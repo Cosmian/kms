@@ -13,7 +13,7 @@ pub fn decrypt_request(
     nonce: Option<Vec<u8>>,
     ciphertext: Vec<u8>,
     authenticated_tag: Option<Vec<u8>>,
-    authentication_data: Option<Vec<u8>>,
+    ad: Option<Vec<u8>>,
     cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Decrypt {
     Decrypt {
@@ -26,7 +26,7 @@ pub fn decrypt_request(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: authentication_data,
+        ad,
         authenticated_encryption_tag: authenticated_tag,
     }
 }

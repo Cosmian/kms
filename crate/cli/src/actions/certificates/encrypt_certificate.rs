@@ -65,7 +65,7 @@ impl EncryptCertificateAction {
             cli_bail!("Either --certificate-id or one or more --tag must be specified")
         };
 
-        let authentication_data = self
+        let ad = self
             .authentication_data
             .as_ref()
             .map(|auth_data| auth_data.as_bytes().to_vec());
@@ -80,7 +80,7 @@ impl EncryptCertificateAction {
         let encrypt_request = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(data),
-            authenticated_encryption_additional_data: authentication_data,
+            ad,
             cryptographic_parameters,
             ..Encrypt::default()
         };

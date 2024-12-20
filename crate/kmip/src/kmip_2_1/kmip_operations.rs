@@ -1269,7 +1269,7 @@ pub struct Encrypt {
     /// Tag. If supplied in multi-part encryption,
     /// this data MUST be supplied on the initial Encrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub ad: Option<Vec<u8>>,
 }
 
 impl Display for Encrypt {
@@ -1286,7 +1286,7 @@ impl Display for Encrypt {
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data
+            self.ad,
         )
     }
 }
@@ -1388,7 +1388,7 @@ pub struct Decrypt {
     /// data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub ad: Option<Vec<u8>>,
     /// Specifies the tag that will be needed to
     /// authenticate the decrypted data and
     /// the additional authenticated data. If
@@ -1414,7 +1414,7 @@ impl Display for Decrypt {
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data,
+            self.ad,
             self.authenticated_encryption_tag
         )
     }

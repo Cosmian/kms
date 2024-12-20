@@ -107,7 +107,7 @@ fn encrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<En
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: None,
+        ad: None,
     })
 }
 
@@ -124,7 +124,7 @@ fn decrypt_request(key_id: UniqueIdentifier, bulk_data: &BulkData) -> KResult<De
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: None,
+        ad: None,
         authenticated_encryption_tag: None,
     })
 }

@@ -13,6 +13,7 @@ name = "cosmian_kms"
 
 [dependencies]
 cloudproof = { workspace = true }
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "tbz/review-policy-spec", version = "14.0.0" }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_crypto = { path = "../crypto" }

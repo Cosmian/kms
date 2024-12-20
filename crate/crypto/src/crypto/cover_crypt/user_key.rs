@@ -1,10 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        Covercrypt, MasterSecretKey, UserSecretKey,
-    },
-    crypto_core::bytes_ser_de::Serializable,
-};
+use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
@@ -17,8 +12,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::cover_crypt::attributes::{policy_from_attributes, upsert_access_policy_in_attributes},
-    error::CryptoError,
+    crypto::cover_crypt::attributes::upsert_access_policy_in_attributes, error::CryptoError,
 };
 
 /// Unwrap the User Decryption Key bytes, Policy and Access Policy from the
@@ -58,7 +52,14 @@ pub(crate) fn unwrap_user_decryption_key_object(
 pub struct UserDecryptionKeysHandler {
     cover_crypt: Covercrypt,
     master_private_key: MasterSecretKey,
-    policy: Policy,
+}
+
+impl std::ops::Deref for UserDecryptionKeysHandler {
+    type Target = MasterSecretKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.master_private_key
+    }
 }
 
 impl UserDecryptionKeysHandler {
@@ -73,12 +74,9 @@ impl UserDecryptionKeysHandler {
                 "cover crypt: failed deserializing the master private key: {e}"
             ))
         })?;
-        let private_key_attributes = master_private_key.attributes()?;
-        let policy = policy_from_attributes(private_key_attributes)?;
         Ok(Self {
             cover_crypt,
             master_private_key: msk,
-            policy,
         })
     }
 
@@ -90,16 +88,16 @@ impl UserDecryptionKeysHandler {
         &self,
         access_policy_str: &str,
         attributes: Option<&Attributes>,
-        master_private_key_id: &str,
+        msk_id: &str,
     ) -> Result<Object, CryptoError> {
         //
         // Generate a fresh user decryption key
         //
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)?;
-
+        let access_policy = AccessPolicy::parse(access_policy_str)?;
+        let (mut msk, _mpk) = self.cover_crypt.setup()?;
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&self.master_private_key, &access_policy, &self.policy)
+            .generate_user_secret_key(&mut msk, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
         let user_decryption_key_bytes = uk.serialize().map_err(|e| {
@@ -118,9 +116,7 @@ impl UserDecryptionKeysHandler {
         // Add the link to the master private key
         attributes.link = Some(vec![Link {
             link_type: LinkType::ParentLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_id.to_owned(),
-            ),
+            linked_object_identifier: LinkedObjectIdentifier::TextString(msk_id.to_owned()),
         }]);
         let cryptographic_length = Some(i32::try_from(user_decryption_key_len)? * 8);
         Ok(Object::PrivateKey {
@@ -151,9 +147,9 @@ impl UserDecryptionKeysHandler {
                 "cover crypt: failed deserializing the user decryption key: {e}"
             ))
         })?;
-
+        let (mut msk, _mpk) = self.cover_crypt.setup()?;
         self.cover_crypt
-            .refresh_user_secret_key(&mut usk, &self.master_private_key, keep_old_rights)
+            .refresh_usk(&mut msk, &mut usk, keep_old_rights)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "cover crypt: failed refreshing the user decryption key: {e}"

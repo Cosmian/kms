@@ -27,7 +27,7 @@ pub(crate) struct KmsObject {
 
 pub(crate) fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
     let conf_path = KmsClientConfig::location(None)?;
-    let conf = KmsClientConfig::from_toml(&conf_path)?;
+    let conf = KmsClientConfig::from_toml(conf_path.to_str().unwrap())?;
     let kms_rest_client = KmsClient::new(conf)?;
     Ok(kms_rest_client)
 }

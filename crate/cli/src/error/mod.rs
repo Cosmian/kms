@@ -31,7 +31,7 @@ pub enum CliError {
     Conversion(String),
 
     #[error(transparent)]
-    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
+    CovercryptError(#[from] cosmian_cover_crypt::Error),
 
     // A cryptographic error
     #[error("Cryptographic error: {0}")]

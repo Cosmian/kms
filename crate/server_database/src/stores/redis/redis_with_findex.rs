@@ -79,14 +79,14 @@ impl RedisWithFindex {
         // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
-            &mut findex_key,
+            &mut *findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
             &*master_key
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
-            &mut db_key,
+            &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
             &*master_key
         );

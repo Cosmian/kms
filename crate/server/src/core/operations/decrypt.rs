@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::BulkData,
     kmip_objects::Object,
@@ -220,7 +220,7 @@ async fn decrypt_using_encryption_oracle(
                 .as_ref()
                 .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
                 .transpose()?,
-            request.authenticated_encryption_additional_data.as_deref(),
+            request.ad.as_deref(),
         )
         .await?;
     Ok(DecryptResponse {
@@ -377,10 +377,7 @@ fn decrypt_single_with_symmetric_key(
     let nonce = request.iv_counter_nonce.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
     })?;
-    let aad = request
-        .authenticated_encryption_additional_data
-        .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+    let aad = request.ad.as_deref().unwrap_or(EMPTY_SLICE);
     let tag = request
         .authenticated_encryption_tag
         .as_deref()

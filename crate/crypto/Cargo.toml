@@ -13,7 +13,7 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-pyo3 = ["dep:pyo3"]
+#pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = ["cosmian_kmip/fips"]
 
@@ -22,6 +22,8 @@ aes-gcm-siv = "0.11.1"
 argon2 = "0.5"
 base64 = { workspace = true }
 cloudproof = { workspace = true }
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "tbz/review-policy-spec", version = "14.0.0" }
+cosmian_crypto_core = { workspace = true, features = ["ecies", "blake", "chacha"] } # TODO(default features crypto_core have changed?)
 cosmian_kmip = { path = "../kmip" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }
@@ -32,7 +34,7 @@ num-bigint-dig = { workspace = true, features = [
   "zeroize",
 ] }
 openssl = { workspace = true }
-pyo3 = { workspace = true, optional = true }
+#pyo3 = { workspace = true, optional = true }
 rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }

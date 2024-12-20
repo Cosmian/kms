@@ -1,7 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy},
-    crypto_core::bytes_ser_de::Deserializer,
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Deserializer;
+use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, MasterSecretKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{CryptographicAlgorithm, RevocationReason},
@@ -21,10 +19,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
         build_import_public_key_request, build_rekey_keypair_request,
     },
 };
-use pyo3::{
-    exceptions::{PyException, PyTypeError},
-    prelude::*,
-};
+use pyo3::{exceptions::PyException, prelude::*};
 
 use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 
@@ -135,17 +130,14 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
-        policy: &[u8],
+        msk: &MasterSecretKey,
         sensitive: bool,
         tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the json policy
-        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
-
         // Create the kmip query
         let request = build_create_covercrypt_master_keypair_request(
-            &policy,
+            &msk,
             tags.unwrap_or_default(),
             sensitive,
         )
@@ -189,22 +181,19 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_public_key_id: &str,
-        policy: &[u8],
+        msk: &MasterSecretKey,
         tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Convert policy from bytes
-        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
-
         let request = build_import_private_key_request(
             private_key,
             unique_identifier,
             replace_existing,
             link_master_public_key_id,
-            &policy,
+            &msk,
             is_wrapped.unwrap_or(false),
             wrapping_password,
             tags.unwrap_or_default(),
@@ -238,20 +227,17 @@ impl KmsClient {
         &'p self,
         public_key: &[u8],
         replace_existing: bool,
-        policy: &[u8],
+        msk: &MasterSecretKey,
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
         tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Convert policy from bytes
-        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
-
         let request = build_import_public_key_request(
             public_key,
             unique_identifier,
             replace_existing,
-            &policy,
+            &msk,
             link_master_private_key_id,
             tags.unwrap_or_default(),
         )
@@ -332,16 +318,17 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn remove_cover_crypt_attribute<'p>(
         &'p self,
-        attribute: &str,
+        ap: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let attr: Attribute =
-            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let parsed_ap = AccessPolicy::parse(&ap)?;
+        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
+
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::RemoveAttribute(vec![attr]),
+            &RekeyEditAction::DeleteAttribute(ap, vec![ap_attributes]),
             py
         )
     }
@@ -357,16 +344,17 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn disable_cover_crypt_attribute<'p>(
         &'p self,
-        attribute: &str,
+        ap: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let attr =
-            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let parsed_ap = AccessPolicy::parse(&ap)?;
+        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
+
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::DisableAttribute(vec![attr]),
+            &RekeyEditAction::DisableAttribute(ap, vec![ap_attributes]),
             py
         )
     }
@@ -382,17 +370,22 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn add_cover_crypt_attribute<'p>(
         &'p self,
+        ap: String,
         attribute: &str,
         is_hybridized: bool,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let attr =
-            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let parsed_ap = AccessPolicy::parse(&ap)?;
+        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
+
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized))]),
+            &RekeyEditAction::AddAttribute(
+                ap,
+                vec![(ap_attributes, EncryptionHint::new(is_hybridized), None)]
+            ),
             py
         )
     }
@@ -408,17 +401,18 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rename_cover_crypt_attribute<'p>(
         &'p self,
-        attribute: &str,
+        ap: String,
         new_name: &str,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let attr =
-            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let parsed_ap = AccessPolicy::parse(&ap)?;
+        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
+
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
+            &RekeyEditAction::RenameAttribute(ap, vec![(ap_attributes, new_name.to_string())]),
             py
         )
     }

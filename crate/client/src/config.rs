@@ -82,9 +82,9 @@ mod tests {
         let conf_path = Path::new("/tmp/kms.toml").to_path_buf();
         log_init(None);
         let conf = KmsClientConfig::default();
-        conf.to_toml(&conf_path).unwrap();
+        conf.to_toml(conf_path.to_str().unwrap()).unwrap();
 
-        let _loaded_config = KmsClientConfig::from_toml(&conf_path).unwrap();
+        let _loaded_config = KmsClientConfig::from_toml(conf_path.to_str().unwrap()).unwrap();
     }
 
     #[test]
@@ -95,14 +95,14 @@ mod tests {
             env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
 
         // another valid conf
         unsafe {
             env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms_partial.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
 
         // Default conf file
         unsafe {
@@ -110,7 +110,7 @@ mod tests {
         }
         let _ = fs::remove_file(get_default_conf_path(KMS_CLI_CONF_PATH).unwrap());
         let conf_path = KmsClientConfig::location(None).unwrap();
-        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
         assert!(get_default_conf_path(KMS_CLI_CONF_PATH).unwrap().exists());
 
         // invalid conf
@@ -118,7 +118,7 @@ mod tests {
             env::set_var(KMS_CLI_CONF_ENV, "../../test_data/configs/kms.bad.toml");
         }
         let conf_path = KmsClientConfig::location(None).unwrap();
-        let e = KmsClientConfig::from_toml(&conf_path)
+        let e = KmsClientConfig::from_toml(conf_path.to_str().unwrap())
             .err()
             .unwrap()
             .to_string();
@@ -131,6 +131,6 @@ mod tests {
         let conf_path =
             KmsClientConfig::location(Some(PathBuf::from("../../test_data/configs/kms.toml")))
                 .unwrap();
-        assert!(KmsClientConfig::from_toml(&conf_path).is_ok());
+        assert!(KmsClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
     }
 }

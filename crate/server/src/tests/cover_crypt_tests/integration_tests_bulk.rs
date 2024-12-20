@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
@@ -14,26 +14,8 @@ async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
 
     let app = test_utils::test_app(None).await;
-
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("Confidential", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
-
+    let cc = Covercrypt::default();
+    let (msk, _) = cc.setup()?;
     let request_message = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
@@ -45,10 +27,10 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             )),
         ],
     };
