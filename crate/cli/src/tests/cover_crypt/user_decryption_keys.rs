@@ -104,7 +104,7 @@ pub(crate) async fn test_user_decryption_key_error() -> CliResult<()> {
     .unwrap();
     assert!(
         err.to_string()
-            .contains("attribute not found: Security Level::Top SecretZZZZZZ")
+            .contains("attribute not found: Top SecretZZZZZZ")
     );
 
     // bad master private key

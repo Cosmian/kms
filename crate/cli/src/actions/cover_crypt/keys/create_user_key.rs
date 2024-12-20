@@ -1,5 +1,5 @@
 use clap::Parser;
-use cloudproof::reexport::cover_crypt::abe_policy::AccessPolicy;
+use cosmian_cover_crypt::AccessPolicy;
 use cosmian_kms_client::KmsClient;
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_user_decryption_key_request;
 
@@ -69,8 +69,7 @@ pub struct CreateUserKeyAction {
 impl CreateUserKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Verify boolean expression in self.access_policy
-        AccessPolicy::from_boolean_expression(&self.access_policy)
-            .with_context(|| "bad access policy syntax")?;
+        AccessPolicy::parse(&self.access_policy).with_context(|| "bad access policy syntax")?;
 
         // Create the kmip query
         let create_user_key = build_create_covercrypt_user_decryption_key_request(

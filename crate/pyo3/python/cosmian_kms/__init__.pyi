@@ -1,7 +1,7 @@
 from asyncio import Future
 from typing import List, Optional, Tuple, Union
 
-from cloudproof_cover_crypt import Attribute, Policy
+from cosmian_cover_crypt import Attribute, Policy
 
 UidOrTags = Union[str, List[str]]
 """KMS Objects (e.g. keys) can either be referenced by an UID using a single string, or by a list of tags using a list of string."""

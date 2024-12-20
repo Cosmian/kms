@@ -1,6 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{
-    Attribute, DimensionBuilder, EncryptionHint, Policy,
-};
+use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
@@ -23,36 +21,19 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
 
 use crate::{
     result::{KResult, KResultHelper},
-    tests::test_utils,
+    tests::{cover_crypt_tests::access_structure_utils::access_structure_from_str, test_utils},
 };
-
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
-
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("Confidential", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
+    let access_structure = access_structure_from_str(
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+    )?;
 
     // create Key Pair
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -329,21 +310,15 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
 
-    //
-    // Add new Attributes
-    let new_policy_attributes = vec![
-        (
-            Attribute::from(("Department", "IT")),
-            EncryptionHint::Classic,
-        ),
-        (
-            Attribute::from(("Department", "R&D")),
-            EncryptionHint::Hybridized,
-        ),
-    ];
+    let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
+
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::AddAttribute(new_policy_attributes),
+        &RekeyEditAction::AddAttribute(vec![(
+            QualifiedAttribute::new("Security Level", "Low"),
+            EncryptionHint::Classic,
+            None,
+        )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -351,7 +326,6 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Encrypt for new attribute
     let data = b"New tech research data";
-    let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -370,13 +344,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Rename Attributes
-    let rename_policy_attributes_pair = vec![(
-        Attribute::from(("Department", "HR")),
-        "HumanResources".to_owned(),
-    )];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
+        &RekeyEditAction::RenameAttribute(vec![(
+            QualifiedAttribute::new("Department", "HR"),
+            "HumanResources".to_owned(),
+        )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -403,10 +376,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Disable ABE Attribute
-    let disable_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DisableAttribute(disable_policy_attributes),
+        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "FIN"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -434,10 +406,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Delete attribute
-    let remove_policy_attributes = vec![Attribute::from(("Department", "HumanResources"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::RemoveAttribute(remove_policy_attributes),
+        &RekeyEditAction::DeleteAttribute(vec![(QualifiedAttribute::new("Department", "HR"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

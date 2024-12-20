@@ -5,11 +5,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
+use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
@@ -79,14 +79,14 @@ impl RedisWithFindex {
         // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
-            &mut findex_key,
+            &mut *findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
             &*master_key
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
-            &mut db_key,
+            &mut *db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
             &*master_key
         );

@@ -1,14 +1,8 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        core::SYM_KEY_LENGTH,
-        Covercrypt, EncryptedHeader, MasterPublicKey,
-    },
-    crypto_core::{
-        bytes_ser_de::{Deserializer, Serializable, Serializer},
-        reexport::zeroize::Zeroizing,
-        SymmetricKey,
-    },
+use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::zeroize::Zeroizing,
+    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{
@@ -20,18 +14,15 @@ use cosmian_kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::{
-    crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
-    error::CryptoError,
-};
+use crate::{crypto::EncryptionSystem, error::CryptoError};
 
+const SYM_KEY_LENGTH: usize = 32;
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
 pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
     public_key_bytes: Zeroizing<Vec<u8>>,
-    policy: Policy,
 }
 
 impl CoverCryptEncryption {
@@ -40,25 +31,14 @@ impl CoverCryptEncryption {
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<Self, CryptoError> {
-        let (public_key_bytes, public_key_attributes) =
-            public_key.key_block()?.key_bytes_and_attributes()?;
+        let (public_key_bytes, _) = public_key.key_block()?.key_bytes_and_attributes()?;
 
-        let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
-            CryptoError::Kmip(
-                "the master public key does not have attributes with the Policy".to_owned(),
-            )
-        })?)?;
-
-        trace!(
-            "Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}, policy: \
-             {policy:#?}"
-        );
+        trace!("Instantiated hybrid Covercrypt encipher for public key id: {public_key_uid}");
 
         Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
             public_key_bytes,
-            policy,
         })
     }
 
@@ -90,7 +70,7 @@ impl CoverCryptEncryption {
         &self,
         encrypted_header: &[u8],
         plaintext: &[u8],
-        aead: Option<&[u8]>,
+        ad: Option<&[u8]>,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
     ) -> Result<Vec<u8>, CryptoError> {
         let mut de = Deserializer::new(plaintext);
@@ -111,7 +91,7 @@ impl CoverCryptEncryption {
         // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            let mut encrypted_block = self.encrypt(chunk_data, ad, symmetric_key)?;
             let mut chunk = encrypted_header.to_vec();
             chunk.append(&mut encrypted_block);
             ser.write_vec(&chunk)?;
@@ -123,23 +103,24 @@ impl CoverCryptEncryption {
     fn encrypt(
         &self,
         plaintext: &[u8],
-        aead: Option<&[u8]>,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        ad: Option<&[u8]>,
+        symmetric_key: &SymmetricKey<{ SYM_KEY_LENGTH }>,
     ) -> Result<Vec<u8>, CryptoError> {
         // Encrypt the data
-        let encrypted_block = self
-            .cover_crypt
-            .encrypt(symmetric_key, plaintext, aead)
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-
+        let aes256gcm = Aes256Gcm::new(symmetric_key);
+        let nonce = Nonce::new(&mut *self.cover_crypt.rng());
+        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
+        let mut res =
+            Vec::with_capacity(plaintext.len() + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
+        res.extend(nonce.0);
+        res.append(&mut ciphertext);
         debug!(
-            "Encrypted data with public key {} of len (CT/Enc): {}/{}",
-            self.public_key_uid,
+            "Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}",
+            ad,
             plaintext.len(),
-            encrypted_block.len(),
+            res.len(),
         );
-
-        Ok(encrypted_block)
+        Ok(res)
     }
 }
 
@@ -148,6 +129,10 @@ impl EncryptionSystem for CoverCryptEncryption {
         let authenticated_encryption_additional_data =
             request.authenticated_encryption_additional_data.as_deref();
 
+        trace!(
+            "CoverCryptEncryption: encrypt: authenticated_encryption_additional_data: \
+             {authenticated_encryption_additional_data:?}",
+        );
         let data_to_encrypt = DataToEncrypt::try_from_bytes(
             request
                 .data
@@ -158,7 +143,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         let public_key =
             MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
                 CryptoError::Kmip(format!(
-                    "cover crypt encipher: failed recovering the public key: {e}"
+                    "cover crypt encrypt: failed recovering the public key: {e}"
                 ))
             })?;
 
@@ -166,15 +151,12 @@ impl EncryptionSystem for CoverCryptEncryption {
             .encryption_policy
             .as_deref()
             .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
-        let encryption_policy = AccessPolicy::from_boolean_expression(encryption_policy_string)
-            .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
 
         // Generate a symmetric key and encrypt the header
-        let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
+        let (secret, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
-            &self.policy,
             &public_key,
-            &encryption_policy,
+            &AccessPolicy::parse(encryption_policy_string)?,
             data_to_encrypt.header_metadata.as_deref(),
             authenticated_encryption_additional_data,
         )
@@ -183,6 +165,11 @@ impl EncryptionSystem for CoverCryptEncryption {
         let mut encrypted_header = encrypted_header
             .serialize()
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+
+        let symmetric_key = SymmetricKey::derive(
+            &secret,
+            authenticated_encryption_additional_data.unwrap_or_default(),
+        )?;
 
         let encrypted_data = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
@@ -201,6 +188,12 @@ impl EncryptionSystem for CoverCryptEncryption {
                 authenticated_encryption_additional_data,
                 &symmetric_key,
             )?;
+            debug!(
+                "Encrypted bytes len: {}, Encrypted header len: {}, Encrypted data len: {}",
+                encrypted_header.len() + encrypted_data.len(),
+                encrypted_header.len(),
+                encrypted_data.len(),
+            );
             encrypted_header.append(&mut encrypted_data);
             encrypted_header.to_vec()
         };

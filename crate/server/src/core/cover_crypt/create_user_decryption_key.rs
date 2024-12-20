@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
@@ -8,16 +8,16 @@ use cosmian_kmip::kmip_2_1::{
 };
 use cosmian_kms_crypto::crypto::{
     cover_crypt::{
-        attributes::{access_policy_from_attributes, policy_from_attributes},
+        attributes::{access_policy_from_attributes, access_structure_from_attributes},
         user_key::UserDecryptionKeysHandler,
     },
     KeyPair,
 };
 use cosmian_kms_interfaces::SessionParams;
+use tracing::debug;
 
 use super::KMS;
 use crate::{error::KmsError, kms_bail, result::KResult};
-
 /// Create a User Decryption Key in the KMS
 ///
 /// The attributes of the `Create` request must contain the
@@ -48,6 +48,7 @@ async fn create_user_decryption_key_(
 ) -> KResult<Object> {
     // Recover the access policy
     let access_policy = access_policy_from_attributes(create_attributes)?;
+    debug!("create_user_decryption_key_: Access Policy: {access_policy}");
 
     // Recover private key
     let msk_uid_or_tags = create_attributes
@@ -84,8 +85,9 @@ async fn create_user_decryption_key_(
         if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
             continue;
         }
+
         // a master key should have policies in the attributes
-        if policy_from_attributes(attributes).is_err() {
+        if access_structure_from_attributes(attributes).is_err() {
             continue;
         }
 

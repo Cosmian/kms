@@ -1305,7 +1305,7 @@ impl Display for Encrypt {
             self.correlation_value,
             self.init_indicator,
             self.final_indicator,
-            self.authenticated_encryption_additional_data
+            self.authenticated_encryption_additional_data,
         )
     }
 }

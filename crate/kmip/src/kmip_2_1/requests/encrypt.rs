@@ -22,7 +22,7 @@ pub fn encrypt_request(
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
     nonce: Option<Vec<u8>>,
-    authentication_data: Option<Vec<u8>>,
+    authenticated_encryption_additional_data: Option<Vec<u8>>,
     cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = Zeroizing::from(if encryption_policy.is_some() {
@@ -46,6 +46,6 @@ pub fn encrypt_request(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: authentication_data,
+        authenticated_encryption_additional_data,
     })
 }

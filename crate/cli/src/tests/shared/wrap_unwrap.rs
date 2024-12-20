@@ -5,7 +5,7 @@ use std::{
 
 use assert_cmd::prelude::CommandCargoExt;
 use base64::{engine::general_purpose, Engine as _};
-use cloudproof::reexport::crypto_core::{
+use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };

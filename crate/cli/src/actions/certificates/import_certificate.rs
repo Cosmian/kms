@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
-use cloudproof::reexport::crypto_core::reexport::x509_cert;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,

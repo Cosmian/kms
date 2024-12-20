@@ -182,6 +182,7 @@ async fn test_kmip_messages() -> KResult<()> {
             ..Default::default()
         })),
     ];
+
     let message_request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {

@@ -1,6 +1,9 @@
-use cloudproof::reexport::{
-    cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
-    crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
+use cosmian_cover_crypt::{
+    api::Covercrypt, CleartextHeader, EncryptedHeader, Error, UserSecretKey,
+};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, Secret, SymmetricKey,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -11,7 +14,10 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::user_key::unwrap_user_decryption_key_object;
-use crate::{crypto::DecryptionSystem, error::CryptoError};
+use crate::{
+    crypto::DecryptionSystem,
+    error::{result::CryptoResult, CryptoError},
+};
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
@@ -43,36 +49,59 @@ impl CovercryptDecryption {
         })
     }
 
-    /// Decrypt a single payload
+    // Decrypt a single payload
     fn decrypt(
         &self,
         encrypted_bytes: &[u8],
-        aead: Option<&[u8]>,
+        ad: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
-    ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
+    ) -> CryptoResult<(CleartextHeader, Zeroizing<Vec<u8>>)> {
+        trace!("CovercryptDecryption: decrypt: ad: {ad:?}");
         let mut de = Deserializer::new(encrypted_bytes);
-        let encrypted_header = EncryptedHeader::read(&mut de)
-            .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
+        trace!("encrypted_bytes len: {}", encrypted_bytes.len());
+
+        let encrypted_header = EncryptedHeader::read(&mut de)?;
+        trace!("encrypted_header parsed");
+
+        let plaintext_header = encrypted_header
+            .decrypt(&self.cover_crypt, user_decryption_key, ad)?
+            .ok_or_else(|| {
+                Error::OperationNotPermitted("insufficient rights to open encapsulation".to_owned())
+            })?;
+
+        let key = match ad {
+            Some(ad_bytes) => SymmetricKey::derive(&plaintext_header.secret, ad_bytes)?,
+            None => SymmetricKey::derive(&plaintext_header.secret, &[])?,
+        };
+
+        // Read the left over bytes, MUST be: `nonce || ciphertext``
         let encrypted_block = de.finalize();
 
-        let header = encrypted_header
-            .decrypt(&self.cover_crypt, user_decryption_key, aead)
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+        // Split nonce and ciphertext
+        let nonce_slice = encrypted_block
+            .get(..Aes256Gcm::NONCE_LENGTH)
+            .ok_or_else(|| {
+                CryptoError::Default("encrypted block too short for nonce".to_owned())
+            })?;
+        let ciphertext = encrypted_block
+            .get(Aes256Gcm::NONCE_LENGTH..)
+            .ok_or_else(|| {
+                CryptoError::Default("encrypted block too short for payload".to_owned())
+            })?;
 
-        let cleartext = Zeroizing::from(
-            self.cover_crypt
-                .decrypt(&header.symmetric_key, &encrypted_block, aead)
-                .map_err(|e| CryptoError::Kmip(e.to_string()))?,
-        );
+        let cleartext = Aes256Gcm::new(&key)
+            .decrypt(&Nonce::try_from_slice(nonce_slice)?, ciphertext, ad)
+            .map_err(Error::CryptoCoreError)
+            .map(Zeroizing::new)?;
 
         debug!(
-            "Decrypted data with user key {} of len (CT/Enc): {}/{}",
+            "Decrypted data with user key {} of len (Plain/Enc): {}/{}",
             &self.user_decryption_key_uid,
             cleartext.len(),
-            encrypted_bytes.len(),
+            encrypted_header.length(),
         );
 
-        Ok((header, cleartext))
+        Ok((plaintext_header, cleartext))
     }
 
     /// Decrypt multiple LEB128-serialized payloads
@@ -102,7 +131,7 @@ impl CovercryptDecryption {
     fn bulk_decrypt(
         &self,
         encrypted_bytes: &[u8],
-        aead: Option<&[u8]>,
+        ad: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
     ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
         let mut de = Deserializer::new(encrypted_bytes);
@@ -119,44 +148,38 @@ impl CovercryptDecryption {
             })?
         };
 
-        let mut cleartext_header = None;
+        let mut cleartext_header = CleartextHeader {
+            secret: Secret::default(),
+            metadata: vec![0_u8].into(),
+        };
 
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
 
-            let (encrypted_header, encrypted_block) = {
-                let mut de_chunk = Deserializer::new(chunk_data);
-                let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
-                    CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
-                })?;
-                let encrypted_block = de_chunk.finalize();
-                (encrypted_header, encrypted_block)
-            };
+            let encrypted_header = EncryptedHeader::deserialize(chunk_data).map_err(|e| {
+                CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
+            })?;
 
             let header = encrypted_header
-                .decrypt(&self.cover_crypt, user_decryption_key, aead)
-                .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+                .decrypt(&self.cover_crypt, user_decryption_key, ad)
+                .map_err(|e| CryptoError::Kmip(e.to_string()))?
+                .ok_or_else(|| CryptoError::Default("unable to recover header 147".to_owned()))?;
 
-            let cleartext = self
-                .cover_crypt
-                .decrypt(&header.symmetric_key, &encrypted_block, aead)
-                .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-
-            // All the headers are the same
-            cleartext_header = Some(header);
+            cleartext_header = header;
 
             debug!(
                 "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
                 self.user_decryption_key_uid,
-                cleartext.len(),
-                encrypted_block.len(),
+                cleartext_header.length(),
+                encrypted_bytes.len(),
             );
 
-            ser.write_vec(&cleartext)?;
+            ser.write_vec(
+                &cleartext_header.metadata.clone().ok_or_else(|| {
+                    CryptoError::Default("unable to recover header 162".to_owned())
+                })?,
+            )?;
         }
-
-        let cleartext_header = cleartext_header
-            .ok_or_else(|| CryptoError::Kmip("unable to recover any header".to_owned()))?;
 
         Ok((cleartext_header, ser.finalize()))
     }

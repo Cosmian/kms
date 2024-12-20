@@ -3,10 +3,7 @@
 
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
     de::{self, MapAccess, Visitor},

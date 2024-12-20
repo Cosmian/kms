@@ -1,9 +1,7 @@
 use std::convert::TryFrom;
 
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::AccessPolicy, Covercrypt, MasterPublicKey},
-    crypto_core::bytes_ser_de::Serializable,
-};
+use cosmian_cover_crypt::{api::Covercrypt, traits::KemAc, AccessPolicy, MasterPublicKey};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -16,10 +14,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-use crate::{
-    crypto::cover_crypt::attributes::{access_policy_as_vendor_attribute, policy_from_attributes},
-    error::CryptoError,
-};
+use super::attributes::access_policy_as_vendor_attribute;
+use crate::error::CryptoError;
 
 // ------------------------------------------------------------------------------
 // ------------------------- setup parameters for KMIP --------------------------
@@ -37,7 +33,7 @@ pub fn wrapped_secret_key(
     let sk = prepare_symmetric_key(
         cover_crypt,
         public_key_response,
-        &AccessPolicy::from_boolean_expression(access_policy)?,
+        &AccessPolicy::parse(access_policy)?,
         cover_crypt_header_uid,
     )?;
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
@@ -87,7 +83,7 @@ fn prepare_symmetric_key(
 ) -> Result<CoverCryptSymmetricKey, CryptoError> {
     trace!("Starting create secret key");
 
-    let (public_key_bytes, public_key_attributes) = public_key_response
+    let (public_key_bytes, _public_key_attributes) = public_key_response
         .object
         .key_block()?
         .key_bytes_and_attributes()?;
@@ -98,14 +94,8 @@ fn prepare_symmetric_key(
         ))
     })?;
 
-    let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
-        CryptoError::Kmip(
-            "the master public key does not have attributes with the Policy".to_owned(),
-        )
-    })?)?;
-
     let (sk, sk_enc) = cover_crypt
-        .encaps(&policy, &public_key, access_policy)
+        .encaps(&public_key, access_policy)
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
     debug!("Generate symmetric key for CoverCrypt OK");

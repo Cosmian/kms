@@ -1,4 +1,3 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
@@ -17,22 +16,21 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
 };
 
 use crate::{
-    error::KmsError,
     result::{KResult, KResultHelper},
-    tests::test_utils,
+    tests::{cover_crypt_tests::access_structure_utils::access_structure_from_str, test_utils},
 };
-
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app(None).await;
-
-    let policy = policy()?;
-
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let access_structure = access_structure_from_str(
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+    )?;
+
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(&access_structure, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -77,41 +75,20 @@ async fn test_re_key_with_tags() -> KResult<()> {
     Ok(())
 }
 
-fn policy() -> Result<Policy, KmsError> {
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
-        "Department",
-        vec![
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-        ],
-        false,
-    ))?;
-    policy.add_dimension(DimensionBuilder::new(
-        "Level",
-        vec![
-            ("Confidential", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    ))?;
-    Ok(policy)
-}
-
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
 
     let app = test_utils::test_app(None).await;
-
-    let policy = policy()?;
-
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let access_structure = access_structure_from_str(
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+    )?;
+
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
+        build_create_covercrypt_master_keypair_request(&access_structure, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 

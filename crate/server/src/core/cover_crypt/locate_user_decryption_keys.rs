@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
+use cosmian_cover_crypt::QualifiedAttribute;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,
@@ -22,7 +22,7 @@ use crate::{
 pub(crate) async fn locate_user_decryption_keys(
     kmip_server: &KMS,
     master_private_key_uid: &str,
-    cover_crypt_policy_attributes_to_revoke: Option<Vec<Attribute>>,
+    cover_crypt_policy_attributes_to_revoke: Option<Vec<QualifiedAttribute>>,
     state: Option<StateEnumeration>,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,

@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
-    policy_from_attributes, rekey_edit_action_from_attributes,
+    access_structure_from_attributes, rekey_edit_action_from_attributes,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
@@ -61,7 +61,7 @@ pub(crate) async fn rekey_keypair(
         if let Ok(attributes) = owm.object().attributes() {
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // a master key should have policies in the attributes
-                if policy_from_attributes(attributes).is_err() {
+                if access_structure_from_attributes(attributes).is_err() {
                     continue
                 }
             }

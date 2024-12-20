@@ -8,6 +8,7 @@ use crate::{
     error::result::CliResult,
 };
 
+pub(crate) mod access_structure;
 pub(crate) mod decrypt;
 pub(crate) mod encrypt;
 pub(crate) mod keys;
