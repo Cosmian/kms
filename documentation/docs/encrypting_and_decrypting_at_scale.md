@@ -232,7 +232,7 @@ image.enc
 
 The following ciphers are available for client-side encryption and decryption:
 
-- Data Encryption *
+- Data Encryption
 
 | Cipher            | Description                | NIST Certified? |
 | ----------------- | -------------------------- | --------------- |
@@ -240,7 +240,7 @@ The following ciphers are available for client-side encryption and decryption:
 | aes-xts           | AES XTS                    | yes             |
 | chacha20-poly1305 | ChaCha20 Poly1305          | no              |
 
-- Key Wrapping (Encryption) *
+- Key Wrapping (Encryption)
 
 | Cipher            | Description                | NIST Certified? |
 | ----------------- | -------------------------- | --------------- |
