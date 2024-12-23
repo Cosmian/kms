@@ -1,7 +1,7 @@
 
 # Configuration file
 
-By default, the server expects to find:
+By default, the client expects to find:
 
 - a TOML configuration file in `/etc/cosmian/cosmian.toml`.
 - or an environment variable `COSMIAN_CLI_CONF` that contains the path to the configuration file.
@@ -22,17 +22,19 @@ server_url = "http://0.0.0.0:6668"
 ```toml
 [kms_config.http_config]
 server_url = "http://0.0.0.0:9990"
-ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
+ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/kms.client.acme.com.p12"
 ssl_client_pkcs12_password = "password"
 
 [findex_config.http_config]
 accept_invalid_certs = true
 server_url = "https://0.0.0.0:6660"
-ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
+ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/findex.client.acme.com.p12"
 ssl_client_pkcs12_password = "password"
 ```
 
 ## Example with OpenID authentication
+
+Both KMS and Findex server can be configured with OpenID Connect (OIDC) authentication. In that case, Cosmian CLI must use the `oauth2_conf` field to authenticate to the servers.
 
 ```toml
 [kms_config.http_config]
@@ -51,7 +53,11 @@ server_url = "http://0.0.0.0:6668"
 access_token = "eyJhbGciOiJSUzI1...OjPY84GRMmvpYZfyaJbDDql3A"
 ```
 
-## Example with S/MIME Gmail service account configuration for KMS server
+## S/MIME Gmail service account configuration for KMS server
+
+Google Workspace can delegate encryption/decryption of Gmail (and other services such as Drive, Meet, Calendar) to an external Key Management System (KMS). In that case, the KMS can be used to encrypt and decrypt the S/MIME elements (identities, key pairs) and store them securely.
+
+When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide the necessary information about the configured service account to interact with Gmail API, and handle identities and keypairs easily from the KMS.
 
 ```toml
 [kms_config.http_config]

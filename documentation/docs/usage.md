@@ -11,22 +11,14 @@ Commands:
   help           Print this message or the help of the given subcommand(s)
 
 Options:
-  -c, --conf <CONF>
-          Configuration file location
-      --kms-url <KMS_URL>
-          The URL of the KMS
-      --kms-accept-invalid-certs <KMS_ACCEPT_INVALID_CERTS>
-          Allow to connect using a self-signed cert or untrusted cert chain [possible values: true, false]
-      --kms-print-json
-          Output the KMS JSON KMIP request and response. This is useful to understand JSON POST requests and responses required to programmatically call the KMS on the `/kmip/2_1` endpoint
-      --findex-url <FINDEX_URL>
-          The URL of the Findex server
-      --findex-accept-invalid-certs <FINDEX_ACCEPT_INVALID_CERTS>
-          Allow to connect using a self-signed cert or untrusted cert chain [possible values: true, false]
-  -h, --help
-          Print help (see more with '--help')
-  -V, --version
-          Print version
+  -c, --conf-path <CONF_PATH>        Configuration file location [env: COSMIAN_CLI_CONF_PATH=]
+      --kms-url <KMS_URL>            The URL of the KMS [env: KMS_DEFAULT_URL=]
+      --kms-accept-invalid-certs     Allow to connect using a self-signed cert or untrusted cert chain
+      --kms-print-json               Output the KMS JSON KMIP request and response. This is useful to understand JSON POST requests and responses required to programmatically call the KMS on the `/kmip/2_1` endpoint
+      --findex-url <FINDEX_URL>      The URL of the Findex server [env: FINDEX_SERVER_DEFAULT_URL=]
+      --findex-accept-invalid-certs  Allow to connect using a self-signed cert or untrusted cert chain
+  -h, --help                         Print help (see more with '--help')
+  -V, --version                      Print version
 ```
 
 ## KMS commands
@@ -65,20 +57,17 @@ Usage: cosmian findex-server <COMMAND>
 
 Commands:
   encrypt-and-index   Encrypt entries and index the corresponding database UUIDs with the Findex.
-                      First the CSV file is read and encrypted on client-side with KEM-DEM crypto-system
-                      KEM: Key Encapsulation Mechanism
-                      DEM: Data Encapsulation Mechanism
   search-and-decrypt  Search keywords and decrypt the content of corresponding UUIDs.
   delete-dataset      Delete encrypted entries. (Indexes are not deleted)
-  index               Index new keywords
+  datasets            Manage encrypted datasets
   delete              Delete indexed keywords
-  search              Findex: Search keywords.
-  server-version      Print the version of the server
+  index               Index new keywords
   login               Login to the Identity Provider of the Findex server using the `OAuth2`
                       authorization code flow.
   logout              Logout from the Identity Provider.
   permissions         Manage the users permissions to the indexes
-  datasets            Manage encrypted datasets
+  search              Findex: Search keywords.
+  server-version      Print the version of the server
   help                Print this message or the help of the given subcommand(s)
 
 Options:

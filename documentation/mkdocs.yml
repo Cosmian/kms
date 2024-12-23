@@ -54,7 +54,8 @@ nav:
   - Getting started: index.md
   - Installation: installation.md
   - Configuration:
-      - TOML format: configuration.md
-      - Authorizing users with access rights: authorization.md
+      - Authentication: authentication.md
+      - KMS access rights: authorization.md
+      - Examples: configuration.md
       - Usage: usage.md
   - User manual: cli/main_commands.md
