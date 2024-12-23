@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2024-12-23
+
+### 📚 Documentation
+
+- Fix notes in README
+- Add KMS, FS correspondence versions
+- Simplify configuration examples
+
 ## [0.1.1] - 2024-12-17
 
 ### 🐛 Bug Fixes

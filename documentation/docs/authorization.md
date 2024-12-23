@@ -1,4 +1,7 @@
-# Authorizing users with access objects
+# KMS Authorizing users with access objects
+
+When [authentication](./authentication.md) is enabled, each KMS object requires explicit authorization from its owner to be accessed or used by others.
+The Cosmian CLI then allows to manage the access rights of users to cryptographic objects stored in the KMS.
 
 ## Granting an access right
 

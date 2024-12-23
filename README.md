@@ -11,7 +11,8 @@ Additionally, the CLI facilitates interaction with the [Findex server](https://g
 
 By leveraging Cosmian CLI, users can seamlessly integrate advanced cryptographic functionalities and secure search capabilities into their applications, enhancing data security and privacy.
 
-> [!NOTE]: A graphical version of the CLI is also available as a separate tool called `cosmian_gui`.
+> [!NOTE]
+> A graphical version of the CLI is also available as a separate tool called `cosmian_gui`.
 
 ## Installation
 
@@ -24,7 +25,7 @@ In that example, KMS stores its data inside the container:
 docker run -p 9998:9998 --rm --name kms ghcr.io/cosmian/kms
 ```
 
-> [!NOTE]:
+> [!NOTE]
 > The KMS server can also be installed using these [instructions](https://docs.cosmian.com/key_management_system/single_server_mode/#quick-start).
 
 In the same manner, you can run a Findex server (using Docker image) on `http://localhost:6668`:
@@ -33,7 +34,7 @@ In the same manner, you can run a Findex server (using Docker image) on `http://
 docker run -p 6668:6668 --rm --name kms ghcr.io/cosmian/findex-server
 ```
 
-> [!NOTE]:
+> [!NOTE]
 > The Findex server can also be installed using these [instructions](./documentation/docs/installation.md).
 
 ### Example
@@ -156,6 +157,12 @@ set_var("RUST_BACKTRACE", "1");
 }
 log_init(None);
 ```
+
+## Versioning
+
+| CLI version  | KMS version | Findex server version |
+| ------------ | ----------- | --------------------- |
+| 0.1.0, 0.1.1 | 4.20.x      | 0.1.0                 |
 
 ## Releases
 
