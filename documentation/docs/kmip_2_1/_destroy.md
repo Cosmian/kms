@@ -27,7 +27,7 @@ Destroying key `f54f14a3-5639-4054-8c23-54af891669db`:
 Corresponding `cosmian` command:
 
 ```shell
-  cosmian kms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d
+  cosmian kms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d --remove
 ```
 
 === "Request"
