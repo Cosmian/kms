@@ -118,6 +118,30 @@ async fn test_destroy_symmetric_key() -> CliResult<()> {
 }
 
 #[tokio::test]
+async fn test_destroy_and_remove_symmetric_key() -> CliResult<()> {
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // syn
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
+
+    // destroy should not work when not revoked
+    assert!(destroy(&ctx.owner_client_conf_path, "sym", &key_id, true).is_err());
+
+    // revoke then destroy
+    revoke(
+        &ctx.owner_client_conf_path,
+        "sym",
+        &key_id,
+        "revocation test",
+    )?;
+    destroy(&ctx.owner_client_conf_path, "sym", &key_id, true)?;
+
+    // assert
+    assert_destroyed(&ctx.owner_client_conf_path, &key_id, true)
+}
+
+#[tokio::test]
 async fn test_destroy_ec_key() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
@@ -173,6 +197,67 @@ async fn test_destroy_ec_key() -> CliResult<()> {
         // assert
         assert_destroyed(&ctx.owner_client_conf_path, &private_key_id, false)?;
         assert_destroyed(&ctx.owner_client_conf_path, &public_key_id, false)?;
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_destroy_and_remove_ec_key() -> CliResult<()> {
+    // init the test server
+    let ctx = start_default_test_kms_server().await;
+
+    // destroy via private key
+    {
+        // syn
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
+
+        // destroy should not work when not revoked
+        assert!(destroy(&ctx.owner_client_conf_path, "ec", &private_key_id, true).is_err());
+
+        // revoke then destroy
+        revoke(
+            &ctx.owner_client_conf_path,
+            "ec",
+            &private_key_id,
+            "revocation test",
+        )?;
+        // destroy via the private key
+        destroy(&ctx.owner_client_conf_path, "ec", &private_key_id, true)?;
+
+        // assert
+        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id, true)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id, true)?;
+    }
+
+    // destroy via public key
+    {
+        // syn
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
+
+        // destroy should not work when not revoked
+        assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id, true).is_err());
+
+        trace!("OK. revoking");
+
+        // revoke then destroy
+        revoke(
+            &ctx.owner_client_conf_path,
+            "ec",
+            &public_key_id,
+            "revocation test",
+        )?;
+
+        trace!("OK. destroying");
+
+        // destroy via the private key
+        destroy(&ctx.owner_client_conf_path, "ec", &public_key_id, true)?;
+
+        // assert
+        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id, true)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id, true)?;
     }
 
     Ok(())

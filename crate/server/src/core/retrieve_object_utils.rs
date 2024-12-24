@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{kmip_types::StateEnumeration, KmipOperation};
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::ErrorReason, kmip_types::StateEnumeration, KmipOperation,
+};
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
@@ -44,9 +46,10 @@ pub(crate) async fn retrieve_object_for_operation(
         }
     }
 
-    Err(KmsError::InvalidRequest(format!(
-        "too many objects found for identifier {uid_or_tags}",
-    )))
+    Err(KmsError::KmipError(
+        ErrorReason::Object_Not_Found,
+        format!("object not found for identifier {uid_or_tags}",),
+    ))
 }
 
 /// Check if a user has permission to perform an operation on an object.
