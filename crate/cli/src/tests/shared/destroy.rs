@@ -23,11 +23,19 @@ use crate::{
     },
 };
 
-pub(crate) fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> CliResult<()> {
-    let args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
+pub(crate) fn destroy(
+    cli_conf_path: &str,
+    sub_command: &str,
+    key_id: &str,
+    remove: bool,
+) -> CliResult<()> {
+    let mut args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
+    if remove {
+        args.push("--remove".to_owned());
+    }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
@@ -41,7 +49,7 @@ pub(crate) fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> C
     ))
 }
 
-fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
+fn assert_destroyed(cli_conf_path: &str, key_id: &str, remove: bool) -> CliResult<()> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -57,26 +65,29 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> CliResult<()> {
         .is_err()
     );
 
-    // but should be able to Export....
-    assert!(
-        export_key(ExportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
-            sub_command: "ec".to_owned(),
-            key_id: key_id.to_string(),
-            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-            allow_revoked: true,
-            ..Default::default()
-        })
-        .is_ok()
-    );
-    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-    match &object.key_block()?.key_value.key_material {
-        cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(
-            v,
-        ) => {
-            assert!(v.is_empty());
+    // depending on whether the key is removed or not,
+    // the key metadata should be exportable or not
+    let export_res = export_key(ExportKeyParams {
+        cli_conf_path: cli_conf_path.to_string(),
+        sub_command: "ec".to_owned(),
+        key_id: key_id.to_string(),
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        allow_revoked: true,
+        ..Default::default()
+    });
+    if remove {
+        assert!(export_res.is_err());
+    } else {
+        assert!(export_res.is_ok());
+        let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+        match &object.key_block()?.key_value.key_material {
+            cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(
+                v,
+            ) => {
+                assert!(v.is_empty());
+            }
+            _ => cli_bail!("Invalid key material"),
         }
-        _ => cli_bail!("Invalid key material"),
     }
 
     Ok(())
@@ -91,7 +102,7 @@ async fn test_destroy_symmetric_key() -> CliResult<()> {
     let key_id = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
 
     // destroy should not work when not revoked
-    assert!(destroy(&ctx.owner_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.owner_client_conf_path, "sym", &key_id, false).is_err());
 
     // revoke then destroy
     revoke(
@@ -100,10 +111,10 @@ async fn test_destroy_symmetric_key() -> CliResult<()> {
         &key_id,
         "revocation test",
     )?;
-    destroy(&ctx.owner_client_conf_path, "sym", &key_id)?;
+    destroy(&ctx.owner_client_conf_path, "sym", &key_id, false)?;
 
     // assert
-    assert_destroyed(&ctx.owner_client_conf_path, &key_id)
+    assert_destroyed(&ctx.owner_client_conf_path, &key_id, false)
 }
 
 #[tokio::test]
@@ -118,7 +129,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
             create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
-        assert!(destroy(&ctx.owner_client_conf_path, "ec", &private_key_id).is_err());
+        assert!(destroy(&ctx.owner_client_conf_path, "ec", &private_key_id, false).is_err());
 
         // revoke then destroy
         revoke(
@@ -128,11 +139,11 @@ async fn test_destroy_ec_key() -> CliResult<()> {
             "revocation test",
         )?;
         // destroy via the private key
-        destroy(&ctx.owner_client_conf_path, "ec", &private_key_id)?;
+        destroy(&ctx.owner_client_conf_path, "ec", &private_key_id, false)?;
 
         // assert
-        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id, false)?;
     }
 
     // destroy via public key
@@ -142,7 +153,7 @@ async fn test_destroy_ec_key() -> CliResult<()> {
             create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[], false)?;
 
         // destroy should not work when not revoked
-        assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id).is_err());
+        assert!(destroy(&ctx.owner_client_conf_path, "ec", &public_key_id, false).is_err());
 
         trace!("OK. revoking");
 
@@ -157,11 +168,11 @@ async fn test_destroy_ec_key() -> CliResult<()> {
         trace!("OK. destroying");
 
         // destroy via the private key
-        destroy(&ctx.owner_client_conf_path, "ec", &public_key_id)?;
+        destroy(&ctx.owner_client_conf_path, "ec", &public_key_id, false)?;
 
         // assert
-        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &private_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &public_key_id, false)?;
     }
 
     Ok(())
@@ -200,7 +211,15 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         )?;
 
         // destroy should not work when not revoked
-        assert!(destroy(&ctx.owner_client_conf_path, "cc", &master_private_key_id).is_err());
+        assert!(
+            destroy(
+                &ctx.owner_client_conf_path,
+                "cc",
+                &master_private_key_id,
+                false
+            )
+            .is_err()
+        );
 
         // revoke then destroy
         revoke(
@@ -209,13 +228,18 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_private_key_id,
             "revocation test",
         )?;
-        destroy(&ctx.owner_client_conf_path, "cc", &master_private_key_id)?;
+        destroy(
+            &ctx.owner_client_conf_path,
+            "cc",
+            &master_private_key_id,
+            false,
+        )?;
 
         // assert
-        assert_destroyed(&ctx.owner_client_conf_path, &master_private_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &master_public_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_2)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &master_private_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &master_public_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_2, false)?;
     }
 
     // check revocation of all keys when the public key is destroyed
@@ -245,7 +269,15 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         )?;
 
         // destroy should not work when not revoked
-        assert!(destroy(&ctx.owner_client_conf_path, "cc", &master_public_key_id).is_err());
+        assert!(
+            destroy(
+                &ctx.owner_client_conf_path,
+                "cc",
+                &master_public_key_id,
+                false
+            )
+            .is_err()
+        );
 
         // revoke then destroy
         revoke(
@@ -254,13 +286,18 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &master_public_key_id,
             "revocation test",
         )?;
-        destroy(&ctx.owner_client_conf_path, "cc", &master_public_key_id)?;
+        destroy(
+            &ctx.owner_client_conf_path,
+            "cc",
+            &master_public_key_id,
+            false,
+        )?;
 
         // assert
-        assert_destroyed(&ctx.owner_client_conf_path, &master_private_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &master_public_key_id)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1)?;
-        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_2)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &master_private_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &master_public_key_id, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1, false)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_2, false)?;
     }
 
     // check that revoking a user key, does not destroy anything else
@@ -291,7 +328,7 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
         )?;
 
         // destroy should not work when not revoked
-        assert!(destroy(&ctx.owner_client_conf_path, "cc", &user_key_id_1).is_err());
+        assert!(destroy(&ctx.owner_client_conf_path, "cc", &user_key_id_1, false).is_err());
 
         // revoke then destroy
         revoke(
@@ -300,10 +337,10 @@ async fn test_destroy_cover_crypt() -> CliResult<()> {
             &user_key_id_1,
             "revocation test",
         )?;
-        destroy(&ctx.owner_client_conf_path, "cc", &user_key_id_1)?;
+        destroy(&ctx.owner_client_conf_path, "cc", &user_key_id_1, false)?;
 
         // assert
-        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1)?;
+        assert_destroyed(&ctx.owner_client_conf_path, &user_key_id_1, false)?;
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;

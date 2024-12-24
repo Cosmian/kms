@@ -7,7 +7,9 @@ use crate::{actions::shared::utils::destroy, cli_bail, error::result::CliResult}
 ///
 /// The certificate must have been revoked first.
 ///
-/// When a certificate is destroyed, it can only be exported by the owner of the certificate
+/// When a certificate is destroyed but not removed,
+/// its metadata can only be exported
+/// by the owner of the certificate
 #[derive(Parser, Debug)]
 pub struct DestroyCertificateAction {
     /// The certificate unique identifier.
@@ -24,6 +26,13 @@ pub struct DestroyCertificateAction {
         group = "certificate-tags"
     )]
     tags: Option<Vec<String>>,
+
+    /// If the certificate should be removed from the database
+    /// If not specified, the certificate will be destroyed
+    /// but its metadata will still be available in the database.
+    /// Please note that the KMIP specification does not support the removal of objects.
+    #[clap(long = "remove", default_value = "false", verbatim_doc_comment)]
+    remove: bool,
 }
 
 impl DestroyCertificateAction {
@@ -36,6 +45,6 @@ impl DestroyCertificateAction {
             cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
         };
 
-        destroy(client_connector, &id).await
+        destroy(client_connector, &id, self.remove).await
     }
 }

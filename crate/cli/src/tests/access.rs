@@ -171,7 +171,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     // the user should not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -212,7 +212,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -235,7 +235,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant revoke access to user
@@ -261,7 +261,7 @@ pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
 
     // switch to user
     // destroy the key
-    destroy(&ctx.user_client_conf_path, "sym", &key_id)?;
+    destroy(&ctx.user_client_conf_path, "sym", &key_id, false)?;
 
     Ok(())
 }
@@ -545,7 +545,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // the user should not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -576,7 +576,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -594,7 +594,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
     // the user should still not be able to revoke the key
     assert!(revoke(&ctx.user_client_conf_path, "sym", &key_id, "failed revoke").is_err());
     // the user should still not be able to destroy the key
-    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id).is_err());
+    assert!(destroy(&ctx.user_client_conf_path, "sym", &key_id, false).is_err());
 
     // switch back to owner
     // grant revoke access to user
@@ -610,7 +610,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CliResult<()> {
 
     // switch to user
     // destroy the key
-    destroy(&ctx.user_client_conf_path, "sym", &key_id)?;
+    destroy(&ctx.user_client_conf_path, "sym", &key_id, false)?;
 
     Ok(())
 }

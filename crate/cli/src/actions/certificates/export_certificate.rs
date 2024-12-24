@@ -29,7 +29,7 @@ pub enum CertificateExportFormat {
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
 /// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
 ///    for keystores that do not support the new format
-///    (e.g. Java keystores, `MacOS` Keychains,...)
+///    (e.g. Java keystores, `macOS` Keychains,...)
 ///    This format is not available in FIPS mode.
 /// - in PKCS7 format including the entire certificates chain (pkcs7)
 ///

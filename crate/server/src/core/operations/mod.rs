@@ -24,7 +24,7 @@ pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use decrypt::decrypt;
 pub(crate) use delete_attribute::delete_attribute;
-pub(crate) use destroy::{destroy_operation, recursively_destroy_key};
+pub(crate) use destroy::{destroy_operation, recursively_destroy_object};
 pub(crate) use dispatch::dispatch;
 pub(crate) use encrypt::encrypt;
 pub(crate) use export::export;
