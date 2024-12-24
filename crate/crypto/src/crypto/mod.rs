@@ -1,3 +1,5 @@
+use cloudproof::reexport::fpe::core::KEY_LENGTH;
+use cosmian_cover_crypt::{traits::AE, Error};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
@@ -28,7 +30,10 @@ impl<T: EncryptionSystem + ?Sized> EncryptionSystem for Box<T> {
 }
 
 pub trait DecryptionSystem {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError>;
+    fn decrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Decrypt,
+    ) -> Result<DecryptResponse, CryptoError>;
 }
 
 /// A `KeyPair` is a tuple `(Object::PrivateKey, Object::PublicKey)`

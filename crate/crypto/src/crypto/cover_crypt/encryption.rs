@@ -1,7 +1,9 @@
-use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cloudproof::reexport::{crypto_core::bytes_ser_de::Serializable, fpe::core::KEY_LENGTH};
 use cosmian_cover_crypt::{
-    abe_policy::AccessStructure, api::Covercrypt, traits::PkeAc, AccessPolicy, EncryptedHeader,
-    MasterPublicKey,
+    abe_policy::AccessStructure,
+    api::Covercrypt,
+    traits::{PkeAc, AE},
+    AccessPolicy, EncryptedHeader, Error, MasterPublicKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{
@@ -82,7 +84,7 @@ impl CoverCryptEncryption {
     /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
     ///                           <------------- `nb_chunks` times ------------->
     ///
-    fn bulk_encrypt(
+    fn bulk_encrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
         mpk: &MasterPublicKey,
         encrypted_header: &[u8],
@@ -107,7 +109,7 @@ impl CoverCryptEncryption {
         // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(mpk, chunk_data, aead)?;
+            let mut encrypted_block = self.encrypt::<E>(mpk, chunk_data, aead)?;
             let mut chunk = encrypted_header.to_vec();
             chunk.append(&mut encrypted_block);
             ser.write_vec(&chunk)?;
@@ -116,18 +118,19 @@ impl CoverCryptEncryption {
         Ok(ser.finalize().to_vec())
     }
 
-    fn encrypt(
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
         mpk: &MasterPublicKey,
         plaintext: &[u8],
-        aead: Option<&[u8]>,
+        _aead: Option<&[u8]>,
     ) -> Result<Vec<u8>, CryptoError> {
         let ap = AccessPolicy::parse("*").unwrap();
         // Encrypt the data
-        let (encapsulation, vector) = self
-            .cover_crypt
-            .encrypt(mpk, &ap, plaintext)
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+        let (_encapsulation, vector) = <cosmian_cover_crypt::api::Covercrypt as PkeAc<
+            KEY_LENGTH,
+            E,
+        >>::encrypt(&self.cover_crypt, mpk, &ap, plaintext)
+        .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",

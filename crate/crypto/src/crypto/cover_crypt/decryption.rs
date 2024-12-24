@@ -1,6 +1,11 @@
-use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cloudproof::reexport::{
+    crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
+    fpe::core::KEY_LENGTH,
+};
 use cosmian_cover_crypt::{
-    api::Covercrypt, traits::PkeAc, CleartextHeader, EncryptedHeader, UserSecretKey, XEnc,
+    api::Covercrypt,
+    traits::{PkeAc, AE},
+    CleartextHeader, EncryptedHeader, Error, UserSecretKey,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -44,7 +49,7 @@ impl CovercryptDecryption {
     }
 
     /// Decrypt a single payload
-    fn decrypt(
+    fn decrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
         encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
@@ -53,10 +58,10 @@ impl CovercryptDecryption {
         let mut de = Deserializer::new(encrypted_bytes);
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
-        let encrypted_block = de.finalize();
+        let _encrypted_block = de.finalize();
         let ctx = (
-            encrypted_header.encapsulation,
-            encrypted_header.encrypted_metadata.expect("todo"),
+            encrypted_header.encapsulation.clone(),
+            encrypted_header.encrypted_metadata.clone().expect("todo"),
         );
 
         let header = encrypted_header
@@ -64,19 +69,32 @@ impl CovercryptDecryption {
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         let cleartext = Zeroizing::from(
-            self.cover_crypt
-                .decrypt(&user_decryption_key, &ctx)
-                .map_err(|e| CryptoError::Kmip(e.to_string()))?,
+            <cosmian_cover_crypt::api::Covercrypt as PkeAc<KEY_LENGTH, E>>::decrypt(
+                &self.cover_crypt,
+                &user_decryption_key,
+                &ctx,
+            )
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?,
         );
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
             &self.user_decryption_key_uid,
-            cleartext.expect("todo").len(),
+            <std::option::Option<zeroize::Zeroizing<std::vec::Vec<u8>>> as Clone>::clone(
+                &cleartext
+            )
+            .expect("todo")
+            .len(),
             encrypted_bytes.len(),
         );
 
-        Ok((header.expect("todo"), cleartext.expect("todo")))
+        Ok((
+            header.expect("todo"),
+            <std::option::Option<zeroize::Zeroizing<std::vec::Vec<u8>>> as Clone>::clone(
+                &cleartext,
+            )
+            .expect("todo"),
+        ))
     }
 
     /// Decrypt multiple LEB128-serialized payloads
@@ -103,12 +121,11 @@ impl CovercryptDecryption {
     /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
     ///                           <------------- `nb_chunks` times ------------->
     ///
-    fn bulk_decrypt(
+    fn bulk_decrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
         encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
-        ctx: &(XEnc, Vec<u8>),
     ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
         let mut de = Deserializer::new(encrypted_bytes);
         let mut ser = Serializer::new();
@@ -129,7 +146,7 @@ impl CovercryptDecryption {
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
 
-            let (encrypted_header, encrypted_block) = {
+            let (encrypted_header, _encrypted_block) = {
                 let mut de_chunk = Deserializer::new(chunk_data);
                 let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
                     CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
@@ -138,17 +155,20 @@ impl CovercryptDecryption {
                 (encrypted_header, encrypted_block)
             };
             let ctx = (
-                encrypted_header.encapsulation,
-                encrypted_header.encrypted_metadata.expect("todo"),
+                encrypted_header.encapsulation.clone(),
+                encrypted_header.encrypted_metadata.clone().expect("todo"),
             );
 
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, aead)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-            let cleartext = self
-                .cover_crypt
-                .decrypt(user_decryption_key, &ctx)
+            let cleartext =
+                <cosmian_cover_crypt::api::Covercrypt as PkeAc<KEY_LENGTH, E>>::decrypt(
+                    &self.cover_crypt,
+                    user_decryption_key,
+                    &ctx,
+                )
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
             // All the headers are the same
@@ -172,7 +192,10 @@ impl CovercryptDecryption {
 }
 
 impl DecryptionSystem for CovercryptDecryption {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
+    fn decrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Decrypt,
+    ) -> Result<DecryptResponse, CryptoError> {
         let user_decryption_key = UserSecretKey::deserialize(&self.user_decryption_key_bytes)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
@@ -185,7 +208,7 @@ impl DecryptionSystem for CovercryptDecryption {
         })?;
         let mut de = Deserializer::new(encrypted_bytes);
         let encrypted_header: EncryptedHeader = EncryptedHeader::read(&mut de)?;
-        let ctx = (
+        let _ctx = (
             encrypted_header.encapsulation,
             encrypted_header.encrypted_metadata.expect("todo"),
         );
@@ -195,14 +218,13 @@ impl DecryptionSystem for CovercryptDecryption {
             ..
         }) = request.cryptographic_parameters
         {
-            self.bulk_decrypt(
+            self.bulk_decrypt::<E>(
                 encrypted_bytes.as_slice(),
                 request.authenticated_encryption_additional_data.as_deref(),
                 &user_decryption_key,
-                &ctx,
             )?
         } else {
-            self.decrypt(
+            self.decrypt::<E>(
                 encrypted_bytes.as_slice(),
                 request.authenticated_encryption_additional_data.as_deref(),
                 &user_decryption_key,
