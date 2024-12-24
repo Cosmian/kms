@@ -24,17 +24,18 @@ markdown_extensions:
       permalink: true
       baselevel: 1
   - pymdownx.superfences:
-          # make exceptions to highlighting of code:
+      # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
           class: mermaid
-                # Uncomment the following line to check mermaid figures
-                # format: !!python/name:mermaid2.fence_mermaid_custom
+          # Uncomment the following line to check mermaid figures
+          # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji
   - pymdownx.details
-  - pymdownx.arithmatex
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.tasklist
   - pymdownx.highlight
   - pymdownx.inlinehilite
@@ -45,9 +46,15 @@ markdown_extensions:
   - markdown_include.include:
       base_path: docs
       inheritHeadingDepth: true
+extra_javascript: #see this for Katex: https://squidfunk.github.io/mkdocs-material/reference/math/#katex
+  - javascripts/katex.js
+  - https://unpkg.com/katex@0/dist/katex.min.js
+  - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
+  - javascripts/macros.js
+extra_css:
+  - https://unpkg.com/katex@0/dist/katex.min.css
 plugins:
   - search
-  - mermaid2
   - kroki
   - meta-descriptions
 nav:
