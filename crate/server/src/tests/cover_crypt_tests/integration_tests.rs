@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{
+use cosmian_cover_crypt::api::Covercrypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
 use cosmian_kmip::kmip_2_1::{

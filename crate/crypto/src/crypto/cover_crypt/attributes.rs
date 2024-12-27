@@ -1,4 +1,8 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{self, AccessPolicy, EncryptionHint, Policy};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{
+    abe_policy::{AccessStructure, Attribute, EncryptionHint},
+    AccessPolicy,
+};
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{Attributes, VendorAttribute},
@@ -13,7 +17,9 @@ pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_poli
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
 /// Convert an policy to a vendor attribute
-pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, CryptoError> {
+pub fn policy_as_vendor_attribute(
+    policy: &AccessStructure,
+) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
@@ -26,7 +32,7 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Cr
 }
 
 /// Extract an `CoverCrypt` policy from attributes
-pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, CryptoError> {
+pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure, CryptoError> {
     attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
         .map_or_else(
@@ -36,7 +42,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, CryptoE
                 ))
             },
             |bytes| {
-                Policy::parse_and_convert(bytes).map_err(|e| {
+                AccessStructure::deserialize(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed deserializing the CoverCrypt Policy from the attributes: {e}"
                     ))
@@ -48,7 +54,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, CryptoE
 /// Add or replace an `CoverCrypt` policy in attributes in place
 pub fn upsert_policy_in_attributes(
     attributes: &mut Attributes,
-    policy: &Policy,
+    policy: &AccessStructure,
 ) -> Result<(), CryptoError> {
     let va = policy_as_vendor_attribute(policy)?;
     attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY);
@@ -69,7 +75,7 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from `CoverCrypt` policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: &[abe_policy::Attribute],
+    attributes: &[Attribute],
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -81,9 +87,7 @@ pub fn attributes_as_vendor_attribute(
 }
 
 /// Convert from vendor attributes to `CoverCrypt` policy attributes
-pub fn attributes_from_attributes(
-    attributes: &Attributes,
-) -> Result<Vec<abe_policy::Attribute>, CryptoError> {
+pub fn attributes_from_attributes(attributes: &Attributes) -> Result<Vec<Attribute>, CryptoError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
@@ -94,7 +98,10 @@ pub fn attributes_from_attributes(
         })?;
         let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
         for attr in attribute_strings {
-            let attr = abe_policy::Attribute::try_from(attr.as_str()).map_err(|e| {
+            let attr = <cosmian_cover_crypt::abe_policy::Attribute as Serializable>::deserialize(
+                attr.as_bytes(),
+            )
+            .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "failed deserializing the CoverCrypt attribute: {e}"
                 ))
@@ -142,7 +149,7 @@ pub fn upsert_access_policy_in_attributes(
 }
 
 pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, CryptoError> {
-    AccessPolicy::from_boolean_expression(ap).map_err(|e| {
+    AccessPolicy::parse(ap).map_err(|e| {
         CryptoError::Kmip(format!(
             "failed to deserialize the given Access Policy string: {e}"
         ))
@@ -151,12 +158,12 @@ pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, CryptoError> 
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RekeyEditAction {
-    RekeyAccessPolicy(String),
-    PruneAccessPolicy(String),
-    RemoveAttribute(Vec<abe_policy::Attribute>),
-    DisableAttribute(Vec<abe_policy::Attribute>),
-    AddAttribute(Vec<(abe_policy::Attribute, EncryptionHint)>),
-    RenameAttribute(Vec<(abe_policy::Attribute, String)>),
+    RekeyAccessPolicy(Vec<Attribute>),
+    PruneAccessPolicy(Vec<Attribute>),
+    RemoveAttribute(Vec<Attribute>),
+    DisableAttribute(Vec<Attribute>),
+    AddAttribute(Vec<(Attribute, EncryptionHint)>),
+    RenameAttribute(Vec<(Attribute, String)>),
 }
 
 /// Convert an edit action to a vendor attribute

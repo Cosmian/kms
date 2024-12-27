@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
+use cosmian_cover_crypt::abe_policy::{Attribute, EncryptionHint};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,

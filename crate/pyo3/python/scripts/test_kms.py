@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from cloudproof_cover_crypt import (
+from cosmian_cover_crypt import (
     MasterPublicKey,
     MasterSecretKey,
     Policy,

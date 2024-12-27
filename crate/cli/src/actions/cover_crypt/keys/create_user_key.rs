@@ -1,5 +1,5 @@
 use clap::Parser;
-use cloudproof::reexport::cover_crypt::abe_policy::AccessPolicy;
+use cosmian_cover_crypt::api::Covercrypt::abe_policy::AccessPolicy;
 use cosmian_kms_client::KmsClient;
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_user_decryption_key_request;
 

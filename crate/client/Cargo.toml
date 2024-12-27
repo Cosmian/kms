@@ -16,7 +16,7 @@ doctest = false
 fips = ["cosmian_kmip/fips"]
 
 [dependencies]
-cloudproof = { workspace = true }
+cloudproof = { workspace = true}
 cosmian_config_utils = { workspace = true }
 cosmian_http_client = { workspace = true }
 cosmian_kmip = { path = "../kmip" }

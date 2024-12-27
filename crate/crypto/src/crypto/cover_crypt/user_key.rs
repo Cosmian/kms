@@ -1,9 +1,6 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        Covercrypt, MasterSecretKey, UserSecretKey,
-    },
-    crypto_core::bytes_ser_de::Serializable,
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{
+    abe_policy::AccessStructure, api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -58,7 +55,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
 pub struct UserDecryptionKeysHandler {
     cover_crypt: Covercrypt,
     master_private_key: MasterSecretKey,
-    policy: Policy,
+    policy: AccessStructure,
 }
 
 impl UserDecryptionKeysHandler {
@@ -95,11 +92,11 @@ impl UserDecryptionKeysHandler {
         //
         // Generate a fresh user decryption key
         //
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)?;
-
+        let access_policy = AccessPolicy::parse(access_policy_str)?;
+        let (mut msk, _mpk) = self.cover_crypt.setup()?;
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&self.master_private_key, &access_policy, &self.policy)
+            .generate_user_secret_key(&mut msk, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
         let user_decryption_key_bytes = uk.serialize().map_err(|e| {
@@ -151,9 +148,9 @@ impl UserDecryptionKeysHandler {
                 "cover crypt: failed deserializing the user decryption key: {e}"
             ))
         })?;
-
+        let (mut msk, _mpk) = self.cover_crypt.setup()?;
         self.cover_crypt
-            .refresh_user_secret_key(&mut usk, &self.master_private_key, keep_old_rights)
+            .refresh_usk(&mut msk, &mut usk, keep_old_rights)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "cover crypt: failed refreshing the user decryption key: {e}"

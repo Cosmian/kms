@@ -1,7 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy},
-    crypto_core::bytes_ser_de::Deserializer,
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Deserializer;
+use cosmian_cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{CryptographicAlgorithm, RevocationReason},

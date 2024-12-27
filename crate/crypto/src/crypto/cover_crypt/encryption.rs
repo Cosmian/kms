@@ -1,14 +1,9 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        core::SYM_KEY_LENGTH,
-        Covercrypt, EncryptedHeader, MasterPublicKey,
-    },
-    crypto_core::{
-        bytes_ser_de::{Deserializer, Serializable, Serializer},
-        reexport::zeroize::Zeroizing,
-        SymmetricKey,
-    },
+use cloudproof::reexport::{crypto_core::bytes_ser_de::Serializable, fpe::core::KEY_LENGTH};
+use cosmian_cover_crypt::{
+    abe_policy::AccessStructure,
+    api::Covercrypt,
+    traits::{PkeAc, AE},
+    AccessPolicy, EncryptedHeader, Error, MasterPublicKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{
@@ -16,9 +11,10 @@ use cosmian_kmip::{
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
-    DataToEncrypt,
+    DataToEncrypt, Deserializer, Serializer,
 };
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
@@ -31,8 +27,10 @@ pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
     public_key_bytes: Zeroizing<Vec<u8>>,
-    policy: Policy,
+    policy: AccessStructure,
 }
+
+const LENGTH: usize = 0;
 
 impl CoverCryptEncryption {
     pub fn instantiate(
@@ -86,12 +84,12 @@ impl CoverCryptEncryption {
     /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
     ///                           <------------- `nb_chunks` times ------------->
     ///
-    fn bulk_encrypt(
+    fn bulk_encrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
+        mpk: &MasterPublicKey,
         encrypted_header: &[u8],
         plaintext: &[u8],
         aead: Option<&[u8]>,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
     ) -> Result<Vec<u8>, CryptoError> {
         let mut de = Deserializer::new(plaintext);
         let mut ser = Serializer::new();
@@ -111,7 +109,7 @@ impl CoverCryptEncryption {
         // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            let mut encrypted_block = self.encrypt::<E>(mpk, chunk_data, aead)?;
             let mut chunk = encrypted_header.to_vec();
             chunk.append(&mut encrypted_block);
             ser.write_vec(&chunk)?;
@@ -120,31 +118,36 @@ impl CoverCryptEncryption {
         Ok(ser.finalize().to_vec())
     }
 
-    fn encrypt(
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
         &self,
+        mpk: &MasterPublicKey,
         plaintext: &[u8],
-        aead: Option<&[u8]>,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        _aead: Option<&[u8]>,
     ) -> Result<Vec<u8>, CryptoError> {
+        let ap = AccessPolicy::parse("*").unwrap();
         // Encrypt the data
-        let encrypted_block = self
-            .cover_crypt
-            .encrypt(symmetric_key, plaintext, aead)
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+        let (_encapsulation, vector) = <cosmian_cover_crypt::api::Covercrypt as PkeAc<
+            KEY_LENGTH,
+            E,
+        >>::encrypt(&self.cover_crypt, mpk, &ap, plaintext)
+        .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
             self.public_key_uid,
             plaintext.len(),
-            encrypted_block.len(),
+            vector.len(),
         );
 
-        Ok(encrypted_block)
+        Ok(vector)
     }
 }
 
 impl EncryptionSystem for CoverCryptEncryption {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Encrypt,
+    ) -> Result<EncryptResponse, CryptoError> {
         let authenticated_encryption_additional_data =
             request.authenticated_encryption_additional_data.as_deref();
 
@@ -166,16 +169,16 @@ impl EncryptionSystem for CoverCryptEncryption {
             .encryption_policy
             .as_deref()
             .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
-        let encryption_policy = AccessPolicy::from_boolean_expression(encryption_policy_string)
+        let _encryption_policy = AccessPolicy::parse(encryption_policy_string)
             .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
+        let ap = AccessPolicy::parse("*").unwrap();
 
         // Generate a symmetric key and encrypt the header
-        let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
+        let (_symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
-            &self.policy,
             &public_key,
-            &encryption_policy,
-            data_to_encrypt.header_metadata.as_deref(),
+            &ap,
+            None,
             authenticated_encryption_additional_data,
         )
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
@@ -189,17 +192,17 @@ impl EncryptionSystem for CoverCryptEncryption {
             ..
         }) = request.cryptographic_parameters
         {
-            self.bulk_encrypt(
+            self.bulk_encrypt::<E>(
+                &public_key,
                 &encrypted_header,
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,
-                &symmetric_key,
             )?
         } else {
-            let mut encrypted_data = self.encrypt(
+            let mut encrypted_data = self.encrypt::<E>(
+                &public_key,
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,
-                &symmetric_key,
             )?;
             encrypted_header.append(&mut encrypted_data);
             encrypted_header.to_vec()

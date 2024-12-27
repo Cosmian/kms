@@ -1,6 +1,6 @@
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
-    crypto_core::bytes_ser_de::Serializable,
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{
+    abe_policy::AccessStructure, api::Covercrypt, MasterPublicKey, MasterSecretKey,
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -46,7 +46,7 @@ pub fn create_master_keypair(
 
     // Now generate a master key using the CoverCrypt Engine
     let (sk, pk) = cover_crypt
-        .generate_master_keys(&policy)
+        .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
     // Private Key generation
@@ -88,7 +88,7 @@ pub fn create_master_keypair(
 
 fn create_master_private_key_object(
     key: &[u8],
-    policy: &Policy,
+    policy: &AccessStructure,
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -128,7 +128,7 @@ fn create_master_private_key_object(
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
 fn create_master_public_key_object(
     key: &[u8],
-    policy: &Policy,
+    policy: &AccessStructure,
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -189,7 +189,7 @@ pub fn covercrypt_keys_from_kmip_objects(
 }
 
 pub fn kmip_objects_from_covercrypt_keys(
-    policy: &Policy,
+    policy: &AccessStructure,
     msk: &MasterSecretKey,
     mpk: &MasterPublicKey,
     msk_obj: KmipKeyUidObject,
