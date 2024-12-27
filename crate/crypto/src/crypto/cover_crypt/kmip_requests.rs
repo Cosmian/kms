@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{self, AccessPolicy};
+use cosmian_cover_crypt::abe_policy::AccessStructure;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -18,7 +18,7 @@ use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
-    policy: &AccessPolicy,
+    policy: &AccessStructure,
     tags: T,
     sensitive: bool,
 ) -> Result<CreateKeyPair, CryptoError> {
@@ -155,7 +155,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     unique_identifier: Option<String>,
     replace_existing: bool,
     cover_crypt_master_public_key_id: &str,
-    policy: &AccessPolicy,
+    policy: &AccessStructure,
     is_wrapped: bool,
     wrapping_password: Option<String>,
     tags: T,
@@ -228,7 +228,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     public_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
-    policy: &AccessPolicy,
+    policy: &AccessStructure,
     cover_crypt_master_private_key_id: &str,
     tags: T,
 ) -> Result<Import, CryptoError> {

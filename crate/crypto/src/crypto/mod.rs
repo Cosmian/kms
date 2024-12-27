@@ -20,12 +20,18 @@ pub mod symmetric;
 pub mod wrap;
 
 pub trait EncryptionSystem {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError>;
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Encrypt,
+    ) -> Result<EncryptResponse, CryptoError>;
 }
 
 impl<T: EncryptionSystem + ?Sized> EncryptionSystem for Box<T> {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
-        (**self).encrypt(request)
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Encrypt,
+    ) -> Result<EncryptResponse, CryptoError> {
+        (**self).encrypt::<E>(request)
     }
 }
 

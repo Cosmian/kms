@@ -144,7 +144,10 @@ impl CoverCryptEncryption {
 }
 
 impl EncryptionSystem for CoverCryptEncryption {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt<E: AE<KEY_LENGTH, Error = Error>>(
+        &self,
+        request: &Encrypt,
+    ) -> Result<EncryptResponse, CryptoError> {
         let authenticated_encryption_additional_data =
             request.authenticated_encryption_additional_data.as_deref();
 
@@ -168,12 +171,13 @@ impl EncryptionSystem for CoverCryptEncryption {
             .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
         let _encryption_policy = AccessPolicy::parse(encryption_policy_string)
             .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
+        let ap = AccessPolicy::parse("*").unwrap();
 
         // Generate a symmetric key and encrypt the header
         let (_symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
             &public_key,
-            &self.policy,
+            &ap,
             None,
             authenticated_encryption_additional_data,
         )
@@ -188,14 +192,14 @@ impl EncryptionSystem for CoverCryptEncryption {
             ..
         }) = request.cryptographic_parameters
         {
-            self.bulk_encrypt(
+            self.bulk_encrypt::<E>(
                 &public_key,
                 &encrypted_header,
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,
             )?
         } else {
-            let mut encrypted_data = self.encrypt(
+            let mut encrypted_data = self.encrypt::<E>(
                 &public_key,
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,

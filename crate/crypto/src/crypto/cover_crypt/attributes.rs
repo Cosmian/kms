@@ -1,4 +1,8 @@
-use cosmian_cover_crypt::abe_policy::{AccessStructure, Attribute};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{
+    abe_policy::{AccessStructure, Attribute, EncryptionHint},
+    AccessPolicy,
+};
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{Attributes, VendorAttribute},
@@ -38,7 +42,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure
                 ))
             },
             |bytes| {
-                AccessStructure::parse(bytes).map_err(|e| {
+                AccessStructure::deserialize(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed deserializing the CoverCrypt Policy from the attributes: {e}"
                     ))
@@ -83,7 +87,7 @@ pub fn attributes_as_vendor_attribute(
 }
 
 /// Convert from vendor attributes to `CoverCrypt` policy attributes
-pub fn attributes_from_attributes(attributes: &Attribute) -> Result<Vec<Attribute>, CryptoError> {
+pub fn attributes_from_attributes(attributes: &Attributes) -> Result<Vec<Attribute>, CryptoError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
@@ -94,7 +98,10 @@ pub fn attributes_from_attributes(attributes: &Attribute) -> Result<Vec<Attribut
         })?;
         let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
         for attr in attribute_strings {
-            let attr = Attribute::try_from(attr.as_str()).map_err(|e| {
+            let attr = <cosmian_cover_crypt::abe_policy::Attribute as Serializable>::deserialize(
+                attr.as_bytes(),
+            )
+            .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "failed deserializing the CoverCrypt attribute: {e}"
                 ))
@@ -110,7 +117,7 @@ pub fn attributes_from_attributes(attributes: &Attribute) -> Result<Vec<Attribut
 }
 
 /// Extract an `CoverCrypt` Access policy from attributes
-pub fn access_policy_from_attributes(attributes: &Attribute) -> Result<String, CryptoError> {
+pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, CryptoError> {
     attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
         .map_or_else(
@@ -132,7 +139,7 @@ pub fn access_policy_from_attributes(attributes: &Attribute) -> Result<String, C
 
 /// Add or replace an access policy in attributes in place
 pub fn upsert_access_policy_in_attributes(
-    attributes: &mut Attribute,
+    attributes: &mut Attributes,
     access_policy: &str,
 ) -> Result<(), CryptoError> {
     let va = access_policy_as_vendor_attribute(access_policy)?;
@@ -141,8 +148,8 @@ pub fn upsert_access_policy_in_attributes(
     Ok(())
 }
 
-pub fn deserialize_access_policy(ap: &str) -> Result<AccessStructure, CryptoError> {
-    AccessStructure::parse(ap).map_err(|e| {
+pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, CryptoError> {
+    AccessPolicy::parse(ap).map_err(|e| {
         CryptoError::Kmip(format!(
             "failed to deserialize the given Access Policy string: {e}"
         ))
@@ -151,12 +158,12 @@ pub fn deserialize_access_policy(ap: &str) -> Result<AccessStructure, CryptoErro
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RekeyEditAction {
-    RekeyAccessPolicy(String),
-    PruneAccessPolicy(String),
-    RemoveAttribute(String),
-    DisableAttribute(String),
-    AddAttribute(Attribute),
-    RenameAttribute(String, String),
+    RekeyAccessPolicy(Vec<Attribute>),
+    PruneAccessPolicy(Vec<Attribute>),
+    RemoveAttribute(Vec<Attribute>),
+    DisableAttribute(Vec<Attribute>),
+    AddAttribute(Vec<(Attribute, EncryptionHint)>),
+    RenameAttribute(Vec<(Attribute, String)>),
 }
 
 /// Convert an edit action to a vendor attribute
@@ -177,7 +184,7 @@ pub fn rekey_edit_action_as_vendor_attribute(
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.
 pub fn rekey_edit_action_from_attributes(
-    attributes: &Attribute,
+    attributes: &Attributes,
 ) -> Result<RekeyEditAction, CryptoError> {
     attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)

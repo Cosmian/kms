@@ -1,5 +1,7 @@
 use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
+use cosmian_cover_crypt::{
+    abe_policy::AccessStructure, api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey,
+};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
@@ -53,7 +55,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
 pub struct UserDecryptionKeysHandler {
     cover_crypt: Covercrypt,
     master_private_key: MasterSecretKey,
-    policy: AccessPolicy,
+    policy: AccessStructure,
 }
 
 impl UserDecryptionKeysHandler {
