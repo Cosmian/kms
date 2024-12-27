@@ -65,8 +65,8 @@ bytes. It works as follows
 - the encoded data starts with the 2-byte fixed sequence `0x87 0x87`
 - followed by the unsigned leb128 encoded number of items in the array
 - followed, for each item, by
-  - the unsigned leb128 encoded byte length of the item
-  - the item itself
+    - the unsigned leb128 encoded byte length of the item
+    - the item itself
 
 ```text
 BulkData = 0x87 0x87 <number of items> <item 1 length> <item 1> ... <item n length> <item n>
@@ -281,9 +281,9 @@ Using AES GCM as a KEM and a DEM, the details will be as follows:
 
 - 1 unsigned LEB 128 byte holding the length of the encapsulation (60)
 - 60 bytes of encapsulation decomposed in :
-  - 12 byte KEM IV
-  - 32 bytes encrypted DEK
-  - 16 byte KEM MAC
+    - 12 byte KEM IV
+    - 32 bytes encrypted DEK
+    - 16 byte KEM MAC
 - 12 bytes of DEM IV
 - x bytes of ciphertext (same size as plaintext)
 - 16 bytes of DEM MAC

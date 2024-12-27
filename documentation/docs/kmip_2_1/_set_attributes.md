@@ -78,7 +78,7 @@ Attribute set successfully
             }
           ]
         }
-```
+    ```
 
 ### Example - Set links on Certificate
 
@@ -190,7 +190,6 @@ Attribute set successfully
         }
     ```
 
-
 === "Response"
 
     ```json
@@ -205,4 +204,4 @@ Attribute set successfully
             }
           ]
         }
-```
+    ```

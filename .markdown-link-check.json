@@ -1,0 +1,13 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "../cosmian_cli"
+    },
+    {
+      "pattern": "../cosmian_vm"
+    },
+    {
+      "pattern": "mailto:"
+    }
+  ]
+}

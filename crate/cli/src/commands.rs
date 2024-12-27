@@ -1,7 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::{Parser, Subcommand};
-use cosmian_config_utils::ConfigUtils;
 use cosmian_kms_client::{KmsClient, KmsClientConfig};
 use cosmian_logger::log_init;
 use tracing::info;
@@ -61,8 +60,7 @@ impl KmsOptions {
     /// # Errors
     /// - If the configuration file is not found or invalid
     pub fn prepare_config(&self) -> CliResult<KmsClientConfig> {
-        let mut config =
-            KmsClientConfig::from_toml(&KmsClientConfig::location(self.conf_path.clone())?)?;
+        let mut config = KmsClientConfig::load(self.conf_path.clone())?;
 
         // Override configuration file with command line options
         if let Some(url) = self.url.clone() {
@@ -157,11 +155,11 @@ pub async fn ckms_main() -> CliResult<()> {
 
     // Post-process the login/logout actions: save KMS configuration
     // The reason why it is done here is that the login/logout actions are also call by meta Cosmian CLI using its own configuration file
-    let conf_path = KmsClientConfig::location(cli_opts.kms_options.conf_path.clone())?;
     match cli_opts.command {
         KmsActions::Login(_) | KmsActions::Logout(_) => {
-            kms_rest_client.config.to_toml(&conf_path)?;
-            println!("Saving configuration to: {conf_path:?}");
+            kms_rest_client
+                .config
+                .save(cli_opts.kms_options.conf_path.clone())?;
         }
         _ => {}
     }

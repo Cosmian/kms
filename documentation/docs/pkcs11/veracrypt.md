@@ -39,7 +39,7 @@ PKCS#12 file for authentication.
 }
 ```
 
-To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from https://package.cosmian.com/kms/ and
+To use Open ID connect, install the [Cosmian CLI](../../cosmian_cli/index.md) from <https://package.cosmian.com/kms/> and
 use the `cosmian kms login` command to authenticate to the KMS first.
 
 ## Creating keys to use with Veracrypt
