@@ -6,13 +6,13 @@ use std::{
 
 use clap::Parser;
 use cosmian_findex_cli::{
-    actions::findex::{FindexParameters, instantiate_findex},
+    actions::findex::{instantiate_findex, FindexParameters},
     reexports::{
         cloudproof_findex::reexport::cosmian_findex::{
             Data, IndexedValue, IndexedValueToKeywordsMap, Keyword, Keywords,
         },
         cosmian_findex_client::FindexRestClient,
-        cosmian_findex_structs::EncryptedEntries,
+        cosmian_findex_structs::{EncryptedEntries, Uuids},
     },
 };
 use cosmian_kms_cli::{
@@ -271,7 +271,7 @@ impl EncryptAndIndexAction {
         &self,
         findex_rest_client: &FindexRestClient,
         kms_rest_client: &KmsClient,
-    ) -> CosmianResult<()> {
+    ) -> CosmianResult<Uuids> {
         let nonce = self
             .nonce
             .as_deref()
@@ -332,6 +332,6 @@ impl EncryptAndIndexAction {
         let uuids = encrypted_entries.get_uuids();
         println!("Data behind those UUIDS were encrypted and indexed: {uuids}");
 
-        Ok(())
+        Ok(uuids)
     }
 }

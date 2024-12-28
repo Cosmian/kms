@@ -1,6 +1,6 @@
 use clap::Parser;
 use cosmian_findex_cli::{
-    actions::findex::{FindexParameters, instantiate_findex},
+    actions::findex::{instantiate_findex, FindexParameters},
     reexports::{
         cloudproof_findex::reexport::cosmian_findex::{Keyword, Keywords},
         cosmian_findex_client::FindexRestClient,
@@ -73,7 +73,7 @@ impl SearchAndDecryptAction {
         &self,
         findex_rest_client: &FindexRestClient,
         kms_rest_client: &KmsClient,
-    ) -> CosmianResult<()> {
+    ) -> CosmianResult<Vec<String>> {
         let results = instantiate_findex(findex_rest_client, &self.findex_parameters.index_id)
             .await?
             .search(
@@ -154,6 +154,6 @@ impl SearchAndDecryptAction {
 
         println!("Decrypted records: {results:?}");
 
-        Ok(())
+        Ok(results)
     }
 }

@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use cosmian_config_utils::ConfigUtils;
-use cosmian_findex_cli::{CoreFindexActions, reexports::cosmian_findex_client::FindexRestClient};
-use cosmian_kms_cli::{KmsActions, reexport::cosmian_kms_client::KmsClient};
+use cosmian_findex_cli::{reexports::cosmian_findex_client::FindexRestClient, CoreFindexActions};
+use cosmian_kms_cli::{reexport::cosmian_kms_client::KmsClient, KmsActions};
 use cosmian_logger::log_init;
 use tracing::{info, trace};
 
@@ -90,8 +89,7 @@ pub async fn cosmian_main() -> CosmianResult<()> {
     info!("Starting Cosmian CLI");
     let cli = Cli::parse();
 
-    let conf_path = ClientConf::location(cli.conf_path)?;
-    let mut config = ClientConf::from_toml(&conf_path)?;
+    let mut config = ClientConf::load(cli.conf_path.clone())?;
 
     // Handle KMS configuration
     if let Some(url) = cli.kms_url.clone() {
@@ -121,7 +119,7 @@ pub async fn cosmian_main() -> CosmianResult<()> {
         CliCommands::Markdown(action) => {
             let command = <Cli as CommandFactory>::command();
             action.process(&command)?;
-            return Ok(())
+            return Ok(());
         }
         CliCommands::Kms(kms_actions) => {
             kms_actions.process(&mut kms_rest_client).await?;
@@ -142,14 +140,12 @@ pub async fn cosmian_main() -> CosmianResult<()> {
     // Save the configuration
     match cli.command {
         CliCommands::Kms(KmsActions::Login(_) | KmsActions::Logout(_)) => {
-            config.to_toml(&conf_path)?;
-            info!("Saving configuration to: {conf_path:?}");
+            config.save(cli.conf_path.clone())?;
         }
         CliCommands::FindexServer(FindexActions::Findex(
             CoreFindexActions::Login(_) | CoreFindexActions::Logout(_),
         )) => {
-            config.to_toml(&conf_path)?;
-            info!("Saving configuration to: {conf_path:?}");
+            config.save(cli.conf_path)?;
         }
         _ => {}
     }

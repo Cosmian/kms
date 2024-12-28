@@ -1,5 +1,2 @@
-pub(crate) mod add;
-pub(crate) mod delete;
-pub(crate) mod permissions;
-pub(crate) mod search;
+#[allow(clippy::future_not_send)]
 pub(crate) mod tests;
