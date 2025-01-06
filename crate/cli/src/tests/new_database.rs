@@ -164,7 +164,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     // update the CLI conf
     let mut new_conf = ctx.owner_client_conf.clone();
     new_conf.http_config.database_secret = Some(new_database_secret);
-    new_conf.to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
+    new_conf.to_toml(&ctx.owner_client_conf_path)?;
 
     // create a symmetric key in the default encrypted database
     let key_2 = create_symmetric_key(&ctx.owner_client_conf_path, CreateKeyAction::default())?;
@@ -180,8 +180,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     .unwrap();
 
     // go back to original conf
-    ctx.owner_client_conf
-        .to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
+    ctx.owner_client_conf.to_toml(&ctx.owner_client_conf_path)?;
 
     // we should be able to export key_1 again
     export_key(ExportKeyParams {
@@ -193,7 +192,7 @@ async fn test_multiple_databases() -> CliResult<()> {
     })?;
 
     // go to new conf
-    new_conf.to_toml(&PathBuf::from(&ctx.owner_client_conf_path))?;
+    new_conf.to_toml(&ctx.owner_client_conf_path)?;
 
     // we should be able to export key_2 again
     export_key(ExportKeyParams {

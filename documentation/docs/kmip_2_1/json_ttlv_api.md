@@ -33,7 +33,7 @@ cosmian kms --json sym keys create --tag myKey
 
 The CLI will then show the JSON TTLV requests and response:
 
-```
+```sh
 2024-09-13T13:39:20.001395Z  INFO ThreadId(01) cosmian_kms_client::kms_rest_client:  ==>
 {
   "tag": "Create",

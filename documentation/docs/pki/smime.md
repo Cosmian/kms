@@ -5,24 +5,24 @@ of MIME data.
 It is used to secure email messages and is supported by most email clients and servers.
 
 - [Deploying email encryption with S/MIME](#deploying-email-encryption-with-smime)
-  - [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
-    - [Setup (once)](#setup-once)
-    - [Handshake (once per recipient)](#handshake-once-per-recipient)
-  - [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
-    - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
-    - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
-    - [Creating an S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
-      - [Create a Root CA](#create-a-root-ca)
-      - [Create an Intermediate CA](#create-an-intermediate-ca)
-    - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
-  - [Exporting and viewing](#exporting-and-viewing)
-    - [PKCS#12 format](#pkcs12-format)
-    - [PEM format](#pem-format)
-  - [Loading the PKCS#12 file in an email client](#loading-the-pkcs12-file-in-an-email-client)
-  - [Apple mail, MacOS](#apple-mail-macos)
-  - [Outlook, Windows](#outlook-windows)
-    - [Setup](#setup)
-    - [Sending a message](#sending-a-message)
+    - [Overview of the S/MIME workflow](#overview-of-the-smime-workflow)
+        - [Setup (once)](#setup-once)
+        - [Handshake (once per recipient)](#handshake-once-per-recipient)
+    - [Generating a key pair and a certificate](#generating-a-key-pair-and-a-certificate)
+        - [Getting a user certificate from a public certificate authority](#getting-a-user-certificate-from-a-public-certificate-authority)
+        - [Getting an intermediate signer certificate from a public certificate authority](#getting-an-intermediate-signer-certificate-from-a-public-certificate-authority)
+        - [Creating an S/MIME certificate authority with a root and intermediate CA](#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca)
+            - [Create a Root CA](#create-a-root-ca)
+            - [Create an Intermediate CA](#create-an-intermediate-ca)
+        - [Generate a user certificate signed by the intermediate certificate](#generate-a-user-certificate-signed-by-the-intermediate-certificate)
+    - [Exporting and viewing](#exporting-and-viewing)
+        - [PKCS#12 format](#pkcs12-format)
+        - [PEM format](#pem-format)
+    - [Loading the PKCS#12 file in an email client](#loading-the-pkcs12-file-in-an-email-client)
+    - [Apple mail, MacOS](#apple-mail-macos)
+    - [Outlook, Windows](#outlook-windows)
+        - [Setup](#setup)
+        - [Sending a message](#sending-a-message)
 
 ## Overview of the S/MIME workflow
 
@@ -169,10 +169,10 @@ in your email client.
 To be used for S/MIME, the user certificate needs to have certain extensions which are set in a
 file containing a `[ v3_ca ]` section.
 
-Say we want to create an S/MIME certificate for user john.doe@acme.com, signed by the intermediate
+Say we want to create an S/MIME certificate for user <john.doe@acme.com>, signed by the intermediate
 certificate, with the following details:
 
-- Common Name: john.doe@acme.com
+- Common Name: <john.doe@acme.com>
 - Organization: ACME
 - Organizational Unit: IT
 - Locality: San Francisco

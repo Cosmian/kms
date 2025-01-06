@@ -107,13 +107,13 @@ On server startup:
 
 - the server checks if the software version is greater than the last version run:
 
-  - if no, it simply starts;
-  - if yes:
+    - if no, it simply starts;
+    - if yes:
 
-    - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
-    - it runs all the upgrades in order;
-    - it sets the flag from upgrading to ready;
+        - it looks for all upgrades to apply in order from the last version run to this version;
+        - if there is any to run, it sets an upgrading flag on the db state field in the context table;
+        - it runs all the upgrades in order;
+        - it sets the flag from upgrading to ready;
 
 On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes, calls fail.
 

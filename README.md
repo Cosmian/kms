@@ -10,7 +10,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
   Cosmian VM. See our cloud-ready confidential KMS on the
-[Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./documentation/docs/marketplace_guide.md)
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./documentation/docs/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
@@ -43,20 +43,20 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
 - [Cosmian KMS](#cosmian-kms)
-  - [Quick start](#quick-start)
-    - [Example](#example)
-  - [Repository content](#repository-content)
-  - [Building the KMS](#building-the-kms)
-    - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-    - [Windows](#windows)
-    - [Build the KMS](#build-the-kms)
-    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-  - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-  - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-  - [Server parameters](#server-parameters)
-  - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-  - [Releases](#releases)
-  - [Benchmarks](#benchmarks)
+    - [Quick start](#quick-start)
+        - [Example](#example)
+    - [Repository content](#repository-content)
+    - [Building the KMS](#building-the-kms)
+        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+        - [Windows](#windows)
+        - [Build the KMS](#build-the-kms)
+        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
+    - [Server parameters](#server-parameters)
+    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+    - [Releases](#releases)
+    - [Benchmarks](#benchmarks)
 
 ## Quick start
 
@@ -84,31 +84,31 @@ cargo run --bin ckms -- --help
 
 1. Create a 256-bit symmetric key
 
-```sh
-➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
-...
-The symmetric key was successfully generated.
-   Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+    ```sh
+    ➜ cargo run --bin ckms -- sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
+    ...
+    The symmetric key was successfully generated.
+      Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
 
-  Tags:
-    - my-key-file
-```
+      Tags:
+        - my-key-file
+    ```
 
 2. Encrypt the `image.png` file with AES GCM using the key
 
-```sh
-➜ cargo run --bin ckms -- sym encrypt --tag my-key-file --output-file image.enc image.png
-...
-The encrypted file is available at "image.enc"
-```
+    ```sh
+    ➜ cargo run --bin ckms -- sym encrypt --tag my-key-file --output-file image.enc image.png
+    ...
+    The encrypted file is available at "image.enc"
+    ```
 
 3. Decrypt the `image.enc` file using the key
 
-```sh
-➜ cargo run --bin ckms -- sym decrypt --tag my-key-file --output-file image2.png image.enc
-...
-The decrypted file is available at "image2.png"
-```
+    ```sh
+    ➜ cargo run --bin ckms -- sym decrypt --tag my-key-file --output-file image2.png image.enc
+    ...
+    The decrypted file is available at "image2.png"
+    ```
 
 See the [documentation](https://docs.cosmian.com/key_management_system/) for more.
 
@@ -218,7 +218,7 @@ This can be influenced by setting the `KMS_TEST_DB` environment variable to
 - `sqlite`, for plain SQLite
 - `mysql` (requires a running MySQL or MariaDB server connected using a
   `"mysql://kms:kms@localhost:3306/kms"` URL)
-- `postgresql`  (requires a running PostgreSQL server connected using
+- `postgresql` (requires a running PostgreSQL server connected using
   a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
 - `redis-findex` (requires a running Redis server connected using a
   `"redis://localhost:6379"` URL)
@@ -227,7 +227,7 @@ Example: testing with a plain SQLite and some logging
 
 ```sh
 RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
-````
+```
 
 Alternatively, when writing a test or running a test from your IDE, the following can be inserted
 at the top of the test:

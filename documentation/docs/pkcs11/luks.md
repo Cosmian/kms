@@ -26,15 +26,15 @@ default-hierarchy=unified
 Unfortunately, Ubuntu 22.04 does not provide p11-kit support, however the setup works fine for
 Ubuntu 23.10.
 
-### 1. Install the `p11-kit` package.
+### 1. Install the `p11-kit` package
 
-*Ubuntu 23.10*
+#### Ubuntu 23.10
 
 ```bash
 sudo apt install p11-kit
 ```
 
-*RHEL 9*
+#### RHEL 9
 
 ```bash
 sudo dnf install p11-kit
@@ -65,7 +65,7 @@ EOF
 sudo cp libckms_pkcs11.so /usr/local/lib/
 ```
 
-### 5. Create a configuration file for the ckms PKCS#11 module.
+### 5. Create a configuration file for the ckms PKCS#11 module
 
 ```bash
 sudo tee /etc/pkcs11/modules/ckms_pkcs11.module <<EOF
@@ -74,7 +74,7 @@ module: /usr/local/lib/libckms_pkcs11.so
 EOF
 ```
 
-### 6. Check that the module loads correctly.
+### 6. Check that the module loads correctly
 
 ```bash
 > p11-kit list-modules
@@ -128,19 +128,19 @@ use the `cosmian kms login` command to authenticate to the KMS first.
 To generate a self-signed certificate with RSA 2048bit key and in PKCS12 format, you can use the
 OpenSSL command-line tool. Here are the steps:
 
-### 1. Generate a new private key:
+### 1. Generate a new private key
 
 ```bash
 openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
 ```
 
-### 2. Create a self-signed certificate:
+### 2. Create a self-signed certificate
 
 ```bash
 openssl req -new -x509 -key private_key.pem -out cert.pem -days 365
 ```
 
-### 3. Convert the certificate and private key to PKCS12 format:
+### 3. Convert the certificate and private key to PKCS12 format
 
 ```bash
 openssl pkcs12 -export -out certificate.p12 -inkey private_key.pem -in cert.pem
@@ -395,7 +395,7 @@ cosmian kms certificates revoke -k 6fc631...  "revoked"
 Successfully revoked: 6fc631....
 ```
 
-### 3. Follow the steps to generate a new key pair and import it into the Cosmian KMS.
+### 3. Follow the steps to generate a new key pair and import it into the Cosmian KMS
 
 ### 4. Enroll the LUKS partition with the new key; you will be prompted for the passphrase
 

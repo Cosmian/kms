@@ -255,7 +255,7 @@ pub async fn start_test_server_with_options(
 
         // Rewrite the conf with the correct database secret
         owner_client_conf.http_config.database_secret = Some(database_secret);
-        owner_client_conf.to_toml(&PathBuf::from(&owner_client_conf_path))?;
+        owner_client_conf.to_toml(&owner_client_conf_path)?;
     }
 
     // generate a user conf
@@ -459,7 +459,7 @@ fn generate_owner_conf(
         ..KmsClientConfig::default()
     };
 
-    owner_client_conf.to_toml(&PathBuf::from(&owner_client_conf_path))?;
+    owner_client_conf.to_toml(&owner_client_conf_path)?;
 
     Ok((owner_client_conf_path, owner_client_conf))
 }
@@ -489,7 +489,7 @@ fn generate_user_conf(
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.toml");
-    user_conf.to_toml(&PathBuf::from(&user_conf_path))?;
+    user_conf.to_toml(&user_conf_path)?;
 
     // return the path
     Ok(user_conf_path)
@@ -524,9 +524,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
     invalid_conf.http_config.database_secret = Some(token);
 
     // write the invalid conf
-    invalid_conf
-        .to_toml(&PathBuf::from(&invalid_conf_path))
-        .unwrap();
+    invalid_conf.to_toml(&invalid_conf_path).unwrap();
 
     invalid_conf_path
 }

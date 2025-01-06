@@ -2,17 +2,17 @@
 # Benchmarks on a virtual machine with 2 vCPUs
 
 - [Benchmarks on a virtual machine with 2 vCPUs](#benchmarks-on-a-virtual-machine-with-2-vcpus)
-  - [Benchmarks for Google CSE and Microsoft DKE](#benchmarks-for-google-cse-and-microsoft-dke)
-    - [Notes](#notes)
-  - [Concurrent Encryption/decryption requests per 1 core CPU](#concurrent-encryptiondecryption-requests-per-1-core-cpu)
-    - [AES-256-GCM](#aes-256-gcm)
-    - [RSA-4096 PKCSv1.5](#rsa-4096-pkcsv15)
-    - [RSA-4096 OAEP](#rsa-4096-oaep)
-  - [VM capacity](#vm-capacity)
-    - [What does mean 2 vCPUs but 1 core CPU](#what-does-mean-2-vcpus-but-1-core-cpu)
-      - [How This Works](#how-this-works)
-      - [Why Use 2 vCPUs on 1 Core?](#why-use-2-vcpus-on-1-core)
-    - [Machine Details](#machine-details)
+    - [Benchmarks for Google CSE and Microsoft DKE](#benchmarks-for-google-cse-and-microsoft-dke)
+        - [Notes](#notes)
+    - [Concurrent Encryption/decryption requests per 1 core CPU](#concurrent-encryptiondecryption-requests-per-1-core-cpu)
+        - [AES-256-GCM](#aes-256-gcm)
+        - [RSA-4096 PKCSv1.5](#rsa-4096-pkcsv15)
+        - [RSA-4096 OAEP](#rsa-4096-oaep)
+    - [VM capacity](#vm-capacity)
+        - [What does mean 2 vCPUs but 1 core CPU](#what-does-mean-2-vcpus-but-1-core-cpu)
+            - [How This Works](#how-this-works)
+            - [Why Use 2 vCPUs on 1 Core?](#why-use-2-vcpus-on-1-core)
+        - [Machine Details](#machine-details)
 
 ## Benchmarks for Google CSE and Microsoft DKE
 

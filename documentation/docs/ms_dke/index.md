@@ -68,7 +68,7 @@ corresponding entry in the server TOML configuration file.
       one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
       particularly if running on Azure.
 
-#### Create an RSA key with tag `dke_key`
+### Create an RSA key with tag `dke_key`
 
 Using the [Cosmian CLI](../../cosmian_cli/index.md), create a 2048-bit RSA key with the tag `dke_key`:
 
@@ -94,7 +94,7 @@ old key.
 Please follow the [main documentation](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup)
 provided by Microsoft. The following paragraphs add details and tips to the process.
 
-#### Activating the protection service from Azure Information Protection
+### Activating the protection service from Azure Information Protection
 
 The protection
 service [must be activated](https://learn.microsoft.com/en-us/azure/information-protection/activate-service) in order to
@@ -135,11 +135,11 @@ If it is disabled, enable it
 More options for [phased deployments
 here](https://learn.microsoft.com/en-us/azure/information-protection/activate-service#configuring-onboarding-controls-for-a-phased-deployment).
 
-#### Microsoft Entra configuration for encrypted content
+### Microsoft Entra configuration for encrypted content
 
 Check if there is [anything to configure](https://learn.microsoft.com/en-gb/purview/encryption-azure-ad-configuration).
 
-#### Activate sensitivity labels for MS 365 groups
+### Activate sensitivity labels for MS 365 groups
 
 Sensitivity labels must be activated for MS 365 groups which are also called unified groups.
 The main documentation on configuring sensitivity labels
@@ -163,7 +163,7 @@ and [Enable sensitivity label support in PowerShell](https://learn.microsoft.com
 which will probably
 require [configuring groups](https://learn.microsoft.com/en-us/entra/identity/users/groups-settings-cmdlets) first.
 
-#### De-activate co-authoring in Microsoft Purview
+### De-activate co-authoring in Microsoft Purview
 
 Do NOT click the box
 on [this page](https://compliance.microsoft.com/compliancesettings/co-authoring_for_files_with_sensitivity_labels),
@@ -180,7 +180,7 @@ Connect-IPPSSession -UserPrincipalName you_admin_user@your_domain.com
 Set-PolicyConfig -EnableLabelCoauth:$false
 ```
 
-#### Create a sensitivity label for encryption
+### Create a sensitivity label for encryption
 
 Navigate to [Purview](https://compliance.microsoft.com/homepage) then `Solutions > Information protection > Labels`
 
