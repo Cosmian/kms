@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Arc;
 
 use actix_web::{
@@ -60,16 +61,31 @@ impl From<CseErrorReply> for HttpResponse {
 pub(crate) async fn get_status(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
-    cse_config: Data<Option<GoogleCseConfig>>,
 ) -> KResult<Json<operations::StatusResponse>> {
     info!("GET /google_cse/status {}", kms.get_user(&req));
 
-    let cse_config = cse_config.as_ref().clone().ok_or_else(|| {
+    let kacls_url = &kms.params.google_cse_kacls_url.clone().ok_or_else(|| {
         KmsError::ServerError(
-            "Unable to get a reference from as_ref of the Google CSE configuration".to_owned(),
+            "Google CSE KACLS URL is empty. Expected: <https://cse.mydomain.com/google_cse>"
+                .to_owned(),
         )
     })?;
-    Ok(Json(operations::get_status(&cse_config.kacls_url)))
+    Ok(Json(operations::get_status(kacls_url)))
+}
+
+fn prepare_post_params<T>(
+    info_msg: &str,
+    request: Json<T>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+) -> (T, Arc<Option<GoogleCseConfig>>)
+where
+    T: fmt::Debug,
+{
+    info!("POST /google_cse/{info_msg}");
+    let request = request.into_inner();
+    trace!("{info_msg} request: {:?}", request);
+    let cse_config = cse_config.into_inner();
+    (request, cse_config)
 }
 
 #[post("/digest")]
@@ -78,11 +94,7 @@ pub(crate) async fn digest(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/digest");
-
-    let request = request.into_inner();
-    trace!("digest_request: {:?}", request);
-    let cse_config = cse_config.into_inner();
+    let (request, cse_config) = prepare_post_params("digest", request, cse_config);
 
     match operations::digest(request, &cse_config, &kms)
         .await
@@ -99,12 +111,9 @@ pub(crate) async fn privileged_private_key_decrypt(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedprivatekeydecrypt");
-
-    let request = request.into_inner();
-    trace!("privileged_private_key_decrypt request: {request:?}");
+    let (request, cse_config) =
+        prepare_post_params("privilegedprivatekeydecrypt", request, cse_config);
     let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
 
     match operations::privileged_private_key_decrypt(request, &cse_config, &kms)
         .await
@@ -121,11 +130,7 @@ pub(crate) async fn privileged_unwrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedunwrap");
-
-    let request = request.into_inner();
-    trace!("privileged_unwrap request: {:?}", request);
-    let cse_config = cse_config.into_inner();
+    let (request, cse_config) = prepare_post_params("privilegedunwrap", request, cse_config);
 
     match operations::privileged_unwrap(request, &cse_config, &kms)
         .await
@@ -142,11 +147,7 @@ pub(crate) async fn privileged_wrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privilegedwrap");
-
-    let request = request.into_inner();
-    trace!("privileged_wrap request: {:?}", request);
-    let cse_config = cse_config.into_inner();
+    let (request, cse_config) = prepare_post_params("privilegedwrap", request, cse_config);
 
     match operations::privileged_wrap(request, &cse_config, &kms)
         .await
@@ -163,11 +164,7 @@ pub(crate) async fn rewrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/rewrap");
-
-    let request = request.into_inner();
-    trace!("rewrap request: {:?}", request);
-    let cse_config = cse_config.into_inner();
+    let (request, cse_config) = prepare_post_params("rewrap", request, cse_config);
 
     match operations::rewrap(request, &cse_config, &kms)
         .await
@@ -205,12 +202,8 @@ pub(crate) async fn wrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/wrap");
-
-    let request = request.into_inner();
-    trace!("wrap request: {:?}", request);
+    let (request, cse_config) = prepare_post_params("wrap", request, cse_config);
     let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
 
     match operations::wrap(request, &cse_config, &kms).await.map(Json) {
         Ok(response) => HttpResponse::Ok().json(response),
@@ -228,12 +221,8 @@ pub(crate) async fn unwrap(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/unwrap");
-
-    let request = request.into_inner();
-    trace!("unwrap request: {:?}", request);
+    let (request, cse_config) = prepare_post_params("unwrap", request, cse_config);
     let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
 
     match operations::unwrap(request, &cse_config, &kms)
         .await
@@ -253,12 +242,8 @@ pub(crate) async fn private_key_sign(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privatekeysign");
-
-    let request = request.into_inner();
-    trace!("privatekeysign request: {request:?}");
+    let (request, cse_config) = prepare_post_params("privatekeysign", request, cse_config);
     let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
 
     match operations::private_key_sign(request, &cse_config, &kms)
         .await
@@ -278,12 +263,8 @@ pub(crate) async fn private_key_decrypt(
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    info!("POST /google_cse/privatekeydecrypt");
-
-    let request = request.into_inner();
-    trace!("privatekeydecrypt request: {request:?}");
+    let (request, cse_config) = prepare_post_params("privatekeydecrypt", request, cse_config);
     let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
 
     match operations::private_key_decrypt(request, &cse_config, &kms)
         .await

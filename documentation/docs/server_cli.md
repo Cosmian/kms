@@ -4,7 +4,7 @@ Just like the [Cosmian CLI](../cosmian_cli/index.md), the KMS server has a built
 system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.20.1 --help
+docker run --rm ghcr.io/cosmian/kms:latest --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the
@@ -17,7 +17,7 @@ Usage: cosmian_kms_server [OPTIONS]
 
 Options:
       --database-type <DATABASE_TYPE>
-          The database type of the KMS server
+          The main database of the KMS server that holds default cryptographic objects and permissions.
           - postgresql: `PostgreSQL`. The database url must be provided
           - mysql: `MySql` or `MariaDB`. The database url must be provided
           - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
@@ -64,6 +64,8 @@ Options:
           When an authentication method is provided, perform the authentication but always use the default username instead of the one provided by the authentication method [env: KMS_FORCE_DEFAULT_USERNAME=]
       --google-cse-kacls-url <GOOGLE_CSE_KACLS_URL>
           This setting enables the Google Workspace Client Side Encryption feature of this KMS server [env: KMS_GOOGLE_CSE_KACLS_URL=]
+      --google-cse-disable-tokens-validation
+          This setting disables the validation of the tokens used by the Google Workspace CSE feature of this server [env: KMS_GOOGLE_CSE_DISABLE_TOKENS_VALIDATION=]
       --ms-dke-service-url <MS_DKE_SERVICE_URL>
           This setting enables the Microsoft Double Key Encryption service feature of this server. [env: KMS_MS_DKE_SERVICE_URL=]
       --otlp <OTLP>
@@ -73,6 +75,24 @@ Options:
           Do not log to stdout [env: KMS_LOG_QUIET=]
       --info
           Print the server configuration information and exit
+      --hsm-model <HSM_MODEL>
+          The HSM model.
+          Only `proteccio` is supported for now. [default: proteccio] [possible values: proteccio]
+      --hsm-admin <HSM_ADMIN>
+          The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
+      --hsm-slot <HSM_SLOT>
+          HSM slot number. The slots used must be listed.
+          Repeat this option to specify multiple slots
+          while specifying a password for each slot (or an empty string for no password)
+          e.g.
+          ```sh
+            --hsm_slot 1 --hsm_password password1 \
+            --hsm_slot 2 --hsm_password password2
+          ```
+      --hsm-password <HSM_PASSWORD>
+          Password for the user logging in to the HSM Slot specified with `--hsm_slot`
+          Provide an empty string for no password
+          see `--hsm_slot` for more information
   -h, --help
           Print help (see more with '--help')
   -V, --version

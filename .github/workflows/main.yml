@@ -1,50 +1,14 @@
 ---
-name: CI checks
+name: CI in debug
 
 on:
   push:
 
 jobs:
-  cargo-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: EmbarkStudios/cargo-deny-action@v1
-
-  cargo-lint:
-    uses: ./.github/workflows/clippy.yml
-    with:
-      toolchain: nightly-2024-06-09
-
-  build_tests:
-    uses: ./.github/workflows/build_all.yml
+  main:
     secrets: inherit
+    uses: ./.github/workflows/main_base.yml
     with:
       toolchain: nightly-2024-06-09
       debug_or_release: debug
-
-  cargo-doc:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
-    with:
-      toolchain: nightly-2024-06-09
-
-  python_and_docker:
-    uses: ./.github/workflows/build_and_test_docker_image.yml
-    with:
       platforms: linux/amd64
-
-  public_documentation:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Deploy documentation in staging
-        if: ${{ github.ref_name == 'develop' }}
-        uses: benc-uk/workflow-dispatch@v1
-        with:
-          workflow: staging.yml
-          repo: Cosmian/public_documentation
-          ref: develop
-          token: ${{ secrets.PAT_TOKEN }}

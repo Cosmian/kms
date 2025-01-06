@@ -206,6 +206,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            google_cse_disable_tokens_validation: false,
             google_cse_kacls_url: Some("[google cse kacls url]".to_owned()),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             telemetry: TelemetryConfig {

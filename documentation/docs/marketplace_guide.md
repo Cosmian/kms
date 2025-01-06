@@ -114,7 +114,7 @@ This command will send via an encrypted tunnel the configuration that will be wr
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"4.16.0"
+"4.20.1"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"

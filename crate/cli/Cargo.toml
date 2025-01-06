@@ -19,7 +19,7 @@ test = false
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client/fips", "cosmian_kms_crypto/fips"]
+fips = ["cosmian_kms_client/fips", "cosmian_kms_crypto/fips", "kms_test_server/fips"]
 
 [dependencies]
 base64 = { workspace = true }
