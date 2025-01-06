@@ -284,10 +284,11 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
     })
 }
 
-/// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
+/// Build a `Destroy` request to destroy an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, CryptoError> {
     Ok(Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        remove: false,
     })
 }
 

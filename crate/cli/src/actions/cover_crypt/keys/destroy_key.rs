@@ -26,6 +26,13 @@ pub struct DestroyKeyAction {
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
+
+    /// If the key should be removed from the database
+    /// If not specified, the key will be destroyed
+    /// but its metadata will still be available in the database.
+    /// Please note that the KMIP specification does not support the removal of objects.
+    #[clap(long = "remove", default_value = "false", verbatim_doc_comment)]
+    remove: bool,
 }
 
 impl DestroyKeyAction {
@@ -38,6 +45,6 @@ impl DestroyKeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        destroy(kms_rest_client, &id).await
+        destroy(kms_rest_client, &id, self.remove).await
     }
 }

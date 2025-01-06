@@ -32,13 +32,14 @@ brew install font-noto-mono
 
 ```sh
 cd documentation
-python3 -m venv venv
+python3 -m venv .venv
 
-source venv/bin/activate
+source .venv/bin/activate
 
 pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
-mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-material mkdocs-mermaid2-plugin \
-pandoc-latex-admonition markdown-katex git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
+mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-enumerate-headings-plugin \
+mkdocs-material mkdocs-mermaid2-plugin pandoc-latex-admonition markdown-katex \
+git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
 ```
 
 ### Using mkdocs
@@ -49,7 +50,7 @@ From the root of the project, run
 cd documentation/
 
 # Run the server on all interfaces
-source venv/bin/activate
+source .venv/bin/activate
 mkdocs serve -a 0.0.0.0:8003
 ```
 

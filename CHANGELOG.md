@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.0] -
+
+### 🚀 Features
+
+- Add `remove` option to `Destroy` ([#356](https://github.com/Cosmian/kms/issues/356))
+
+### 🐛 Bug Fixes
+
+- Fix an incorrect message on 'object not found' ([#353](https://github.com/Cosmian/kms/issues/353))
+
+### 📚 Documentation
+
+- Better build with mkdocs; faster mermaid support and better Katex support
+
 ## [4.20.1] - 2024-12-09
 
 ### 🚀 Features
@@ -80,7 +94,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Google Workspace Client-Side-Encryption (CSE) updates ([#319](https://github.com/Cosmian/kms/pull/319))
+- Google Workspace Client-Side-Encryption (CSE)
+  updates ([#319](https://github.com/Cosmian/kms/pull/319))
     - Generate Google S/MIME key-pairs and identities and upload them to Gmail API from ckms
       CLI ([#270](https://github.com/Cosmian/kms/issues/270))
     - Server-side, export cert at PKCS7 format

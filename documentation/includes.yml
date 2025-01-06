@@ -10,8 +10,7 @@ version: Version 1.2
 author: |
   Date: 08/04/2022 \linebreak Authors:
   \linebreak \quad Bruno Grieder \quad CTO
-  \linebreak \quad Thibaud Genty \quad Lead Developer
-  \linebreak \quad Emmanuel Coste \quad Lead Developer
+  \linebreak \quad Emmanuel Coste \quad VP Engineering
 titlepage: true
 titlepage-rule-height: 0
 title-meta: packaged_doc_title
@@ -24,7 +23,7 @@ titlepage-logo: ./pandoc/cosmian.png
 logo-width: 200pt
 lang: en-US
 footer-left: Confidential
-footer-center: © Copyright 2018-2023 Cosmian. All rights reserved
+footer-center: © Copyright 2018-2024 Cosmian. All rights reserved
 header-left: ./pandoc/favicon.png
 header-includes:
   - \setcounter{page}{0} # So that the titlepage is the zeroth page

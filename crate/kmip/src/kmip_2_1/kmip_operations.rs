@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    ops::Not,
+};
 
 use serde::{
     de::{self, MapAccess, Visitor},
@@ -1869,13 +1872,20 @@ impl Display for ReKeyKeyPairResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     /// Determines the object being destroyed. If omitted, then the ID
     /// Placeholder value is used by the server as the Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+    /// Remove the object from the server's database.
+    /// This is a Cosmian extension; the KMIP specification mandates that objects
+    /// metadata should be kept even if the object is destroyed. This extension allows
+    /// for the removal of the object metadata, typically for GDPR compliance and fixing
+    /// creation errors.
+    #[serde(skip_serializing_if = "<&bool>::not", default)]
+    pub remove: bool,
 }
 
 impl Display for Destroy {
