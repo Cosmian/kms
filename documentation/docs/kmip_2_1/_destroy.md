@@ -11,7 +11,7 @@ such as an HSM.
 
 Cosmian has added an option `Remove` flag to the `Destroy` operation. If the `Remove` flag is set to `true`, the key
 is completely removed from the database. This does not follow the KMIP 2.1 specification, but is useful in scenarios
-where the key was incorrectly created and the ID must ne re-used or for GDPR compliance, when the ket is associated
+where the key was incorrectly created and the ID must ne re-used or for GDPR compliance, when the key is associated
 with personal data.
 
 HSM keys are systematically removed when calling the destroy operation.

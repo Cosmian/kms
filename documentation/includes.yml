@@ -30,12 +30,12 @@ header-includes:
 pandoc-latex-admonition:
   # order is important
   - color: firebrick
-    classes: [ admonition, danger ]
+    classes: [admonition, danger]
   - color: darkturquoise
-    classes: [ admonition, info ]
+    classes: [admonition, info]
   - color: forestgreen
-    classes: [ admonition, important ]
+    classes: [admonition, important]
   - color: dodgerblue
-    classes: [ admonition, note ]
+    classes: [admonition, note]
   - color: orange
-    classes: [ admonition, warning ]
+    classes: [admonition, warning]
