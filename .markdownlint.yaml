@@ -5,10 +5,14 @@ default: true
 MD007:
   indent: 4
   ul_indent: 4
-# MD030:
-#     ul_single: 3
-#     ul_multi: 3
+
+MD013:
+  line_length: 120
 
 MD024:
   # Allow heading duplication if under different parent headings
   siblings_only: true
+
+# MD030:
+#     ul_single: 3
+#     ul_multi: 3

@@ -62,9 +62,10 @@ certificates for personal use. This is the case of
 [Actalis](https://www.actalis.com/s-mime-certificates)
 for instance.
 
-**Important** some email clients, such as Outlook, consider the email address to be case-sensitive.
-Make sure the email address in your request matches the email address you are using
-in your email client.
+!!! important "Case sensitivity"
+    Some email clients, such as Outlook, consider the email address to be case-sensitive.
+    Make sure the email address in your request matches the email address you are using
+    in your email client.
 
 Once generated, these authorities will provide you with a PKCS#12 file containing the certificate
 and the private key. The file is usually protected by a password.
