@@ -61,7 +61,6 @@ jobs:
               /usr/local/openssl/lib/ossl-modules/legacy.dylib
 
     name: ${{ matrix.distribution }}
-    if: inputs.debug_or_release == 'debug'
     uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
