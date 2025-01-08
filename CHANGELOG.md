@@ -2,18 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.21.0] -
+## [4.21.0] - 2025-01-07
 
 ### 🚀 Features
 
-- Add `remove` option to `Destroy` ([#356](https://github.com/Cosmian/kms/issues/356))
+- Add server param to disable (if needed) Google CSE JWT token validation ([#349](https://github.com/Cosmian/kms/pull/349))
+- Add remove option to `Destroy` + Object not found error message fix ([#357](https://github.com/Cosmian/kms/pull/357))
 
 ### 🐛 Bug Fixes
 
+- Save configuration file outside of clap actions ([#351](https://github.com/Cosmian/kms/pull/351)
 - Fix an incorrect message on 'object not found' ([#353](https://github.com/Cosmian/kms/issues/353))
 
 ### 📚 Documentation
 
+- Fix bad links and mkdocs formatting
+- Simple review ([#358](https://github.com/Cosmian/kms/pull/358)
+- Explain default KMS configuration on CVM ([#359](https://github.com/Cosmian/kms/pull/359)
 - Better build with mkdocs; faster mermaid support and better Katex support
 
 ## [4.20.1] - 2024-12-09

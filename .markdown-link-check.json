@@ -7,6 +7,15 @@
       "pattern": "../cosmian_vm"
     },
     {
+      "pattern": "../search"
+    },
+    {
+      "pattern": "package.cosmian.com"
+    },
+    {
+      "pattern": "kms.my_domain.com"
+    },
+    {
       "pattern": "mailto:"
     }
   ]

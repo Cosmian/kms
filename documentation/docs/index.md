@@ -41,9 +41,9 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The **Cosmian KMS** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.20.1/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.20.1/rhel9/) package
+- [Debian](https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.0/rhel9/) package
 - Docker [image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
-- Pre-built [binaries](https://package.cosmian.com/kms/4.20.1/) for multiple operating systems (Linux, Windows, MacOS)
+- Pre-built [binaries](https://package.cosmian.com/kms/4.21.0/) for multiple operating systems (Linux, Windows, MacOS)
 
 ## Client CLI
 
@@ -52,7 +52,7 @@ The [Cosmian CLI](../cosmian_cli/index.md) can manage the server, and the keys a
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.20.1/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.20.1/rhel9/) package
+- [Debian](https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.0/rhel9/) package
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 
 **Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.
