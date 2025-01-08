@@ -4,16 +4,15 @@ use std::{
     sync::Arc,
 };
 
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
+use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore, SessionParams};
 
 use crate::{
-    core::ObjectWithMetadata,
     error::{DbError, DbResult},
-    stores::{ExtraStoreParams, ObjectsStore},
-    AtomicOperation, Database,
+    Database,
 };
 
 /// Struct representing the database and providing methods to manipulate objects within it.
@@ -129,10 +128,10 @@ impl Database {
 
     #[allow(dead_code)]
     /// Migrate all the databases to the latest version
-    pub async fn migrate(&self, params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    pub async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> DbResult<()> {
         let map = self.objects.write().await;
         for (_prefix, db) in map.iter() {
-            db.migrate(params).await?;
+            db.migrate(params.clone()).await?;
         }
         Ok(())
     }
@@ -164,7 +163,7 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<String> {
         let db = self
             .get_object_store(uid.clone().unwrap_or_default().as_str())
@@ -203,18 +202,18 @@ impl Database {
     pub async fn retrieve_objects(
         &self,
         uid_or_tags: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
         let uids = if uid_or_tags.starts_with('[') {
             // tags
             let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-            self.list_uids_for_tags(&tags, params).await?
+            self.list_uids_for_tags(&tags, params.clone()).await?
         } else {
             HashSet::from([uid_or_tags.to_owned()])
         };
         let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
         for uid in &uids {
-            let owm = self.retrieve_object(uid, params).await?;
+            let owm = self.retrieve_object(uid, params.clone()).await?;
             if let Some(owm) = owm {
                 results.insert(uid.to_owned(), owm);
             }
@@ -243,21 +242,21 @@ impl Database {
     pub async fn retrieve_object(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<Option<ObjectWithMetadata>> {
         // retrieve the object
         let db = self.get_object_store(uid).await?;
-        db.retrieve(uid, params).await
+        Ok(db.retrieve(uid, params).await?)
     }
 
     /// Retrieve the tags of the object with the given `uid`
     pub async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashSet<String>> {
         let db = self.get_object_store(uid).await?;
-        db.retrieve_tags(uid, params).await
+        Ok(db.retrieve_tags(uid, params).await?)
     }
 
     /// This method updates the specified object identified by its `uid` in the database.
@@ -285,7 +284,7 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
         db.update_object(uid, object, attributes, tags, params)
@@ -299,14 +298,14 @@ impl Database {
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
-        db.update_state(uid, state, params).await
+        Ok(db.update_state(uid, state, params).await?)
     }
 
     /// Delete an object from the database.
-    pub async fn delete(&self, uid: &str, params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    pub async fn delete(&self, uid: &str, params: Option<Arc<dyn SessionParams>>) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
         db.delete(uid, params).await?;
         self.unwrapped_cache.clear_cache(uid).await;
@@ -318,21 +317,21 @@ impl Database {
         &self,
         uid: &str,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<bool> {
         let db = self.get_object_store(uid).await?;
-        db.is_object_owned_by(uid, owner, params).await
+        Ok(db.is_object_owned_by(uid, owner, params).await?)
     }
 
     pub async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashSet<String>> {
         let db_map = self.objects.read().await;
         let mut results = HashSet::new();
         for (_prefix, db) in db_map.iter() {
-            results.extend(db.list_uids_for_tags(tags, params).await?);
+            results.extend(db.list_uids_for_tags(tags, params.clone()).await?);
         }
         Ok(results)
     }
@@ -345,7 +344,7 @@ impl Database {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, StateEnumeration, Attributes)> = Vec::new();
@@ -356,7 +355,7 @@ impl Database {
                     state,
                     user,
                     user_must_be_owner,
-                    params,
+                    params.clone(),
                 )
                 .await
                 .unwrap_or(vec![]),
@@ -388,7 +387,7 @@ impl Database {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<Vec<String>> {
         if operations.is_empty() {
             return Ok(vec![]);

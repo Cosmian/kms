@@ -317,7 +317,7 @@ async fn test_non_revocable_symmetric_key() -> CliResult<()> {
     // init the test server with the non-revocable key in the parameter
     let ctx = start_default_test_kms_server_with_non_revocable_key_ids(Some(vec![
         non_revocable_key.clone(),
-        "my_dke_key".to_owned(),
+        Uuid::new_v4().to_string(),
     ]))
     .await;
 
@@ -340,7 +340,7 @@ async fn test_non_revocable_symmetric_key() -> CliResult<()> {
         "revocation test",
     )?;
 
-    // assert the key is still exportable after revocation
+    // assert the key is still exportable after revocation.
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

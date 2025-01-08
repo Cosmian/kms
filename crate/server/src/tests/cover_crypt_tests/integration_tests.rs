@@ -1,27 +1,23 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::{
-            attributes::RekeyEditAction,
-            kmip_requests::{
-                build_create_master_keypair_request,
-                build_create_user_decryption_private_key_request, build_destroy_key_request,
-                build_rekey_keypair_request,
-            },
-        },
-        generic::kmip_requests::{build_decryption_request, build_encryption_request},
+use cosmian_kmip::kmip_2_1::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_operations::{
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-        },
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
-        },
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
+    },
+    requests::{decrypt_request, encrypt_request},
+};
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::RekeyEditAction,
+    kmip_requests::{
+        build_create_covercrypt_master_keypair_request,
+        build_create_covercrypt_user_decryption_key_request, build_destroy_key_request,
+        build_rekey_keypair_request,
     },
 };
 
@@ -55,7 +51,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ))?;
 
     // create Key Pair
-    let create_key_pair = build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+    let create_key_pair =
+        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -74,7 +71,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -94,7 +91,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Level::Top Secret";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -107,7 +104,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .context("There should be a user decryption key unique identifier as a string")?;
 
     // decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier,
         None,
         encrypted_data,
@@ -134,7 +131,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -153,7 +150,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     //
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -168,7 +165,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     //
     // Create another user decryption key
     let access_policy = "Department::MKG && Level::Confidential";
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -181,7 +178,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .context("There should be a user decryption key unique identifier as a string")?;
 
     // test user1 can decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier_1,
         None,
         encrypted_data.clone(),
@@ -201,7 +198,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier_2,
         None,
         encrypted_data.clone(),
@@ -262,7 +259,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -280,7 +277,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .expect("There should be encrypted data");
 
     // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier_1,
         None,
         new_encrypted_data.clone(),
@@ -292,7 +289,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert!(post_ttlv_decrypt.is_err());
 
     // decrypt
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier_2,
         None,
         new_encrypted_data,
@@ -321,7 +318,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     rekey_keypair_response?;
 
     // test user2 can no longer decrypt old message
-    let request = build_decryption_request(
+    let request = decrypt_request(
         user_decryption_key_identifier_2,
         None,
         encrypted_data,
@@ -356,7 +353,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = b"New tech research data";
     let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -389,7 +386,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = b"hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -420,7 +417,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = b"Will fail";
     let encryption_policy = "Level::Confidential && Department::MKG";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),
@@ -450,7 +447,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = b"New hr data";
     let encryption_policy = "Level::Confidential && Department::HumanResources";
 
-    let request = build_encryption_request(
+    let request = encrypt_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_owned()),
         data.to_vec(),

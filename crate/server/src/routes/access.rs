@@ -5,7 +5,7 @@ use actix_web::{
     web::{Data, Json, Path},
     HttpRequest,
 };
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
 };
@@ -27,9 +27,7 @@ pub(crate) async fn list_owned_objects(
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/owned {user}");
 
-    let list = kms
-        .list_owned_objects(&user, database_params.as_ref())
-        .await?;
+    let list = kms.list_owned_objects(&user, database_params).await?;
 
     Ok(Json(list))
 }
@@ -49,7 +47,7 @@ pub(crate) async fn list_access_rights_obtained(
     info!(user = user, "GET /access/granted {user}");
 
     let list = kms
-        .list_access_rights_obtained(&user, database_params.as_ref())
+        .list_access_rights_obtained(&user, database_params)
         .await?;
 
     Ok(Json(list))
@@ -71,7 +69,7 @@ pub(crate) async fn list_accesses(
     info!(user = user, "GET /accesses/{object_id} {user}");
 
     let list = kms
-        .list_accesses(&object_id, &user, database_params.as_ref())
+        .list_accesses(&object_id, &user, database_params)
         .await?;
 
     Ok(Json(list))
@@ -96,8 +94,7 @@ pub(crate) async fn grant_access(
         "POST /access/grant {access:?} {user}"
     );
 
-    kms.grant_access(&access, &user, database_params.as_ref())
-        .await?;
+    kms.grant_access(&access, &user, database_params).await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id
@@ -127,8 +124,7 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke {access:?} {user}"
     );
 
-    kms.revoke_access(&access, &user, database_params.as_ref())
-        .await?;
+    kms.revoke_access(&access, &user, database_params).await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id

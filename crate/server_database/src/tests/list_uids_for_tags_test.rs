@@ -1,25 +1,22 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object, kmip::kmip_types::CryptographicAlgorithm,
+use cosmian_kmip::kmip_2_1::{
+    kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
 };
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
 
-use crate::{
-    error::DbResult,
-    stores::{ExtraStoreParams, ObjectsStore, PermissionsStore},
-};
+use crate::error::DbResult;
 
 pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(
-    db_and_params: &(DB, Option<ExtraStoreParams>),
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    let db = &db_and_params.0;
-    let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
     let owner = Uuid::new_v4().to_string();
@@ -41,7 +38,7 @@ pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone()]),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
@@ -59,20 +56,20 @@ pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone(), tag2.clone()]),
-        db_params,
+        db_params.clone(),
     )
     .await?;
 
     // List yids for tag "tag1"
     let uids = db
-        .list_uids_for_tags(&HashSet::from([tag1.clone()]), db_params)
+        .list_uids_for_tags(&HashSet::from([tag1.clone()]), db_params.clone())
         .await?;
     assert_eq!(uids.len(), 2);
     assert!(uids.contains(&uid1));
 
     // List uids for tag2
     let uids = db
-        .list_uids_for_tags(&HashSet::from([tag2.clone()]), db_params)
+        .list_uids_for_tags(&HashSet::from([tag2.clone()]), db_params.clone())
         .await?;
     assert_eq!(uids.len(), 1);
     assert!(uids.contains(&uid2));

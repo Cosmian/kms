@@ -1,7 +1,7 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
 use cosmian_config_utils::ConfigUtilsError;
-use cosmian_kmip::{kmip::kmip_operations::ErrorReason, KmipError};
+use cosmian_kmip::{kmip_2_1::kmip_operations::ErrorReason, KmipError};
 use cosmian_kms_client::KmsClientError;
 use thiserror::Error;
 
@@ -49,11 +49,10 @@ impl From<KmipError> for Pkcs11Error {
         match e {
             KmipError::InvalidKmipValue(r, s)
             | KmipError::InvalidKmipObject(r, s)
-            | KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::KmipNotSupported(_, s)
             | KmipError::Default(s)
-            | KmipError::OpenSSL(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)
             | KmipError::Derivation(s)
@@ -62,6 +61,13 @@ impl From<KmipError> for Pkcs11Error {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::Deserialization(_) | KmipError::Serialization(_) => {
+                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+            }
+            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+                ErrorReason::Codec_Error,
+                format!("Expected size: {}, Actual size: {}", expected, actual),
+            ),
         }
     }
 }

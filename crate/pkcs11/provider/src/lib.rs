@@ -21,7 +21,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     let debug_level =
         std::env::var("COSMIAN_PKCS11_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
     initialize_logging("ckms-pkcs11", Level::from_str(&debug_level).ok(), None);
-    // Instantiate a backend with a kms client using the `kms.json` file in the local default directory.
+    // Instantiate a backend with a kms client using the `kms.toml` file in the local default directory.
     cosmian_pkcs11_module::traits::register_backend(Box::new(backend::CkmsBackend::instantiate(
         get_kms_client().expect("failed getting the KMS client from the current configuration"),
     )));

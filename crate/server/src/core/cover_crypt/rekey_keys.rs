@@ -1,23 +1,23 @@
 #![allow(clippy::large_stack_frames)]
 
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
-use cosmian_kmip::{
-    crypto::cover_crypt::{
-        attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
-        master_keys::{
-            covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
-        },
-        user_key::UserDecryptionKeysHandler,
-    },
-    kmip::{
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-        kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
+    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
+    master_keys::{
+        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
+    },
+    user_key::UserDecryptionKeysHandler,
+};
+use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use super::KMS;
@@ -39,7 +39,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     msk_uid: String,
     owner: &str,
     action: RekeyEditAction,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
 
@@ -48,7 +48,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
-                params,
+                params.clone(),
                 msk_uid,
                 |policy, msk, mpk| {
                     let ap = deserialize_access_policy(&ap)?;
@@ -59,7 +59,8 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             .await?;
             let (msk_obj, mpk_obj) = res;
 
-            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params.clone())
+                .await?;
 
             (msk_obj.0, mpk_obj.0)
         }
@@ -67,7 +68,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
-                params,
+                params.clone(),
                 msk_uid,
                 |policy, msk, _mpk| {
                     let ap = deserialize_access_policy(&ap)?;
@@ -78,7 +79,8 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             .await?;
             let (msk_obj, mpk_obj) = res;
 
-            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params.clone())
+                .await?;
 
             (msk_obj.0, mpk_obj.0)
         }
@@ -86,7 +88,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
-                params,
+                params.clone(),
                 msk_uid,
                 |policy, msk, mpk| {
                     attrs
@@ -174,12 +176,12 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 pub(crate) async fn update_master_keys(
     server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
     msk_uid: String,
     mutator: impl Fn(&mut Policy, &mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
 ) -> KResult<((String, Object), (String, Object))> {
     let (msk_obj, mpk_obj, mut policy) =
-        get_master_keys_and_policy(server, msk_uid, owner, params).await?;
+        get_master_keys_and_policy(server, msk_uid, owner, params.clone()).await?;
 
     let (mut msk, mut mpk) = covercrypt_keys_from_kmip_objects(&msk_obj.1, &mpk_obj.1)?;
     mutator(&mut policy, &mut msk, &mut mpk)?;
@@ -195,11 +197,11 @@ async fn get_master_keys_and_policy(
     kmip_server: &KMS,
     msk_uid: String,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
     let msk = kmip_server
-        .get(Get::from(&msk_uid), owner, params)
+        .get(Get::from(&msk_uid), owner, params.clone())
         .await?
         .object;
 
@@ -242,7 +244,7 @@ async fn get_master_keys_and_policy(
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
 ) -> KResult<()> {
@@ -255,7 +257,9 @@ async fn import_rekeyed_master_keys(
         attributes: msk.1.attributes()?.clone(),
         object: msk.1,
     };
-    let _import_response = kmip_server.import(import_request, owner, params).await?;
+    let _import_response = kmip_server
+        .import(import_request, owner, params.clone())
+        .await?;
 
     // re-import master public key
     let import_request = Import {
@@ -277,7 +281,7 @@ async fn update_all_active_usk(
     cover_crypt: Covercrypt,
     msk_obj: &KmipKeyUidObject,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Search the user decryption keys that need to be refreshed
     let locate_response = locate_user_decryption_keys(
@@ -286,7 +290,7 @@ async fn update_all_active_usk(
         None,
         Some(StateEnumeration::Active),
         owner,
-        params,
+        params.clone(),
     )
     .await?;
 
@@ -302,7 +306,7 @@ async fn update_all_active_usk(
                 user_decryption_key_uid,
                 kmip_server,
                 owner,
-                params,
+                params.clone(),
             )
             .await?;
         }
@@ -317,11 +321,11 @@ async fn update_usk(
     user_decryption_key_uid: &str,
     kmip_server: &KMS,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     //fetch the user decryption key
     let get_response = kmip_server
-        .get(Get::from(user_decryption_key_uid), owner, params)
+        .get(Get::from(user_decryption_key_uid), owner, params.clone())
         .await?;
     let user_decryption_key = get_response.object;
 

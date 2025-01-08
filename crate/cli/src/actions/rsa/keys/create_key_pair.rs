@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request,
-    kmip::kmip_types::UniqueIdentifier, KmsClient,
+    kmip_2_1::{kmip_types::UniqueIdentifier, requests::create_rsa_key_pair_request},
+    KmsClient,
 };
 
 use crate::{

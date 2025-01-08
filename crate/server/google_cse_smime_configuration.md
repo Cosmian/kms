@@ -23,7 +23,7 @@ ckms rsa keys export -t gmail_blue -w google_cse pk_blue -f raw
 base64 -w 0 pk_blue
 base64 -w 0 pk_blue> ../../documentation/docs/google_cse/blue_wrapped_private_key
 
-+ update private key file <blue@cosmian.com.wrap>
+- update private key file <blue@cosmian.com.wrap>
 
 And (re)create keypair and identity for blue:
 

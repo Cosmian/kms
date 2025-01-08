@@ -1,4 +1,6 @@
-use cosmian_kmip::kmip::{
+use std::sync::Arc;
+
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
         GetAttributes, Import, Locate, Operation, ReKey, ReKeyKeyPair, Revoke, SetAttribute,
@@ -6,7 +8,7 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, TTLV},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_interfaces::SessionParams;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
@@ -15,7 +17,7 @@ pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: &TTLV,
     user: &str,
-    database_params: Option<&ExtraStoreParams>,
+    database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Operation> {
     Ok(match ttlv.tag.as_str() {
         "Certify" => {

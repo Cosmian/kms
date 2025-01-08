@@ -1,5 +1,9 @@
-use cosmian_kmip::kmip::{kmip_types::StateEnumeration, KmipOperation};
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use std::sync::Arc;
+
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::ErrorReason, kmip_types::StateEnumeration, KmipOperation,
+};
+use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
@@ -20,7 +24,7 @@ pub(crate) async fn retrieve_object_for_operation(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
         "get_key: key_uid_or_tags: {uid_or_tags:?}, user: {user}, operation_type: \
@@ -29,7 +33,7 @@ pub(crate) async fn retrieve_object_for_operation(
 
     for owm in kms
         .database
-        .retrieve_objects(uid_or_tags, params)
+        .retrieve_objects(uid_or_tags, params.clone())
         .await?
         .values()
     {
@@ -37,14 +41,15 @@ pub(crate) async fn retrieve_object_for_operation(
             continue
         }
 
-        if user_has_permission(user, owm, &operation_type, kms, params).await? {
+        if user_has_permission(user, owm, &operation_type, kms, params.clone()).await? {
             return Ok(owm.to_owned())
         }
     }
 
-    Err(KmsError::InvalidRequest(format!(
-        "too many objects found for identifier {uid_or_tags}",
-    )))
+    Err(KmsError::KmipError(
+        ErrorReason::Object_Not_Found,
+        format!("object not found for identifier {uid_or_tags}",),
+    ))
 }
 
 /// Check if a user has permission to perform an operation on an object.
@@ -65,7 +70,7 @@ pub(crate) async fn user_has_permission(
     owm: &ObjectWithMetadata,
     operation_type: &KmipOperation,
     kms: &KMS,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<bool> {
     if user == owm.owner() {
         return Ok(true)

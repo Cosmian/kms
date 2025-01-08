@@ -1,12 +1,11 @@
-use cosmian_kmip::{
-    crypto::symmetric::create_symmetric_key_kmip_object,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::Object,
+    kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_client::{import_object, KmsClient};
+use cosmian_logger::log_init;
 use cosmian_pkcs11_module::traits::Backend;
 use kms_test_server::start_default_test_kms_server;
 use tracing::debug;
@@ -37,7 +36,8 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
-    cosmian_logger::log_init(Some("fatal,cosmian_kms_client=debug"));
+    log_init(None);
+    // log_init(Some("fatal,cosmian_kms_client=debug"));
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;

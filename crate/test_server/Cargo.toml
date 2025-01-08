@@ -12,6 +12,9 @@ rust-version.workspace = true
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_kms_client/fips", "cosmian_kms_server/fips"]
+
 [[bench]]
 name = "benches"
 harness = false
@@ -20,6 +23,7 @@ harness = false
 actix-server = { workspace = true }
 base64 = { workspace = true }
 cosmian_kms_client = { path = "../client", default-features = false }
+cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], default-features = false }

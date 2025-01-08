@@ -76,14 +76,13 @@
 
 mod core;
 pub use core::{
-    AdditionalObjectStoresParams, CachedUnwrappedObject, Database, MainDbParams,
-    ObjectWithMetadata, UnwrappedCache,
+    AdditionalObjectStoresParams, CachedUnwrappedObject, Database, MainDbParams, UnwrappedCache,
 };
 mod error;
 pub use error::DbError;
 mod migrate;
 mod stores;
-pub use stores::{redis_master_key_from_password, AtomicOperation, ExtraStoreParams, HsmStore};
+pub use stores::{redis_master_key_from_password, SqlCipherSessionParams};
 
 pub const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 

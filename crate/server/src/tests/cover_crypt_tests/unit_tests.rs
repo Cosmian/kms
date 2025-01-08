@@ -1,22 +1,19 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::{
-    crypto::{
-        cover_crypt::kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-        },
-        generic::kmip_requests::{build_decryption_request, build_encryption_request},
+use cosmian_kmip::kmip_2_1::{
+    extra::tagging::EMPTY_TAGS,
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{DecryptedData, Get, Import, Locate},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        UniqueIdentifier,
     },
-    kmip::{
-        extra::tagging::EMPTY_TAGS,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{DecryptedData, Get, Import, Locate},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
-        },
-    },
+    requests::{decrypt_request, encrypt_request},
+};
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::{
+    build_create_covercrypt_master_keypair_request,
+    build_create_covercrypt_user_decryption_key_request,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -62,7 +59,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let cr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -159,7 +156,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         &sk_uid,
         EMPTY_TAGS,
@@ -193,7 +190,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_user_decryption_private_key_request(
+    let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         &sk_uid,
         EMPTY_TAGS,
@@ -265,7 +262,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -285,7 +282,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
-            build_encryption_request(
+            encrypt_request(
                 master_public_key_id,
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
@@ -309,7 +306,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let er = kms
         .encrypt(
-            build_encryption_request(
+            encrypt_request(
                 master_public_key_id,
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
@@ -330,7 +327,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
         .encrypt(
-            build_encryption_request(
+            encrypt_request(
                 master_public_key_id,
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
@@ -354,7 +351,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let er = kms
         .encrypt(
-            build_encryption_request(
+            encrypt_request(
                 master_public_key_id,
                 Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
@@ -373,7 +370,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG || Department::FIN) && Level::secret";
     let cr = kms
         .create(
-            build_create_user_decryption_private_key_request(
+            build_create_covercrypt_user_decryption_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_id,
                 EMPTY_TAGS,
@@ -391,7 +388,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 secret_mkg_fin_user_key,
                 None,
                 confidential_mkg_encrypted_data.clone(),
@@ -417,7 +414,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 secret_mkg_fin_user_key,
                 None,
                 confidential_mkg_encrypted_data,
@@ -434,7 +431,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // decrypt resource FIN + Secret
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 secret_mkg_fin_user_key,
                 None,
                 secret_fin_encrypted_data.clone(),
@@ -460,7 +457,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 secret_mkg_fin_user_key,
                 None,
                 secret_fin_encrypted_data,
@@ -506,7 +503,8 @@ async fn test_abe_json_access() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
 
     // Create CC master key pair
-    let master_keypair = build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+    let master_keypair =
+        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -542,7 +540,7 @@ async fn test_abe_json_access() -> KResult<()> {
     // Create a decryption key
     let cr = kms
         .create(
-            build_create_user_decryption_private_key_request(
+            build_create_covercrypt_user_decryption_key_request(
                 secret_mkg_fin_access_policy,
                 &master_private_key_uid,
                 EMPTY_TAGS,
@@ -601,7 +599,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -620,7 +618,7 @@ async fn test_import_decrypt() -> KResult<()> {
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
-            build_encryption_request(
+            encrypt_request(
                 &pk_uid,
                 Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
@@ -645,7 +643,7 @@ async fn test_import_decrypt() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG|| Department::FIN) && Level::secret";
     let cr = kms
         .create(
-            build_create_user_decryption_private_key_request(
+            build_create_covercrypt_user_decryption_key_request(
                 secret_mkg_fin_access_policy,
                 &sk_uid,
                 EMPTY_TAGS,
@@ -691,7 +689,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 &custom_sk_uid,
                 None,
                 confidential_mkg_encrypted_data.clone(),
@@ -732,7 +730,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
-            build_decryption_request(
+            decrypt_request(
                 // secret_mkg_fin_user_key,
                 &custom_sk_uid,
                 None,

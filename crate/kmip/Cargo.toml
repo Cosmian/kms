@@ -18,42 +18,29 @@ pyo3 = ["dep:pyo3"]
 fips = []
 
 [dependencies]
-aes-gcm-siv = "0.11.1"
-argon2 = "0.5"
-base64 = { workspace = true }
-bitflags = "2.6"
+bitflags = { workspace = true }
 chrono = { workspace = true }
-clap = { workspace = true, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
-] }
-cloudproof = { workspace = true }
 cosmian_logger = { workspace = true }
-hex = { workspace = true }
+hex = { workspace = true, features = ["std"] }
+leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
   "serde",
   "zeroize",
 ] }
-openssl = { workspace = true }
 pyo3 = { workspace = true, optional = true }
-rust-ini = "0.21"
-serde = { workspace = true }
-serde_json = { workspace = true }
-sha3 = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-x509-parser = { workspace = true }
-zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
+zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]
+
+[dev-dependencies]
+rand = { workspace = true }

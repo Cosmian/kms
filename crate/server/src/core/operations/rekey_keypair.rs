@@ -1,13 +1,15 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
-    crypto::cover_crypt::attributes::{policy_from_attributes, rekey_edit_action_from_attributes},
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::ObjectType,
+    kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::{
+    policy_from_attributes, rekey_edit_action_from_attributes,
+};
+use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
@@ -21,7 +23,7 @@ pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
@@ -42,7 +44,7 @@ pub(crate) async fn rekey_keypair(
     // retrieve from tags or use passed identifier
     let owm_s = kms
         .database
-        .retrieve_objects(uid_or_tags, params)
+        .retrieve_objects(uid_or_tags, params.clone())
         .await?
         .into_values();
 

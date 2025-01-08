@@ -32,7 +32,8 @@ async fn test_revoke_symmetric_key() -> CliResult<()> {
         }
     }
 
-    destroy(KMS_HSM_CLIENT_CONF, "sym", &key_id)?;
+    // The key is always removed when it is an HSM
+    destroy(KMS_HSM_CLIENT_CONF, "sym", &key_id, true)?;
 
     let res = export_key(ExportKeyParams {
         cli_conf_path: KMS_HSM_CLIENT_CONF.to_owned(),

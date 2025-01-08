@@ -1,26 +1,24 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::kmip_types::CryptographicUsageMask;
-use cosmian_kmip::{
-    kmip::{
-        kmip_objects::{
-            Object::{self, Certificate},
-            ObjectType,
-        },
-        kmip_operations::{Import, ImportResponse},
-        kmip_types::{
-            Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm,
-            KeyFormatType, KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration,
-            UniqueIdentifier,
-        },
+use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::{
+        Object::{self, Certificate},
+        ObjectType,
     },
-    openssl::{
-        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
-        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+    kmip_operations::{Import, ImportResponse},
+    kmip_types::{
+        Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType,
+        KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_server_database::{AtomicOperation, ExtraStoreParams};
+use cosmian_kms_crypto::openssl::{
+    kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
+    openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+    openssl_x509_to_certificate_attributes,
+};
+use cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -40,7 +38,7 @@ pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
@@ -57,10 +55,12 @@ pub(crate) async fn import(
     }
     // process the request based on the object type
     let (uid, operations) = match request.object.object_type() {
-        ObjectType::SymmetricKey => process_symmetric_key(kms, request, owner, params).await?,
+        ObjectType::SymmetricKey => {
+            process_symmetric_key(kms, request, owner, params.clone()).await?
+        }
         ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => process_public_key(kms, request, owner, params).await?,
-        ObjectType::PrivateKey => process_private_key(kms, request, owner, params).await?,
+        ObjectType::PublicKey => process_public_key(kms, request, owner, params.clone()).await?,
+        ObjectType::PrivateKey => process_private_key(kms, request, owner, params.clone()).await?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -80,7 +80,7 @@ pub(crate) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -157,7 +157,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // parse the certificate as an openssl object to convert it to the pivot
     let certificate = X509::from_der(&certificate_der_bytes)?;
-    let certificate_attributes = CertificateAttributes::from(&certificate);
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&certificate);
 
     // convert the certificate to a KMIP object
     let object = openssl_certificate_to_kmip(&certificate)?;
@@ -198,7 +198,7 @@ async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
@@ -276,7 +276,7 @@ async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Recover user tags.
     let mut attributes = request.attributes;
@@ -498,7 +498,7 @@ fn process_pkcs12(
             certificate_id.to_owned(),
             leaf_certificate,
             leaf_certificate_tags,
-            CertificateAttributes::from(&openssl_cert),
+            openssl_x509_to_certificate_attributes(&openssl_cert),
         )
     };
 
@@ -518,7 +518,7 @@ fn process_pkcs12(
                 Uuid::new_v4().to_string(),
                 chain_certificate,
                 chain_certificate_tags,
-                CertificateAttributes::from(&openssl_cert),
+                openssl_x509_to_certificate_attributes(&openssl_cert),
             ));
         }
     }

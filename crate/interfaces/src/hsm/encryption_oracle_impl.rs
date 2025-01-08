@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use zeroize::Zeroizing;
 
 use crate::{
-    encryption_oracle::EncryptedContent, CryptographicAlgorithm, EncryptionOracle, InterfaceError,
+    encryption_oracle::EncryptedContent, CryptoAlgorithm, EncryptionOracle, InterfaceError,
     InterfaceResult, KeyMetadata, KeyType, HSM,
 };
 
@@ -29,7 +29,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
         &self,
         uid: &str,
         data: &[u8],
-        cryptographic_algorithm: Option<CryptographicAlgorithm>,
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<EncryptedContent> {
         if authenticated_encryption_additional_data.is_some() {
@@ -49,8 +49,8 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     ))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => CryptographicAlgorithm::AesGcm,
-                    KeyType::RsaPublicKey => CryptographicAlgorithm::RsaOaep,
+                    KeyType::AesKey => CryptoAlgorithm::AesGcm,
+                    KeyType::RsaPublicKey => CryptoAlgorithm::RsaOaep,
                     KeyType::RsaPrivateKey => {
                         return Err(InterfaceError::Default(
                             "An RSA private key cannot be used to decrypt".to_owned(),
@@ -69,7 +69,7 @@ impl EncryptionOracle for HsmEncryptionOracle {
         &self,
         uid: &str,
         data: &[u8],
-        cryptographic_algorithm: Option<CryptographicAlgorithm>,
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
         if authenticated_encryption_additional_data.is_some() {
@@ -89,8 +89,8 @@ impl EncryptionOracle for HsmEncryptionOracle {
                     ))
                 }
                 Some(key_type) => match key_type {
-                    KeyType::AesKey => CryptographicAlgorithm::AesGcm,
-                    KeyType::RsaPrivateKey => CryptographicAlgorithm::RsaOaep,
+                    KeyType::AesKey => CryptoAlgorithm::AesGcm,
+                    KeyType::RsaPrivateKey => CryptoAlgorithm::RsaOaep,
                     KeyType::RsaPublicKey => {
                         return Err(InterfaceError::Default(
                             "An RSA public key cannot be used to decrypt".to_owned(),

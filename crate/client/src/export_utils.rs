@@ -1,11 +1,11 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_operations::{GetAttributes, Operation},
     kmip_types::{AttributeReference, CryptographicParameters, EncodingOption},
 };
 
 use crate::{
     batch_utils::batch_operations,
-    cosmian_kmip::kmip::{
+    cosmian_kmip::kmip_2_1::{
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
         kmip_operations::{Export, Get},

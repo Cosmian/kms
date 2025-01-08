@@ -10,7 +10,7 @@ use cloudproof_findex::{
     parameters::MASTER_KEY_LENGTH,
     IndexedValue, Keyword, Location,
 };
-use cosmian_kmip::kmip::KmipOperation;
+use cosmian_kmip::kmip_2_1::KmipOperation;
 
 use crate::{error::DbResult, DbError};
 

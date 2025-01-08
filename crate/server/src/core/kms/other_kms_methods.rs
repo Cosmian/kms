@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs};
+use std::{collections::HashSet, fs, sync::Arc};
 
 use actix_web::HttpRequest;
 use base64::{
@@ -6,19 +6,17 @@ use base64::{
     Engine as _,
 };
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::{
-    crypto::{
-        secret::Secret,
-        symmetric::{create_symmetric_key_kmip_object, symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    },
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::Create,
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::Object,
+    kmip_operations::Create,
+    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    requests::create_symmetric_key_kmip_object,
 };
-use cosmian_kms_interfaces::EncryptionOracle;
-use cosmian_kms_server_database::{CachedUnwrappedObject, ExtraStoreParams, MainDbParams};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
+use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
+use cosmian_kms_server_database::{CachedUnwrappedObject, MainDbParams, SqlCipherSessionParams};
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -64,7 +62,7 @@ impl KMS {
         };
 
         // Encode ExtraDatabaseParams
-        let params = ExtraStoreParams {
+        let params = SqlCipherSessionParams {
             group_id: uid,
             key: Secret::new_random()?,
         };
@@ -75,7 +73,7 @@ impl KMS {
         // Note: if we don't proceed like that, the password will be set at the first query of the user
         // which let him put the password he wants.
         self.database
-            .find(None, None, "", true, Some(&params))
+            .find(None, None, "", true, Some(Arc::new(params)))
             .await?;
 
         Ok(token)
@@ -86,7 +84,7 @@ impl KMS {
     pub(crate) fn get_sqlite_enc_secrets(
         &self,
         req_http: &HttpRequest,
-    ) -> KResult<Option<ExtraStoreParams>> {
+    ) -> KResult<Option<Arc<dyn SessionParams>>> {
         if !self.is_using_sqlite_enc() {
             return Ok(None);
         }
@@ -102,11 +100,11 @@ impl KMS {
             KmsError::Unauthorized(format!("DatabaseSecret header cannot be decoded: {e}"))
         })?;
 
-        Ok(Some(
-            serde_json::from_slice::<ExtraStoreParams>(&secrets).map_err(|e| {
+        Ok(Some(Arc::new(
+            serde_json::from_slice::<SqlCipherSessionParams>(&secrets).map_err(|e| {
                 KmsError::Unauthorized(format!("DatabaseSecret header cannot be read: {e}"))
             })?,
-        ))
+        )))
     }
 
     /// Unwrap the object (if need be) and return the unwrapped object.
@@ -123,7 +121,7 @@ impl KMS {
         uid: &str,
         object: &Object,
         user: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<Object> {
         // Is this an unwrapped key?
         if object
@@ -140,8 +138,8 @@ impl KMS {
         // check if we have it in the cache
         match self.database.unwrapped_cache().peek(uid).await {
             Some(Ok(u)) => {
-                // Note: In theory the cache should always be in sync...
-                if *u.key_signature() == object.key_signature()? {
+                // Note: In theory, the cache should always be in sync...
+                if u.key_signature() == object.key_signature()? {
                     debug!("Unwrapped cache hit");
                     return Ok(u.unwrapped_object().clone());
                 }
@@ -289,7 +287,7 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
+        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;

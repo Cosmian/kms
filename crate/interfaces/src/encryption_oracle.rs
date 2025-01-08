@@ -5,9 +5,10 @@
 //! HSMs that implement the `HSM` interface have a blanket implementation of this interface called
 //! `HsmEncryptionOracle`.
 use async_trait::async_trait;
+use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicParameters, PaddingMethod};
 use zeroize::Zeroizing;
 
-use crate::{error::InterfaceResult, KeyType};
+use crate::{error::InterfaceResult, InterfaceError, KeyType};
 
 #[derive(Debug)]
 pub struct KeyMetadata {
@@ -18,10 +19,43 @@ pub struct KeyMetadata {
 }
 
 #[derive(Debug, Clone)]
-pub enum CryptographicAlgorithm {
+pub enum CryptoAlgorithm {
     AesGcm,
     RsaPkcsV15,
     RsaOaep,
+}
+
+impl CryptoAlgorithm {
+    pub fn from_kmip(value: &CryptographicParameters) -> Result<Option<Self>, InterfaceError> {
+        value
+            .cryptographic_algorithm
+            .map_or(Ok(None), |algorithm| match algorithm {
+                cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::AES => value
+                    .block_cipher_mode
+                    .map_or(Ok(Some(CryptoAlgorithm::AesGcm)), |block_cipher_mode| {
+                        match block_cipher_mode {
+                            BlockCipherMode::GCM => Ok(Some(CryptoAlgorithm::AesGcm)),
+                            bcm => Err(InterfaceError::Default(format!(
+                                "Block cipher mode: {bcm:?} not supported for AES",
+                            ))),
+                        }
+                    }),
+                cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA => value
+                    .padding_method
+                    .map_or(Ok(Some(CryptoAlgorithm::RsaOaep)), |padding_method| {
+                        match padding_method {
+                            PaddingMethod::OAEP => Ok(Some(CryptoAlgorithm::RsaOaep)),
+                            PaddingMethod::PKCS1v15 => Ok(Some(CryptoAlgorithm::RsaPkcsV15)),
+                            pm => Err(InterfaceError::Default(format!(
+                                "Padding method: {pm:?} not supported for RSA",
+                            ))),
+                        }
+                    }),
+                x => Err(InterfaceError::Default(format!(
+                    "Cryptographic algorithm: {x:?} not supported",
+                ))),
+            })
+    }
 }
 
 #[derive(Debug, Default)]
@@ -45,7 +79,7 @@ pub trait EncryptionOracle: Send + Sync {
         &self,
         uid: &str,
         data: &[u8],
-        cryptographic_algorithm: Option<CryptographicAlgorithm>,
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<EncryptedContent>;
 
@@ -61,7 +95,7 @@ pub trait EncryptionOracle: Send + Sync {
         &self,
         uid: &str,
         data: &[u8],
-        cryptographic_algorithm: Option<CryptographicAlgorithm>,
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
 

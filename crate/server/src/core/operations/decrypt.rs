@@ -1,9 +1,21 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_kmip::kmip_2_1::{
+    extra::BulkData,
+    kmip_objects::Object,
+    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+        PaddingMethod, StateEnumeration, UniqueIdentifier,
+    },
+    KmipOperation,
+};
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
+use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
-use cosmian_kmip::{
+use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
+use cosmian_kms_crypto::{
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
@@ -13,26 +25,15 @@ use cosmian_kmip::{
         symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
         DecryptionSystem,
     },
-    kmip::{
-        extra::BulkData,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-            PaddingMethod, StateEnumeration, UniqueIdentifier,
-        },
-        KmipOperation,
-    },
     openssl::kmip_private_key_to_openssl,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        to_cryptographic_algorithm,
         uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
     },
@@ -47,7 +48,7 @@ pub(crate) async fn decrypt(
     kms: &KMS,
     request: Decrypt,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DecryptResponse> {
     trace!("decrypt: {}", serde_json::to_string(&request)?);
     let data = request.data.as_ref().ok_or_else(|| {
@@ -59,7 +60,7 @@ pub(crate) async fn decrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Decrypt")?;
     debug!("Decrypt: candidate uids: {uids:?}");
@@ -78,10 +79,14 @@ pub(crate) async fn decrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+            if !kms
+                .database
+                .is_object_owned_by(&uid, user, params.clone())
+                .await?
+            {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params)
+                    .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops
                     .iter()
@@ -97,7 +102,7 @@ pub(crate) async fn decrypt(
         //Default database
         let owm = kms
             .database
-            .retrieve_object(&uid, params)
+            .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
                 KmsError::KmipError(
@@ -116,7 +121,7 @@ pub(crate) async fn decrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params)
+                .list_user_operations_on_object(&uid, user, false, params.clone())
                 .await?;
             if !ops
                 .iter()
@@ -213,7 +218,7 @@ async fn decrypt_using_encryption_oracle(
             request
                 .cryptographic_parameters
                 .as_ref()
-                .and_then(|cp| to_cryptographic_algorithm(cp).transpose())
+                .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
                 .transpose()?,
             request.authenticated_encryption_additional_data.as_deref(),
         )

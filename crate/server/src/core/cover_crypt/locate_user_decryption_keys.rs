@@ -1,16 +1,16 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
-use cosmian_kmip::{
-    crypto::cover_crypt::attributes::attributes_as_vendor_attribute,
-    kmip::{
-        kmip_objects::ObjectType,
-        kmip_operations::Locate,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, StateEnumeration,
-        },
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::ObjectType,
+    kmip_operations::Locate,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        StateEnumeration,
     },
 };
-use cosmian_kms_server_database::ExtraStoreParams;
+use cosmian_kms_crypto::crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
+use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
     core::{operations, KMS},
@@ -25,7 +25,7 @@ pub(crate) async fn locate_user_decryption_keys(
     cover_crypt_policy_attributes_to_revoke: Option<Vec<Attribute>>,
     state: Option<StateEnumeration>,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<Vec<String>>> {
     // Convert the policy attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {

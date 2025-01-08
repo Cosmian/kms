@@ -3,7 +3,7 @@
 #![feature(min_specialization)]
 
 pub use config::{GmailApiConf, KmsClientConfig, KMS_CLI_CONF_ENV};
-pub use cosmian_kmip::{self, kmip, pad_be_bytes};
+pub use cosmian_kmip::{self, kmip_2_1, pad_be_bytes};
 pub use encodings::{der_to_pem, objects_from_pem};
 pub use error::{result::KmsClientResult, KmsClientError};
 pub use export_utils::{batch_export_objects, export_object, ExportObjectParams};
@@ -26,6 +26,7 @@ mod import_utils;
 mod kms_rest_client;
 
 pub mod reexport {
+    pub use cosmian_config_utils;
     pub use cosmian_http_client;
     pub use cosmian_kmip;
     pub use cosmian_kms_access;

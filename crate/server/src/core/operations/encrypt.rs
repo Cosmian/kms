@@ -1,19 +1,8 @@
+use std::sync::Arc;
+
 use cloudproof::reexport::cover_crypt::Covercrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kmip::{
-    crypto::{
-        cover_crypt::encryption::CoverCryptEncryption,
-        rsa::{
-            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
-        },
-        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
-        EncryptionSystem,
-    },
-    kmip::{
+    kmip_2_1::{
         extra::BulkData,
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
@@ -23,10 +12,25 @@ use cosmian_kmip::{
         },
         KmipOperation,
     },
-    openssl::kmip_public_key_to_openssl,
     KmipError,
 };
-use cosmian_kms_server_database::{ExtraStoreParams, ObjectWithMetadata};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
+use cosmian_kms_crypto::{
+    crypto::{
+        cover_crypt::encryption::CoverCryptEncryption,
+        rsa::{
+            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
+        },
+        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
+        EncryptionSystem,
+    },
+    openssl::kmip_public_key_to_openssl,
+};
+use cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -36,7 +40,6 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        to_cryptographic_algorithm,
         uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
     },
@@ -51,7 +54,7 @@ pub(crate) async fn encrypt(
     kms: &KMS,
     request: Encrypt,
     user: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<EncryptResponse> {
     trace!("Encrypt: {}", serde_json::to_string(&request)?);
 
@@ -65,7 +68,7 @@ pub(crate) async fn encrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params)
+    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Encrypt")?;
     debug!("Encrypt: candidate uids: {uids:?}");
@@ -84,10 +87,14 @@ pub(crate) async fn encrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user, params).await? {
+            if !kms
+                .database
+                .is_object_owned_by(&uid, user, params.clone())
+                .await?
+            {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params)
+                    .list_user_operations_on_object(&uid, user, false, params.clone())
                     .await?;
                 if !ops
                     .iter()
@@ -101,7 +108,7 @@ pub(crate) async fn encrypt(
         }
         let owm = kms
             .database
-            .retrieve_object(&uid, params)
+            .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
@@ -113,7 +120,7 @@ pub(crate) async fn encrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params)
+                .list_user_operations_on_object(&uid, user, false, params.clone())
                 .await?;
             if !ops
                 .iter()
@@ -149,7 +156,7 @@ pub(crate) async fn encrypt(
         Object::Certificate { .. } => {}
         _ => {
             owm.set_object(
-                kms.get_unwrapped(owm.id(), owm.object(), user, params)
+                kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
                     .await?,
             );
         }
@@ -192,7 +199,7 @@ async fn encrypt_using_encryption_oracle(
     let ca = request
         .cryptographic_parameters
         .as_ref()
-        .and_then(|cp| to_cryptographic_algorithm(cp).transpose())
+        .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
         .transpose()?;
     let encrypted_content = encryption_oracle
         .encrypt(

@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, GetAttributes, Locate},
     kmip_types::{
@@ -25,8 +25,7 @@ pub(crate) struct KmsObject {
 }
 
 pub(crate) fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
-    let conf_path = KmsClientConfig::location(None)?;
-    let conf = KmsClientConfig::load(&conf_path)?;
+    let conf = KmsClientConfig::load(None)?;
     let kms_rest_client = KmsClient::new(conf)?;
     Ok(kms_rest_client)
 }

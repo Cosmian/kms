@@ -8,7 +8,7 @@ use actix_web::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Utc};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
     kmip_operations::{Decrypt, Get},
@@ -132,7 +132,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(op, &user, database_params.as_ref()).await?;
+    let resp = kms.get(op, &user, database_params).await?;
     match resp.object {
         Object::PublicKey { key_block, .. } => match key_block.key_value.key_material {
             KeyMaterial::TransparentRSAPublicKey {
@@ -233,9 +233,7 @@ async fn _decrypt(
         }),
         ..Decrypt::default()
     };
-    let response = kms
-        .decrypt(decrypt_request, &user, database_params.as_ref())
-        .await?;
+    let response = kms.decrypt(decrypt_request, &user, database_params).await?;
     Ok(DecryptedData {
         value: STANDARD.encode(
             response

@@ -73,12 +73,12 @@ Locate allows finding objects:
    `TransparentSymmetricKey`, `TransparentRSAPrivateKey`, `TransparentRSAPublicKey`, `TransparentECPrivateKey`,
    `TransparentECPublicKey`, `PKCS12`, `CoverCryptSecretKey`, `CoverCryptPublicKey`
 - by their links to other objects:
-  - a public key (`Public Key Link`)
-  - a private key (`Private Key Link`)
-  - a certificate (`Certificate Link`)
+    - a public key (`Public Key Link`)
+    - a private key (`Private Key Link`)
+    - a certificate (`Certificate Link`)
 - for certificates:
-  - by subject common name
-  - by certificate spki
+    - by subject common name
+    - by certificate spki
 
 ### Example - Symmetric Keys using the `_kk` tag
 

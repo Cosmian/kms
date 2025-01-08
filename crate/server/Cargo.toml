@@ -19,12 +19,12 @@ test = false
 doctest = false
 
 [features]
-# Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
+# Do not verify auth0 token expiration date, and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = []
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = ["cosmian_kmip/fips"]
+fips = ["cosmian_kmip/fips", "cosmian_kms_crypto/fips"]
 
 [dependencies]
 actix-cors = "0.6"
@@ -47,15 +47,16 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cloudproof = { workspace = true }
-cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+cloudproof_findex = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_access = { path = "../access" }
+cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }
 cosmian_kms_server_database = { path = "../server_database" }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
-lazy_static = "1.5"
+lazy_static = { workspace = true }
 log = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -69,13 +70,6 @@ opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
 opentelemetry-semantic-conventions = { version = "0.15.0" }
 opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
 proteccio_pkcs11_loader = { path = "../pkcs11/proteccio" }
-redis = { version = "0.23", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
-] }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
@@ -85,13 +79,6 @@ redis = { version = "0.23", features = [
 reqwest = { workspace = true, features = ["default", "json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.8.2", default-features = false, features = [
-  "json",
-  "runtime-tokio-native-tls",
-  "mysql",
-  "postgres",
-  "sqlite",
-] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }

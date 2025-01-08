@@ -2,21 +2,20 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_client::cosmian_kmip::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
-        kmip::{
-            kmip_objects::Object,
-            kmip_types::{
-                CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
-                WrappingMethod,
-            },
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::Object,
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
+            WrappingMethod,
         },
     },
+    kmip_2_1::requests::create_symmetric_key_kmip_object,
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::{debug, trace};
@@ -105,7 +104,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
-    cosmian_logger::log_init(Some("debug"));
+    cosmian_logger::log_init(None);
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

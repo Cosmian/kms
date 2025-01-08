@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use openssl::{
     asn1::Asn1TimeRef,
     pkey::{PKey, PKeyRef, Private},

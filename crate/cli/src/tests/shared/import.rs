@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
@@ -146,7 +146,8 @@ pub(crate) async fn test_import_cover_crypt() -> CliResult<()> {
 pub(crate) async fn test_generate_export_import() -> CliResult<()> {
     use crate::actions::symmetric::keys::create_key::CreateKeyAction;
 
-    cosmian_logger::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
+    cosmian_logger::log_init(None);
+    // cosmian_logger::log_init(Some("cosmian_kms_server=debug,cosmian_kms_utils=debug"));
     let ctx = start_default_test_kms_server().await;
 
     // Covercrypt import/export test

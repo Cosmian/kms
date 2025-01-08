@@ -1,14 +1,16 @@
 mod encryption_oracle;
 mod error;
 mod hsm;
+mod stores;
 
-pub use encryption_oracle::{
-    CryptographicAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata,
-};
+pub use encryption_oracle::{CryptoAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata};
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
     HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, HSM,
+    HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, HSM,
+};
+pub use stores::{
+    AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore, SessionParams,
 };
 
 /// Supported cryptographic object types

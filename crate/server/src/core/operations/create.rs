@@ -1,10 +1,13 @@
-use cosmian_kmip::kmip::{
+use std::sync::Arc;
+
+use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
     kmip_types::{EncryptionKeyInformation, UniqueIdentifier},
 };
-use cosmian_kms_server_database::{CachedUnwrappedObject, ExtraStoreParams};
+use cosmian_kms_interfaces::SessionParams;
+use cosmian_kms_server_database::CachedUnwrappedObject;
 use tracing::{debug, trace};
 
 use crate::{
@@ -18,7 +21,7 @@ pub(crate) async fn create(
     kms: &KMS,
     mut request: Create,
     owner: &str,
-    params: Option<&ExtraStoreParams>,
+    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<CreateResponse> {
     trace!("Create: {}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
@@ -28,7 +31,7 @@ pub(crate) async fn create(
     let (unique_identifier, mut object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => {
-            kms.create_private_key_and_tags(&request, owner, params)
+            kms.create_private_key_and_tags(&request, owner, params.clone())
                 .await?
         }
         _ => {
@@ -64,7 +67,7 @@ pub(crate) async fn create(
             },
             kms,
             owner,
-            params,
+            params.clone(),
         )
         .await?;
     }

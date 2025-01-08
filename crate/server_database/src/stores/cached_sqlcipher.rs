@@ -7,13 +7,17 @@ use std::{
 
 use async_trait::async_trait;
 use clap::crate_version;
-use cosmian_kmip::{
-    crypto::{secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH},
-    kmip::{
-        kmip_objects::Object,
-        kmip_types::{Attributes, StateEnumeration},
-        KmipOperation,
-    },
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, StateEnumeration},
+    KmipOperation,
+};
+use cosmian_kms_crypto::crypto::{
+    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+};
+use cosmian_kms_interfaces::{
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore, SessionParams,
 };
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -27,10 +31,10 @@ use super::{
         create_, delete_, find_, insert_access_, is_object_owned_by_, list_accesses_,
         list_user_granted_access_rights_, remove_access_, retrieve_, update_object_, update_state_,
     },
-    ExtraStoreParams,
+    SqlCipherSessionParams,
 };
 use crate::{
-    db_bail, db_error,
+    db_error,
     error::{DbResult, DbResultHelper},
     get_sqlite_query,
     migrate::do_migration,
@@ -38,10 +42,9 @@ use crate::{
         sqlite::{
             atomic_, is_migration_in_progress_, list_uids_for_tags_, migrate_, retrieve_tags_,
         },
-        store_traits::{AtomicOperation, ObjectsStore, PermissionsStore},
         SQLITE_QUERIES,
     },
-    ObjectWithMetadata, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[derive(Clone)]
@@ -140,24 +143,28 @@ impl ObjectsStore for CachedSqlCipher {
         Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
-    async fn migrate(&self, params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params =
+                <dyn SessionParams>::downcast_ref::<SqlCipherSessionParams>(params.as_ref());
             let pool = self.pre_query(params.group_id, &params.key).await?;
 
             trace!("Migrate database");
             // Get the context rows
             match sqlx::query(get_sqlite_query!("select-context"))
                 .fetch_optional(&*pool)
-                .await?
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to fetch context row: {e}")))?
             {
                 None => {
                     trace!("No context row found, migrating from scratch");
-                    return migrate_(
+                    migrate_(
                         &pool,
                         KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
                         "insert-context",
                     )
-                    .await;
+                    .await?;
+                    return Ok(());
                 }
                 Some(context_row) => {
                     let last_kms_version_run = context_row.get::<String, _>(0);
@@ -173,7 +180,8 @@ impl ObjectsStore for CachedSqlCipher {
                     );
 
                     if do_migration(&last_kms_version_run, current_kms_version, &state)? {
-                        return migrate_(&pool, current_kms_version, "update-context").await;
+                        migrate_(&pool, current_kms_version, "update-context").await?;
+                        return Ok(())
                     }
                 }
             }
@@ -181,7 +189,9 @@ impl ObjectsStore for CachedSqlCipher {
             return Ok(());
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn create(
@@ -191,60 +201,84 @@ impl ObjectsStore for CachedSqlCipher {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<String> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<String> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
 
-            let mut tx = pool.begin().await?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start transaction: {e}")))?;
             match create_(uid, owner, object, attributes, tags, &mut tx).await {
                 Ok(uid) => {
-                    tx.commit().await?;
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit transaction: {e}"))
+                    })?;
                     self.post_query(params.group_id)?;
                     return Ok(uid)
                 }
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
                     self.post_query(params.group_id)?;
-                    db_bail!("creation of object failed: {}", e)
+                    return Err(InterfaceError::Db(format!(
+                        "creation of object failed: {e}"
+                    )));
                 }
             }
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn retrieve(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Option<ObjectWithMetadata>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = retrieve_(uid, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<HashSet<String>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = retrieve_tags_(uid, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn update_object(
@@ -253,142 +287,210 @@ impl ObjectsStore for CachedSqlCipher {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
 
-            let mut tx = pool.begin().await?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start transaction: {e}")))?;
             match update_object_(uid, object, attributes, tags, &mut tx).await {
                 Ok(()) => {
-                    tx.commit().await?;
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit transaction: {e}"))
+                    })?;
                     self.post_query(params.group_id)?;
                     return Ok(())
                 }
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
                     self.post_query(params.group_id)?;
-                    db_bail!("creation of object failed: {}", e)
+                    return Err(InterfaceError::Db(format!(
+                        "creation of object failed: {e}"
+                    )));
                 }
             }
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn update_state(
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
-            let mut tx = pool.begin().await?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start transaction: {e}")))?;
             match update_state_(uid, state, &mut tx).await {
                 Ok(()) => {
-                    tx.commit().await?;
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit transaction: {e}"))
+                    })?;
                     self.post_query(params.group_id)?;
                     return Ok(())
                 }
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
                     self.post_query(params.group_id)?;
-                    db_bail!("update of state of object {uid} failed: {e}")
+                    return Err(InterfaceError::Db(format!(
+                        "update of state of object {uid} failed: {e}"
+                    )));
                 }
             }
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
-    async fn delete(&self, uid: &str, params: Option<&ExtraStoreParams>) -> DbResult<()> {
+    async fn delete(
+        &self,
+        uid: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
-            let mut tx = pool.begin().await?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start transaction: {e}")))?;
             match delete_(uid, &mut tx).await {
                 Ok(()) => {
-                    tx.commit().await?;
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit transaction: {e}"))
+                    })?;
                     self.post_query(params.group_id)?;
                     return Ok(())
                 }
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
                     self.post_query(params.group_id)?;
-                    db_bail!("deletion of object failed: {}", e)
+                    return Err(InterfaceError::Db(format!(
+                        "deletion of object failed: {e}"
+                    )));
                 }
             }
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn atomic(
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<String>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<Vec<String>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
-            let mut tx = pool.begin().await?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start transaction: {e}")))?;
             return match atomic_(user, operations, &mut tx).await {
                 Ok(v) => {
-                    tx.commit().await?;
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit transaction: {e}"))
+                    })?;
                     self.post_query(params.group_id)?;
                     Ok(v)
                 }
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
                     self.post_query(params.group_id)?;
-                    Err(e)
+                    Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
                 }
             }
         }
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn is_object_owned_by(
         &self,
         uid: &str,
         owner: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<bool> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<bool> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = is_object_owned_by_(uid, owner, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn list_uids_for_tags(
         &self,
         tags: &HashSet<String>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<String>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<HashSet<String>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_uids_for_tags_(tags, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn find(
@@ -397,10 +499,13 @@ impl ObjectsStore for CachedSqlCipher {
         state: Option<StateEnumeration>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<Vec<(String, StateEnumeration, Attributes)>> {
         trace!("cached sqlcipher: find: {:?}", researched_attributes);
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(
                 researched_attributes,
@@ -412,10 +517,12 @@ impl ObjectsStore for CachedSqlCipher {
             .await;
             trace!("cached sqlcipher: before post_query: {:?}", ret);
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 }
 #[async_trait(?Send)]
@@ -423,31 +530,41 @@ impl PermissionsStore for CachedSqlCipher {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_user_granted_access_rights_(user, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_accesses_(uid, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn grant_operations(
@@ -455,19 +572,26 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
             let ret = insert_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn remove_operations(
@@ -475,19 +599,26 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         operation_types: HashSet<KmipOperation>,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<()> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<()> {
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             if is_migration_in_progress_(&*pool).await? {
-                db_bail!("Migration in progress. Please retry later");
+                return Err(InterfaceError::Db(
+                    "Migration in progress. Please retry later".to_owned(),
+                ));
             }
             let ret = remove_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 
     async fn list_user_operations_on_object(
@@ -495,19 +626,24 @@ impl PermissionsStore for CachedSqlCipher {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<&ExtraStoreParams>,
-    ) -> DbResult<HashSet<KmipOperation>> {
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
         use super::sqlite::list_user_access_rights_on_object_;
 
         if let Some(params) = params {
+            let params = <dyn SessionParams + 'static>::downcast_ref::<SqlCipherSessionParams>(
+                params.as_ref(),
+            );
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret =
                 list_user_access_rights_on_object_(uid, user, no_inherited_access, &*pool).await;
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(ret?)
         }
 
-        db_bail!("Missing group_id/key for opening SQLCipher")
+        Err(InterfaceError::Db(
+            "Missing group_id/key for opening SQLCipher".to_owned(),
+        ))
     }
 }
 

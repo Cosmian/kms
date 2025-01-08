@@ -10,23 +10,22 @@ use actix_http::{body::MessageBody, Request};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
 use base64::{engine::general_purpose, Engine};
-use cosmian_kmip::{
-    crypto::{certificates::EXTENSION_CONFIG, rsa::kmip_requests::create_rsa_key_pair_request},
-    kmip::{
-        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Certify, Get, Import, ImportResponse},
-        kmip_types::{
-            Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
-            EncodingOption, EncryptionKeyInformation, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
-        },
-        ttlv::{deserializer::from_ttlv, TTLV},
-        KmipOperation,
+use cosmian_kmip::kmip_2_1::{
+    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Certify, Get, Import, ImportResponse},
+    kmip_types::{
+        Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
+        EncodingOption, EncryptionKeyInformation, KeyFormatType, Link, LinkType,
+        LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
     },
+    requests::create_rsa_key_pair_request,
+    ttlv::{deserializer::from_ttlv, TTLV},
+    KmipOperation,
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
+use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
 use cosmian_logger::log_init;
 use openssl::{
     hash::MessageDigest,
@@ -179,7 +178,8 @@ fn test_ossl_sign_verify() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_status() -> KResult<()> {
-    log_init(Some("debug,cosmian_kms_server=trace"));
+    log_init(None);
+    // log_init(Some("debug,cosmian_kms_server=trace"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -198,7 +198,7 @@ async fn test_cse_private_key_sign() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
-    log_init(Some("debug,cosmian_kms_server=trace"));
+    log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -551,7 +551,7 @@ async fn test_cse_wrap_unwrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -602,7 +602,7 @@ async fn test_cse_privileged_wrap_unwrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -653,7 +653,7 @@ async fn test_cse_privileged_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
@@ -735,7 +735,7 @@ async fn test_cse_rewrap_key() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
     }
 
-    log_init(Some("info,cosmian_kms_server=trace"));
+    log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 

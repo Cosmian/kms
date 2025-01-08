@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use cosmian_kmip::kmip::kmip_objects::Object;
+use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use lru::LruCache;
 use tokio::sync::RwLock;
 #[cfg(test)]
@@ -13,13 +13,13 @@ use crate::error::DbResult;
 /// It contains the unwrapped object and the key signature
 #[derive(Clone)]
 pub struct CachedUnwrappedObject {
-    key_signature: [u8; 32],
+    key_signature: u64,
     unwrapped_object: Object,
 }
 
 impl CachedUnwrappedObject {
     #[must_use]
-    pub const fn new(key_signature: [u8; 32], unwrapped_object: Object) -> Self {
+    pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
         Self {
             key_signature,
             unwrapped_object,
@@ -27,8 +27,8 @@ impl CachedUnwrappedObject {
     }
 
     #[must_use]
-    pub const fn key_signature(&self) -> &[u8; 32] {
-        &self.key_signature
+    pub const fn key_signature(&self) -> u64 {
+        self.key_signature
     }
 
     #[must_use]
@@ -70,7 +70,7 @@ impl UnwrappedCache {
             // invalidate the value in cache if the signature is different
             match cache.peek(uid) {
                 Some(Ok(cached_object)) => {
-                    if *cached_object.key_signature() != key_signature {
+                    if cached_object.key_signature() != key_signature {
                         trace!("Invalidating the cache for {}", uid);
                         cache.pop(uid);
                     }
@@ -112,15 +112,14 @@ impl UnwrappedCache {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     use cloudproof::reexport::crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
         CsRng,
     };
-    use cosmian_kmip::{
-        crypto::symmetric::create_symmetric_key_kmip_object,
-        kmip::kmip_types::CryptographicAlgorithm,
+    use cosmian_kmip::kmip_2_1::{
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
@@ -136,7 +135,7 @@ mod tests {
         let dir = TempDir::new()?;
 
         let main_db_params = MainDbParams::Sqlite(dir.path().to_owned());
-        let database = Database::instantiate(&main_db_params, true, None, "").await?;
+        let database = Database::instantiate(&main_db_params, true, HashMap::new()).await?;
 
         let mut rng = CsRng::from_entropy();
 

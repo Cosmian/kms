@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     export_object,
-    kmip::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
+    kmip_2_1::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
 };
@@ -29,7 +29,7 @@ pub enum CertificateExportFormat {
 /// - in PKCS12 format including private key, certificate and chain (pkcs12)
 /// - in legacy PKCS12 format (pkcs12-legacy), compatible with openssl 1.x,
 ///    for keystores that do not support the new format
-///    (e.g. Java keystores, `MacOS` Keychains,...)
+///    (e.g. Java keystores, `macOS` Keychains,...)
 ///    This format is not available in FIPS mode.
 /// - in PKCS7 format including the entire certificates chain (pkcs7)
 ///

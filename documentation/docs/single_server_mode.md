@@ -14,7 +14,33 @@ protected during operation by running the server inside an enclave. Ask Cosmian 
 ### Quick start
 
 To run in single server mode, using the defaults and a SQLite database will be created. Otherwise,
-the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page]](./database.md).
+the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page](./database.md).
+
+=== "Docker"
+
+    Run the container as follows:
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+    ```
+
+    The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
+    container in the `/root/cosmian-kms/sqlite-data` directory.
+
+    FIPS version is also available:
+
+    ```sh
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest
+    ```
+
+    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
+    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
+
+    ```sh
+    docker run --rm -p 9998:9998 \
+    -v cosmian-kms:/root/cosmian-kms/sqlite-data \
+    --name kms ghcr.io/cosmian/kms:latest
+    ```
 
 === "Ubuntu 20.04"
 
@@ -22,17 +48,17 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-20.04/cosmian-kms-server_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-20.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-20.04/cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-20.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
 === "Ubuntu 22.04"
@@ -41,17 +67,17 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-22.04/cosmian-kms-server_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-22.04/cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
 === "Ubuntu 24.04"
@@ -60,17 +86,17 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-24.04/cosmian-kms-server_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-24.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.20.1/ubuntu-24.04/cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.20.1-1_amd64.deb
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/ubuntu-24.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    cosmian_kms_server --version
     ```
 
 === "RHEL 9"
@@ -79,9 +105,9 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo dnf update && dnf install -y wget
-    wget https://package.cosmian.com/kms/4.20.1/rhel9/cosmian_kms_server-4.20.1-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-4.20.1-1.x86_64.rpm
-    cosmian --version
+    wget https://package.cosmian.com/kms/4.21.0/rhel9/cosmian_kms_server-4.21.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-4.21.0-1.x86_64.rpm
+    cosmian_kms_server --version
     ```
 
 === "MacOS"
@@ -89,21 +115,21 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     On ARM MacOS, download the build archive and extract it:
 
     ```console title="On local machine"
-    wget https://package.cosmian.com/kms/4.20.1/macos_arm-release.zip
+    wget https://package.cosmian.com/kms/4.21.0/macos_arm-release.zip
     unzip macos_arm-release.zip
-    cp /macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian
-    cosmian --version
+    cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian_kms_server
+    cosmian_kms_server --version
     ```
 
     On Intel MacOS, download the build archive and extract it:
 
     ```console title="On local machine"
-    wget https://package.cosmian.com/kms/4.20.1/macos_intel-release.zip
+    wget https://package.cosmian.com/kms/4.21.0/macos_intel-release.zip
     unzip macos_intel-release.zip
-    cp /macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian
-    cosmian --version
+    cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian_kms_server
+    cosmian_kms_server --version
     ```
 
 === "Windows"
@@ -111,39 +137,19 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     On Windows, download the build archive:
 
     ```console title="Build archive"
-     https://package.cosmian.com/kms/4.20.1/windows-release.zip
+     https://package.cosmian.com/kms/4.21.0/windows-release.zip
     ```
 
-    Extract the cosmian from:
+    Extract the cosmian_kms_server from:
 
-    ```console title="cosmian for Windows"
-    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian.exe
+    ```console title="cosmian_kms_server for Windows"
+    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian_kms_server.exe
     ```
 
     Copy it to a folder in your PATH and run it:
 
     ```console title="On local machine"
-    cosmian --version
-    ```
-
-=== "Docker"
-
-    Run the container as follows:
-
-    ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.20.1
-    ```
-
-    The KMS will be available on `http://localhost:9998`, and the server will store its data inside the
-    container in the `/root/cosmian-kms/sqlite-data` directory.
-
-    To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem
-    directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
-
-    ```sh
-    docker run --rm -p 9998:9998 \
-    -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-    --name kms ghcr.io/cosmian/kms:4.20.1
+    cosmian_kms_server --version
     ```
 
 ### Using client-side encrypted databases
@@ -154,10 +160,11 @@ To start the KMS server with a client-side encrypted SQLite databases, pass the
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.20.1 \
+  --name kms ghcr.io/cosmian/kms:latest \
   --database-type=sqlite-enc
 ```
 
+It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
 !!! important "Important: encrypted databases must be created first"
 
     Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
@@ -191,12 +198,12 @@ databases can be used concurrently on the same KMS server.
 
     The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file.
 
-        ```toml
-        [kms_config.http_config]
-        server_url = "http://127.0.0.1:9990"
-        access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
-        database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
-        ```
+    ```toml
+    [kms_config.http_config]
+    server_url = "http://127.0.0.1:9990"
+    access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
+    database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
+    ```
 
 === "curl"
 

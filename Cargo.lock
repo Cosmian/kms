@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "ckms_pkcs11"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
@@ -1230,7 +1230,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 [[package]]
 name = "cosmian_config_utils"
 version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#3e77e49a0f7ed04380ea44f41d72316fceaf50a8"
+source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#827439f6e7ed7565eac0c235993ad60a1de35136"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -1339,7 +1339,7 @@ dependencies = [
 [[package]]
 name = "cosmian_http_client"
 version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#3e77e49a0f7ed04380ea44f41d72316fceaf50a8"
+source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#827439f6e7ed7565eac0c235993ad60a1de35136"
 dependencies = [
  "actix-web",
  "derive_more",
@@ -1357,36 +1357,29 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
- "aes-gcm-siv",
- "argon2",
- "base64 0.21.7",
  "bitflags 2.6.0",
  "chrono",
- "clap",
- "cloudproof",
  "cosmian_logger",
  "hex",
+ "leb128",
  "num-bigint-dig",
- "openssl",
  "pyo3",
- "rust-ini",
+ "rand 0.8.5",
  "serde",
  "serde_json",
- "sha3",
  "strum",
  "thiserror 2.0.3",
  "time",
  "tracing",
  "uuid",
- "x509-parser",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_kms_access"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1394,17 +1387,15 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
- "actix-rt",
- "actix-server",
  "assert_cmd",
  "base64 0.21.7",
  "clap",
  "cloudproof",
- "const-oid",
  "cosmian_config_utils",
  "cosmian_kms_client",
+ "cosmian_kms_crypto",
  "cosmian_logger",
  "der",
  "hex",
@@ -1412,7 +1403,6 @@ dependencies = [
  "kms_test_server",
  "leb128",
  "num-format",
- "oauth2",
  "openssl",
  "pem",
  "predicates",
@@ -1434,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "cloudproof",
  "cosmian_config_utils",
@@ -1454,24 +1444,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kms_crypto"
+version = "4.21.0"
+dependencies = [
+ "aes-gcm-siv",
+ "argon2",
+ "base64 0.21.7",
+ "cloudproof",
+ "cosmian_kmip",
+ "cosmian_logger",
+ "hex",
+ "num-bigint-dig",
+ "openssl",
+ "pyo3",
+ "rust-ini",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.3",
+ "tracing",
+ "x509-parser",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_kms_interfaces"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "async-trait",
- "cosmian_logger",
- "tempfile",
+ "cosmian_kmip",
+ "num-bigint-dig",
+ "serde_json",
  "thiserror 2.0.3",
- "tracing-subscriber",
+ "tracing",
  "zeroize",
 ]
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
  "cosmian_kms_client",
+ "cosmian_kms_crypto",
  "pyo3",
  "pyo3-asyncio",
  "pyo3-build-config",
@@ -1480,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1498,6 +1513,7 @@ dependencies = [
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
  "cosmian_kms_access",
+ "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_kms_server_database",
  "cosmian_logger",
@@ -1514,11 +1530,9 @@ dependencies = [
  "opentelemetry_sdk",
  "pem",
  "proteccio_pkcs11_loader",
- "redis",
  "reqwest",
  "serde",
  "serde_json",
- "sqlx",
  "strum",
  "tempfile",
  "thiserror 2.0.3",
@@ -1536,21 +1550,20 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "async-trait",
  "clap",
  "cloudproof",
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
+ "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "hex",
  "lazy_static",
  "lru",
- "num-bigint-dig",
  "num_cpus",
- "rand_chacha 0.3.1",
  "rawsql",
  "redis",
  "serde",
@@ -1561,7 +1574,6 @@ dependencies = [
  "tiny-keccak",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "url",
  "uuid",
  "version-compare",
@@ -1571,7 +1583,7 @@ dependencies = [
 [[package]]
 name = "cosmian_logger"
 version = "0.1.0"
-source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#3e77e49a0f7ed04380ea44f41d72316fceaf50a8"
+source = "git+https://www.github.com/Cosmian/http_client_server?branch=develop#827439f6e7ed7565eac0c235993ad60a1de35136"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -1579,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "bincode",
  "const-oid",
@@ -2504,7 +2516,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.8",
  "tokio",
  "tower-service",
  "tracing",
@@ -2855,11 +2867,12 @@ dependencies = [
 
 [[package]]
 name = "kms_test_server"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "actix-server",
  "base64 0.21.7",
  "cosmian_kms_client",
+ "cosmian_kms_crypto",
  "cosmian_kms_server",
  "cosmian_kms_server_database",
  "cosmian_logger",
@@ -3745,7 +3758,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "4.20.1"
+version = "4.21.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",

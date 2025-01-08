@@ -15,6 +15,7 @@ name = "cosmian_kms"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }
+cosmian_kms_crypto = { path = "../crypto" }
 pyo3 = { workspace = true, features = [
   "extension-module",
   "abi3",

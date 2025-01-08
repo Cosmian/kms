@@ -6,18 +6,16 @@ use std::{
 use clap::{Parser, Subcommand};
 use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        crypto::cover_crypt::{
-            attributes::{policy_from_attributes, RekeyEditAction},
-            kmip_requests::build_rekey_keypair_request,
-        },
-        kmip::{
-            kmip_objects::Object,
-            ttlv::{deserializer::from_ttlv, TTLV},
-        },
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::Object,
+        ttlv::{deserializer::from_ttlv, TTLV},
     },
     export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
     ExportObjectParams, KmsClient,
+};
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    attributes::{policy_from_attributes, RekeyEditAction},
+    kmip_requests::build_rekey_keypair_request,
 };
 
 use crate::{
