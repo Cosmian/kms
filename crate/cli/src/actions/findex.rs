@@ -1,18 +1,14 @@
 use clap::Subcommand;
-use cosmian_findex_cli::{CoreFindexActions, reexports::cosmian_findex_client::FindexRestClient};
+use cosmian_findex_cli::{reexports::cosmian_findex_client::FindexRestClient, CoreFindexActions};
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClient;
 
-use super::{
-    delete_datasets::DeleteDatasetAction, encrypt_and_index::EncryptAndIndexAction,
-    search_and_decrypt::SearchAndDecryptAction,
-};
-use crate::error::{CosmianError, result::CosmianResult};
+use super::{encrypt_and_index::EncryptAndIndexAction, search_and_decrypt::SearchAndDecryptAction};
+use crate::error::{result::CosmianResult, CosmianError};
 
 #[derive(Subcommand)]
 pub enum FindexActions {
     EncryptAndIndex(EncryptAndIndexAction),
     SearchAndDecrypt(SearchAndDecryptAction),
-    DeleteDataset(DeleteDatasetAction),
     #[clap(flatten)]
     Findex(CoreFindexActions),
 }
@@ -33,9 +29,14 @@ impl FindexActions {
                 .run(findex_rest_client)
                 .await
                 .map_err(CosmianError::from),
-            Self::EncryptAndIndex(action) => action.run(findex_rest_client, kms_rest_client).await,
-            Self::SearchAndDecrypt(action) => action.run(findex_rest_client, kms_rest_client).await,
-            Self::DeleteDataset(action) => action.run(findex_rest_client).await,
+            Self::EncryptAndIndex(action) => {
+                action.run(findex_rest_client, kms_rest_client).await?;
+                Ok(())
+            }
+            Self::SearchAndDecrypt(action) => {
+                action.run(findex_rest_client, kms_rest_client).await?;
+                Ok(())
+            }
         }
     }
 }

@@ -1846,24 +1846,22 @@ Handle Findex server actions
 
 **`search-and-decrypt`** [[2.2]](#22-cosmian-findex-server-search-and-decrypt)  Search keywords and decrypt the content of corresponding UUIDs.
 
-**`delete-dataset`** [[2.3]](#23-cosmian-findex-server-delete-dataset)  Delete encrypted entries. (Indexes are not deleted)
+**`datasets`** [[2.3]](#23-cosmian-findex-server-datasets)  Manage encrypted datasets
 
-**`datasets`** [[2.4]](#24-cosmian-findex-server-datasets)  Manage encrypted datasets
+**`delete`** [[2.4]](#24-cosmian-findex-server-delete)  Delete indexed keywords
 
-**`delete`** [[2.5]](#25-cosmian-findex-server-delete)  Delete indexed keywords
+**`index`** [[2.5]](#25-cosmian-findex-server-index)  Index new keywords
 
-**`index`** [[2.6]](#26-cosmian-findex-server-index)  Index new keywords
-
-**`login`** [[2.7]](#27-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2`
+**`login`** [[2.6]](#26-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2`
 authorization code flow.
 
-**`logout`** [[2.8]](#28-cosmian-findex-server-logout)  Logout from the Identity Provider.
+**`logout`** [[2.7]](#27-cosmian-findex-server-logout)  Logout from the Identity Provider.
 
-**`permissions`** [[2.9]](#29-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
+**`permissions`** [[2.8]](#28-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
 
-**`search`** [[2.10]](#210-cosmian-findex-server-search)  Findex: Search keywords.
+**`search`** [[2.9]](#29-cosmian-findex-server-search)  Findex: Search keywords.
 
-**`server-version`** [[2.11]](#211-cosmian-findex-server-server-version)  Print the version of the server
+**`server-version`** [[2.10]](#210-cosmian-findex-server-server-version)  Print the version of the server
 
 ---
 
@@ -1927,22 +1925,7 @@ Possible values:  `"AesGcm", "AesXts"` [default: `"AesGcm"`]
 
 ---
 
-## 2.3 cosmian findex-server delete-dataset
-
-Delete encrypted entries. (Indexes are not deleted)
-
-### Usage
-`cosmian findex-server delete-dataset [options]`
-### Arguments
-`--index-id [-i] <INDEX_ID>` Index id
-
-`--uuid [-u] <UUID>` List of UUIDS to delete
-
-
-
----
-
-## 2.4 cosmian findex-server datasets
+## 2.3 cosmian findex-server datasets
 
 Manage encrypted datasets
 
@@ -1951,15 +1934,15 @@ Manage encrypted datasets
 
 ### Subcommands
 
-**`add`** [[2.4.1]](#241-cosmian-findex-server-datasets-add)  Add datasets entries
+**`add`** [[2.3.1]](#231-cosmian-findex-server-datasets-add)  Add datasets entries
 
-**`delete`** [[2.4.2]](#242-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
+**`delete`** [[2.3.2]](#232-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
 
-**`get`** [[2.4.3]](#243-cosmian-findex-server-datasets-get)  Get datasets entries using corresponding entries UUID. Returns the entries
+**`get`** [[2.3.3]](#233-cosmian-findex-server-datasets-get)  Get datasets entries using corresponding entries UUID. Returns the entries
 
 ---
 
-## 2.4.1 cosmian findex-server datasets add
+## 2.3.1 cosmian findex-server datasets add
 
 Add datasets entries
 
@@ -1974,7 +1957,7 @@ Add datasets entries
 
 ---
 
-## 2.4.2 cosmian findex-server datasets delete
+## 2.3.2 cosmian findex-server datasets delete
 
 Delete datasets entries using corresponding entries UUID
 
@@ -1989,7 +1972,7 @@ Delete datasets entries using corresponding entries UUID
 
 ---
 
-## 2.4.3 cosmian findex-server datasets get
+## 2.3.3 cosmian findex-server datasets get
 
 Get datasets entries using corresponding entries UUID. Returns the entries
 
@@ -2005,7 +1988,7 @@ Get datasets entries using corresponding entries UUID. Returns the entries
 
 ---
 
-## 2.5 cosmian findex-server delete
+## 2.4 cosmian findex-server delete
 
 Delete indexed keywords
 
@@ -2024,7 +2007,7 @@ Delete indexed keywords
 
 ---
 
-## 2.6 cosmian findex-server index
+## 2.5 cosmian findex-server index
 
 Index new keywords
 
@@ -2043,7 +2026,7 @@ Index new keywords
 
 ---
 
-## 2.7 cosmian findex-server login
+## 2.6 cosmian findex-server login
 
 Login to the Identity Provider of the Findex server using the `OAuth2`
 authorization code flow.
@@ -2054,7 +2037,7 @@ authorization code flow.
 
 ---
 
-## 2.8 cosmian findex-server logout
+## 2.7 cosmian findex-server logout
 
 Logout from the Identity Provider.
 
@@ -2064,7 +2047,7 @@ Logout from the Identity Provider.
 
 ---
 
-## 2.9 cosmian findex-server permissions
+## 2.8 cosmian findex-server permissions
 
 Manage the users permissions to the indexes
 
@@ -2073,17 +2056,17 @@ Manage the users permissions to the indexes
 
 ### Subcommands
 
-**`create`** [[2.9.1]](#291-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
+**`create`** [[2.8.1]](#281-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
 
-**`list`** [[2.9.2]](#292-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
+**`list`** [[2.8.2]](#282-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
 
-**`grant`** [[2.9.3]](#293-cosmian-findex-server-permissions-grant)  Grant permission on a index
+**`grant`** [[2.8.3]](#283-cosmian-findex-server-permissions-grant)  Grant permission on a index
 
-**`revoke`** [[2.9.4]](#294-cosmian-findex-server-permissions-revoke)  Revoke user permission
+**`revoke`** [[2.8.4]](#284-cosmian-findex-server-permissions-revoke)  Revoke user permission
 
 ---
 
-## 2.9.1 cosmian findex-server permissions create
+## 2.8.1 cosmian findex-server permissions create
 
 Create a new index. It results on an `admin` permission on a new index
 
@@ -2093,7 +2076,7 @@ Create a new index. It results on an `admin` permission on a new index
 
 ---
 
-## 2.9.2 cosmian findex-server permissions list
+## 2.8.2 cosmian findex-server permissions list
 
 List user's permission. Returns a list of indexes with their permissions
 
@@ -2106,7 +2089,7 @@ List user's permission. Returns a list of indexes with their permissions
 
 ---
 
-## 2.9.3 cosmian findex-server permissions grant
+## 2.8.3 cosmian findex-server permissions grant
 
 Grant permission on a index
 
@@ -2122,7 +2105,7 @@ Grant permission on a index
 
 ---
 
-## 2.9.4 cosmian findex-server permissions revoke
+## 2.8.4 cosmian findex-server permissions revoke
 
 Revoke user permission
 
@@ -2138,7 +2121,7 @@ Revoke user permission
 
 ---
 
-## 2.10 cosmian findex-server search
+## 2.9 cosmian findex-server search
 
 Findex: Search keywords.
 
@@ -2157,7 +2140,7 @@ Findex: Search keywords.
 
 ---
 
-## 2.11 cosmian findex-server server-version
+## 2.10 cosmian findex-server server-version
 
 Print the version of the server
 

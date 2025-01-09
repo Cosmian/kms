@@ -32,7 +32,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 
-pub use commands::{Cli, CliCommands, cosmian_main};
+pub use commands::{cosmian_main, Cli, CliCommands};
 
 #[cfg(test)]
 mod tests;

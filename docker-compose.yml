@@ -12,14 +12,14 @@ services:
 
   kms:
     container_name: kms
-    image: ghcr.io/cosmian/kms:4.20.1
+    image: ghcr.io/cosmian/kms:4.21.0
     ports:
       - 9998:9998
   findex-server:
     depends_on:
       - redis
     container_name: findex-server
-    image: ghcr.io/cosmian/findex-server:0.1.0
+    image: ghcr.io/cosmian/findex-server:0.1.1
     ports:
       - 6668:6668
     environment:
@@ -30,7 +30,7 @@ services:
     depends_on:
       - redis
     container_name: findex-server-cert-auth
-    image: ghcr.io/cosmian/findex-server:0.1.0
+    image: ghcr.io/cosmian/findex-server:0.1.1
     ports:
       - 6660:6660
     volumes:
