@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2025-01-09
+
+### 🧪 Testing
+
+- Reuse clap actions instead of cosmian binary
+
 ## [0.1.2] - 2024-12-23
 
 ### 📚 Documentation
