@@ -91,6 +91,7 @@ jobs:
 
       - name: Creating zip to be attached to release
         run: |
+          set -xe
           apt update -y
           apt-get install -y zip
           for archive_name in $ARCHIVE_NAMES; do
@@ -99,7 +100,10 @@ jobs:
 
           # Warning, no all binaries in debug, only in release
           if [ "${{ inputs.debug_or_release }}" == "release" ]; then
-            zip -r "$archive_name".zip ubuntu_20_04-release ubuntu_22_04-release windows-release macos_intel-release
+            zip -r ubuntu_20_04-release.zip ubuntu_20_04-release
+            zip -r ubuntu_22_04-release.zip ubuntu_22_04-release
+            zip -r windows-release.zip windows-release
+            zip -r macos_intel-release.zip macos_intel-release
           fi
 
       - name: Push to package.cosmian.com
@@ -136,6 +140,7 @@ jobs:
               -i /root/.ssh/id_rsa ubuntu_24_04-${{ inputs.debug_or_release }}/home/runner/work/kms/kms/target/x86_64-unknown-linux-gnu/debian/*.deb \
               cosmian@package.cosmian.com:$DESTINATION_DIR/ubuntu-24.04
           fi
+
       - name: Release on tags, attach asset on release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
