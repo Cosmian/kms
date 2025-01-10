@@ -7,7 +7,7 @@ MD007:
   ul_indent: 4
 
 MD013:
-  line_length: 120
+  line_length: 240
 
 MD024:
   # Allow heading duplication if under different parent headings
