@@ -1,4 +1,4 @@
-<h1>Configuring a static web server to serve the well-known file</h1>
+# Configuring a static web server to serve the well-known file
 
 The URL at which Google client-side encryption expects the well-known file is on the link pointed by the red arrow below.
 
@@ -6,20 +6,20 @@ The URL at which Google client-side encryption expects the well-known file is on
 
 Assuming your organization is on the domain `acme.com` (which should match that of your email address domain), the URL would be: `https://cse.acme.com/.well-known/cse-configuration`
 
-#### 1. Configure a server running Ubuntu 23.04
+## 1. Configure a server running Ubuntu 23.04
 
 The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server.
 
 Make sure ports 80 and 443 are open to external traffic on this machine. Access to port 80 can be closed at the end of this procedure.
 
-#### 2. Install `nginx` on the server
+## 2. Install `nginx` on the server
 
 ```sh
 sudo apt update
 sudo apt install nginx
 ```
 
-#### 3. Create an empty well-known file
+## 3. Create an empty well-known file
 
 ```sh
 sudo mkdir /var/www/html/.well-known
@@ -29,7 +29,7 @@ sudo /bin/bash -c "echo '{}' >> /var/www/html/.well-known/cse-configuration"
 
 The file will simply contain an empty JSON object `{}` at this stage; you need to fill it with proper values later by following [this documentation](./configuring-the-well-known-file.md).
 
-#### 4. Configure `nginx` to serve the well-known file
+## 4. Configure `nginx` to serve the well-known file
 
 Since, the well-known file is served from a different domain than the one used by Google client-side encryption,
 CORS calls need to be enabled on NGINX to allow the browser to fetch the well-known file.
@@ -44,17 +44,15 @@ location /.well-known/ {
 }
 ```
 
-Verify that `nginx` is correctly serving the file by running # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
+Verify that `nginx` is correctly serving the file by running # Allow CORS calls: see <https://support.google.com/a/answer/10743588?hl=en>
 add_header 'Access-Control-Allow-Origin' '\*';
 }
-
-````
 
 Then restart the `nginx` service
 
 ```sh
 sudo systemctl restart nginx
-````
+```
 
 Finally, verify that `nginx` is correctly serving the file by running
 
@@ -63,7 +61,7 @@ Finally, verify that `nginx` is correctly serving the file by running
 {}
 ```
 
-#### 5. Enable HTTPS with `certbot` and Lets's Encrypt
+## 5. Enable HTTPS with `certbot` and Lets's Encrypt
 
 Install `certbot` on the machine using `snap` (the `snap` daemon should already be installed and activated on Ubuntu 23.04)
 
@@ -92,7 +90,7 @@ That's it, the empty well-known file should now be served using HTTPS. From anot
 
 Port 80 can now be closed on the machine (or `nginx` configuration can be updated to redirect HTTP requests to HTTPS)
 
-#### 6. Enable CORS calls
+## 6. Enable CORS calls
 
 The well-known file is served from a different domain than the one used by Google client-side encryption. CORS calls need to be enabled on the server to allow the browser to fetch the well-known file.
 
@@ -109,7 +107,7 @@ Then restart the `nginx` service
 sudo systemctl restart nginx
 ```
 
-#### 7. Optional: download the well-known file as a proper JSON
+## 7. Optional: download the well-known file as a proper JSON
 
 The Client-side encryption service does not require this setting to work properly. However, it is useful to be able to download the well-known file as a proper JSON object when viewing it in a browser.
 

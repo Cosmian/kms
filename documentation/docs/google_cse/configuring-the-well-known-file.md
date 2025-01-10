@@ -1,4 +1,4 @@
-<h1> Configuring the well-known file</h1>
+# Configuring the `.well-known` file
 
 General configuration instructions for Google client-side encryption is available at [this url](https://support.google.com/a/answer/10743588) in paragraph _(Option 1) To connect to your IdP using a .well-known file_
 
