@@ -38,7 +38,7 @@ environment
 variable) is set, the server still performs the authentication but maps all requests to the default
 username.
 
-## Authenticating using TLS client certificates
+### Authenticating using TLS client certificates
 
 The server must be started using TLS, and the certificate used to verify the clients' certificate
 must be provided in PEM format using the `--authority-cert-file` option.
@@ -55,7 +55,7 @@ The server extracts the username from the client certificate's subject common na
 the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is
 set, in which case the server uses the default username.
 
-## Authenticating using JWT access tokens
+### Authenticating using JWT access tokens
 
 The server supports [JWT access tokens](https://jwt.io/) which are compatible
 with [Open ID Connect](https://openid.net/connect/).
@@ -64,7 +64,7 @@ The server validates the JWT tokens signatures using the token
 issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) that is pulled on
 server start.
 
-### The JWT token
+#### The JWT token
 
 The JWT token must be passed to the endpoints of the KMS server using the HTTP Authorization header:
 
@@ -84,7 +84,7 @@ The JWT token should contain the following claims:
 On the `cosmian` command line interface, the token is configured in the client configuration. Please
 refer to the [Cosmian CLI](../cosmian_cli/index.md) for more details.
 
-### Configuring the KMS server for JWT authentication
+#### Configuring the KMS server for JWT authentication
 
 The KMS server JWT authentication is configured using three command line options (or corresponding
 environment variables):
@@ -101,14 +101,14 @@ environment variables):
         --jwt-audience=cosmian_kms
     ```
 
-#### JWT issuer URI
+##### JWT issuer URI
 
 The issuer URI of the JWT token is called to validate the token signature.
 
 - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
 - env. variable: `KMS_JWT_ISSUER_URI=[<JWT_ISSUER_URI>]`
 
-#### JWKS URI
+##### JWKS URI
 
 The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server
 start.
@@ -117,14 +117,14 @@ Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 - server option: `--jwks-uri <JWKS_URI>`
 - env. variable: `KMS_JWKS_URI=[<JWKS_URI>]`
 
-#### JWT audience
+##### JWT audience
 
 The KMS server validates the JWT `aud` claim against this value if set
 
 - server option: `--jwt-audience <JWT_AUDIENCE>`
 - env. variable: `KMS_JWT_AUDIENCE=[<JWT_AUDIENCE>]`
 
-### Support for concurrent Identity Providers
+#### Support for concurrent Identity Providers
 
 The Cosmian KMS server supports concurrent identity providers. To handle multiple identity
 providers concurrently, repeat each parameter (`jwt-issuer-uri`, `jwks-uri` and optionally
@@ -141,9 +141,9 @@ Example:
 --jwt-audience=<CLIENT_ID>
 ```
 
-### Common Identity Providers
+#### Common Identity Providers
 
-#### Google ID tokens
+##### Google ID tokens
 
 Use the following options to configure the KMS server for Google ID tokens:
 
@@ -152,7 +152,7 @@ Use the following options to configure the KMS server for Google ID tokens:
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
 ```
 
-#### Auth0
+##### Auth0
 
 Use the following options to configure the KMS server for Auth0:
 
@@ -163,7 +163,7 @@ Use the following options to configure the KMS server for Auth0:
 
 Note: the `/` is mandatory at the end of the issuer URL; if not present the `iss` will not validate
 
-#### Google Firebase
+##### Google Firebase
 
 Use the following options to configure the KMS server for Google Firebase:
 
@@ -172,7 +172,7 @@ Use the following options to configure the KMS server for Google Firebase:
 --jwks-uri=https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
 ```
 
-#### Okta
+##### Okta
 
 Use the following options to configure the KMS server for Okta:
 
@@ -182,7 +182,7 @@ Use the following options to configure the KMS server for Okta:
 --jwt-audience=<OKTA_CLIENT_ID>
 ```
 
-#### Microsoft Entra ID
+##### Microsoft Entra ID
 
 Use the following options to configure the KMS server for Microsoft Entra ID:
 
@@ -192,7 +192,7 @@ Use the following options to configure the KMS server for Microsoft Entra ID:
 --jwt-audience=<CLIENT_ID>
 ```
 
-## Authenticating using an API Token
+### Authenticating using an API Token
 
 The server can be configured to authenticate using an API token passed in the `Authorization`
 header.

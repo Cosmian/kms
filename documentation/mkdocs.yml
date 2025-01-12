@@ -81,6 +81,7 @@ nav:
       - Deploying in Confidential VM: marketplace_guide.md
   - Server Configuration:
       - Command Line Interface: server_cli.md
+      - Configuration file: server_configuration_file.md
       - Authenticating users to the server: authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
