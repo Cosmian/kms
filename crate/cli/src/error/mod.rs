@@ -12,7 +12,8 @@ use thiserror::Error;
 
 pub mod result;
 
-// Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
+// Each error type must have a corresponding HTTP status code (see
+// `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
 pub enum CosmianError {
     // When a user requests an endpoint which does not exist

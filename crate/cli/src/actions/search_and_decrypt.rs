@@ -51,8 +51,8 @@ pub struct SearchAndDecryptAction {
     /// The data encryption algorithm.
     /// If not specified, aes-gcm is used.
     ///
-    /// If no key encryption algorithm is specified, the data will be sent to the server
-    /// and will be decrypted server side.
+    /// If no key encryption algorithm is specified, the data will be sent to
+    /// the server and will be decrypted server side.
     #[clap(
         long = "data-encryption-algorithm",
         short = 'd',

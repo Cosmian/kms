@@ -55,7 +55,7 @@ lazy_static! {
     };
 }
 
-async fn add(
+async fn index(
     findex: &FindexRestClient,
     kms: &KmsClient,
     index_id: &Uuid,
@@ -77,7 +77,7 @@ async fn add(
     }
     .run(findex, kms)
     .await?;
-    trace!("add: uuids: {uuids}");
+    trace!("index: uuids: {uuids}");
     assert_eq!(uuids.len(), 10);
     Ok(uuids)
 }
@@ -127,20 +127,20 @@ fn contains_substring(results: &[String], substring: &str) -> bool {
     clippy::print_stdout,
     clippy::cognitive_complexity
 )]
-async fn add_search_delete(
+async fn index_search_delete(
     findex: &FindexRestClient,
     kms: &KmsClient,
     index_id: &Uuid,
     kek_id: Option<&UniqueIdentifier>,
     dek_id: Option<&UniqueIdentifier>,
 ) -> CosmianResult<()> {
-    trace!("add_search_delete: entering");
-    let uuids = add(findex, kms, index_id, kek_id, dek_id).await?;
-    trace!("add_search_delete: add: uuids: {uuids}");
+    trace!("index_search_delete: entering");
+    let uuids = index(findex, kms, index_id, kek_id, dek_id).await?;
+    trace!("index_search_delete: index: uuids: {uuids}");
 
     // make sure searching returns the expected results
     let search_results = search(findex, kms, index_id, kek_id, dek_id).await?;
-    trace!("add_search_delete: search_results: {search_results:?}");
+    trace!("index_search_delete: search_results: {search_results:?}");
     assert!(contains_substring(&search_results, "States9686")); // for Southborough
     assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
@@ -149,7 +149,7 @@ async fn add_search_delete(
     // make sure no results are returned after deletion
     let rerun_search_results = search(findex, kms, index_id, kek_id, dek_id).await?;
     trace!(
-        "add_search_delete: re-search_results (len={}): {rerun_search_results:?}",
+        "index_search_delete: re-search_results (len={}): {rerun_search_results:?}",
         rerun_search_results.len()
     );
     assert!(!contains_substring(&rerun_search_results, "States9686")); // for Southborough
@@ -166,24 +166,22 @@ fn instantiate_clients(conf_path: &str) -> CosmianResult<TestClients> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_encrypt_and_add_no_auth() -> CosmianResult<()> {
+pub(crate) async fn test_encrypt_and_index_no_auth() -> CosmianResult<()> {
     log_init(None);
 
-    let clients = &*CLIENTS;
+    let kek_or_dek_id = CreateKeyAction::default().run(&CLIENTS.no_auth.kms).await?;
 
-    let kek_or_dek_id = CreateKeyAction::default().run(&clients.no_auth.kms).await?;
-
-    add_search_delete(
-        &clients.no_auth.findex,
-        &clients.no_auth.kms,
+    index_search_delete(
+        &CLIENTS.no_auth.findex,
+        &CLIENTS.no_auth.kms,
         &Uuid::new_v4(),
         Some(&kek_or_dek_id),
         None,
     )
     .await?;
-    add_search_delete(
-        &clients.no_auth.findex,
-        &clients.no_auth.kms,
+    index_search_delete(
+        &CLIENTS.no_auth.findex,
+        &CLIENTS.no_auth.kms,
         &Uuid::new_v4(),
         None,
         Some(&kek_or_dek_id),
@@ -193,19 +191,17 @@ pub(crate) async fn test_encrypt_and_add_no_auth() -> CosmianResult<()> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_encrypt_and_add_cert_auth() -> CosmianResult<()> {
+pub(crate) async fn test_encrypt_and_index_cert_auth() -> CosmianResult<()> {
     log_init(None);
 
-    let clients = &*CLIENTS;
+    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
 
-    let kek_id = CreateKeyAction::default().run(&clients.admin.kms).await?;
-
-    let index_id = CreateIndex.run(&clients.admin.findex).await?;
+    let index_id = CreateIndex.run(&CLIENTS.admin.findex).await?;
     trace!("index_id: {index_id}");
 
-    add_search_delete(
-        &clients.admin.findex,
-        &clients.admin.kms,
+    index_search_delete(
+        &CLIENTS.admin.findex,
+        &CLIENTS.admin.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -216,19 +212,17 @@ pub(crate) async fn test_encrypt_and_add_cert_auth() -> CosmianResult<()> {
 
 #[allow(clippy::panic_in_result_fn, clippy::unwrap_used)]
 #[tokio::test]
-pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> CosmianResult<()> {
+pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> CosmianResult<()> {
     log_init(None);
 
-    let clients = &*CLIENTS;
+    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
 
-    let kek_id = CreateKeyAction::default().run(&clients.admin.kms).await?;
-
-    let index_id = CreateIndex.run(&clients.admin.findex).await?;
+    let index_id = CreateIndex.run(&CLIENTS.admin.findex).await?;
     trace!("index_id: {index_id}");
 
-    add(
-        &clients.admin.findex,
-        &clients.admin.kms,
+    index(
+        &CLIENTS.admin.findex,
+        &CLIENTS.admin.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -241,13 +235,13 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
         index_id,
         permission: Permission::Read,
     }
-    .run(&clients.admin.findex)
+    .run(&CLIENTS.admin.findex)
     .await?;
 
     // User can read...
     let search_results = search(
-        &clients.users.findex,
-        &clients.users.kms,
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -257,9 +251,9 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
     assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
     // ... but not write
-    assert!(add(
-        &clients.users.findex,
-        &clients.users.kms,
+    assert!(index(
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &index_id,
         Some(&kek_id),
         None
@@ -273,13 +267,13 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
         index_id,
         permission: Permission::Write,
     }
-    .run(&clients.admin.findex)
+    .run(&CLIENTS.admin.findex)
     .await?;
 
     // User can read...
     let search_results = search(
-        &clients.users.findex,
-        &clients.users.kms,
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -289,9 +283,9 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
     assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
     // ... and write
-    add(
-        &clients.users.findex,
-        &clients.users.kms,
+    index(
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -304,7 +298,7 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
         index_id,
         permission: Permission::Admin,
     }
-    .run(&clients.users.findex)
+    .run(&CLIENTS.users.findex)
     .await
     .unwrap_err();
 
@@ -312,12 +306,12 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
         user: "user.client@acme.com".to_owned(),
         index_id,
     }
-    .run(&clients.admin.findex)
+    .run(&CLIENTS.admin.findex)
     .await?;
 
     search(
-        &clients.users.findex,
-        &clients.users.kms,
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -330,16 +324,14 @@ pub(crate) async fn test_encrypt_and_add_grant_and_revoke_permission() -> Cosmia
 
 #[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
-pub(crate) async fn test_encrypt_and_add_no_permission() -> CosmianResult<()> {
+pub(crate) async fn test_encrypt_and_index_no_permission() -> CosmianResult<()> {
     log_init(None);
 
-    let clients = &*CLIENTS;
+    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
 
-    let kek_id = CreateKeyAction::default().run(&clients.admin.kms).await?;
-
-    assert!(add_search_delete(
-        &clients.users.findex,
-        &clients.users.kms,
+    assert!(index_search_delete(
+        &CLIENTS.users.findex,
+        &CLIENTS.users.kms,
         &Uuid::new_v4(),
         Some(&kek_id),
         None

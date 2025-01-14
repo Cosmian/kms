@@ -28,8 +28,8 @@ use crate::{
 
 /// Encrypt entries and index the corresponding database UUIDs with the Findex.
 ///
-/// First the CSV file is read and encrypted on client-side with KEM-DEM crypto-system
-/// KEM: Key Encapsulation Mechanism
+/// First the CSV file is read and encrypted on client-side with KEM-DEM
+/// crypto-system KEM: Key Encapsulation Mechanism
 /// DEM: Data Encapsulation Mechanism
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
@@ -42,9 +42,11 @@ pub struct EncryptAndIndexAction {
     pub(crate) csv_path: PathBuf,
 
     /// The key encryption key (KEK) unique identifier.
-    /// If provided, all encryption is done client side. The KEK is first exported locally and is used in the KEM to encapsulates the ephemeral Data Encryption Key (DEK).
-    /// This KEK has been created in KMS and provides the Key Encapsulation Mechanism (KEM) parameters such as algorithm and mode.
-    /// KEM supported are:
+    /// If provided, all encryption is done client side. The KEK is first
+    /// exported locally and is used in the KEM to encapsulates the ephemeral
+    /// Data Encryption Key (DEK). This KEK has been created in KMS and
+    /// provides the Key Encapsulation Mechanism (KEM) parameters such as
+    /// algorithm and mode. KEM supported are:
     /// - RFC5649
     /// - AES-GCM
     /// - RSA PKCS#1 v1.5
@@ -53,8 +55,8 @@ pub struct EncryptAndIndexAction {
     /// - Salsa Sealed Box
     /// - ECIES
     ///
-    /// If no key encryption key is specified, the data will be sent to the server
-    /// and will be encrypted server side.
+    /// If no key encryption key is specified, the data will be sent to the
+    /// server and will be encrypted server side.
     #[clap(long = "kek-id", group = "kem", conflicts_with = "dem")]
     pub(crate) key_encryption_key_id: Option<String>,
 

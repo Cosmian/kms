@@ -577,6 +577,13 @@ Destroy a certificate
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the certificate should be removed from the database
+If not specified, the certificate will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 ---
@@ -834,6 +841,13 @@ Destroy a public or private key
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to destroy If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -1418,6 +1432,13 @@ Destroy a public or private key
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 
@@ -1763,6 +1784,13 @@ Destroy a symmetric key
 `--key-id [-k] <KEY_ID>` The key unique identifier. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 

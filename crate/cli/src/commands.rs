@@ -32,8 +32,8 @@ pub struct Cli {
 
     /// Allow to connect using a self-signed cert or untrusted cert chain
     ///
-    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
-    /// running an invalid or insecure SSL certificate
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS
+    /// KMS server running an invalid or insecure SSL certificate
     #[arg(long)]
     pub kms_accept_invalid_certs: bool,
 
@@ -49,8 +49,8 @@ pub struct Cli {
 
     /// Allow to connect using a self-signed cert or untrusted cert chain
     ///
-    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
-    /// running an invalid or insecure SSL certificate
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS
+    /// KMS server running an invalid or insecure SSL certificate
     #[arg(long)]
     pub findex_accept_invalid_certs: bool,
 }
@@ -65,16 +65,18 @@ pub enum CliCommands {
     #[command(subcommand)]
     FindexServer(FindexActions),
     /// Action to auto-generate doc in Markdown format
-    /// Run `cargo run --bin cosmian -- markdown documentation/docs/cli/main_commands.md`
+    /// Run `cargo run --bin cosmian -- markdown
+    /// documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
 }
 
 /// Main function for the CKMS CLI application.
 ///
-/// This function initializes logging, parses command-line arguments, and executes the appropriate
-/// command based on the provided arguments. It supports various subcommands for interacting with
-/// the CKMS, such as login, logout, locating objects, and more.
+/// This function initializes logging, parses command-line arguments, and
+/// executes the appropriate command based on the provided arguments. It
+/// supports various subcommands for interacting with the CKMS, such as login,
+/// logout, locating objects, and more.
 ///
 /// # Errors
 ///

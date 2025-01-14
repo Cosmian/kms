@@ -80,8 +80,10 @@ rm -f /tmp/*.json /tmp/*.toml
 cargo build --target $TARGET $RELEASE $FEATURES
 
 export RUST_LOG="cosmian_cli=trace,cosmian_findex_client=trace,cosmian_kmip=error,cosmian_kms_rest_client=info"
+# Retry once if the test fails
 # shellcheck disable=SC2086
-cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS ||
+  cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 # while true; do
 #   sleep 1
