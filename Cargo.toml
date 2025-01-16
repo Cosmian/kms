@@ -12,6 +12,7 @@ members = [
   "crate/pkcs11/provider",
   "crate/pkcs11/proteccio",
   "crate/pkcs11/sys",
+  "crate/pkcs11/utimaco",
   "crate/server",
   "crate/server_database",
   "crate/test_server",
