@@ -40,8 +40,12 @@ The Cosmian KMS contains:
 
 ### Default configuration
 
-By default, the KMS database is a local Redis database with encrypted data
-using the scheme [Findex](../search/findex.md). The KMS configuration file is located
+By default:
+
+- the KMS server is locally listening on port 8080
+- its database is a local Redis database with encrypted data
+using the scheme [Findex](../search/findex.md).
+- the KMS configuration file is located in the encrypted LUKS container
 at `/var/lib/cosmian_vm/data/app.conf` and has the following content:
 
 ```toml
@@ -64,17 +68,8 @@ redis_findex_label = "label"
     (such as this `redis_master_password` field), that is why
     the configuration file is save in a LUKS container (default path: `/var/lib/cosmian_vm/data`).
     To override the default
-    configuration, a new configuration MUST be sent remotely and securely via
+    configuration, a new configuration SHOULD be sent remotely and securely via
     the Cosmian VM CLI following [see app init](#override-the-default-configuration).
-
-!!! warning "The configuration MUST be overridden by your own configuration"
-
-    Indeed, the default configuration uses a local Redis database that should be
-    replaced by an external managed Redis database or another managed database type.
-
-    Furthermore, KMS with default configuration will not support rebooting since
-    the default configuration path will be discarded by the LUKS container
-    (which is mounted by default on `/var/lib/cosmian_vm/data`).
 
 ### Override the default configuration
 

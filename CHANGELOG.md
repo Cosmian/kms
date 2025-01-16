@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Save configuration file outside of clap actions ([#351](https://github.com/Cosmian/kms/pull/351)
+- Save configuration file outside of clap actions ([#351](https://github.com/Cosmian/kms/pull/351))
 - Fix an incorrect message on 'object not found' ([#353](https://github.com/Cosmian/kms/issues/353))
 
 ### 📚 Documentation
