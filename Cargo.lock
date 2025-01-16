@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "ckms_pkcs11"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
@@ -1357,7 +1357,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "bitflags 2.6.0",
  "chrono",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1387,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "assert_cmd",
  "base64 0.21.7",
@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "cloudproof",
  "cosmian_config_utils",
@@ -1445,7 +1445,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1468,7 +1468,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1550,7 +1550,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "async-trait",
  "clap",
@@ -1591,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "bincode",
  "const-oid",
@@ -2867,7 +2867,7 @@ dependencies = [
 
 [[package]]
 name = "kms_test_server"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "actix-server",
  "base64 0.21.7",
@@ -3758,7 +3758,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "4.21.0"
+version = "4.21.1"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",

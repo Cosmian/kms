@@ -54,7 +54,7 @@ jobs:
       - run: find target/
 
       - name: Upload WHL for Linux
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kms_python_linux
           path: target/wheels/*manylinux*.whl
@@ -62,7 +62,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload WHL for cloudproof_python tests
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: python-x86_64-unknown-linux-gnu
           path: target/wheels/*manylinux*.whl
@@ -111,7 +111,7 @@ jobs:
           popd
 
       - name: Upload WHL for Windows
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kms_python_windows
           path: target/wheels/*win*.whl
@@ -156,7 +156,7 @@ jobs:
           maturin build --release --target ${{ matrix.target }} --target-dir target_python
 
       - name: Upload WHL for MacOS
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive-name }}
           path: target/wheels/*macosx*.whl
