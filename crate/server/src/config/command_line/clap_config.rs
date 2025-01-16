@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
 use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
-const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/kms.toml";
+const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
 const HSM_ADMIN: &str = "admin";
 
@@ -135,7 +135,7 @@ impl ClapConfig {
     #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_file() -> KResult<Self> {
         let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
-            |_| PathBuf::from(KMS_SERVER_CONF),
+            |_| PathBuf::from(DEFAULT_COSMIAN_KMS_CONF),
             |conf_path| {
                 let conf_path = PathBuf::from(conf_path);
                 if conf_path.exists() {
@@ -143,10 +143,10 @@ impl ClapConfig {
                 } else {
                     println!(
                         "WARNING: Configuration file {conf_path:?} not found. Fallback to the \
-                         default path: {KMS_SERVER_CONF}"
+                         default path: {DEFAULT_COSMIAN_KMS_CONF}"
                     );
                     // fallback to the default path
-                    PathBuf::from(KMS_SERVER_CONF)
+                    PathBuf::from(DEFAULT_COSMIAN_KMS_CONF)
                 }
             },
         );
