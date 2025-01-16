@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{dispatcher, info, span, Dispatch};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
-use crate::{config::ClapConfig, result::KResult};
+use crate::result::KResult;
 
 mod otlp;
 
@@ -28,8 +28,8 @@ pub struct TelemetryConfig {
 /// # Errors
 ///
 /// Returns an error if there is an issue initializing the telemetry system.
-pub fn initialize_telemetry(clap_config: &ClapConfig) -> KResult<()> {
-    let config = &clap_config.telemetry;
+pub fn initialize_telemetry(telemetry: &TelemetryConfig) -> KResult<()> {
+    let config = telemetry;
     let (filter, _reload_handle) =
         tracing_subscriber::reload::Layer::new(EnvFilter::from_default_env());
 
@@ -71,10 +71,7 @@ pub fn initialize_telemetry(clap_config: &ClapConfig) -> KResult<()> {
     // in the main function
     let span = span!(tracing::Level::INFO, "start");
     let _guard = span.enter();
-    info!(
-        "Telemetry initialized. Server starting with config {:#?}",
-        clap_config
-    );
+    info!("Telemetry initialized. Server starting with config {telemetry:#?}",);
 
     Ok(())
 }

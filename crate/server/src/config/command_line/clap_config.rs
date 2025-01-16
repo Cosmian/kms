@@ -1,11 +1,15 @@
-use std::fmt::{self};
+use std::{
+    fmt::{self},
+    path::PathBuf,
+};
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{HttpConfig, JwtAuthConfig, MainDBConfig, WorkspaceConfig};
-use crate::telemetry::TelemetryConfig;
+use crate::{error::KmsError, result::KResult, telemetry::TelemetryConfig};
 
+const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian_kms/kms.toml";
 const DEFAULT_USERNAME: &str = "admin";
 const HSM_ADMIN: &str = "admin";
 
@@ -122,6 +126,61 @@ pub struct ClapConfig {
     pub non_revocable_key_id: Option<Vec<String>>,
 }
 
+impl ClapConfig {
+    /// # Errors
+    /// Fails if the configuration file is not found or if the configuration file is not valid
+    /// or if the configuration file cannot be read
+    /// or if the configuration file cannot be parsed
+    /// or if the configuration file is not a valid toml file
+    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
+    pub fn load_from_file() -> KResult<Self> {
+        let conf = std::env::var("COSMIAN_KMS_CONF").map_or_else(
+            |_| PathBuf::from(DEFAULT_COSMIAN_KMS_CONF),
+            |conf_path| {
+                let conf_path = PathBuf::from(conf_path);
+                if conf_path.exists() {
+                    conf_path
+                } else {
+                    println!(
+                        "WARNING: Configuration file {conf_path:?} not found. Fallback to the \
+                         default path: {DEFAULT_COSMIAN_KMS_CONF}"
+                    );
+                    // fallback to the default path
+                    PathBuf::from(DEFAULT_COSMIAN_KMS_CONF)
+                }
+            },
+        );
+
+        let clap_config = if conf.exists() {
+            drop(Self::parse()); // Do that do catch --help or --version even if we use a conf file
+
+            println!(
+                "Configuration file {conf:?} found. Command line arguments and env variables are \
+                 ignored."
+            );
+
+            let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Cannot read KMS server config at: {conf:?} - {e:?}"
+                ))
+            })?;
+            toml::from_str(&conf_content).map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Cannot parse kms server config at: {conf:?} - {e:?}"
+                ))
+            })?
+        } else {
+            println!(
+                "WARNING: Configuration file {conf:?} not found. Using command line arguments and \
+                 env variables."
+            );
+            Self::parse()
+        };
+
+        Ok(clap_config)
+    }
+}
+
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
@@ -169,5 +228,18 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         x.finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClapConfig;
+
+    #[test]
+    #[allow(clippy::print_stdout, clippy::unwrap_used)]
+    fn test_server_configuration_file() {
+        let conf = ClapConfig::default();
+        let conf_str = toml::to_string_pretty(&conf).unwrap();
+        println!("Pretty TOML print {conf_str}");
     }
 }

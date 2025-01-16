@@ -1,12 +1,7 @@
-use std::path::PathBuf;
-
-use clap::Parser;
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::KmipResultHelper;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
-    error::KmsError,
-    kms_bail,
     result::KResult,
     start_kms_server::start_kms_server,
     telemetry::initialize_telemetry,
@@ -18,8 +13,6 @@ use tracing::{debug, info, span};
 
 #[cfg(feature = "timeout")]
 mod expiry;
-
-const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 
 /// The main entrypoint of the program.
 ///
@@ -46,40 +39,7 @@ async fn main() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
-    let conf = if let Ok(conf_path) = std::env::var("COSMIAN_KMS_CONF") {
-        let conf_path = PathBuf::from(conf_path);
-        if !conf_path.exists() {
-            kms_bail!(KmsError::ServerError(format!(
-                "Cannot read kms server config at specified path: {conf_path:?} - file does not \
-                 exist"
-            )));
-        }
-        conf_path
-    } else {
-        PathBuf::from(KMS_SERVER_CONF)
-    };
-
-    let clap_config = if conf.exists() {
-        let _ = ClapConfig::parse(); // Do that do catch --help or --version even if we use a conf file
-
-        info!(
-            "Configuration file {conf:?} found. Command line arguments and env variables are \
-             ignored."
-        );
-
-        let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
-            KmsError::ServerError(format!(
-                "Cannot read kms server config at: {conf:?} - {e:?}"
-            ))
-        })?;
-        toml::from_str(&conf_content).map_err(|e| {
-            KmsError::ServerError(format!(
-                "Cannot parse kms server config at: {conf:?} - {e:?}"
-            ))
-        })?
-    } else {
-        ClapConfig::parse()
-    };
+    let clap_config = ClapConfig::load_from_file()?;
 
     let info_only = clap_config.info;
     if info_only {
@@ -89,7 +49,7 @@ async fn main() -> KResult<()> {
     }
 
     // Start the telemetry
-    initialize_telemetry(&clap_config)?;
+    initialize_telemetry(&clap_config.telemetry)?;
 
     //TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::INFO, "start");
