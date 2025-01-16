@@ -48,7 +48,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-20.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-20.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -56,7 +56,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-20.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-20.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -67,7 +67,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-22.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -75,7 +75,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-22.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-22.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -86,7 +86,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-24.04/cosmian-kms-server_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-24.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -94,7 +94,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     Or install the FIPS version:
 
     ```console title="FIPS version"
-    wget https://package.cosmian.com/kms/4.21.0/ubuntu-24.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/4.21.1/ubuntu-24.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
     ```
@@ -105,8 +105,8 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
 
     ```console title="On local machine"
     sudo dnf update && dnf install -y wget
-    wget https://package.cosmian.com/kms/4.21.0/rhel9/cosmian_kms_server-4.21.0-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-4.21.0-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/4.21.1/rhel9/cosmian_kms_server-4.21.1-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-4.21.1-1.x86_64.rpm
     cosmian_kms_server --version
     ```
 
@@ -115,7 +115,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     On ARM MacOS, download the build archive and extract it:
 
     ```console title="On local machine"
-    wget https://package.cosmian.com/kms/4.21.0/macos_arm-release.zip
+    wget https://package.cosmian.com/kms/4.21.1/macos_arm-release.zip
     unzip macos_arm-release.zip
     cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms_server
@@ -125,7 +125,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     On Intel MacOS, download the build archive and extract it:
 
     ```console title="On local machine"
-    wget https://package.cosmian.com/kms/4.21.0/macos_intel-release.zip
+    wget https://package.cosmian.com/kms/4.21.1/macos_intel-release.zip
     unzip macos_intel-release.zip
     cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
     chmod u+x /usr/local/bin/cosmian_kms_server
@@ -137,7 +137,7 @@ the database can be configured using classic databases such as PostgreSQL, MySQL
     On Windows, download the build archive:
 
     ```console title="Build archive"
-     https://package.cosmian.com/kms/4.21.0/windows-release.zip
+     https://package.cosmian.com/kms/4.21.1/windows-release.zip
     ```
 
     Extract the cosmian_kms_server from:

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.1] - 2025-01-16
+
+### 🚀 Features
+
+- Loading server conf with default sytem conf. fallback ([#360](https://github.com/Cosmian/kms/pull/360))
+- Update crate config_utils ([#358](https://github.com/Cosmian/kms/pull/358))
+
+### 📚 Documentation
+
+- *(google_cse)* Typos in configuring .well-known file ([#359](https://github.com/Cosmian/kms/pull/359))
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix publish on package.cosmian.com
+
 ## [4.21.0] - 2025-01-07
 
 ### 🚀 Features
