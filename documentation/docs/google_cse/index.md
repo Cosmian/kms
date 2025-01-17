@@ -67,6 +67,8 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
+Using the `cosmian kms CLI`, ensure that it is properly configured and that [authentication is handled correctly](https://docs.cosmian.com/cosmian_cli/authentication/).
+
 ```sh
 # create it
 
