@@ -1,6 +1,6 @@
 Follow the [Google documentation](https://support.google.com/a/answer/13069736?hl=en&ref_topic=10742486) to enable S/MIME for client-side encryption in your organization and create a service account to interact with the Gmail API.
 
-## Configure `cosmian` client
+## Configure cosmian client (CLI)
 
 The `cosmian` command line interface (CLI) simplifies the setup of S/MIME keys and certificates for users.
 
@@ -9,6 +9,8 @@ After completing the setup, update your [Cosmian CLI](../../cosmian_cli/configur
 ## Import certificates chain to Cosmian KMS
 
 According to [Google's requirements](https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate) and [configuration guidelines](https://support.google.com/a/answer/13297070?hl=en#guidelines), upload the certificate chain to Cosmian KMS. This certificate chain will be used to generate user certificates.
+
+More details about S/MIME workflow can be found [here](../pki/smime.md).
 
 ```sh
 cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p PASSWORD issuer_ca_certificate

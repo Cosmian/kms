@@ -18,9 +18,11 @@ The initial page should look like this. What matters here is the link shown at t
 
 To configure a well-known file, you need to:
 
-1. Set up a server that serves the file at the URL shown in the image above: [instructions](./configuring-the-well-known-server.md)
+1. Create the well-known file with the proper content
 
-2. Create the well-known file with the proper content: instructions are provided in the [Configuring the well-known file](./configuring-the-well-known-file.md) section.
+2. Set up a server that serves the file at the URL shown in the image above
+
+Instructions are provided in the [Configuring the well-known file](./configuring-the-well-known-file-and-server.md) section
 
 Once this is complete, the screen on refresh should turn to this:
 

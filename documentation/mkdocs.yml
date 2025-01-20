@@ -63,8 +63,7 @@ nav:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Google workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/index.md
-          - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
-          - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
+          - Configuring the well-known file and expose it: google_cse/configuring-the-well-known-file-and-server.md
           - Configuring Gmail CSE: google_cse/configuring_gmail_cse.md
           - Migrating existing email to Gmail CSE: google_cse/migrating.md
       - Microsoft Double Key Encryption (DKE): ms_dke/index.md
