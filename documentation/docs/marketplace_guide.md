@@ -31,7 +31,7 @@ Select an OS and continue until the Cosmian VM KMS instance is spawned.
 
 The Cosmian KMS contains:
 
-- a ready-to-go Nginx setup (listening on port `443` and locally on port `8080`)
+- a ready-to-go Nginx setup (listening on port `443` and locally on port `9998`)
 - a ready-to-go KMS service
 - the Cosmian VM software stack. As reminder, Cosmian VM Agent is listening
     on port `5555`.
@@ -42,7 +42,7 @@ The Cosmian KMS contains:
 
 By default:
 
-- the KMS server is locally listening on port 8080
+- the KMS server is locally listening on port 9998
 - its database is a local Redis database with encrypted data
 using the scheme [Findex](../search/findex.md).
 - the KMS configuration file is located in the encrypted LUKS container
@@ -52,7 +52,7 @@ at `/var/lib/cosmian_vm/data/app.conf` and has the following content:
 default_username = "admin"
 
 [http]
-port = 8080
+port = 9998
 hostname = "0.0.0.0"
 
 [db]
@@ -102,7 +102,7 @@ where `kms.toml` can be:
 default_username = "admin"
 
 [http]
-port = 8080
+port = 9998
 hostname = "0.0.0.0"
 
 [db]
