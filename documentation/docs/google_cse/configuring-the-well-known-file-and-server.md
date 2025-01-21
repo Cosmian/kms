@@ -1,12 +1,13 @@
 # Configuring the .well-known file
 
-General configuration instructions for Google client-side encryption is available at [this url](https://support.google.com/a/answer/10743588) in paragraph _(Option 1) To connect to your IdP using a .well-known file_
+General configuration instructions for Google client-side encryption is available at [this url](https://support.google.com/a/answer/10743588) in paragraph _(Option 1) To connect to your IdP using a `.well-known` file_
 
 ## Using Google as an Identity Provider
 
 To use Google as an Identity Provider, you first need to create a dedicated client ID in the Google Cloud Console. Detailed instructions are available on the page referenced above in the section entitled _Create-a-client-id-for-google-identity_.
 
-The general idea is to create a project, then in _APIs & Services > Credentials_, create a client ID for a web application. This Client ID will be used in the well-known file.
+The general idea is to create a project, then in _APIs & Services > Credentials_, create a client ID for a web application.
+This Client ID will be used in the `.well-known` file.
 
 Once created the Client ID should look like this
 
@@ -14,9 +15,9 @@ Once created the Client ID should look like this
 
 The list of URLs for _Authorized origins_ and _Authorized redirect_ are available in the Google documentation above, in paragraph _Create a client ID for Google identity_.
 
-### Generating the well-known file
+### Generating the .well-known file
 
-The format of the well-known file is specified by [RFC 8259](https://tools.ietf.org/html/rfc8259)
+The format of the `.well-known` file is specified by [RFC 8259](https://tools.ietf.org/html/rfc8259)
 
 ```json
 {
@@ -59,9 +60,9 @@ The format of the well-known file is specified by [RFC 8259](https://tools.ietf.
 `client_id` is the OAuth 2.0 client ID of the Google Workspace domain that is created using the Google Cloud Console
 
 
-# Configuring a static web server to serve the well-known file
+# Configuring a static web server to serve the .well-known file
 
-The URL at which Google client-side encryption expects the well-known file is on the link pointed by the red arrow below.
+The URL at which Google client-side encryption expects the `.well-known` file is on the link pointed by the red arrow below.
 
 ![URL of well-known file](./images/url-of-well-known-file.png)
 
@@ -80,7 +81,7 @@ sudo apt update
 sudo apt install nginx
 ```
 
-## 3. Transfer your well-known file
+## 3. Transfer your .well-known file
 
 ```sh
 sudo mkdir /var/www/html/.well-known
@@ -88,12 +89,12 @@ sudo touch /var/www/html/.well-known/cse-configuration
 sudo scp 'path_to_your_well_known_file' user@IP:/var/www/html/.well-known/cse-configuration"
 ```
 
-The file will put your created well-known file to you web server in order to expose it.
+The file will put your created `.well-known` file to you web server in order to expose it.
 
-## 4. Configure `nginx` to serve the well-known file
+## 4. Configure `nginx` to serve the .well-known file
 
-Since, the well-known file is served from a different domain than the one used by Google client-side encryption,
-CORS calls need to be enabled on NGINX to allow the browser to fetch the well-known file.
+Since, the `.well-known` file is served from a different domain than the one used by Google client-side encryption,
+CORS calls need to be enabled on NGINX to allow the browser to fetch the `.well-known` file.
 
 Edit the file `/etc/nginx/sites-available/default` and add the following `location`:
 
@@ -104,10 +105,6 @@ location /.well-known/ {
     add_header 'Access-Control-Allow-Origin' '*';
 }
 ```
-
-Verify that `nginx` is correctly serving the file by running # Allow CORS calls: see <https://support.google.com/a/answer/10743588?hl=en>
-add_header 'Access-Control-Allow-Origin' '\*';
-}
 
 Then restart the `nginx` service
 
@@ -140,7 +137,7 @@ sudo certbot --nginx
 
 The command will ask you to provide an email address and a domain name. The domain name should be `cse.acme.com` (or whatever domain you chose in step 1).
 
-That's it, the empty well-known file should now be served using HTTPS. From another machine, verify that it is now available on the public address
+That's it, the empty `.well-known` file should now be served using HTTPS. From another machine, verify that it is now available on the public address
 
 ```sh
 ➜ curl https://cse.acme.com/.well-known/cse-configuration
@@ -152,7 +149,7 @@ Port 80 can now be closed on the machine (or `nginx` configuration can be update
 
 ## 6. Enable CORS calls
 
-The well-known file is served from a different domain than the one used by Google client-side encryption. CORS calls need to be enabled on the server to allow the browser to fetch the well-known file.
+The `.well-known` file is served from a different domain than the one used by Google client-side encryption. CORS calls need to be enabled on the server to allow the browser to fetch the `.well-known` file.
 
 Edit the file `/etc/nginx/sites-available/default` and add the following at the top of the file (before the `server` block):
 
@@ -167,9 +164,9 @@ Then restart the `nginx` service
 sudo systemctl restart nginx
 ```
 
-## 7. Optional: download the well-known file as a proper JSON
+## 7. Optional: download the .well-known file as a proper JSON
 
-The Client-side encryption service does not require this setting to work properly. However, it is useful to be able to download the well-known file as a proper JSON object when viewing it in a browser.
+The Client-side encryption service does not require this setting to work properly. However, it is useful to be able to download the `.well-known` file as a proper JSON object when viewing it in a browser.
 
 To do so, the `content-type` header of the response must be set to `application/json`. Edit the file `/etc/nginx/sites-available/default` and add the following inside the `server` block that serves the HTTPS requests:
 

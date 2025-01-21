@@ -13,7 +13,8 @@ According to [Google's requirements](https://support.google.com/a/answer/7300887
 More details about S/MIME workflow can be found [here](../pki/smime.md).
 
 ```sh
-cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p PASSWORD issuer_ca_certificate
+cosmian kms certificates import -f pkcs12 issuer_ca_certificate.p12 -p \
+    PASSWORD issuer_ca_certificate
 ```
 
 If multiple administrators will be generating key-pairs for users, ensure that each administrator has the appropriate access rights to the imported certificate chain elements:
@@ -23,7 +24,10 @@ If multiple administrators will be generating key-pairs for users, ensure that e
 - the issuer public key ID
 
 In order to get the issuer private ID and issuer public key ID, run the following command:
-`cosmian kms -- get-attributes -i issuer_ca_certificate`
+
+```sh
+cosmian kms attributes get -i issuer_ca_certificate
+```
 
 You'll use the ID of the issuer's private key (imported from the certificate chain) to later sign users' public keys and create their certificates.
 
@@ -34,7 +38,9 @@ Gmail uses `key-pairs` (an RSA private key wrapped with its associated certifica
 You can create a key-pair (RSA private key and user certificate chain) and upload it to the Gmail API using the following command:
 
 ```sh
-cosmian kms google key-pairs create --cse-key-id CSE_KEY_ID --subject-name "C=FR, ST=IdF, L=Paris, O=YOUR_ORGANIZATION, OU=DEPARTMENT, CN=user@your_organization.com, emailAddress=user@your_organization.com" -i ISSUER_PRIVATE_KEY_ID user@your_organization.com
+cosmian kms google key-pairs create --cse-key-id CSE_KEY_ID \
+    --subject-name "C=FR, ST=IdF, L=Paris, O=ORGANIZATION, OU=DEPARTMENT, CN=user@organization.com, emailAddress=user@organization.com" \
+    -i ISSUER_PRIVATE_KEY_ID user@your_organization.com
 ```
 
 If you already have an existing RSA key-pair for the user, you can specify it in the command.
@@ -48,7 +54,8 @@ Note: It may take up to 24 hours for Google to propagate the Client-Side Encrypt
 After creating the key-pair, you must associate it with the user’s identity. To do so, run the following command:
 
 ```sh
-cosmian kms google identities insert --user-id user@your_organization.com CREATED_KEYPAIR_ID
+cosmian kms google identities insert \
+    --user-id user@your_organization.com CREATED_KEYPAIR_ID
 ```
 
 You can manage key-pairs (get, list, enable, disable, obliterate) and identities (get, list, delete, patch) using the other available commands in the `cosmian` [commands documentation](../../cosmian_cli/cli/main_commands.md).
