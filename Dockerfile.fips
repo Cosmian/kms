@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-LABEL version="4.21.1"
+LABEL version="4.21.2"
 LABEL name="Cosmian KMS FIPS docker container"
 
 ENV DEBIAN_FRONTEND=noninteractive
