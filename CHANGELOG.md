@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.21.2] - 2025-01-21
+
+### 📚 Documentation
+
+- Add how to release doc ([#361](https://github.com/Cosmian/kms/pull/361))
+- Change default port of KMS package from 8080 to 9998 ([#364](https://github.com/Cosmian/kms/pull/364))
+- VM marketplace guide examples ([#365](https://github.com/Cosmian/kms/pull/365))
+- *(google_cse)* Update authentication section ([#363](https://github.com/Cosmian/kms/pull/363))
+
+### Ci
+
+- Allow continue on error ([#362](https://github.com/Cosmian/kms/pull/362))
+
 ## [4.21.1] - 2025-01-16
 
 ### 🚀 Features
