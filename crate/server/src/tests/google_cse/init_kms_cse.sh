@@ -48,8 +48,8 @@ cargo run --bin ckms access-rights grant '*' google_cse create destroy get encry
 cargo run --bin ckms certificates import -f pkcs12 crate/server/src/routes/google_cse/python/openssl/int.p12 -p secret intermediate_cse_cert_chain
 cargo run --bin ckms access-rights grant '*' intermediate_cse_cert_chain create destroy get encrypt decrypt
 
-cargo run --bin ckms -- get-attributes -i intermediate_cse_cert_chain
-CA_IDS=$(cargo run --bin ckms -- get-attributes -i intermediate_cse_cert_chain)
+cargo run --bin ckms -- attributes get -i intermediate_cse_cert_chain
+CA_IDS=$(cargo run --bin ckms -- attributes get -i intermediate_cse_cert_chain)
 CA_CERT_ID=$(echo "$CA_IDS" | jq -r '.attributes."linked-issuer-certificate-id"')
 CA_PRIVATE_KEY_ID=$(echo "$CA_IDS" | jq -r '.attributes."linked-private-key-id"')
 cargo run --bin ckms access-rights grant '*' "$CA_CERT_ID" create destroy get encrypt decrypt

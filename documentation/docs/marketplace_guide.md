@@ -164,7 +164,7 @@ $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
     These certificates must be replaced by trusted ones using tools like
     `cosmian_certtool` or Linux tools (`certbot` with **Let's Encrypt** for instance).
 
-    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md/#configure-https-with-your-own-domain).
+    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
 
 ## Snapshot the VM 📸
 

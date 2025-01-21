@@ -46,7 +46,7 @@ create objects on the HSM via the KMIP `Create` operation the delegate other ope
 The `--hsm-slot` and `--hsm-password` arguments are the slot number and password of the HSM slots to be used by the KMS.
 These arguments can be repeated multiple times to specify multiple slots.
 
-If using the TOML configuration file, see this [page](./server_cli.md#toml-configuration-file) for more information on how to
+If using the TOML configuration file, see this [page](./server_configuration_file.md#toml-configuration-file) for more information on how to
 configure the HSM support.
 
 ## HSM operations
