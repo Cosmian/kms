@@ -7,6 +7,7 @@ use self::{
     destroy_key::DestroyKeyAction,
     rekey::{PruneAction, RekeyAction},
     revoke_key::RevokeKeyAction,
+    update_msk::PolicyCommands,
 };
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
@@ -18,12 +19,15 @@ mod create_user_key;
 mod destroy_key;
 mod rekey;
 mod revoke_key;
+mod update_msk;
 
 /// Create, destroy, import, export, and rekey `Covercrypt` master and user keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     CreateMasterKeyPair(CreateMasterKeyPairAction),
     CreateUserKey(CreateUserKeyAction),
+    #[command(subcommand)]
+    Policy(PolicyCommands),
     Export(ExportKeyAction),
     Import(ImportKeyAction),
     Wrap(WrapKeyAction),
@@ -39,6 +43,7 @@ impl KeysCommands {
         match self {
             Self::CreateMasterKeyPair(action) => action.run(kms_rest_client).await?,
             Self::CreateUserKey(action) => action.run(kms_rest_client).await?,
+            Self::Policy(action) => action.process(kms_rest_client).await?,
             Self::Export(action) => action.run(kms_rest_client).await?,
             Self::Import(action) => action.run(kms_rest_client).await?,
             Self::Wrap(action) => action.run(kms_rest_client).await?,

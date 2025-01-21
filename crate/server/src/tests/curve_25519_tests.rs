@@ -199,6 +199,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
+    let access_policy = "DPT::FIN && SEC::LOW";
 
     let request = Message {
         header: MessageHeader {
@@ -223,7 +224,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms
+        .message(request, owner, None, access_policy.to_owned())
+        .await?;
     assert_eq!(response.header.batch_count, 2);
 
     let request = Message {
@@ -264,7 +267,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms
+        .message(request, owner, None, access_policy.to_owned())
+        .await?;
     assert_eq!(response.header.batch_count, 4);
     assert_eq!(response.items.len(), 4);
 

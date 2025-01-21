@@ -60,6 +60,31 @@ impl KmsClientConfig {
             KMS_CLI_CONF_DEFAULT_SYSTEM_PATH,
         )?)
     }
+
+    pub fn load(conf_path: Option<PathBuf>) -> Result<Self, KmsClientError> {
+        let conf_path_buf = KmsClientConfig::location(conf_path)?;
+
+        Ok(KmsClientConfig::from_toml(
+            conf_path_buf.to_str().ok_or_else(|| {
+                KmsClientError::Default(
+                    "Unable to convert the configuration path to a string".to_owned(),
+                )
+            })?,
+        )?)
+    }
+
+    pub fn save(&self, conf_path: Option<PathBuf>) -> Result<(), KmsClientError> {
+        let conf_path_buf = KmsClientConfig::location(conf_path)?;
+
+        self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
+            KmsClientError::Default(
+                "Unable to convert the configuration path to a string".to_owned(),
+            )
+        })?)?;
+        println!("Saving configuration to: {conf_path_buf:?}");
+
+        Ok(())
+    }
 }
 
 impl ConfigUtils for KmsClientConfig {}

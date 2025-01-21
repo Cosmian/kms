@@ -61,18 +61,18 @@ impl From<CryptoCoreError> for CryptoError {
     }
 }
 
-#[cfg(feature = "pyo3")]
-impl From<pyo3::PyErr> for CryptoError {
-    fn from(e: pyo3::PyErr) -> Self {
-        Self::Default(e.to_string())
-    }
-}
-#[cfg(feature = "pyo3")]
-impl From<CryptoError> for pyo3::PyErr {
-    fn from(e: CryptoError) -> Self {
-        pyo3::exceptions::PyException::new_err(e.to_string())
-    }
-}
+// #[cfg(feature = "pyo3")]
+// impl From<pyo3::PyErr> for CryptoError {
+//     fn from(e: pyo3::PyErr) -> Self {
+//         Self::Default(e.to_string())
+//     }
+// }
+// #[cfg(feature = "pyo3")]
+// impl From<CryptoError> for pyo3::PyErr {
+//     fn from(e: CryptoError) -> Self {
+//         pyo3::exceptions::PyException::new_err(e.to_string())
+//     }
+// }
 
 impl From<openssl::error::ErrorStack> for CryptoError {
     fn from(e: openssl::error::ErrorStack) -> Self {

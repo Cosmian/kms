@@ -23,6 +23,7 @@ pub(crate) async fn kmip_2_1(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMS>>,
+    access_policy: String,
 ) -> KResult<Json<TTLV>> {
     let span = tracing::span!(tracing::Level::INFO, "kmip_2_1");
     let _enter = span.enter();
@@ -34,7 +35,7 @@ pub(crate) async fn kmip_2_1(
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     #[allow(clippy::large_futures)]
-    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params).await?;
+    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params, access_policy).await?;
     Ok(Json(ttlv))
 }
 
@@ -50,14 +51,17 @@ async fn handle_ttlv(
     ttlv: &TTLV,
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
+    access_policy: String,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
         let req = from_ttlv::<Message>(ttlv)?;
-        let resp = kms.message(req, user, database_params).await?;
+        let resp = kms
+            .message(req, user, database_params, access_policy)
+            .await?;
         Ok(to_ttlv(&resp)?)
     } else {
         #[allow(clippy::large_futures)]
-        let operation = dispatch(kms, ttlv, user, database_params).await?;
+        let operation = dispatch(kms, ttlv, user, database_params, access_policy).await?;
         Ok(to_ttlv(&operation)?)
     }
 }

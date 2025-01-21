@@ -328,7 +328,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::DeleteAttribute(ap, vec![ap_attributes]),
+            &RekeyEditAction::DeleteAttribute(vec![ap_attributes]),
             py
         )
     }
@@ -354,7 +354,7 @@ impl KmsClient {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::DisableAttribute(ap, vec![ap_attributes]),
+            &RekeyEditAction::DisableAttribute(vec![ap_attributes]),
             py
         )
     }
@@ -377,14 +377,12 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
 
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
             &RekeyEditAction::AddAttribute(
-                ap,
-                vec![(ap_attributes, EncryptionHint::new(is_hybridized), None)]
+                vec![(QualifiedAttribute::from(attribute), EncryptionHint::new(is_hybridized), None)]
             ),
             py
         )
@@ -407,12 +405,12 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
+        let ap_attributes = AccessPolicy::default();
 
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::RenameAttribute(ap, vec![(ap_attributes, new_name.to_string())]),
+            &RekeyEditAction::RenameAttribute(vec![(ap_attributes, new_name.to_string())]),
             py
         )
     }

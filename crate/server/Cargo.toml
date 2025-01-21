@@ -48,7 +48,7 @@ clap = { workspace = true, features = [
 ] }
 # cloudproof = { workspace = true }
 cloudproof_findex = { workspace = true }
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "tbz/review-policy-spec", version = "14.0.0" }
+cosmian_cover_crypt = { workspace = true }
 cosmian_crypto_core = { workspace = true, features = ["ecies", "blake", "chacha"] } # TODO(default features crypto_core have changed?)
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_access = { path = "../access" }

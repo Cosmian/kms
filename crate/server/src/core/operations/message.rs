@@ -27,6 +27,7 @@ pub(crate) async fn message(
     request: Message,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    access_policy: String,
 ) -> KResult<MessageResponse> {
     trace!("Entering message KMIP operation: {request}");
 
@@ -38,7 +39,7 @@ pub(crate) async fn message(
 
         #[allow(clippy::large_futures)]
         let (result_status, result_reason, result_message, response_payload) =
-            match dispatch(kms, &ttlv, owner, params.clone()).await {
+            match dispatch(kms, &ttlv, owner, params.clone(), access_policy.clone()).await {
                 Ok(operation) => (
                     ResultStatusEnumeration::Success,
                     None,

@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, EncryptionHint};
+use cosmian_cover_crypt::{api::Covercrypt, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
@@ -33,7 +33,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let (mut msk, _) = cc.setup()?;
 
     // update the master keys
-    let _ = cc.update_msk(&mut msk);
+    cc.update_msk(&mut msk)?;
 
     // create Key Pair
     let create_key_pair = build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?;
@@ -317,10 +317,11 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::AddAttribute(
-            encryption_policy.to_string(),
-            vec![("SEC::LOW".to_owned(), EncryptionHint::Classic, None)],
-        ),
+        &RekeyEditAction::AddAttribute(vec![(
+            QualifiedAttribute::new("SEC", "LOW"),
+            EncryptionHint::Classic,
+            None,
+        )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -346,13 +347,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Rename Attributes
-    let rename_policy_attributes_pair = vec![("DPT::HR".to_owned(), "HumanResources".to_owned())];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::RenameAttribute(
-            encryption_policy.to_string(),
-            rename_policy_attributes_pair,
-        ),
+        &RekeyEditAction::RenameAttribute(vec![(
+            QualifiedAttribute::new("DPT", "HR"),
+            "HumanResources".to_owned(),
+        )]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -379,13 +379,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Disable ABE Attribute
-    let disable_policy_attributes = vec![("DPT::FIN".to_owned())];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DisableAttribute(
-            encryption_policy.to_string(),
-            disable_policy_attributes,
-        ),
+        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("DPT", "FIN"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -413,10 +409,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Delete attribute
-    let remove_policy_attributes = vec![("Department".to_owned())];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DeleteAttribute(encryption_policy.to_string(), remove_policy_attributes),
+        &RekeyEditAction::DeleteAttribute(vec![(QualifiedAttribute::new("DPT", "HR"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

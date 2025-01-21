@@ -38,6 +38,9 @@ async fn test_kmip_messages() -> KResult<()> {
             ..Default::default()
         })),
     ];
+
+    let access_policy = "DPT::FIN && SEC::LOW";
+
     let message_request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
@@ -53,7 +56,9 @@ async fn test_kmip_messages() -> KResult<()> {
         items,
     };
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms
+        .message(message_request, owner, None, access_policy.to_owned())
+        .await?;
     assert_eq!(response.header.batch_count, 3);
     assert_eq!(response.items.len(), 3);
 

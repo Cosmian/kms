@@ -22,6 +22,7 @@ pub(crate) async fn rekey_keypair(
     request: ReKeyKeyPair,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    access_policy: String,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
@@ -65,6 +66,7 @@ pub(crate) async fn rekey_keypair(
                 user,
                 action,
                 params,
+                access_policy,
             ))
             .await
         } else if let Some(other) = attributes.cryptographic_algorithm {

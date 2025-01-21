@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterPublicKey, MasterSecretKey};
+use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
@@ -38,19 +38,19 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     owner: &str,
     action: RekeyEditAction,
     params: Option<Arc<dyn SessionParams>>,
+    access_policy: String,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
-
     let (msk_uid, mpk_uid) = match action {
-        RekeyEditAction::RekeyAccessPolicy(ap) => {
+        RekeyEditAction::RekeyAccessPolicy(access_policy) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params.clone(),
                 msk_uid,
                 |msk, _mpk| {
-                    let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.rekey(msk, &ap);
+                    let ap = deserialize_access_policy(&access_policy)?;
+                    cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -62,15 +62,15 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
             (msk_obj.0, mpk_obj.0)
         }
-        RekeyEditAction::PruneAccessPolicy(ap) => {
+        RekeyEditAction::PruneAccessPolicy(access_policy) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params.clone(),
                 msk_uid,
                 |msk, _mpk| {
-                    let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.prune_master_secret_key(msk, &ap);
+                    let ap = deserialize_access_policy(&access_policy)?;
+                    cover_crypt.prune_master_secret_key(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -82,22 +82,20 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
             (msk_obj.0, mpk_obj.0)
         }
-        RekeyEditAction::DeleteAttribute(ap, attrs) => {
+        RekeyEditAction::DeleteAttribute(attrs) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params.clone(),
                 msk_uid,
                 |msk, _mpk| {
-                    let parsed_ap = AccessPolicy::parse(&ap)?;
-
-                    let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].clone();
-
-                    attrs
-                        .iter()
-                        .try_for_each(|_attr| msk.access_structure.del_attribute(&ap_attributes));
-                    let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.rekey(msk, &ap);
+                    drop(
+                        attrs
+                            .iter()
+                            .try_for_each(|attr| msk.access_structure.del_attribute(attr)),
+                    );
+                    let ap = deserialize_access_policy(&access_policy)?;
+                    cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -108,21 +106,20 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
             (msk_obj.0, mpk_obj.0)
         }
-        RekeyEditAction::DisableAttribute(ap, attrs) => {
+        RekeyEditAction::DisableAttribute(attrs) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
                 msk_uid,
                 |msk, _mpk| {
-                    let parsed_ap = AccessPolicy::parse(&ap)?;
-                    let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].clone();
-
-                    attrs.iter().try_for_each(|_attr| {
-                        msk.access_structure.disable_attribute(&ap_attributes)
-                    });
-                    let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.rekey(msk, &ap);
+                    drop(
+                        attrs
+                            .iter()
+                            .try_for_each(|attr| msk.access_structure.disable_attribute(attr)),
+                    );
+                    let ap = deserialize_access_policy(&access_policy)?;
+                    cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -131,26 +128,24 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
             (msk_obj.0, mpk_obj.0)
         }
-        RekeyEditAction::RenameAttribute(ap, pairs_attr_name) => {
+        RekeyEditAction::RenameAttribute(pairs_attr_name) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
                 msk_uid,
                 |msk, _mpk| {
-                    let parsed_ap = AccessPolicy::parse(&ap)?;
-                    pairs_attr_name
-                        .iter()
-                        .try_for_each(|(_ap_attributes, new_name)| {
-                            let ap_attributes =
-                                AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].clone();
+                    drop(
+                        pairs_attr_name
+                            .iter()
+                            .try_for_each(|(ap_attributes, new_name)| {
+                                msk.access_structure
+                                    .rename_attribute(ap_attributes, new_name.clone())
+                            }),
+                    );
+                    let ap = deserialize_access_policy(&access_policy)?;
 
-                            msk.access_structure
-                                .rename_attribute(&ap_attributes, new_name.clone())
-                        });
-                    let ap = deserialize_access_policy(&ap)?;
-
-                    cover_crypt.rekey(msk, &ap);
+                    cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -158,28 +153,21 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             let (msk_obj, mpk_obj) = res;
             (msk_obj.0, mpk_obj.0)
         }
-        RekeyEditAction::AddAttribute(ap, attrs_properties) => {
+        RekeyEditAction::AddAttribute(attrs_properties) => {
             let res = Box::pin(update_master_keys(
                 kmip_server,
                 owner,
                 params,
                 msk_uid,
                 |msk, _mpk| {
-                    let parsed_ap = AccessPolicy::parse(&ap)?;
-                    let ap_attributes = AccessPolicy::to_dnf(&parsed_ap);
-
-                    let qa = ap_attributes
-                        .into_iter()
-                        .map(|attributes| return attributes.iter().map(|a| a));
-
-                    attrs_properties
-                        .iter()
-                        .try_for_each(|(_attr, encryption_hint, _after)| {
+                    drop(attrs_properties.iter().try_for_each(
+                        |(attr, encryption_hint, _after)| {
                             msk.access_structure
-                                .add_attribute(qa, *encryption_hint, None)
-                        });
-                    let ap = deserialize_access_policy(&ap)?;
-                    cover_crypt.rekey(msk, &ap);
+                                .add_attribute(attr.clone(), *encryption_hint, None)
+                        },
+                    ));
+                    let ap = deserialize_access_policy(&access_policy)?;
+                    cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))

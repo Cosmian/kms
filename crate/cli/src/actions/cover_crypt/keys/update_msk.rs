@@ -1,16 +1,21 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use clap::{Parser, Subcommand};
-use cosmian_cover_crypt::{AccessPolicy, EncryptionHint};
+use cosmian_cover_crypt::{EncryptionHint, MasterSecretKey, QualifiedAttribute};
+use cosmian_crypto_core::bytes_ser_de::{Serializable, Serializer};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, TTLV},
     },
-    export_object, read_from_json_file, write_json_object_to_file, ExportObjectParams, KmsClient,
+    export_object, read_bytes_from_file, read_from_json_file, ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
+    attributes::{policy_from_attributes, RekeyEditAction},
+    kmip_requests::build_rekey_keypair_request,
 };
 
 use crate::{
@@ -19,33 +24,34 @@ use crate::{
     error::result::{CliResult, CliResultHelper},
 };
 
-// pub(crate) fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> CliResult<Policy> {
-//     let policy_buffer = read_bytes_from_file(bin_filename)?;
-//     Policy::parse_and_convert(policy_buffer.as_slice()).with_context(|| {
-//         format!(
-//             "policy binary is malformed {}",
-//             bin_filename.as_ref().display()
-//         )
-//     })
-// }
+pub(crate) fn policy_from_binary_file(
+    bin_filename: &impl AsRef<Path>,
+) -> CliResult<MasterSecretKey> {
+    let policy_buffer = read_bytes_from_file(bin_filename)?;
+    MasterSecretKey::deserialize(policy_buffer.as_slice()).with_context(|| {
+        format!(
+            "policy binary is malformed {}",
+            bin_filename.as_ref().display()
+        )
+    })
+}
 
-// pub(crate) fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> CliResult<Policy> {
-//     let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
-//     policy_specs.try_into().with_context(|| {
-//         format!(
-//             "JSON policy is malformed {}",
-//             specs_filename.as_ref().display()
-//         )
-//     })
-// }
+pub(crate) fn policy_from_json_file(
+    specs_filename: &impl AsRef<Path>,
+) -> CliResult<MasterSecretKey> {
+    let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
+    MasterSecretKey::deserialize(serde_json::to_vec(&policy_specs)?.as_slice()).with_context(|| {
+        format!(
+            "JSON policy is malformed {}",
+            specs_filename.as_ref().display()
+        )
+    })
+}
 
 /// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
     View(ViewAction),
-    Specs(SpecsAction),
-    Binary(BinaryAction),
-    Create(CreateAction),
     AddAttribute(AddAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
@@ -53,82 +59,14 @@ pub enum PolicyCommands {
 }
 
 impl PolicyCommands {
-    pub async fn process(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::View(action) => action.run(kms_rest_client).await?,
-            Self::Specs(action) => action.run(kms_rest_client).await?,
-            Self::Binary(action) => action.run(kms_rest_client).await?,
-            Self::Create(action) => action.run()?,
-            Self::AddAttribute(action) => action.run(kms_rest_client, ap).await?,
-            Self::RemoveAttribute(action) => action.run(kms_rest_client, ap).await?,
-            Self::DisableAttribute(action) => action.run(kms_rest_client, ap).await?,
-            Self::RenameAttribute(action) => action.run(kms_rest_client, ap).await?,
+            Self::AddAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
+            Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
         };
-
-        Ok(())
-    }
-}
-
-/// Create a policy binary file from policy specifications
-///
-/// The policy specifications must be passed as a JSON in a file, for example:
-/// ```json
-///     {
-///        "Security Level::<": [
-///            "Protected",
-///            "Confidential",
-///            "Top Secret::+"
-///        ],
-///        "Department": [
-///            "R&D",
-///            "HR",
-///            "MKG",
-///            "FIN"
-///        ]
-///    }
-/// ```
-/// These specifications create a policy where:
-///  - the policy is defined with 2 policy axes: `Security Level` and `Department`
-///  - the `Security Level` axis is hierarchical as indicated by the `::<` suffix,
-///  - the `Security Level` axis has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
-///  - the `Department` axis has 4 possible values: `R&D`, `HR`, `MKG`, and `FIN`,
-///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
-///  - all other partitions will use classic cryptography.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub struct CreateAction {
-    /// The policy specifications filename. The policy is expressed as a JSON object
-    /// describing the Policy axes. See the documentation for
-    /// details.
-    #[clap(
-        required = false,
-        long = "specifications",
-        short = 's',
-        default_value = "policy_specifications.json"
-    )]
-    policy_specifications_file: PathBuf,
-
-    /// The output binary policy file generated from the specifications file.
-    #[clap(
-        required = false,
-        long = "policy",
-        short = 'p',
-        default_value = "policy.bin"
-    )]
-    policy_binary_file: PathBuf,
-}
-
-impl CreateAction {
-    pub fn run(&self) -> CliResult<()> {
-        // write the binary file
-        write_json_object_to_file(&policy, &self.policy_binary_file)
-            .with_context(|| "failed writing the policy binary file".to_owned())?;
-
-        let stdout = format!(
-            "The binary policy file was generated in {:?}.",
-            &self.policy_binary_file
-        );
-        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }
@@ -140,7 +78,7 @@ async fn recover_policy(
     key_file: Option<&PathBuf>,
     unwrap: bool,
     kms_rest_client: &KmsClient,
-) -> CliResult<Policy> {
+) -> CliResult<MasterSecretKey> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
         export_object(
@@ -159,89 +97,9 @@ async fn recover_policy(
     } else {
         cli_bail!("either a key ID or a key TTLV file must be supplied");
     };
-    Ok(())
-}
-
-/// Extract the policy specifications from a public or private master key to a policy specifications file
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub struct SpecsAction {
-    /// The public or private master key ID if the key is stored in the KMS
-    #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
-    key_id: Option<String>,
-
-    /// If `key-id` is not provided, the file containing the public or private master key in JSON TTLV format.
-    #[clap(long = "key-file", short = 'f')]
-    key_file: Option<PathBuf>,
-
-    /// The output policy specifications file.
-    #[clap(
-        required = false,
-        long = "specifications",
-        short = 's',
-        default_value = "policy_specifications.json"
-    )]
-    policy_specs_file: PathBuf,
-}
-impl SpecsAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Recover the policy
-        let policy = recover_policy(
-            self.key_id.as_deref(),
-            self.key_file.as_ref(),
-            true,
-            kms_rest_client,
-        )
-        .await?;
-        let specs: HashMap<String, Vec<String>> = policy.try_into()?;
-        // save the policy to the specifications file
-        Ok(write_json_object_to_file(&specs, &self.policy_specs_file)?)
-    }
-}
-
-/// Extract the policy from a public or private master key to a policy binary file
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub struct BinaryAction {
-    /// The public or private master key ID if the key is stored in the KMS
-    #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
-    key_id: Option<String>,
-
-    /// If `key-id` is not provided, the file containing the public or private master key in TTLV format.
-    #[clap(long = "key-file", short = 'f')]
-    key_file: Option<PathBuf>,
-
-    /// The output binary policy file.
-    #[clap(
-        required = false,
-        long = "policy",
-        short = 'p',
-        default_value = "policy.bin"
-    )]
-    policy_binary_file: PathBuf,
-}
-impl BinaryAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Recover the policy
-        let policy = recover_policy(
-            self.key_id.as_deref(),
-            self.key_file.as_ref(),
-            true,
-            kms_rest_client,
-        )
-        .await?;
-        // save the policy to the binary file
-        Ok(write_json_object_to_file(
-            &policy,
-            &self.policy_binary_file,
-        )?)
-    }
+    // Recover the policy
+    policy_from_attributes(object.attributes()?)
+        .with_context(|| "failed recovering the policy from the key")
 }
 
 /// View the policy of an existing public or private master key.
@@ -255,7 +113,7 @@ pub struct ViewAction {
     #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
     key_id: Option<String>,
 
-    /// If `key-id` is not provided, the file containing the public or private master key in TTLV format.
+    /// If `key-id` is not provided, the file containing the public or private master key in TTLV format.²
     #[clap(long = "key-file", short = 'f')]
     key_file: Option<PathBuf>,
 
@@ -271,7 +129,7 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the policy
-        let policy = recover_policy(
+        let msk = recover_policy(
             self.key_id.as_deref(),
             self.key_file.as_ref(),
             true,
@@ -280,10 +138,11 @@ impl ViewAction {
         .await?;
         // get a pretty json and print it
         let json = if self.detailed {
-            serde_json::to_string_pretty(&policy)?
+            let ser = Serializer::new();
+            let y = MasterSecretKey::write(&msk, &mut ser)?;
+            format!("{}", serde_json::from_value(&y));
         } else {
-            let specs: HashMap<String, Vec<String>> = policy.try_into()?;
-            serde_json::to_string_pretty(&specs)?
+            MasterSecretKey::serialize(&msk);
         };
         console::Stdout::new(&json).write()?;
         Ok(())
@@ -314,7 +173,7 @@ pub struct AddAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl AddAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -328,7 +187,11 @@ impl AddAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::AddAttribute(ap, vec![(self.attribute.clone(), enc_hint, None)]),
+            &RekeyEditAction::AddAttribute(vec![(
+                QualifiedAttribute::from((self.attribute.as_str(), "")),
+                enc_hint,
+                None,
+            )]),
         )?;
 
         // Query the KMS with your kmip data
@@ -375,7 +238,7 @@ pub struct RenameAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RenameAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -387,10 +250,10 @@ impl RenameAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::RenameAttribute(
-                ap,
-                vec![(self.attribute.clone(), self.new_name.clone())],
-            ),
+            &RekeyEditAction::RenameAttribute(vec![(
+                QualifiedAttribute::from((self.attribute.as_str(), "")),
+                self.new_name.clone(),
+            )]),
         )?;
 
         // Query the KMS with your kmip data
@@ -430,7 +293,7 @@ pub struct DisableAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl DisableAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -439,13 +302,13 @@ impl DisableAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
-
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::DisableAttribute(ap, vec![ap_attributes]),
+            &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from((
+                self.attribute.as_str(),
+                "",
+            ))]),
         )?;
 
         // Query the KMS with your kmip data
@@ -488,7 +351,7 @@ pub struct RemoveAttributeAction {
     tags: Option<Vec<String>>,
 }
 impl RemoveAttributeAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient, ap: String) -> CliResult<()> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -500,7 +363,7 @@ impl RemoveAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::DeleteAttribute(ap, vec![self.attribute.clone()]),
+            &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::new("dimension", "name")]),
         )?;
 
         // Query the KMS with your kmip data

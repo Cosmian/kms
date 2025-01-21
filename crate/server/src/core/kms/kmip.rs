@@ -410,8 +410,9 @@ impl KMS {
         request: ReKeyKeyPair,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        access_policy: String,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, user, params).await
+        operations::rekey_keypair(self, request, user, params, access_policy).await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
@@ -437,9 +438,17 @@ impl KMS {
         request: Message,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
+        access_policy: String,
     ) -> KResult<MessageResponse> {
         // This is a large future, hence pinning
-        Box::pin(operations::message(self, request, user, params)).await
+        Box::pin(operations::message(
+            self,
+            request,
+            user,
+            params,
+            access_policy,
+        ))
+        .await
     }
 
     pub(crate) async fn validate(

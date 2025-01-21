@@ -18,6 +18,7 @@ pub(crate) async fn dispatch(
     ttlv: &TTLV,
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
+    access_policy: String,
 ) -> KResult<Operation> {
     Ok(match ttlv.tag.as_str() {
         "Certify" => {
@@ -93,7 +94,9 @@ pub(crate) async fn dispatch(
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
             #[allow(clippy::large_futures)]
-            let resp = kms.rekey_keypair(req, user, database_params).await?;
+            let resp = kms
+                .rekey_keypair(req, user, database_params, access_policy)
+                .await?;
             Operation::ReKeyKeyPairResponse(resp)
         }
         "Revoke" => {

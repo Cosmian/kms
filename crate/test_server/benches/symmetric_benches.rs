@@ -234,7 +234,7 @@ fn encrypt_request(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: None,
+        ad: None,
     })
 }
 
@@ -362,7 +362,7 @@ fn decrypt_request(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: None,
+        ad: None,
         authenticated_encryption_tag: mac,
     })
 }
