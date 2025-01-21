@@ -8,7 +8,9 @@ After completing the setup, update your [Cosmian CLI](../../cosmian_cli/configur
 
 ## Import certificates chain to Cosmian KMS
 
-According to [Google's requirements](https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate) and [configuration guidelines](https://support.google.com/a/answer/13297070?hl=en#guidelines), upload the certificate chain to Cosmian KMS. This certificate chain will be used to generate user certificates.
+According to [Google's requirements](https://support.google.com/a/answer/7300887#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity%2Cend-entity-certificate)
+and [configuration guidelines](https://support.google.com/a/answer/13297070?hl=en#guidelines),
+upload the certificate chain to Cosmian KMS. This certificate chain will be used to generate user certificates.
 
 More details about S/MIME workflow can be found [here](../pki/smime.md).
 
@@ -33,7 +35,8 @@ You'll use the ID of the issuer's private key (imported from the certificate cha
 
 ## Create user key-pair
 
-Gmail uses `key-pairs` (an RSA private key wrapped with its associated certificate) and `identities` (the ID of an uploaded key-pair, associated with a user) to sign and encrypt emails using S/MIME. These objects are uploaded to Google via the Gmail API.
+Gmail uses `key-pairs` (an RSA private key wrapped with its associated certificate) and `identities` (the ID of an uploaded key-pair, associated with a user) to sign and encrypt emails using S/MIME.
+These objects are uploaded to Google via the Gmail API.
 
 You can create a key-pair (RSA private key and user certificate chain) and upload it to the Gmail API using the following command:
 
@@ -67,7 +70,9 @@ Note: It may take a few hours for Google to propagate the uploaded elements, aft
 To send a client-side encrypted email within your organization, a user needs to turn on the additional encryption option in the message window (lock -> Turn on additional encryption).
 Only users with CSE activated can encrypt and decrypt encrypted emails.
 
-To send a client-side encrypted email outside your organization, a user needs to send a message to the recipient with their digital signature, without CSE turned on. The recipient then needs to reply to the message with their digital signature. Then the sender can choose to add CSE to email sent to the external recipient.
+To send a client-side encrypted email outside your organization, a user needs to send a message to the recipient with their digital signature, without CSE turned on.
+The recipient then needs to reply to the message with their digital signature.
+Then the sender can choose to add CSE to email sent to the external recipient.
 
 Encrypted emails will be automatically decrypted from Gmail interface.
 
