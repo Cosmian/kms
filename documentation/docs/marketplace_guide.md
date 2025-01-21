@@ -31,7 +31,7 @@ Select an OS and continue until the Cosmian VM KMS instance is spawned.
 
 The Cosmian KMS contains:
 
-- a ready-to-go Nginx setup (listening on port `443` and locally on port `8080`)
+- a ready-to-go Nginx setup (listening on port `443` and locally on port `9998`)
 - a ready-to-go KMS service
 - the Cosmian VM software stack. As reminder, Cosmian VM Agent is listening
     on port `5555`.
@@ -42,7 +42,7 @@ The Cosmian KMS contains:
 
 By default:
 
-- the KMS server is locally listening on port 8080
+- the KMS server is locally listening on port 9998
 - its database is a local Redis database with encrypted data
 using the scheme [Findex](../search/findex.md).
 - the KMS configuration file is located in the encrypted LUKS container
@@ -52,7 +52,7 @@ at `/var/lib/cosmian_vm/data/app.conf` and has the following content:
 default_username = "admin"
 
 [http]
-port = 8080
+port = 9998
 hostname = "0.0.0.0"
 
 [db]
@@ -60,6 +60,16 @@ database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
 redis_master_password = "master-password"
 redis_findex_label = "label"
+```
+
+For testing purposes (connectivity, features, etc.), KMS server can also use a SQLite database by modifying the configuration file:
+
+```toml
+default_username = "admin"
+
+[http]
+port = 9998
+hostname = "0.0.0.0"
 ```
 
 !!! important "Protect your secrets"
@@ -90,6 +100,9 @@ Then proceed as follows:
 cosmian_vm --url https://${COSMIAN_KMS_IP_ADDR}:5555 \
            --allow-insecure-tls \
            app init -c kms.toml
+
+Processing the init of the deployed app...
+The app has been configured and started
 ```
 
 This command will send via an encrypted tunnel the configuration that will be
@@ -102,7 +115,7 @@ where `kms.toml` can be:
 default_username = "admin"
 
 [http]
-port = 8080
+port = 9998
 hostname = "0.0.0.0"
 
 [db]
@@ -140,7 +153,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"4.21.1"
+"4.21.2"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"
@@ -151,7 +164,7 @@ $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
     These certificates must be replaced by trusted ones using tools like
     `cosmian_certtool` or Linux tools (`certbot` with **Let's Encrypt** for instance).
 
-    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md/#configure-https-with-your-own-domain).
+    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
 
 ## Snapshot the VM 📸
 
@@ -164,7 +177,24 @@ information, creates self-signed certificate for Nginx and starts a snapshot.
 Wait for the agent to initialize the LUKS and generate the certificates.
 This is automatically at boot.
 
+In short, to generate a snapshot, please [follow](../cosmian_vm/deployment_guide.md#snapshot-the-vm-remotely).
+
+The associated command is:
+
+```console title="On the local machine"
+cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls snapshot
+```
+
 ## Verify the Cosmian VM KMS integrity ✅
 
 Verifying trustworthiness of the Cosmian VM KMS is exactly the same process
 as [verifying the Cosmian VM](../cosmian_vm/overview.md) itself.
+
+In short, to verify a snapshot, please [follow](../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
+
+The associated command is:
+
+```console title="On the local machine"
+cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls verify \
+--snapshot cosmian_vm.snapshot
+```

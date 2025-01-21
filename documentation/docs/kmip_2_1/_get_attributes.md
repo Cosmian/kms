@@ -19,7 +19,7 @@ Get the attributes of a symmetric key by its unique identifier `027cced1-ff2b-4b
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  cosmian kms get-attributes -i 027cced1-ff2b-4bd3-a200-db1041583bdc
+  cosmian kms attributes get -i 027cced1-ff2b-4bd3-a200-db1041583bdc
 ```
 
 The request has an empty `AttributeReference` structure, which means that all
@@ -136,7 +136,7 @@ Get the attributes of a NIST P-256 private key.
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  cosmian kms get-attributes -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
+  cosmian kms attributes get -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
 ```
 
 The request has an empty `AttributeReference` structure, which means that
@@ -265,7 +265,7 @@ intermediate certificate imported as part of the same container.
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```bash
-  cosmian kms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f
+  cosmian kms attributes get -i d2f4e937-dda9-4a86-bbe8-c866646a612f
 ```
 
 The request has an empty `AttributeReference` structure, which means that all attributes are requested.
