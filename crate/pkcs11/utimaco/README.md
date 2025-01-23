@@ -6,6 +6,8 @@ The simulator is a 32-bit ELF application on Linux.
 When developping on 64-bit ARM system, such as a recent macbook, the easiest way to run the simulator,
 is to install a Windows VM.
 Make sure that the VM network is in bridge mode so that it gets an IP address from the same network as the host.
+If bridging is not possible, start the VMs in NAT mode and
+check [this paragraph](#when-a-bridged-network-is-not-possible)
 
 The Linux PKCS#11 library is a 64-bit ELF.
 
@@ -61,9 +63,9 @@ https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation
 Create a configuration directory and copy a sample configuration file
 
 ```bash
-mkdir -p /etc/utimaco
-chmod 755 /etc/utimaco
-cp u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/sample/cs_pkcs11_R3.cfg /etc/utimaco/
+sudo mkdir -p /etc/utimaco
+sudo chmod 755 /etc/utimaco
+sudo cp u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/sample/cs_pkcs11_R3.cfg /etc/utimaco/
 ```
 
 Edit the configuration file to enable logging and set the simulator IP address and port:
@@ -116,3 +118,33 @@ CK_SLOT_INFO (slot ID: 0x00000000):
   hardwareVersion        : 5.02
   firmwareVersion        : 6.00
  ```
+
+## When a bridged network is not possible
+
+Say we have 2 VMs (one Linux with the PKCS#11 library, one Windows with the simulator)
+running on a macos host. The simulator is listening on port 3001 on the Windows VM.
+
+```
+Linux VM       <---->      macos host       <---->    Windows VM  
+                         192.168.177.25 
+192.168.65.3             192.168.65.1              
+                         192.168.161.1               192.168.161.138
+```
+
+Use an ssh tunnel to forward the port 3001 of the windows VM to the 3001 of the Linux VM,
+via the macos host.
+
+On the Linux VM, run
+
+```sh
+ssh -L 3001:192.168.161.138:3001 <macos_user>@192.168.65.1 -N -f
+```
+
+(the `-N` `-f` switches run the port forwarding in the background without opening a shell)
+
+Then check that the simulator is now accessible on port 3001
+
+```sh
+telnet localhost 3001
+```
+
