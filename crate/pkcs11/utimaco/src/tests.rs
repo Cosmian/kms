@@ -49,9 +49,9 @@ fn get_hsm_password() -> PResult<String> {
 
 fn get_slot() -> PResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(0x04, Some(user_password.clone()))]);
-    let hsm = Utimaco::instantiate("/lib/libnethsm64.so", passwords)?;
-    let manager = hsm.get_slot(0x04)?;
+    let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
+    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", passwords)?;
+    let manager = hsm.get_slot(0x00)?;
     Ok(manager)
 }
 

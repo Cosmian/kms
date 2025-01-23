@@ -17,6 +17,7 @@ pub enum AesKeySize {
 /// AES key template
 /// If sensitive is true, the key is not exportable
 /// Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL
+/// so we do the same with Utimaco
 pub(crate) const fn aes_key_template(
     id: &[u8],
     size: CK_ULONG,
@@ -117,7 +118,7 @@ impl Session {
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {
-                return Err(PError::Default("Failed generating key".to_string()));
+                return Err(PError::Default(format!("Failed generating key: {rv}")));
             }
             self.object_handles_cache()
                 .insert(id.to_vec(), aes_key_handle);

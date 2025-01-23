@@ -5,7 +5,7 @@ use cosmian_kms_interfaces::{
 };
 use zeroize::Zeroizing;
 
-use crate::{AesKeySize,  RsaKeySize, Utimaco};
+use crate::{AesKeySize, RsaKeySize, Utimaco};
 
 #[async_trait]
 impl HSM for Utimaco {
@@ -40,7 +40,7 @@ impl HSM for Utimaco {
                 let _ = session.generate_aes_key(id, key_size, sensitive)?;
                 Ok(())
             } // _ => Err(PluginError::Default(
-              //     "Only AES or RSA keys can be created on the Proteccio HSM".to_string(),
+              //     "Only AES or RSA keys can be created on the utimaco HSM".to_string(),
               // )),
         }
     }
@@ -86,7 +86,7 @@ impl HSM for Utimaco {
                 session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
                 Ok(())
             } // _ => Err(PluginError::Default(
-              //     "Only AES or RSA keys can be created on the Proteccio HSM".to_string(),
+              //     "Only AES or RSA keys can be created on the Utimaco HSM".to_string(),
               // )),
         }
     }

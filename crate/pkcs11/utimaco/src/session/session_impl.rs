@@ -89,6 +89,7 @@ impl Session {
         }
 
         // Proteccio does not allow the ID for secret keys so we use the label
+        // and we do the same on utimaco
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
             pValue: object_id.as_ptr() as CK_VOID_PTR,

@@ -31,7 +31,7 @@ impl ObjectHandlesCache {
     pub fn get(&self, key: &[u8]) -> Option<CK_OBJECT_HANDLE> {
         self.0
             .lock()
-            .expect("Proteccio: failed to lock the handles cache")
+            .expect("Utimaco: failed to lock the handles cache")
             .get(key)
             .copied()
     }
@@ -39,14 +39,14 @@ impl ObjectHandlesCache {
     pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) {
         self.0
             .lock()
-            .expect("Proteccio: failed to lock the handles cache")
+            .expect("Utimaco: failed to lock the handles cache")
             .put(key, value);
     }
 
     pub fn remove(&self, key: &[u8]) {
         self.0
             .lock()
-            .expect("Proteccio: failed to lock the handles cache")
+            .expect("Utimaco: failed to lock the handles cache")
             .pop(key);
     }
 }
@@ -120,7 +120,7 @@ impl SlotManager {
             })?(slot_id, flags, ptr::null_mut(), None, &mut session_handle);
             if rv != CKR_OK {
                 return Err(PError::Default(format!(
-                    "Proteccio: Failed opening a session: {rv}å"
+                    "Utimaco: Failed opening a session: {rv}å"
                 )));
             }
             if let Some(password) = login_password.as_ref() {

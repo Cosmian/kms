@@ -1,4 +1,15 @@
-# Utimaco HSM
+<h1>Utimaco HSM</h1>
+
+- [Installing the simulator](#installing-the-simulator)
+  - [Download and run the simulator](#download-and-run-the-simulator)
+  - [Configure the PKCS#11 connection](#configure-the-pkcs11-connection)
+  - [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
+  - [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
+- [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
+- [Installing the library and configuration file on the KMS server](#installing-the-library-and-configuration-file-on-the-kms-server)
+  - [Configuration file](#configuration-file)
+  - [PKCS#11 library location](#pkcs11-library-location)
+
 
 # Installing the simulator
 
@@ -155,4 +166,34 @@ Then check that the simulator is now accessible on port 3001 at localhost:
 ```sh
 ./p11tool2 Slot=0 GetSlotInfo
 ```
+
+# Initializing a slot and creating the users on the simulator
+
+To create the users on the simulator, first use the CAT tool and make sure you can login as Admin using the ADMIN_SIM.key.
+The CAT tool is a java app and is available in the `Software` directory. It requires the Oracle 8 JDK to run properly.
+
+Then, copy to that directory the the `cs_pkcs11_R3.cfg` file and launch the java `p11cat` tool.
+Use this tool to initialize slot 0 amd assign a Security Officer PIN and an User PIN.
+
+The users will appear as `SO_0000` and `USER_0000` in the cat tool. 
+
+__Change their PIN__ in the CAT tool to something else, or when using them through the PKCS#11 library, 
+you will keep getting `CKR_PIN_TOO_WEAK` (440) errors.
+
+The user PIN is what should be passed to the KMS.
+
+
+# Installing the library and configuration file on the KMS server
+
+## Configuration file
+
+Edit the `cs_pkcs11_R3.cfg` file to point to the simulator/HSM IP address and port and set the logging level.
+
+The location of the files must be set in the environment variable `CS_PKCS11_R3_CFG`.
+
+
+## PKCS#11 library location
+
+The KMS runtime and the tests expects the PKCS#11 library to be available 
+in `/lib/libcs_pkcs11_R3.so` on Linux.
 
