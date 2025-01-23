@@ -131,8 +131,8 @@ Linux VM       <---->      macos host       <---->    Windows VM
                          192.168.161.1               192.168.161.138
 ```
 
-Use an ssh tunnel to forward the port 3001 of the windows VM to the 3001 of the Linux VM,
-via the macos host.
+Use an ssh tunnel to forward the port 3001 of the Windows VM to the 3001 of the Linux VM,
+via the macOS host.
 
 On the Linux VM, run
 
@@ -142,9 +142,17 @@ ssh -L 3001:192.168.161.138:3001 <macos_user>@192.168.65.1 -N -f
 
 (the `-N` `-f` switches run the port forwarding in the background without opening a shell)
 
-Then check that the simulator is now accessible on port 3001
+Update the PKCS#11 configuration file to point to localhost:
 
 ```sh
-telnet localhost 3001
+sudo vim /etc/utimaco/cs_pkcs11_R3.cfg
+```
+
+Set the Device to `3001@localhost`
+
+Then check that the simulator is now accessible on port 3001 at localhost:
+
+```sh
+./p11tool2 Slot=0 GetSlotInfo
 ```
 

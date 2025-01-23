@@ -7,13 +7,13 @@ extern crate core;
 mod error;
 
 pub use error::{PError, PResult};
-pub use utimaco::Utimaco;
 use rand::{rngs::OsRng, TryRngCore};
-pub use session::{AesKeySize, UtimacoEncryptionAlgorithm, RsaKeySize, Session};
+pub use session::{AesKeySize, RsaKeySize, Session, UtimacoEncryptionAlgorithm};
 pub use slots::{ObjectHandlesCache, SlotManager};
+pub use utimaco::Utimaco;
 
-mod utimaco;
 mod session;
+mod utimaco;
 
 mod kms_hsm;
 mod slots;
@@ -69,6 +69,8 @@ macro_rules! rsa_mechanism {
     };
 }
 
+/// Generate a random nonce of size T
+/// This function is used to generate a random nonce for the AES GCM encryption
 fn generate_random_nonce<const T: usize>() -> PResult<[u8; T]> {
     let mut bytes = [0u8; T];
     OsRng
