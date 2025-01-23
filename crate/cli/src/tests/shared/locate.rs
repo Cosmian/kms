@@ -145,7 +145,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
     let user_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        "SEC::TOP && (DPT::MKG || DPT::FIN) ",
         &["test_cc", "another_tag"],
         false,
     )?;

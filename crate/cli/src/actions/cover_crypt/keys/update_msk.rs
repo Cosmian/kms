@@ -1,17 +1,14 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use cosmian_cover_crypt::{EncryptionHint, MasterSecretKey, QualifiedAttribute};
-use cosmian_crypto_core::bytes_ser_de::{Serializable, Serializer};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, TTLV},
     },
-    export_object, read_bytes_from_file, read_from_json_file, ExportObjectParams, KmsClient,
+    export_object, read_from_json_file, ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::{policy_from_attributes, RekeyEditAction},
@@ -23,30 +20,6 @@ use crate::{
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
-
-pub(crate) fn policy_from_binary_file(
-    bin_filename: &impl AsRef<Path>,
-) -> CliResult<MasterSecretKey> {
-    let policy_buffer = read_bytes_from_file(bin_filename)?;
-    MasterSecretKey::deserialize(policy_buffer.as_slice()).with_context(|| {
-        format!(
-            "policy binary is malformed {}",
-            bin_filename.as_ref().display()
-        )
-    })
-}
-
-pub(crate) fn policy_from_json_file(
-    specs_filename: &impl AsRef<Path>,
-) -> CliResult<MasterSecretKey> {
-    let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
-    MasterSecretKey::deserialize(serde_json::to_vec(&policy_specs)?.as_slice()).with_context(|| {
-        format!(
-            "JSON policy is malformed {}",
-            specs_filename.as_ref().display()
-        )
-    })
-}
 
 /// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
@@ -137,14 +110,13 @@ impl ViewAction {
         )
         .await?;
         // get a pretty json and print it
-        let json = if self.detailed {
-            let ser = Serializer::new();
-            let y = MasterSecretKey::write(&msk, &mut ser)?;
-            format!("{}", serde_json::from_value(&y));
-        } else {
-            MasterSecretKey::serialize(&msk);
-        };
+
+        let json = format!(
+            "{:?}",
+            serde_json::from_value(msk.access_structure.serialize()?.to_vec().into())?
+        );
         console::Stdout::new(&json).write()?;
+
         Ok(())
     }
 }
@@ -382,54 +354,5 @@ impl RemoveAttributeAction {
         console::Stdout::new(&stdout).write()?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::items_after_statements)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::policy_from_binary_file;
-
-    #[test]
-    pub(crate) fn test_policy_bin_from_file() {
-        //correct
-        const CORRECT_FILE: &str = "../../test_data/policy.bin";
-        let result = policy_from_binary_file(&PathBuf::from(CORRECT_FILE));
-        assert!(result.is_ok(), "The policy should be ok");
-
-        //file not found
-        const WRONG_FILENAME: &str = "not_exist";
-        let result = policy_from_binary_file(&PathBuf::from(WRONG_FILENAME));
-        assert!(
-            result
-                .err()
-                .unwrap()
-                .to_string()
-                .starts_with(&format!("could not open the file {WRONG_FILENAME}"))
-        );
-
-        // malformed json
-        const MALFORMED_FILE: &str = "../../test_data/policy.bad";
-        let result = policy_from_binary_file(&PathBuf::from(MALFORMED_FILE));
-        assert!(
-            result
-                .err()
-                .unwrap()
-                .to_string()
-                .starts_with(&format!("policy binary is malformed {MALFORMED_FILE}"))
-        );
-
-        // duplicate policies
-        const DUPLICATED_POLICIES: &str = "../../test_data/policy.bad2";
-        let result = policy_from_binary_file(&PathBuf::from(DUPLICATED_POLICIES));
-        assert!(
-            result
-                .err()
-                .unwrap()
-                .to_string()
-                .starts_with(&format!("policy binary is malformed {DUPLICATED_POLICIES}"))
-        );
     }
 }

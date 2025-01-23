@@ -39,7 +39,7 @@ async fn test_kmip_messages() -> KResult<()> {
         })),
     ];
 
-    let access_policy = "DPT::FIN && SEC::LOW";
+    let access_policy = "Department::FIN && Security Level::LOW";
 
     let message_request = Message {
         header: MessageHeader {

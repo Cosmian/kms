@@ -318,7 +318,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         &RekeyEditAction::AddAttribute(vec![(
-            QualifiedAttribute::new("SEC", "LOW"),
+            QualifiedAttribute::new("Security Level", "LOW"),
             EncryptionHint::Classic,
             None,
         )]),
@@ -350,7 +350,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         &RekeyEditAction::RenameAttribute(vec![(
-            QualifiedAttribute::new("DPT", "HR"),
+            QualifiedAttribute::new("Department", "HR"),
             "HumanResources".to_owned(),
         )]),
     )?;
@@ -381,7 +381,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Disable ABE Attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("DPT", "FIN"))]),
+        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "FIN"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -411,7 +411,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Delete attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DeleteAttribute(vec![(QualifiedAttribute::new("DPT", "HR"))]),
+        &RekeyEditAction::DeleteAttribute(vec![(QualifiedAttribute::new("Department", "HR"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

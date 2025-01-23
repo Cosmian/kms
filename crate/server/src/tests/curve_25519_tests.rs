@@ -199,7 +199,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
-    let access_policy = "DPT::FIN && SEC::LOW";
+    let access_policy = "Department::FIN && Security Level::LOW";
 
     let request = Message {
         header: MessageHeader {
