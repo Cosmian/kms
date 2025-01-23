@@ -19,7 +19,7 @@ use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
 use crate::{
-    AesKeySize, PError, PResult, Utimaco, UtimacoEncryptionAlgorithm, RsaKeySize, SlotManager,
+    AesKeySize, PError, PResult, RsaKeySize, SlotManager, Utimaco, UtimacoEncryptionAlgorithm,
 };
 
 static TRACING_INIT: Once = Once::new();
@@ -74,7 +74,7 @@ fn test_all() -> PResult<()> {
 
 #[test]
 fn low_level_test() -> PResult<()> {
-    let path = "/lib/libnethsm64.so";
+    let path = "/lib/libcs_pkcs11_R3.so";
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(pInitArgs: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -95,7 +95,7 @@ fn low_level_test() -> PResult<()> {
 #[test]
 fn test_hsm_get_info() -> PResult<()> {
     initialize_logging();
-    let hsm = Utimaco::instantiate("/lib/libnethsm64.so", HashMap::new())?;
+    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
@@ -246,11 +246,7 @@ fn test_rsa_pkcs_encrypt() -> PResult<()> {
     info!("RSA handles sk: {sk}, pl: {pk}");
     let enc = session.encrypt(pk, UtimacoEncryptionAlgorithm::RsaPkcsV15, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(
-        sk,
-        UtimacoEncryptionAlgorithm::RsaPkcsV15,
-        &enc.ciphertext,
-    )?;
+    let plaintext = session.decrypt(sk, UtimacoEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     Ok(())
 }

@@ -1,6 +1,6 @@
 # Proteccio HSM wrapper
 
-This is a wrapper for the Proteccio HSM library. It is written in C++ and provides a simple interface to the Proteccio
+This is a wrapper for the Proteccio HSM library. It is written in Rust and provides a simple interface to the Proteccio
 HSM library.
 
 ## Installation

@@ -21,8 +21,7 @@ mod slots;
 #[cfg(feature = "utimaco")]
 mod tests;
 
-/// This is a macro because of the mut pointer to the params
-/// We therefore want this code to be inlined
+/// A macro is used here to ensure inline expansion due to mutable pointer parameters
 #[macro_export]
 macro_rules! aes_mechanism {
     ($nonce:expr) => {{

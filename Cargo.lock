@@ -5459,7 +5459,6 @@ dependencies = [
  "lru",
  "pkcs11_sys",
  "rand 0.9.0-beta.1",
- "serial_test",
  "thiserror 2.0.3",
  "tracing",
  "tracing-subscriber",
