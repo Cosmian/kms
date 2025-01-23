@@ -47,7 +47,7 @@ Utimaco CryptoServer Simulator HSD process started
 ...
 ```
 
-## Install the PKCS#11 library
+## Configure the PKCS#11 connection
 
 Install a Linux VM in bridge mode and make sure it can access the simulator
 
@@ -81,3 +81,38 @@ Logging = 3
 Device = 3001@<simulator_ip>
 ...
 ```
+
+Then make the PKCS#11 configuration file available to the library and tools:
+
+```bash
+export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
+```
+
+## Test the PKCS#11 configuration
+
+```bash
+cd u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Administration
+./p11tool2 Slot=0 GetSlotInfo
+```
+
+The output should be similar to:
+
+```
+CK_SLOT_INFO (slot ID: 0x00000000):
+
+  slotDescription          33303031 40313932  2e313638 2e36382e |3001@192.168.68.|
+                           3633202d 20534c4f  545f3030 30302020 |63 - SLOT_0000  |
+                           20202020 20202020  20202020 20202020 |                |
+                           20202020 20202020  20202020 20202020 |                |
+
+  manufacturerID           5574696d 61636f20  49532047 6d624820 |Utimaco IS GmbH |
+                           20202020 20202020  20202020 20202020 |                |
+
+  flags: 0x00000005
+    CKF_TOKEN_PRESENT    : CK_TRUE
+    CKF_REMOVABLE_DEVICE : CK_FALSE
+    CKF_HW_SLOT          : CK_TRUE
+
+  hardwareVersion        : 5.02
+  firmwareVersion        : 6.00
+ ```
