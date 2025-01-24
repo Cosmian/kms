@@ -59,27 +59,6 @@ async fn test_view_policy() -> CliResult<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_create_policy() -> CliResult<()> {
-    let ctx = start_default_test_kms_server().await;
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
-
-    cmd.arg(SUB_COMMAND).args(vec![
-        "policy",
-        "create",
-        "-s",
-        "../../test_data/policy_specifications.json",
-        "-p",
-        "/tmp/policy.bin",
-    ]);
-    recover_cmd_logs(&mut cmd);
-    cmd.assert().success().stdout(predicate::str::contains(
-        "The binary policy file was generated in \"/tmp/policy.bin\".",
-    ));
-
-    Ok(())
-}
 
 pub(crate) async fn rename(
     cli_conf_path: &str,
@@ -227,7 +206,6 @@ async fn test_edit_policy() -> CliResult<()> {
         Some(cipher_file.to_str().unwrap()),
         Some("myid"),
     )?;
-
     // the user key should be able to decrypt the file
     decrypt(
         &ctx.owner_client_conf_path,

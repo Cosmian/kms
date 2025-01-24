@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_client::KmsClient;
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 
@@ -9,7 +8,6 @@ use crate::{
     actions::console,
     error::result::{CliResult, CliResultHelper},
 };
-
 /// Create a new master key pair for a given policy and return the key IDs.
 ///
 ///
@@ -67,13 +65,11 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Setup MSK
-        let cc = Covercrypt::default();
-        let (msk, _) = cc.setup()?;
 
+        let ap = "Departement::FIN";
         // Create the kmip query
         let create_key_pair =
-            build_create_covercrypt_master_keypair_request(&msk, &self.tags, self.sensitive)?;
+            build_create_covercrypt_master_keypair_request(ap, &self.tags, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, EncryptionHint, QualifiedAttribute};
+use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
@@ -29,14 +29,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
 
-    let cc = Covercrypt::default();
-    let (mut msk, _) = cc.setup()?;
-
-    // update the master keys
-    cc.update_msk(&mut msk)?;
-
+let ap = "Department::FIN";
     // create Key Pair
-    let create_key_pair = build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?;
+    let create_key_pair = build_create_covercrypt_master_keypair_request(ap, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
