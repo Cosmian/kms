@@ -35,3 +35,4 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 rustflags = "-Zshare-generics=off"
 [target.x86_64-pc-windows-msvc]
 rustflags = "-Zshare-generics=off"
+

@@ -5,14 +5,15 @@ members = [
   "crate/cli",
   "crate/client",
   "crate/crypto",
+  "crate/hsm/proteccio",
+  "crate/hsm/utimaco",
+  "crate/hsm/common",
   "crate/interfaces",
   "crate/kmip",
   "crate/pyo3",
   "crate/pkcs11/module",
   "crate/pkcs11/provider",
-  "crate/pkcs11/proteccio",
   "crate/pkcs11/sys",
-  "crate/pkcs11/utimaco",
   "crate/server",
   "crate/server_database",
   "crate/test_server",
@@ -29,7 +30,6 @@ rust-version = "1.71.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
-  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"

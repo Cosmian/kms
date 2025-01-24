@@ -69,7 +69,7 @@ opentelemetry = "0.23.0"
 opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
 opentelemetry-semantic-conventions = { version = "0.15.0" }
 opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
-proteccio_pkcs11_loader = { path = "../pkcs11/proteccio" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
