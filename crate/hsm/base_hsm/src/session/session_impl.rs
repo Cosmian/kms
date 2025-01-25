@@ -1,3 +1,40 @@
+//! Hardware Security Module (HSM) Session Implementation
+//!
+//! This module provides the implementation of a session with a Hardware Security Module (HSM)
+//! following the PKCS#11 standard. It includes functionality for:
+//!
+//! - Managing HSM session lifecycle (creation, authentication, closure)
+//! - Object handling (creation, deletion, listing)
+//! - Cryptographic operations (encryption, decryption)
+//! - Key management (export, metadata retrieval)
+//!
+//! The implementation supports various cryptographic algorithms including:
+//! - AES-GCM for symmetric encryption
+//! - RSA PKCS#1 v1.5 and OAEP for asymmetric encryption
+//!
+//! # Key Features
+//!
+//! - Session management with HSM devices
+//! - Object handle caching for improved performance
+//! - Support for both symmetric and asymmetric cryptographic operations
+//! - Key export capabilities with security controls
+//! - Comprehensive error handling
+//!
+//! # Security Considerations
+//!
+//! - Sensitive key material is protected using the `Zeroizing` type
+//! - Login state is tracked to ensure proper session closure
+//! - Object handle caching is thread-safe using `Arc`
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use hsm::Session;
+//!
+//! let session = Session::new(hsm, session_handle, cache, true);
+//! let random_bytes = session.generate_random(32)?;
+//! ```
+
 use std::{ptr, sync::Arc};
 
 use cosmian_kms_interfaces::{
@@ -5,32 +42,97 @@ use cosmian_kms_interfaces::{
     KeyType, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 use pkcs11_sys::*;
+use rand::{rngs::OsRng, TryRngCore};
 use tracing::debug;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{
-    aes_mechanism, generate_random_nonce, rsa_mechanism, ObjectHandlesCache, PError, PResult,
-};
+use crate::{aes_mechanism, rsa_mechanism, ObjectHandlesCache, PError, PResult};
 
-pub enum UtimacoEncryptionAlgorithm {
+/// Generate a random nonce of size T
+/// This function is used to generate a random nonce for the AES GCM encryption
+fn generate_random_nonce<const T: usize>() -> PResult<[u8; T]> {
+    let mut bytes = [0u8; T];
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|e| PError::Default(format!("Error generating random nonce: {}", e)))?;
+    Ok(bytes)
+}
+
+/// Encryption algorithm supported by the HSM
+pub enum HsmEncryptionAlgorithm {
     AesGcm,
     RsaPkcsV15,
     RsaOaep,
 }
 
-impl From<CryptoAlgorithm> for UtimacoEncryptionAlgorithm {
+impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
     fn from(algorithm: CryptoAlgorithm) -> Self {
         match algorithm {
-            CryptoAlgorithm::AesGcm => UtimacoEncryptionAlgorithm::AesGcm,
-            CryptoAlgorithm::RsaPkcsV15 => UtimacoEncryptionAlgorithm::RsaPkcsV15,
-            CryptoAlgorithm::RsaOaep => UtimacoEncryptionAlgorithm::RsaOaep,
+            CryptoAlgorithm::AesGcm => HsmEncryptionAlgorithm::AesGcm,
+            CryptoAlgorithm::RsaPkcsV15 => HsmEncryptionAlgorithm::RsaPkcsV15,
+            CryptoAlgorithm::RsaOaep => HsmEncryptionAlgorithm::RsaOaep,
         }
     }
 }
 
+/// A session with an HSM (Hardware Security Module) that implements PKCS#11 interface.
+/// This structure represents an active connection to the HSM and provides methods to
+/// perform cryptographic operations and key management.
+///
+/// # Structure Fields
+/// * `hsm` - Arc reference to the HSM library interface
+/// * `session_handle` - PKCS#11 session handle
+/// * `object_handles_cache` - Cache for object handles
+/// * `is_logged_in` - Login state of the session
+///
+/// # Methods
+/// The session provides several categories of operations:
+///
+/// ## Session Management
+/// * `new()` - Creates a new session
+/// * `close()` - Closes the session and logs out if necessary
+///
+/// ## Object Management
+/// * `get_object_handle()` - Retrieves handle for an object by its ID
+/// * `delete_object_handle()` - Removes an object handle from cache
+/// * `list_objects()` - Lists objects matching specified filter
+/// * `destroy_object()` - Deletes an object from the HSM
+///
+/// ## Cryptographic Operations
+/// * `encrypt()` - Encrypts data using specified algorithm
+/// * `decrypt()` - Decrypts data using specified algorithm
+/// * `generate_random()` - Generates random data
+///
+/// ## Key Management
+/// * `export_key()` - Exports a key from the HSM (if allowed)
+/// * `get_key_metadata()` - Retrieves metadata about a key
+/// * `get_key_type()` - Gets the type of a key
+/// * `get_object_id()` - Gets the ID of an object
+///
+/// ## Internal Helpers
+/// * `encrypt_with_mechanism()` - Internal encryption implementation
+/// * `decrypt_with_mechanism()` - Internal decryption implementation
+/// * `export_rsa_private_key()` - Exports RSA private key
+/// * `export_rsa_public_key()` - Exports RSA public key
+/// * `export_aes_key()` - Exports AES key
+/// * `call_get_attributes()` - Helper for retrieving object attributes
+///
+/// # Safety
+/// Many methods in this implementation contain unsafe blocks as they interact with
+/// the PKCS#11 C interface. Care should be taken when using these methods, and all
+/// preconditions must be met to ensure safe operation.
+///
+/// # Error Handling
+/// Methods return `PResult<T>` which is a custom result type for handling HSM-related
+/// errors. Operations can fail due to various reasons including:
+/// * Invalid object handles
+/// * Permission issues
+/// * Communication errors with HSM
+/// * Invalid parameters
+/// * Unsupported operations
 pub struct Session {
-    hsm: Arc<crate::utimaco::HsmLib>,
+    hsm: Arc<crate::hsm_lib::HsmLib>,
     session_handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     is_logged_in: bool,
@@ -38,7 +140,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(
-        hsm: Arc<crate::utimaco::HsmLib>,
+        hsm: Arc<crate::hsm_lib::HsmLib>,
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
         is_logged_in: bool,
@@ -51,18 +153,22 @@ impl Session {
         }
     }
 
-    pub(crate) fn hsm(&self) -> Arc<crate::utimaco::HsmLib> {
+    /// Get the HSM library interface
+    pub(crate) fn hsm(&self) -> Arc<crate::hsm_lib::HsmLib> {
         self.hsm.clone()
     }
 
+    /// Get the PKCS#11 session handle
     pub(crate) fn session_handle(&self) -> CK_SESSION_HANDLE {
         self.session_handle
     }
 
+    /// Get the object handles cache
     pub(crate) fn object_handles_cache(&self) -> Arc<ObjectHandlesCache> {
         self.object_handles_cache.clone()
     }
 
+    /// Close the session and log out if necessary
     pub fn close(&self) -> PResult<()> {
         unsafe {
             if self.is_logged_in {
@@ -89,7 +195,7 @@ impl Session {
         }
 
         // Proteccio does not allow the ID for secret keys so we use the label
-        // and we do the same on utimaco
+        // and we do the same on base HSM
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_LABEL,
             pValue: object_id.as_ptr() as CK_VOID_PTR,
@@ -166,6 +272,10 @@ impl Session {
         }
     }
 
+    /// List objects in the HSM that match the specified filter
+    /// The filter can be used to narrow down the search to specific types of objects
+    /// such as AES keys, RSA keys, etc.
+    /// If no filter is provided, all objects are listed.
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> PResult<Vec<CK_OBJECT_HANDLE>> {
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
@@ -262,6 +372,7 @@ impl Session {
         Ok(object_handles)
     }
 
+    /// Destroy an object in the HSM
     pub fn destroy_object(&self, object_handle: CK_OBJECT_HANDLE) -> PResult<()> {
         unsafe {
             let rv = self.hsm.C_DestroyObject.ok_or_else(|| {
@@ -274,14 +385,15 @@ impl Session {
         Ok(())
     }
 
+    /// Encrypt data using the specified key and algorithm
     pub fn encrypt(
         &self,
         key_handle: CK_OBJECT_HANDLE,
-        algorithm: UtimacoEncryptionAlgorithm,
+        algorithm: HsmEncryptionAlgorithm,
         plaintext: &[u8],
     ) -> PResult<EncryptedContent> {
         Ok(match algorithm {
-            UtimacoEncryptionAlgorithm::AesGcm => {
+            HsmEncryptionAlgorithm::AesGcm => {
                 let mut nonce = generate_random_nonce::<12>()?;
                 let ciphertext = self.encrypt_with_mechanism(
                     key_handle,
@@ -305,14 +417,15 @@ impl Session {
         })
     }
 
+    /// Decrypt data using the specified key and algorithm
     pub fn decrypt(
         &self,
         key_handle: CK_OBJECT_HANDLE,
-        algorithm: UtimacoEncryptionAlgorithm,
+        algorithm: HsmEncryptionAlgorithm,
         ciphertext: &[u8],
     ) -> PResult<Zeroizing<Vec<u8>>> {
         match algorithm {
-            UtimacoEncryptionAlgorithm::AesGcm => {
+            HsmEncryptionAlgorithm::AesGcm => {
                 if ciphertext.len() < 12 {
                     return Err(PError::Default("Invalid AES GCM ciphertext".to_string()));
                 }
@@ -442,6 +555,7 @@ impl Session {
         }
     }
 
+    /// Export a key from the HSM
     pub fn export_key(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<HsmObject>> {
         let mut key_type: CK_KEY_TYPE = CKK_VENDOR_DEFINED;
         let mut class: CK_OBJECT_CLASS = CKO_VENDOR_DEFINED;
@@ -781,6 +895,7 @@ impl Session {
         }
     }
 
+    /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<KeyMetadata>> {
         let key_type = match self.get_key_type(key_handle)? {
             None => return Ok(None),

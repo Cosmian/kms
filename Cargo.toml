@@ -7,7 +7,7 @@ members = [
   "crate/crypto",
   "crate/hsm/proteccio",
   "crate/hsm/utimaco",
-  "crate/hsm/common",
+  "crate/hsm/base_hsm",
   "crate/interfaces",
   "crate/kmip",
   "crate/pyo3",

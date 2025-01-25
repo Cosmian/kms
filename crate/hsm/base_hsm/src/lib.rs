@@ -6,14 +6,15 @@ extern crate core;
 
 mod error;
 
+pub use base_hsm::BaseHsm;
 pub use error::{PError, PResult};
 use rand::{rngs::OsRng, TryRngCore};
-pub use session::{AesKeySize, RsaKeySize, Session, UtimacoEncryptionAlgorithm};
+pub use session::{AesKeySize, HsmEncryptionAlgorithm, RsaKeySize, Session};
 pub use slots::{ObjectHandlesCache, SlotManager};
-pub use utimaco::Utimaco;
 
+mod base_hsm;
+mod hsm_lib;
 mod session;
-mod utimaco;
 
 mod kms_hsm;
 mod slots;
@@ -41,12 +42,12 @@ macro_rules! aes_mechanism {
 macro_rules! rsa_mechanism {
     ($algorithm:expr) => {
         match $algorithm {
-            UtimacoEncryptionAlgorithm::RsaPkcsV15 => CK_MECHANISM {
+            HsmEncryptionAlgorithm::RsaPkcsV15 => CK_MECHANISM {
                 mechanism: CKM_RSA_PKCS,
                 pParameter: std::ptr::null_mut(),
                 ulParameterLen: 0,
             },
-            UtimacoEncryptionAlgorithm::RsaOaep => {
+            HsmEncryptionAlgorithm::RsaOaep => {
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
                     mgf: CKG_MGF1_SHA256,
@@ -63,14 +64,4 @@ macro_rules! rsa_mechanism {
             _ => return Err(PError::Default("expecting an RSA algorithm".to_string())),
         }
     };
-}
-
-/// Generate a random nonce of size T
-/// This function is used to generate a random nonce for the AES GCM encryption
-fn generate_random_nonce<const T: usize>() -> PResult<[u8; T]> {
-    let mut bytes = [0u8; T];
-    OsRng
-        .try_fill_bytes(&mut bytes)
-        .map_err(|e| PError::Default(format!("Error generating random nonce: {}", e)))?;
-    Ok(bytes)
 }

@@ -5,10 +5,10 @@ use cosmian_kms_interfaces::{
 };
 use zeroize::Zeroizing;
 
-use crate::{AesKeySize, RsaKeySize, Utimaco};
+use crate::{AesKeySize, BaseHsm, RsaKeySize};
 
 #[async_trait]
-impl HSM for Utimaco {
+impl HSM for BaseHsm {
     async fn create_key(
         &self,
         slot_id: usize,

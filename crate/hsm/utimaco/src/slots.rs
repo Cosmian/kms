@@ -120,7 +120,7 @@ impl SlotManager {
             })?(slot_id, flags, ptr::null_mut(), None, &mut session_handle);
             if rv != CKR_OK {
                 return Err(PError::Default(format!(
-                    "Utimaco: Failed opening a session: {rv}å"
+                    "Utimaco: Failed opening a session: {rv}"
                 )));
             }
             if let Some(password) = login_password.as_ref() {
