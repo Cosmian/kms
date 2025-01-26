@@ -3,7 +3,7 @@ use std::ptr;
 use libloading::Library;
 use pkcs11_sys::*;
 
-use crate::{PError, PResult};
+use crate::{HError, HResult};
 
 /// A struct representing a Hardware Security Module (HSM) library interface using PKCS#11.
 ///
@@ -85,7 +85,7 @@ pub struct HsmLib {
 }
 
 impl HsmLib {
-    pub(crate) fn instantiate<P>(path: P) -> PResult<Self>
+    pub(crate) fn instantiate<P>(path: P) -> HResult<Self>
     where
         P: AsRef<std::ffi::OsStr>,
     {
@@ -125,7 +125,7 @@ impl HsmLib {
         }
     }
 
-    fn initialize(hsm_lib: &HsmLib) -> PResult<()> {
+    fn initialize(hsm_lib: &HsmLib) -> HResult<()> {
         let pInitArgs = CK_C_INITIALIZE_ARGS {
             CreateMutex: None,
             DestroyMutex: None,
@@ -137,22 +137,22 @@ impl HsmLib {
         unsafe {
             // let rv = self.hsm.C_Initialize.deref()(&pInitArgs);
             let rv = hsm_lib.C_Initialize.ok_or_else(|| {
-                PError::Default("C_Initialize not available on library".to_string())
+                HError::Default("C_Initialize not available on library".to_string())
             })?(&pInitArgs as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed initializing the HSM".to_string()));
+                return Err(HError::Default("Failed initializing the HSM".to_string()));
             }
             Ok(())
         }
     }
 
-    fn finalize(&self) -> PResult<()> {
+    fn finalize(&self) -> HResult<()> {
         unsafe {
             let rv = self.C_Finalize.ok_or_else(|| {
-                PError::Default("C_Finalize not available on library".to_string())
+                HError::Default("C_Finalize not available on library".to_string())
             })?(ptr::null_mut());
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to finalize the HSM".to_string()));
+                return Err(HError::Default("Failed to finalize the HSM".to_string()));
             }
             Ok(())
         }

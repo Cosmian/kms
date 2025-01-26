@@ -3,10 +3,10 @@
 use cosmian_kms_interfaces::InterfaceError;
 use thiserror::Error;
 
-pub type PResult<T> = Result<T, PError>;
+pub type HResult<T> = Result<T, HError>;
 
 #[derive(Error, Debug)]
-pub enum PError {
+pub enum HError {
     #[error("{0}")]
     Default(String),
 
@@ -23,14 +23,14 @@ pub enum PError {
     TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
-impl From<InterfaceError> for PError {
+impl From<InterfaceError> for HError {
     fn from(e: InterfaceError) -> Self {
-        PError::Hsm(e.to_string())
+        HError::Hsm(e.to_string())
     }
 }
 
-impl From<PError> for InterfaceError {
-    fn from(e: PError) -> Self {
+impl From<HError> for InterfaceError {
+    fn from(e: HError) -> Self {
         InterfaceError::Default(e.to_string())
     }
 }

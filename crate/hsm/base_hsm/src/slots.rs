@@ -11,7 +11,7 @@ use pkcs11_sys::{
 };
 use tracing::warn;
 
-use crate::{hsm_lib::HsmLib, PError, PResult, Session};
+use crate::{hsm_lib::HsmLib, HError, HResult, Session};
 
 /// A cache structure that maps byte vectors to CK_OBJECT_HANDLE values using an LRU (Least Recently Used) strategy.
 ///
@@ -40,7 +40,7 @@ impl ObjectHandlesCache {
     pub fn get(&self, key: &[u8]) -> Option<CK_OBJECT_HANDLE> {
         self.0
             .lock()
-            .expect("Utimaco: failed to lock the handles cache")
+            .expect("HSM: failed to lock the handles cache")
             .get(key)
             .copied()
     }
@@ -49,7 +49,7 @@ impl ObjectHandlesCache {
     pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) {
         self.0
             .lock()
-            .expect("Utimaco: failed to lock the handles cache")
+            .expect("HSM: failed to lock the handles cache")
             .put(key, value);
     }
 
@@ -57,7 +57,7 @@ impl ObjectHandlesCache {
     pub fn remove(&self, key: &[u8]) {
         self.0
             .lock()
-            .expect("Utimaco: failed to lock the handles cache")
+            .expect("HSM: failed to lock the handles cache")
             .pop(key);
     }
 }
@@ -103,7 +103,7 @@ impl SlotManager {
         hsm_lib: Arc<HsmLib>,
         slot_id: usize,
         login_password: Option<String>,
-    ) -> PResult<Self> {
+    ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         if let Some(password) = login_password {
             let login_session = Self::open_session_(
@@ -143,7 +143,7 @@ impl SlotManager {
     /// This function calls unsafe FFI functions from the HSM library to open a session.
     /// The function is safe to call, but care must be taken when using the resulting Session instance.
     /// The session is automatically closed when the Session instance is dropped.
-    pub fn open_session(&self, read_write: bool) -> PResult<Session> {
+    pub fn open_session(&self, read_write: bool) -> HResult<Session> {
         Self::open_session_(
             &self.hsm_lib,
             self.slot_id,
@@ -159,7 +159,7 @@ impl SlotManager {
         read_write: bool,
         object_handles_cache: Arc<ObjectHandlesCache>,
         login_password: Option<String>,
-    ) -> PResult<Session> {
+    ) -> HResult<Session> {
         let slot_id: CK_SLOT_ID = slot_id as CK_SLOT_ID;
         let flags: CK_FLAGS = if read_write {
             CKF_RW_SESSION | CKF_SERIAL_SESSION
@@ -170,17 +170,17 @@ impl SlotManager {
 
         unsafe {
             let rv = hsm_lib.C_OpenSession.ok_or_else(|| {
-                PError::Default("C_OpenSession not available on library".to_string())
+                HError::Default("C_OpenSession not available on library".to_string())
             })?(slot_id, flags, ptr::null_mut(), None, &mut session_handle);
             if rv != CKR_OK {
-                return Err(PError::Default(format!(
-                    "Utimaco: Failed opening a session: {rv}å"
+                return Err(HError::Default(format!(
+                    "HSM: Failed opening a session: {rv}å"
                 )));
             }
             if let Some(password) = login_password.as_ref() {
                 let mut pwd_bytes = password.as_bytes().to_vec();
                 let rv = hsm_lib.C_Login.ok_or_else(|| {
-                    PError::Default("C_Login not available on library".to_string())
+                    HError::Default("C_Login not available on library".to_string())
                 })?(
                     session_handle,
                     CKU_USER,
@@ -190,7 +190,7 @@ impl SlotManager {
                 if rv == CKR_USER_ALREADY_LOGGED_IN {
                     warn!("user already logged in, ignoring logging");
                 } else if rv != CKR_OK {
-                    return Err(PError::Default("Failed logging in".to_string()));
+                    return Err(HError::Default("Failed logging in".to_string()));
                 }
             }
             Ok(Session::new(

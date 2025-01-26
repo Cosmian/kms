@@ -7,8 +7,7 @@ extern crate core;
 mod error;
 
 pub use base_hsm::BaseHsm;
-pub use error::{PError, PResult};
-use rand::{rngs::OsRng, TryRngCore};
+pub use error::{HError, HResult};
 pub use session::{AesKeySize, HsmEncryptionAlgorithm, RsaKeySize, Session};
 pub use slots::{ObjectHandlesCache, SlotManager};
 
@@ -61,7 +60,7 @@ macro_rules! rsa_mechanism {
                     ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
                 }
             }
-            _ => return Err(PError::Default("expecting an RSA algorithm".to_string())),
+            _ => return Err(HError::Default("expecting an RSA algorithm".to_string())),
         }
     };
 }

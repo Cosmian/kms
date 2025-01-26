@@ -7,7 +7,7 @@ use pkcs11_sys::{
     CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR,
 };
 
-use crate::{session::Session, PError, PResult};
+use crate::{session::Session, HError, HResult};
 
 pub enum AesKeySize {
     Aes128,
@@ -17,7 +17,7 @@ pub enum AesKeySize {
 /// AES key template
 /// If sensitive is true, the key is not exportable
 /// Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL
-/// so we do the same with Utimaco
+/// so we do the same with other HSMs
 pub(crate) const fn aes_key_template(
     id: &[u8],
     size: CK_ULONG,
@@ -88,10 +88,10 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
         sensitive: bool,
-    ) -> PResult<CK_OBJECT_HANDLE> {
+    ) -> HResult<CK_OBJECT_HANDLE> {
         unsafe {
             let ck_fn = self.hsm().C_GenerateKey.ok_or_else(|| {
-                PError::Default("C_GenerateKey not available on library".to_string())
+                HError::Default("C_GenerateKey not available on library".to_string())
             })?;
             let size = match size {
                 AesKeySize::Aes128 => 16,
@@ -118,7 +118,7 @@ impl Session {
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(format!("Failed generating key: {rv}")));
+                return Err(HError::Default(format!("Failed generating key: {rv}")));
             }
             self.object_handles_cache()
                 .insert(id.to_vec(), aes_key_handle);

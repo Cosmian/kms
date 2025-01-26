@@ -8,7 +8,7 @@ use std::{
 
 use pkcs11_sys::{CKR_OK, CK_INFO};
 
-use crate::{hsm_lib::HsmLib, PError, PResult, SlotManager};
+use crate::{hsm_lib::HsmLib, HError, HResult, SlotManager};
 
 struct SlotState {
     password: Option<String>,
@@ -21,7 +21,7 @@ pub struct BaseHsm {
 }
 
 impl BaseHsm {
-    pub fn instantiate<P>(path: P, passwords: HashMap<usize, Option<String>>) -> PResult<Self>
+    pub fn instantiate<P>(path: P, passwords: HashMap<usize, Option<String>>) -> HResult<Self>
     where
         P: AsRef<std::ffi::OsStr>,
     {
@@ -45,7 +45,7 @@ impl BaseHsm {
     /// Get a slot
     /// If a slot has already been opened, returns the opened slot.
     /// To close a slot before re-opening it with another password, call `close_slot()` first
-    pub fn get_slot(&self, slot_id: usize) -> PResult<Arc<SlotManager>> {
+    pub fn get_slot(&self, slot_id: usize) -> HResult<Arc<SlotManager>> {
         let mut slots = self.slots.lock().expect("failed to lock slots");
         // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
@@ -62,25 +62,25 @@ impl BaseHsm {
                 Ok(manager)
             }
         } else {
-            Err(PError::Default(format!("slot {slot_id} is not accessible")))
+            Err(HError::Default(format!("slot {slot_id} is not accessible")))
         }
     }
 
-    pub fn close_slot(&self, slot_id: usize) -> PResult<()> {
+    pub fn close_slot(&self, slot_id: usize) -> HResult<()> {
         let mut slots = self.slots.lock().expect("failed to lock slots");
         slots.remove(&slot_id);
         Ok(())
     }
 
-    pub fn get_info(&self) -> PResult<Info> {
+    pub fn get_info(&self) -> HResult<Info> {
         unsafe {
             let mut info = CK_INFO::default();
             let rv =
                 self.hsm_lib.C_GetInfo.ok_or_else(|| {
-                    PError::Default("C_GetInfo not available on library".to_string())
+                    HError::Default("C_GetInfo not available on library".to_string())
                 })?(&mut info);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed getting HSM info".to_string()));
+                return Err(HError::Default("Failed getting HSM info".to_string()));
             }
             Ok(info.into())
         }

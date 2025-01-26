@@ -1,3 +1,36 @@
+//! Implementation of the Hardware Security Module (HSM) trait for BaseHsm
+//!
+//! This implementation provides cryptographic operations using a Hardware Security Module,
+//! supporting various key management and cryptographic operations.
+//!
+//! # Implemented Operations
+//!
+//! - Key Generation: Create symmetric (AES) and asymmetric (RSA) keys
+//! - Key Pair Generation: Create public/private key pairs
+//! - Key Export: Export HSM objects
+//! - Key Deletion: Remove keys from the HSM
+//! - Key Search: Find keys based on object type filters
+//! - Encryption/Decryption: Perform cryptographic operations
+//! - Key Information: Retrieve key types and metadata
+//!
+//! # Supported Algorithms
+//!
+//! - AES: 128-bit and 256-bit keys
+//! - RSA: 1024-bit, 2048-bit, 3072-bit, and 4096-bit keys
+//!
+//! # Error Handling
+//!
+//! All operations return `InterfaceResult<T>` which may contain:
+//! - Errors for duplicate key IDs
+//! - Invalid key sizes
+//! - Object not found errors
+//! - General HSM operation failures
+//!
+//! # Security Features
+//!
+//! - Support for sensitive key material handling
+//! - Secure session management
+//! - Zero-copy cleanup for sensitive data using `Zeroizing`
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
@@ -39,9 +72,7 @@ impl HSM for BaseHsm {
                 };
                 let _ = session.generate_aes_key(id, key_size, sensitive)?;
                 Ok(())
-            } // _ => Err(PluginError::Default(
-              //     "Only AES or RSA keys can be created on the utimaco HSM".to_string(),
-              // )),
+            }
         }
     }
 
@@ -85,9 +116,7 @@ impl HSM for BaseHsm {
             HsmKeypairAlgorithm::RSA => {
                 session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
                 Ok(())
-            } // _ => Err(PluginError::Default(
-              //     "Only AES or RSA keys can be created on the Utimaco HSM".to_string(),
-              // )),
+            }
         }
     }
 

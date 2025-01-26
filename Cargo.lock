@@ -1386,6 +1386,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kms_base_hsm"
+version = "4.21.0"
+dependencies = [
+ "async-trait",
+ "cosmian_kms_interfaces",
+ "libloading",
+ "lru",
+ "pkcs11_sys",
+ "rand 0.9.0-beta.1",
+ "thiserror 2.0.3",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_kms_cli"
 version = "4.21.2"
 dependencies = [
@@ -2863,23 +2880,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
 dependencies = [
  "cpufeatures",
-]
-
-[[package]]
-name = "kms_hsm_common"
-version = "4.21.0"
-dependencies = [
- "async-trait",
- "cosmian_kms_interfaces",
- "libloading",
- "lru",
- "pkcs11_sys",
- "rand 0.9.0-beta.1",
- "thiserror 2.0.3",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "zeroize",
 ]
 
 [[package]]
@@ -5471,6 +5471,7 @@ name = "utimaco_pkcs11_loader"
 version = "4.21.0"
 dependencies = [
  "async-trait",
+ "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
  "libloading",
  "lru",

@@ -11,6 +11,9 @@ use std::{
     thread,
 };
 
+use cosmian_kms_base_hsm::{
+    AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
+};
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use libloading::Library;
 use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
@@ -19,7 +22,8 @@ use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
 use crate::{
-    AesKeySize, PError, PResult, RsaKeySize, SlotManager, Utimaco, UtimacoEncryptionAlgorithm,
+    // AesKeySize, HError, HResult, RsaKeySize, SlotManager, Utimaco, HsmEncryptionAlgorithm,
+    Utimaco,
 };
 
 static TRACING_INIT: Once = Once::new();
@@ -34,10 +38,10 @@ fn initialize_logging() {
     });
 }
 
-fn get_hsm_password() -> PResult<String> {
+fn get_hsm_password() -> HResult<String> {
     let user_password = option_env!("HSM_USER_PASSWORD")
         .ok_or_else(|| {
-            PError::Default(
+            HError::Default(
                 "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
                  environment variable"
                     .to_string(),
@@ -47,7 +51,7 @@ fn get_hsm_password() -> PResult<String> {
     Ok(user_password)
 }
 
-fn get_slot() -> PResult<Arc<SlotManager>> {
+fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
     let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", passwords)?;
@@ -56,7 +60,7 @@ fn get_slot() -> PResult<Arc<SlotManager>> {
 }
 
 #[test]
-fn test_all() -> PResult<()> {
+fn test_all() -> HResult<()> {
     test_hsm_get_info()?;
     test_destroy_all()?;
     test_generate_aes_key()?;
@@ -73,12 +77,12 @@ fn test_all() -> PResult<()> {
 }
 
 #[test]
-fn low_level_test() -> PResult<()> {
+fn low_level_test() -> HResult<()> {
     let path = "/lib/libcs_pkcs11_R3.so";
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(pInitArgs: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
-    let mut pInitArgs = CK_C_INITIALIZE_ARGS {
+    let mut p_init_args = CK_C_INITIALIZE_ARGS {
         CreateMutex: None,
         DestroyMutex: None,
         LockMutex: None,
@@ -86,14 +90,14 @@ fn low_level_test() -> PResult<()> {
         flags: CKF_OS_LOCKING_OK,
         pReserved: ptr::null_mut(),
     };
-    let rv = init(&mut pInitArgs as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
+    let rv = init(&mut p_init_args as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
     assert_eq!(rv, CKR_OK);
 
     Ok(())
 }
 
 #[test]
-fn test_hsm_get_info() -> PResult<()> {
+fn test_hsm_get_info() -> HResult<()> {
     initialize_logging();
     let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", HashMap::new())?;
     let info = hsm.get_info()?;
@@ -102,7 +106,7 @@ fn test_hsm_get_info() -> PResult<()> {
 }
 
 #[test]
-fn test_generate_aes_key() -> PResult<()> {
+fn test_generate_aes_key() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -144,7 +148,7 @@ fn test_generate_aes_key() -> PResult<()> {
 }
 
 #[test]
-fn test_generate_rsa_keypair() -> PResult<()> {
+fn test_generate_rsa_keypair() -> HResult<()> {
     initialize_logging();
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
@@ -205,7 +209,7 @@ fn test_generate_rsa_keypair() -> PResult<()> {
 }
 
 #[test]
-fn test_rsa_key_wrap() -> PResult<()> {
+fn test_rsa_key_wrap() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -230,7 +234,7 @@ fn test_rsa_key_wrap() -> PResult<()> {
 }
 
 #[test]
-fn test_rsa_pkcs_encrypt() -> PResult<()> {
+fn test_rsa_pkcs_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -244,15 +248,15 @@ fn test_rsa_pkcs_encrypt() -> PResult<()> {
         true,
     )?;
     info!("RSA handles sk: {sk}, pl: {pk}");
-    let enc = session.encrypt(pk, UtimacoEncryptionAlgorithm::RsaPkcsV15, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, UtimacoEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     Ok(())
 }
 
 #[test]
-fn test_rsa_oaep_encrypt() -> PResult<()> {
+fn test_rsa_oaep_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -266,15 +270,15 @@ fn test_rsa_oaep_encrypt() -> PResult<()> {
         true,
     )?;
     info!("RSA handles sk: {sk}, pl: {pk}");
-    let enc = session.encrypt(pk, UtimacoEncryptionAlgorithm::RsaOaep, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, UtimacoEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     Ok(())
 }
 
 #[test]
-fn test_aes_gcm_encrypt() -> PResult<()> {
+fn test_aes_gcm_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -282,13 +286,13 @@ fn test_aes_gcm_encrypt() -> PResult<()> {
     let key_id = Uuid::new_v4().to_string();
     let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
     info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, UtimacoEncryptionAlgorithm::AesGcm, data)?;
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
     assert_eq!(enc.iv.clone().unwrap_or_default().len(), 12);
     let plaintext = session.decrypt(
         sk,
-        UtimacoEncryptionAlgorithm::AesGcm,
+        HsmEncryptionAlgorithm::AesGcm,
         [
             enc.iv.unwrap_or_default(),
             enc.ciphertext,
@@ -302,7 +306,7 @@ fn test_aes_gcm_encrypt() -> PResult<()> {
 }
 
 #[test]
-fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
+fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     initialize_logging();
 
     // Initialize the HSM once and share it across threads
@@ -323,16 +327,15 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
                 true,
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
-            let encrypted_content =
-                session.encrypt(pk, UtimacoEncryptionAlgorithm::RsaOaep, data)?;
+            let encrypted_content = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,
-                UtimacoEncryptionAlgorithm::RsaOaep,
+                HsmEncryptionAlgorithm::RsaOaep,
                 &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);
-            Ok::<(), PError>(())
+            Ok::<(), HError>(())
         });
         handles.push(handle);
     }
@@ -345,7 +348,7 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
 }
 
 #[test]
-fn test_list_objects() -> PResult<()> {
+fn test_list_objects() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -403,7 +406,7 @@ fn test_list_objects() -> PResult<()> {
 }
 
 #[test]
-fn test_get_key_metadata() -> PResult<()> {
+fn test_get_key_metadata() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -414,12 +417,12 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::AesKey);
     // get the metadata
     let metadata = session
         .get_key_metadata(key_handle)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::AesKey);
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
@@ -438,13 +441,13 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the private key basics
     let key_type = session
         .get_key_type(sk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::RsaPrivateKey);
 
     // get the private key metadata
     let metadata = session
         .get_key_metadata(sk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPrivateKey);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), sk_id.as_str());
@@ -453,13 +456,13 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the public key basics
     let key_type = session
         .get_key_type(pk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::RsaPublicKey);
 
     // get the public key metadata
     let metadata = session
         .get_key_metadata(pk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPublicKey);
     // assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 2048);
@@ -468,7 +471,7 @@ fn test_get_key_metadata() -> PResult<()> {
 }
 
 #[test]
-fn test_destroy_all() -> PResult<()> {
+fn test_destroy_all() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;

@@ -47,15 +47,15 @@ use tracing::debug;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{aes_mechanism, rsa_mechanism, ObjectHandlesCache, PError, PResult};
+use crate::{aes_mechanism, rsa_mechanism, HError, HResult, ObjectHandlesCache};
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM encryption
-fn generate_random_nonce<const T: usize>() -> PResult<[u8; T]> {
+fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0u8; T];
     OsRng
         .try_fill_bytes(&mut bytes)
-        .map_err(|e| PError::Default(format!("Error generating random nonce: {}", e)))?;
+        .map_err(|e| HError::Default(format!("Error generating random nonce: {}", e)))?;
     Ok(bytes)
 }
 
@@ -169,27 +169,27 @@ impl Session {
     }
 
     /// Close the session and log out if necessary
-    pub fn close(&self) -> PResult<()> {
+    pub fn close(&self) -> HResult<()> {
         unsafe {
             if self.is_logged_in {
                 let rv = self.hsm.C_Logout.ok_or_else(|| {
-                    PError::Default("C_Logout not available on library".to_string())
+                    HError::Default("C_Logout not available on library".to_string())
                 })?(self.session_handle);
                 if rv != CKR_OK {
-                    return Err(PError::Default("Failed logging out".to_string()));
+                    return Err(HError::Default("Failed logging out".to_string()));
                 }
             }
             let rv = self.hsm.C_CloseSession.ok_or_else(|| {
-                PError::Default("C_CloseSession not available on library".to_string())
+                HError::Default("C_CloseSession not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed closing a session".to_string()));
+                return Err(HError::Default("Failed closing a session".to_string()));
             }
             Ok(())
         }
     }
 
-    pub fn get_object_handle(&self, object_id: &[u8]) -> PResult<CK_OBJECT_HANDLE> {
+    pub fn get_object_handle(&self, object_id: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
         if let Some(handle) = self.object_handles_cache.get(object_id) {
             return Ok(handle);
         }
@@ -204,20 +204,20 @@ impl Session {
 
         unsafe {
             let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
-                PError::Default("C_FindObjectsInit not available on library".to_string())
+                HError::Default("C_FindObjectsInit not available on library".to_string())
             })?(
                 self.session_handle,
                 template.as_mut_ptr(),
                 template.len() as CK_ULONG,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(format!("C_FindObjectsInit failed: {}", rv)));
+                return Err(HError::Default(format!("C_FindObjectsInit failed: {}", rv)));
             }
 
             let mut object_handle: CK_OBJECT_HANDLE = 0;
             let mut object_count: CK_ULONG = 0;
             let rv = self.hsm.C_FindObjects.ok_or_else(|| {
-                PError::Default("C_FindObjects not available on library".to_string())
+                HError::Default("C_FindObjects not available on library".to_string())
             })?(
                 self.session_handle,
                 &mut object_handle,
@@ -225,21 +225,21 @@ impl Session {
                 &mut object_count,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(format!("C_FindObjects failed: {}", rv)));
+                return Err(HError::Default(format!("C_FindObjects failed: {}", rv)));
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
-                PError::Default("C_FindObjectsFinal not available on library".to_string())
+                HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(PError::Default(format!(
+                return Err(HError::Default(format!(
                     "C_FindObjectsFinal failed: {}",
                     rv
                 )));
             }
 
             if object_count == 0 {
-                return Err(PError::Default("Object not found".to_string()));
+                return Err(HError::Default("Object not found".to_string()));
             }
 
             //update cache
@@ -254,7 +254,7 @@ impl Session {
         self.object_handles_cache.remove(id)
     }
 
-    pub fn generate_random(&self, len: usize) -> PResult<Vec<u8>> {
+    pub fn generate_random(&self, len: usize) -> HResult<Vec<u8>> {
         unsafe {
             let mut values = vec![0u8; len];
             let values_ptr: *mut u8 = values.as_mut_ptr();
@@ -263,10 +263,10 @@ impl Session {
             #[cfg(not(target_os = "windows"))]
             let len = u64::try_from(len)?;
             let rv = self.hsm.C_GenerateRandom.ok_or_else(|| {
-                PError::Default("C_GenerateRandom not available on library".to_string())
+                HError::Default("C_GenerateRandom not available on library".to_string())
             })?(self.session_handle, values_ptr, len);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed generating random data".to_string()));
+                return Err(HError::Default("Failed generating random data".to_string()));
             }
             Ok(values)
         }
@@ -276,7 +276,7 @@ impl Session {
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
-    pub fn list_objects(&self, object_filter: HsmObjectFilter) -> PResult<Vec<CK_OBJECT_HANDLE>> {
+    pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
@@ -328,14 +328,14 @@ impl Session {
 
         unsafe {
             let rv = self.hsm.C_FindObjectsInit.ok_or_else(|| {
-                PError::Default("C_FindObjectsInit not available on library".to_string())
+                HError::Default("C_FindObjectsInit not available on library".to_string())
             })?(
                 self.session_handle,
                 template.as_mut_ptr(),
                 template.len() as CK_ULONG,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to initialize object search".to_string(),
                 ));
             }
@@ -344,7 +344,7 @@ impl Session {
             let mut object_count: CK_ULONG = 0;
             loop {
                 let rv = self.hsm.C_FindObjects.ok_or_else(|| {
-                    PError::Default("C_FindObjects not available on library".to_string())
+                    HError::Default("C_FindObjects not available on library".to_string())
                 })?(
                     self.session_handle,
                     &mut object_handle,
@@ -352,7 +352,7 @@ impl Session {
                     &mut object_count,
                 );
                 if rv != CKR_OK {
-                    return Err(PError::Default("Failed to find objects".to_string()));
+                    return Err(HError::Default("Failed to find objects".to_string()));
                 }
                 if object_count == 0 {
                     break;
@@ -361,10 +361,10 @@ impl Session {
             }
 
             let rv = self.hsm.C_FindObjectsFinal.ok_or_else(|| {
-                PError::Default("C_FindObjectsFinal not available on library".to_string())
+                HError::Default("C_FindObjectsFinal not available on library".to_string())
             })?(self.session_handle);
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to finalize object search".to_string(),
                 ));
             }
@@ -373,13 +373,13 @@ impl Session {
     }
 
     /// Destroy an object in the HSM
-    pub fn destroy_object(&self, object_handle: CK_OBJECT_HANDLE) -> PResult<()> {
+    pub fn destroy_object(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<()> {
         unsafe {
             let rv = self.hsm.C_DestroyObject.ok_or_else(|| {
-                PError::Default("C_DestroyObject not available on library".to_string())
+                HError::Default("C_DestroyObject not available on library".to_string())
             })?(self.session_handle, object_handle);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to destroy object".to_string()));
+                return Err(HError::Default("Failed to destroy object".to_string()));
             }
         }
         Ok(())
@@ -391,7 +391,7 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         algorithm: HsmEncryptionAlgorithm,
         plaintext: &[u8],
-    ) -> PResult<EncryptedContent> {
+    ) -> HResult<EncryptedContent> {
         Ok(match algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 let mut nonce = generate_random_nonce::<12>()?;
@@ -423,15 +423,15 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         algorithm: HsmEncryptionAlgorithm,
         ciphertext: &[u8],
-    ) -> PResult<Zeroizing<Vec<u8>>> {
+    ) -> HResult<Zeroizing<Vec<u8>>> {
         match algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 if ciphertext.len() < 12 {
-                    return Err(PError::Default("Invalid AES GCM ciphertext".to_string()));
+                    return Err(HError::Default("Invalid AES GCM ciphertext".to_string()));
                 }
                 let mut nonce: [u8; 12] = ciphertext[..12]
                     .try_into()
-                    .map_err(|_| PError::Default("Invalid AES GCM nonce".to_string()))?;
+                    .map_err(|_| HError::Default("Invalid AES GCM nonce".to_string()))?;
                 let plaintext = self.decrypt_with_mechanism(
                     key_handle,
                     &mut aes_mechanism!(&mut nonce),
@@ -450,16 +450,16 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
         data: &[u8],
-    ) -> PResult<Vec<u8>> {
+    ) -> HResult<Vec<u8>> {
         let mut data = data.to_vec();
         unsafe {
             let ck_fn = self.hsm.C_EncryptInit.ok_or_else(|| {
-                PError::Default("C_EncryptInit not available on library".to_string())
+                HError::Default("C_EncryptInit not available on library".to_string())
             })?;
 
             let rv = ck_fn(self.session_handle, mechanism, key_handle);
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to initialize encryption".to_string(),
                 ));
             }
@@ -467,7 +467,7 @@ impl Session {
             let ck_fn = self
                 .hsm
                 .C_Encrypt
-                .ok_or_else(|| PError::Default("C_Encrypt not available on library".to_string()))?;
+                .ok_or_else(|| HError::Default("C_Encrypt not available on library".to_string()))?;
 
             let mut encrypted_data_len: CK_ULONG = 0;
             let rv = ck_fn(
@@ -478,7 +478,7 @@ impl Session {
                 &mut encrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to get encrypted data length".to_string(),
                 ));
             }
@@ -492,7 +492,7 @@ impl Session {
                 &mut encrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to encrypt data".to_string()));
+                return Err(HError::Default("Failed to encrypt data".to_string()));
             }
 
             encrypted_data.truncate(encrypted_data_len as usize);
@@ -505,16 +505,16 @@ impl Session {
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
         encrypted_data: &[u8],
-    ) -> PResult<Zeroizing<Vec<u8>>> {
+    ) -> HResult<Zeroizing<Vec<u8>>> {
         let mut encrypted_data = encrypted_data.to_vec();
         unsafe {
             let ck_fn = self.hsm.C_DecryptInit.ok_or_else(|| {
-                PError::Default("C_DecryptInit not available on library".to_string())
+                HError::Default("C_DecryptInit not available on library".to_string())
             })?;
 
             let rv = ck_fn(self.session_handle, mechanism, key_handle);
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to initialize decryption".to_string(),
                 ));
             }
@@ -522,7 +522,7 @@ impl Session {
             let ck_fn = self
                 .hsm
                 .C_Decrypt
-                .ok_or_else(|| PError::Default("C_Decrypt not available on library".to_string()))?;
+                .ok_or_else(|| HError::Default("C_Decrypt not available on library".to_string()))?;
 
             let mut decrypted_data_len: CK_ULONG = 0;
             let rv = ck_fn(
@@ -533,7 +533,7 @@ impl Session {
                 &mut decrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to get decrypted data length".to_string(),
                 ));
             }
@@ -547,7 +547,7 @@ impl Session {
                 &mut decrypted_data_len,
             );
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to decrypt data".to_string()));
+                return Err(HError::Default("Failed to decrypt data".to_string()));
             }
 
             decrypted_data.truncate(decrypted_data_len as usize);
@@ -556,7 +556,7 @@ impl Session {
     }
 
     /// Export a key from the HSM
-    pub fn export_key(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<HsmObject>> {
+    pub fn export_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         let mut key_type: CK_KEY_TYPE = CKK_VENDOR_DEFINED;
         let mut class: CK_OBJECT_CLASS = CKO_VENDOR_DEFINED;
         let mut template = [
@@ -583,7 +583,7 @@ impl Session {
                 }
             }
             x => {
-                return Err(PError::Default(format!(
+                return Err(HError::Default(format!(
                     "Export: unsupported key type: {x}"
                 )));
             }
@@ -596,7 +596,7 @@ impl Session {
         }
     }
 
-    fn export_rsa_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<HsmObject>> {
+    fn export_rsa_private_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [
             CK_ATTRIBUTE {
@@ -723,7 +723,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| PError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPrivateKey(RsaPrivateKeyMaterial {
                 modulus,
@@ -739,7 +739,7 @@ impl Session {
         )))
     }
 
-    fn export_rsa_public_key(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<HsmObject>> {
+    fn export_rsa_public_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [
             CK_ATTRIBUTE {
@@ -794,7 +794,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| PError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::RsaPublicKey(RsaPublicKeyMaterial {
                 modulus,
@@ -804,7 +804,7 @@ impl Session {
         )))
     }
 
-    fn export_aes_key(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<HsmObject>> {
+    fn export_aes_key(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<HsmObject>> {
         // Get the key size
         let mut template = [
             CK_ATTRIBUTE {
@@ -854,7 +854,7 @@ impl Session {
             return Ok(None);
         }
         let label = String::from_utf8(label_bytes)
-            .map_err(|e| PError::Default(format!("Failed to convert label to string: {}", e)))?;
+            .map_err(|e| HError::Default(format!("Failed to convert label to string: {}", e)))?;
         Ok(Some(HsmObject::new(
             KeyMaterial::AesKey(Zeroizing::new(key_value)),
             label,
@@ -865,12 +865,12 @@ impl Session {
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
-    ) -> PResult<Option<()>> {
+    ) -> HResult<Option<()>> {
         unsafe {
             debug!("Retrieving Proteccio key attributes for key: {key_handle}");
             // Get the length of the key value
             let rv = self.hsm.C_GetAttributeValue.ok_or_else(|| {
-                PError::Default("C_GetAttributeValue not available on library".to_string())
+                HError::Default("C_GetAttributeValue not available on library".to_string())
             })?(
                 self.session_handle,
                 key_handle,
@@ -878,7 +878,7 @@ impl Session {
                 template.len() as CK_ULONG,
             );
             if rv == CKR_ATTRIBUTE_SENSITIVE {
-                return Err(PError::Default(format!(
+                return Err(HError::Default(format!(
                     "This key {key_handle} cannot be exported from the HSM."
                 )));
             }
@@ -887,7 +887,7 @@ impl Session {
                 return Ok(None);
             }
             if rv != CKR_OK {
-                return Err(PError::Default(format!(
+                return Err(HError::Default(format!(
                     "Failed to get the HSM attributes for key {key_handle}"
                 )));
             }
@@ -896,7 +896,7 @@ impl Session {
     }
 
     /// Get the metadata for a key
-    pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<KeyMetadata>> {
+    pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
         let key_type = match self.get_key_type(key_handle)? {
             None => return Ok(None),
             Some(key_type) => key_type,
@@ -946,13 +946,13 @@ impl Session {
                         return Ok(None);
                     }
                     String::from_utf8(label_bytes).map_err(|e| {
-                        PError::Default(format!("Failed to convert label to string: {}", e))
+                        HError::Default(format!("Failed to convert label to string: {}", e))
                     })?
                 };
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
-                        PError::Default(format!("Failed to convert key size to usize: {}", e))
+                        HError::Default(format!("Failed to convert key size to usize: {}", e))
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
@@ -1006,7 +1006,7 @@ impl Session {
                     String::new()
                 } else {
                     String::from_utf8(label_bytes).map_err(|e| {
-                        PError::Default(format!("Failed to convert label to string: {}", e))
+                        HError::Default(format!("Failed to convert label to string: {}", e))
                     })?
                 };
                 let sensitive = sensitive == CK_TRUE;
@@ -1025,7 +1025,7 @@ impl Session {
     /// * `key_handle` - The key handle
     /// # Returns
     /// * `Result<Option<KeyType>>` - The key type if the key exists
-    pub(crate) fn get_key_type(&self, key_handle: CK_OBJECT_HANDLE) -> PResult<Option<KeyType>> {
+    pub fn get_key_type(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyType>> {
         let mut key_type: CK_KEY_TYPE = CKK_VENDOR_DEFINED;
         let mut class: CK_OBJECT_CLASS = CKO_VENDOR_DEFINED;
         let mut template = [
@@ -1057,7 +1057,7 @@ impl Session {
                 }
             }
             x => {
-                return Err(PError::Default(format!(
+                return Err(HError::Default(format!(
                     "Export: unsupported key type: {x}"
                 )));
             }
@@ -1073,7 +1073,7 @@ impl Session {
     pub(crate) fn get_object_id(
         &self,
         object_handle: CK_OBJECT_HANDLE,
-    ) -> PResult<Option<Vec<u8>>> {
+    ) -> HResult<Option<Vec<u8>>> {
         let mut template = [CK_ATTRIBUTE {
             type_: CKA_ID,
             pValue: ptr::null_mut(),

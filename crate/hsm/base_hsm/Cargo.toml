@@ -1,12 +1,12 @@
 [package]
-name = "kms_hsm_common"
+name = "cosmian_kms_base_hsm"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Code common to most HSMs the KMS connects to"
+description = "Base HSM integration implementation"
 
 [lib]
 doctest = false
