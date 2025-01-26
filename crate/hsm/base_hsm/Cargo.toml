@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Base HSM integration implementation"
+description = "Base PKCS#11 HSM integration implementation"
 
 [lib]
 doctest = false
