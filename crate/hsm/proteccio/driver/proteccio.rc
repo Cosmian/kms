@@ -1,0 +1,11 @@
+[PROTECCIO]
+IPaddr=192.168.0.1
+SSL=0
+SrvCert=proteccio.crt
+
+[CLIENT]
+Mode=0
+LoggingLevel=0
+LogFile=my_log_file.log
+ClntKey=proteccio_client.key
+ClntCert=proteccio_client.crt
