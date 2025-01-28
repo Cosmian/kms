@@ -1,0 +1,104 @@
+import React from 'react';
+import { Form, Input, InputNumber, Select, Checkbox, Button } from 'antd';
+
+interface RsaKeyCreateFormData {
+    privateKeyId?: string;
+    sizeInBits: number;
+    tags: string[];
+    sensitive: boolean;
+}
+
+const RsaKeyCreateForm: React.FC = () => {
+    const [form] = Form.useForm<RsaKeyCreateFormData>();
+
+    const onFinish = (values: RsaKeyCreateFormData) => {
+        console.log('Create key values:', values);
+        // Handle form submission
+    };
+
+    return (
+        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create an RSA key pair</h1>
+
+            <div className="mb-8 text-gray-600 space-y-2">
+                <p>Create a new RSA key pair:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                    <li>The public key is used to encrypt or verify signatures and can be safely shared.</li>
+                    <li>The private key is used to decrypt or sign and must be kept secret.</li>
+                </ul>
+            </div>
+
+            <Form
+                form={form}
+                onFinish={onFinish}
+                layout="vertical"
+                initialValues={{
+                    sizeInBits: 4096,
+                    tags: [],
+                    sensitive: false,
+                }}
+                className="space-y-6"
+            >
+                <Form.Item
+                    name="privateKeyId"
+                    label="Private Key ID"
+                    help="Optional: a random UUID will be generated if not specified"
+                >
+                    <Input
+                        placeholder="Enter private key ID"
+                        className="max-w-[500px]"
+                    />
+                </Form.Item>
+
+                <Form.Item
+                    name="sizeInBits"
+                    label="Size in Bits"
+                    help="The expected size in bits for the RSA key"
+                    rules={[{ required: true, message: 'Please specify the key size' }]}
+                >
+                    <InputNumber
+                        className="w-[200px]"
+                        min={1024}
+                        step={1024}
+                        max={8192}
+                    />
+                </Form.Item>
+
+                <Form.Item
+                    name="tags"
+                    label="Tags"
+                    help="Optional: Add tags to help retrieve the keys later"
+                >
+                    <Select
+                        mode="tags"
+                        placeholder="Enter tags"
+                        className="max-w-[500px]"
+                        open={false}
+                    />
+                </Form.Item>
+
+                <Form.Item
+                    name="sensitive"
+                    valuePropName="checked"
+                    help="If set, the private key will not be exportable"
+                >
+                    <Checkbox>
+                        Sensitive
+                    </Checkbox>
+                </Form.Item>
+
+                <Form.Item>
+                    <Button
+                        type="primary"
+                        htmlType="submit"
+                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                    >
+                        Create RSA Key Pair
+                    </Button>
+                </Form.Item>
+            </Form>
+        </div>
+    );
+};
+
+export default RsaKeyCreateForm;

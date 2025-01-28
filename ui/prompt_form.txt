@@ -1,0 +1,35 @@
+Using React + ANTDesign and Tailwind CSS, generate a form that will offer entering the same parameter 
+as those of the output of the command line tool below. The form shoud have the same look and feel than 
+the form in RsaKeysCreate.tsx
+
+
+Command: rsa keys create
+Create a new RSA key pair
+
+ - The public is used to encrypt
+     and can be safely shared.
+ - The private key is used to decrypt
+     and must be kept secret.
+
+Tags can later be used to retrieve the keys. Tags are optional.
+
+Usage: ckms rsa keys create [OPTIONS] [PRIVATE_KEY_ID]
+
+Arguments:
+  [PRIVATE_KEY_ID]
+          The unique id of the private key; a random uuid is generated if not specified
+
+Options:
+  -s, --size_in_bits <SIZE_IN_BITS>
+          The expected size in bits
+          
+          [default: 4096]
+
+  -t, --tag <TAG>
+          The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+      --sensitive
+          Sensitive: if set, the private key will not be exportable
+
+  -h, --help
+          Print help (see a summary with '-h')
