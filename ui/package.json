@@ -10,8 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.6.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "antd": "^5.23.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.x",
+    "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -1,0 +1,91 @@
+access-rights   Manage the users' access rights to the cryptographic objects
+    grant     Grant another user one or multiple access rights to an object
+    revoke    Revoke another user one or multiple access rights to an object
+    list      List the access rights granted on an object to other users
+    owned     List the objects owned by the calling user
+    obtained  List the access rights obtained by the calling user
+
+attributes      Get/Set/Delete the KMIP object attributes
+    get     Get the KMIP object attributes and tags.
+    set     Set the KMIP object attributes.
+    delete  Delete the KMIP object attributes.
+
+cc              Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+    keys     Create, destroy, import, export, and rekey `Covercrypt` master and user keys
+        create-master-key-pair  Create a new master key pair for a given policy and return the key IDs.
+        create-user-key         Create a new user decryption key given an access policy expressed as a boolean expression.
+        export                  Export a key from the KMS
+        import                  Import a private or public key in the KMS.
+        wrap                    Locally wrap a key in KMIP JSON TTLV format.
+        unwrap                  Locally unwrap a key in KMIP JSON TTLV format.
+        revoke                  Revoke a Covercrypt master or user decryption key
+        destroy                 Destroy a Covercrypt master or user decryption key
+        rekey                   Rekey the master and user keys for a given access policy.
+        prune                   Prune the master and user keys for a given access policy.
+        help                    Print this message or the help of the given subcommand(s)  
+    policy   Extract, view, or edit policies of existing keys, and create a binary policy from specifications
+        view               View the policy of an existing public or private master key.
+        specs              Extract the policy specifications from a public or private master key to a policy specifications file
+        binary             Extract the policy from a public or private master key to a policy binary file
+        create             Create a policy binary file from policy specifications
+        add-attribute      Add an attribute to the policy of an existing private master key.
+        remove-attribute   Remove an attribute from the policy of an existing private master key.
+                        Permanently removes the ability to use this attribute in both encryptions and decryptions.
+        disable-attribute  Disable an attribute from the policy of an existing private master key.
+                        Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+        rename-attribute   Rename an attribute in the policy of an existing private master key.
+        help               Print this message or the help of the given subcommand(s)
+
+    encrypt  Encrypt a file using Covercrypt
+
+    decrypt  Decrypt a file using Covercrypt
+
+
+certificates    Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+    certify   Issue or renew a X509 certificate
+    decrypt   Decrypt a file using the private key of a certificate
+    encrypt   Encrypt a file using the certificate public key
+    export    Export a certificate from the KMS
+    import    Import certificates
+    revoke    Revoke a certificate
+    destroy   Destroy a certificate
+    validate  Validate a certificate
+
+ec              Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+    keys     Create, destroy, import, and export elliptic curve key pairs
+        create   Create an elliptic curve key pair
+        export   Export a key from the KMS
+        import   Import a private or public key in the KMS.
+        wrap     Locally wrap a key in KMIP JSON TTLV format.
+        unwrap   Locally unwrap a key in KMIP JSON TTLV format.
+        revoke   Revoke a public or private key
+        destroy  Destroy a public or private key    
+    encrypt  Encrypt a file with the given public key using ECIES
+    decrypt  Decrypts a file with the given private key using ECIES
+
+locate          Locate cryptographic objects inside the KMS
+
+rsa             Manage RSA keys. Encrypt and decrypt data using RSA keys
+    keys     Create, destroy, import, and export RSA key pairs
+        create   Create a new RSA key pair
+        export   Export a key from the KMS
+        import   Import a private or public key in the KMS.
+        wrap     Locally wrap a key in KMIP JSON TTLV format.
+        unwrap   Locally unwrap a key in KMIP JSON TTLV format.
+        revoke   Revoke a public or private key
+        destroy  Destroy a public or private key    
+    encrypt  Encrypt a file with a given public key
+    decrypt  Decrypt a file with the given private key 
+
+sym             Manage symmetric keys. Encrypt and decrypt data
+    keys     Create, destroy, import, and export symmetric keys
+        create   Create a new symmetric key
+        re-key   Refresh an existing symmetric key
+        export   Export a key from the KMS
+        import   Import a private or public key in the KMS.
+        wrap     Locally wrap a key in KMIP JSON TTLV format.
+        unwrap   Locally unwrap a key in KMIP JSON TTLV format.
+        revoke   Revoke a symmetric key
+        destroy  Destroy a symmetric key    
+    encrypt  Encrypt a file using a symmetric cipher
+    decrypt  Decrypt a file using a symmetric key.
