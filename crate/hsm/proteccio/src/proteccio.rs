@@ -185,7 +185,9 @@ impl HsmLib {
                 PError::Default("C_Initialize not available on library".to_string())
             })?(&pInitArgs as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
             if rv != CKR_OK {
-                return Err(PError::Default("Failed initializing the HSM".to_string()));
+                return Err(PError::Default(format!(
+                    "Failed initializing the HSM: {rv}"
+                )));
             }
             Ok(())
         }

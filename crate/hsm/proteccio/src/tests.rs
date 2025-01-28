@@ -50,7 +50,7 @@ fn get_hsm_password() -> PResult<String> {
 fn get_slot() -> PResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
     let passwords = HashMap::from([(0x04, Some(user_password.clone()))]);
-    let hsm = Proteccio::instantiate("/lib/libnethsm64.so", passwords)?;
+    let hsm = Proteccio::instantiate("/lib/libnethsm.so", passwords)?;
     let manager = hsm.get_slot(0x04)?;
     Ok(manager)
 }
@@ -74,7 +74,7 @@ fn test_all() -> PResult<()> {
 
 #[test]
 fn low_level_test() -> PResult<()> {
-    let path = "/lib/libnethsm64.so";
+    let path = "/lib/libnethsm.so";
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(pInitArgs: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -95,7 +95,7 @@ fn low_level_test() -> PResult<()> {
 #[test]
 fn test_hsm_get_info() -> PResult<()> {
     initialize_logging();
-    let hsm = Proteccio::instantiate("/lib/libnethsm64.so", HashMap::new())?;
+    let hsm = Proteccio::instantiate("/lib/libnethsm.so", HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
