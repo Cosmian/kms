@@ -21,10 +21,7 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
-use crate::{
-    // AesKeySize, HError, HResult, RsaKeySize, SlotManager, Utimaco, HsmEncryptionAlgorithm,
-    Utimaco,
-};
+use crate::Utimaco;
 
 static TRACING_INIT: Once = Once::new();
 fn initialize_logging() {
