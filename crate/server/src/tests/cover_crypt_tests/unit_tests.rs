@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_objects::{Object, ObjectType},
@@ -32,13 +33,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-let ap = "Departement::FIN";
-// create Key Pair
+    // create Key Pair
     debug!("ABE Create Master Key Pair");
+    let (msk, _) = Covercrypt::default().setup()?;
 
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(ap, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -219,12 +220,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
 
-let ap = "Departement::FIN";
+    let (msk,_) = Covercrypt::default().setup()?;
 
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(ap, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -444,10 +445,10 @@ async fn test_abe_json_access() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
 
-let ap = "Departement::FIN";
+    let (msk, _) = Covercrypt::default().setup()?;
 
     // Create CC master key pair
-    let master_keypair = build_create_covercrypt_master_keypair_request(ap, EMPTY_TAGS, false)?;
+    let master_keypair = build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -521,12 +522,12 @@ async fn test_import_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
-let ap = "Departement::FIN";
+    let (msk,_) = Covercrypt::default().setup()?;
 
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(ap, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
             owner,
             None,
         )

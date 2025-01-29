@@ -1,19 +1,14 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
-use cosmian_kms_client::KmsClient;
+use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
+use cosmian_kms_client::{cosmian_kmip::KmipResultHelper, export_object, kmip_2_1::{kmip_objects::Object, ttlv::{deserializer::from_ttlv, TTLV}}, read_from_json_file, ExportObjectParams, KmsClient};
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::RekeyEditAction,
-    kmip_requests::build_rekey_keypair_request,
+    attributes::{policy_from_attributes, RekeyEditAction}, kmip_requests::build_rekey_keypair_request,
 };
 
-use crate::{
-    actions::console,
-    cli_bail,
-    error::result::CliResult,
-};
-
+use crate::{actions::console, cli_bail, error::result::CliResult};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 /// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
@@ -36,6 +31,35 @@ impl PolicyCommands {
 
         Ok(())
     }
+}
+
+/// Recover the Policy from a key store in the KMS or in a TTLV file
+async fn recover_policy(
+    key_id: Option<&str>,
+    key_file: Option<&PathBuf>,
+    unwrap: bool,
+    kms_rest_client: &KmsClient,
+) -> CliResult<AccessStructure> {
+    // Recover the KMIP Object
+    let object: Object = if let Some(key_id) = key_id {
+        export_object(
+            kms_rest_client,
+            key_id,
+            ExportObjectParams {
+                unwrap,
+                ..ExportObjectParams::default()
+            },
+        )
+        .await?
+        .1
+    } else if let Some(f) = key_file {
+        let ttlv: TTLV = read_from_json_file(f)?;
+        from_ttlv(&ttlv)?
+    } else {
+        cli_bail!("either a key ID or a key TTLV file must be supplied");
+    };
+    // Recover the policy
+    Ok(policy_from_attributes(object.attributes()?)?)
 }
 
 /// View the policy of an existing public or private master key.
@@ -65,7 +89,7 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Recover the policy
-        let msk = recover_policy(
+        let access_structure = recover_policy(
             self.key_id.as_deref(),
             self.key_file.as_ref(),
             true,
@@ -76,7 +100,7 @@ impl ViewAction {
 
         let json = format!(
             "{:?}",
-            serde_json::from_value(msk.access_structure.serialize()?.to_vec().into())?
+            serde_json::from_value(access_structure.serialize()?.to_vec().into())?
         );
         console::Stdout::new(&json).write()?;
 

@@ -12,6 +12,8 @@ use zeroize::Zeroizing;
 
 use crate::{crypto::KeyPair, error::CryptoError};
 
+use super::attributes::{policy_from_attributes, upsert_policy_in_attributes};
+
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);
 
@@ -25,6 +27,17 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
+    let any_attributes = common_attributes
+        .as_ref()
+        .or(private_key_attributes.as_ref())
+        .or(public_key_attributes.as_ref())
+        .ok_or_else(|| {
+            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
+        })?;
+
+    // verify that we can recover the policy
+    let _access_structure = policy_from_attributes(any_attributes)?;
+
     // Now generate a master key using the CoverCrypt Engine
     let (sk, pk) = cover_crypt
         .setup()
@@ -41,7 +54,7 @@ pub fn create_master_keypair(
         ))
     })?;
     let private_key =
-        create_master_private_key_object(&sk_bytes, private_key_attributes, public_key_uid)?;
+        create_master_private_key_object(&sk_bytes, &sk, private_key_attributes, public_key_uid)?;
 
     // Public Key generation
     // First generate fresh attributes with that policy
@@ -54,13 +67,14 @@ pub fn create_master_keypair(
         ))
     })?;
     let public_key =
-        create_master_public_key_object(&pk_bytes, public_key_attributes, private_key_uid)?;
+        create_master_public_key_object(&pk_bytes, &sk, public_key_attributes, private_key_uid)?;
 
     Ok(KeyPair((private_key, public_key)))
 }
 
 fn create_master_private_key_object(
     key: &[u8],
+    msk: &MasterSecretKey,
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -69,6 +83,8 @@ fn create_master_private_key_object(
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+    // add the policy to the attributes
+    upsert_policy_in_attributes(&mut attributes, &msk.access_structure)?;
     // link the private key to the public key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
@@ -98,6 +114,7 @@ fn create_master_private_key_object(
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
 fn create_master_public_key_object(
     key: &[u8],
+    msk: &MasterSecretKey,
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -107,6 +124,8 @@ fn create_master_public_key_object(
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+    // add the policy to the attributes
+    upsert_policy_in_attributes(&mut attributes, &msk.access_structure)?;
     // link the public key to the private key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
@@ -168,6 +187,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     })?;
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
+        msk,
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,
     )?;
@@ -178,6 +198,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     })?;
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
+        msk,
         Some(mpk_obj.1.attributes()?),
         &msk_obj.0,
     )?;

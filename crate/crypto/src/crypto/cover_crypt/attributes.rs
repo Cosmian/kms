@@ -1,7 +1,7 @@
-use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, MasterSecretKey, QualifiedAttribute};
+use cosmian_cover_crypt::{AccessPolicy, AccessStructure, EncryptionHint, MasterSecretKey, QualifiedAttribute};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_types::{Attributes, VendorAttribute},
+    extra::VENDOR_ID_COSMIAN, kmip_types::{Attributes, VendorAttribute}
 };
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +11,47 @@ pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
+
+/// Extract a `CoverCrypt` policy from attributes
+pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure, CryptoError> {
+    let msk = attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
+        .map_or_else(
+            || {
+                Err(CryptoError::Kmip(
+                    "the attributes do not contain a CoverCrypt Policy".to_owned(),
+                ))
+            },
+            |bytes| {
+                MasterSecretKey::deserialize(bytes).map_err(|e| {
+                    CryptoError::Kmip(format!(
+                        "failed deserializing the CoverCrypt Policy from the attributes: {e}"
+                    ))
+                })
+            },
+        )?;
+        Ok(msk.access_structure)
+}
+
+/// Convert a policy to a vendor attribute
+pub fn policy_as_vendor_attribute(access_structure: &AccessStructure) -> Result<VendorAttribute, CryptoError> {
+    Ok(VendorAttribute {
+        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
+        attribute_value: access_structure.serialize()?.to_vec(),
+    })
+}
+
+/// Add or replace an `CoverCrypt` policy in attributes in place
+pub fn upsert_policy_in_attributes(
+    attributes: &mut Attributes,
+    access_structure: &AccessStructure,
+) -> Result<(), CryptoError> {
+    let va = policy_as_vendor_attribute(access_structure)?;
+    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY);
+    attributes.add_vendor_attribute(va);
+    Ok(())
+}
 
 /// Convert an access policy to a vendor attribute
 pub fn access_policy_as_vendor_attribute(
@@ -25,21 +66,21 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from `CoverCrypt` policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: &MasterSecretKey,
+    attributes: &[QualifiedAttribute],
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ATTR.to_owned(),
-        attribute_value: Vec::<u8>::from(
-            attributes.access_structure.dimensions().collect::<String>(),
-        ),
+        attribute_value: serde_json::to_vec(&attributes).map_err(|e| {
+            CryptoError::Kmip(format!("failed serializing the CoverCrypt attributes: {e}"))
+        })?,
     })
 }
 
 /// Convert from vendor attributes to `CoverCrypt` policy attributes
 pub fn attributes_from_attributes(
     attributes: &Attributes,
-) -> Result<Vec<AccessPolicy>, CryptoError> {
+) -> Result<Vec<QualifiedAttribute>, CryptoError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
@@ -50,7 +91,7 @@ pub fn attributes_from_attributes(
         })?;
         let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
         for attr in attribute_strings {
-            let attr = AccessPolicy::parse(&attr).map_err(|e| {
+            let attr = QualifiedAttribute::try_from(attr.as_str()).map_err(|e| {
                 CryptoError::Kmip(format!(
                     "failed deserializing the CoverCrypt attribute: {e}"
                 ))
