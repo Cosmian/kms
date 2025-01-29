@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Loading server conf with default sytem conf. fallback ([#360](https://github.com/Cosmian/kms/pull/360))
+- Loading server conf with default system conf. fallback ([#360](https://github.com/Cosmian/kms/pull/360))
 - Update crate config_utils ([#358](https://github.com/Cosmian/kms/pull/358))
 
 ### 📚 Documentation

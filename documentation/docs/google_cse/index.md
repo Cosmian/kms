@@ -9,7 +9,6 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
 
 ## Prerequisites
 
-
 !!! info
     You will need:
 
@@ -36,6 +35,18 @@ In that case, your users S/MIME certificates will be issued directly from your C
     - that you already have (remember that this custom CA must have the expected Google X509 extensions).
   You will have to upload the full CA chain in admin.google.com->Apps/Google Workspace/Settings for Gmail/User Settings/S/MIME (and wait for provisioning to be fully done, few hours expected).
     - that you do not have, in that case read [this page](../pki/smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) to generate your own CA and upload the full CA chain in admin.google.com.
+
+### Actalis CA
+
+In order to import the Actalis CA in admin.google.com->Apps/Google Workspace/Settings for Gmail/User Settings/S/MIME, you have to build the full chain of certificates from an existing PKCS#12 certificate.
+
+```sh
+openssl pkcs12 -in certificate_s_mime.p12 -cacerts -nokeys -out ca.pem -passin pass:'YOUR_PASSWORD'
+openssl pkcs12 -in certificate_s_mime.p12 -clcerts -nokeys -out certificate.pem -passin pass:'YOUR_PASSWORD'
+cp certificate.pem fullchain.pem
+cat ca.pem >> fullchain.pem
+cat fullchain.pem
+```
 
 ## Choosing and configuring the Identity Provider
 
