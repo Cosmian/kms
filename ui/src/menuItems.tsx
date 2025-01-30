@@ -14,7 +14,6 @@ export const menuItems: MenuItem[] = [
                 label: 'Keys',
                 children: [
                     { key: 'sym/keys/create', label: 'Create' },
-                    { key: 'sym/keys/re-key', label: 'Re-key' },
                     { key: 'sym/keys/export', label: 'Export' },
                     { key: 'sym/keys/import', label: 'Import' },
                     { key: 'sym/keys/revoke', label: 'Revoke' },
