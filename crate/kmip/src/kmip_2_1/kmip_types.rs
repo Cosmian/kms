@@ -36,13 +36,14 @@ pub const VENDOR_ATTR_AAD: &str = "aad";
 /// The PKCS7 format is a Cosmian extension from KMIP.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
+#[repr(u32)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
     PKCS7 = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
@@ -51,6 +52,7 @@ pub enum CertificateRequestType {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
+#[repr(u32)]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
@@ -101,7 +103,10 @@ pub enum SplitKeyMethod {
 ///  - Raw for opaque objects and Secret Data
 ///
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[derive(
+    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display, EnumString,
+)]
+#[repr(u32)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -145,10 +150,24 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Eq,
+    PartialEq,
+    EnumIter,
+    EnumString,
+    Default,
+)]
+#[repr(u32)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
+    #[default]
     AES = 0x0000_0003,
     /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
     /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
@@ -241,7 +260,8 @@ impl Default for CryptographicDomainParameters {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString)]
+#[repr(u32)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -330,7 +350,7 @@ impl Default for RecommendedCurve {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
@@ -339,8 +359,9 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(transparent)]
+
 pub struct CryptographicUsageMask(u32);
 
 bitflags::bitflags! {
@@ -1220,7 +1241,7 @@ impl Attributes {
 }
 
 /// Structure used in various operations to provide the New Attribute value in the request.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumString)]
 #[allow(clippy::large_enum_variant)]
 pub enum Attribute {
     ActivationDate(u64),
@@ -1948,6 +1969,7 @@ impl Default for WrappingMethod {
 
 #[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[repr(u32)]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
     ECB = 0x0000_0002,
@@ -2177,7 +2199,7 @@ pub enum EncodingOption {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString)]
 pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
@@ -2912,6 +2934,7 @@ pub enum ResultStatusEnumeration {
 /// invalid, or unknown.
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[repr(u32)]
 pub enum ValidityIndicator {
     Valid = 0x0000_0000,
     Invalid = 0x0000_0001,

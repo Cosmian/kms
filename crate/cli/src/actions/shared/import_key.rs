@@ -9,8 +9,8 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    KmsClient,
+    kmip_2_1::requests::import_object_request,
+    objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes, KmsClient,
 };
 use zeroize::Zeroizing;
 
@@ -202,16 +202,18 @@ impl ImportKeyAction {
         }
 
         // import the key
-        let unique_identifier = import_object(
-            kms_rest_client,
+        let import_object_request = import_object_request(
             self.key_id.clone(),
             object,
             Some(import_attributes),
             self.unwrap,
             self.replace_existing,
             &self.tags,
-        )
-        .await?;
+        );
+        let unique_identifier = kms_rest_client
+            .import(import_object_request)
+            .await?
+            .unique_identifier;
 
         // print the response
         let stdout = format!(

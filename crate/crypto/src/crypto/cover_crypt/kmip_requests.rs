@@ -2,7 +2,7 @@ use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+    kmip_operations::{Create, CreateKeyPair, Destroy, Import, ReKeyKeyPair},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
         Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
@@ -267,20 +267,6 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 key_wrapping_data: None,
             },
         },
-    })
-}
-
-/// Build a `Locate` request to locate an `CoverCrypt` Symmetric Key
-pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, CryptoError> {
-    Ok(Locate {
-        attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: Some(ObjectType::SymmetricKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            ..Attributes::default()
-        },
-        ..Locate::default()
     })
 }
 

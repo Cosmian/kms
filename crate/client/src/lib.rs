@@ -13,7 +13,6 @@ pub use file_utils::{
     write_bulk_encrypted_data, write_bytes_to_file, write_json_object_to_file,
     write_kmip_object_to_file, write_single_decrypted_data, write_single_encrypted_data,
 };
-pub use import_utils::import_object;
 pub use kms_rest_client::KmsClient;
 
 mod batch_utils;
@@ -22,7 +21,6 @@ mod encodings;
 mod error;
 mod export_utils;
 mod file_utils;
-mod import_utils;
 mod kms_rest_client;
 
 pub mod reexport {

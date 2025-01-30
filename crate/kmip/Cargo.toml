@@ -11,6 +11,7 @@ rust-version.workspace = true
 # doc test linking as a separate binary is extremely slow
 # and is not needed for internal lib
 doctest = false
+crate-type = ["cdylib", "rlib"]
 
 [features]
 pyo3 = ["dep:pyo3"]
@@ -36,8 +37,10 @@ strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["v4", "serde", "js"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.100"
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

@@ -64,6 +64,7 @@ pub use data_to_encrypt::DataToEncrypt;
 mod error;
 pub mod kmip_2_1;
 mod safe_biguint;
+pub mod wasm;
 
 pub use safe_biguint::SafeBigUint;
 
