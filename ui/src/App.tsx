@@ -1,29 +1,40 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import MainLayout from './MainLayout';
-import KeyExportForm from './KeysExport';
-import RsaKeyCreateForm from './RsaKeysCreate';
-import KeyImportForm from './KeysImport';
-import KeyRevokeForm from './KeysRevoke';
-import KeyDestroyForm from './KeysDestroy';
-import SymKeyCreateForm from './SymKeysCreate';
-import ECKeyCreateForm from './ECKeysCreate';
-import SymmetricEncryptForm from './SymmetricEncrypt';
-import RsaEncryptForm from './RsaEncrypt';
-import SymmetricDecryptForm from './SymmetricDecrypt';
-import RsaDecryptForm from './RsaDecrypt';
-import ECEncryptForm from './ECEncrypt';
-import ECDecryptForm from './ECDecrypt';
-import LocateForm from './Locate';
-import CovercryptMasterKeyForm from './CovercryptMasterKey';
-import CovercryptUserKeyForm from './CovercryptUserKey';
-import CovercryptRevokeForm from './CovercryptKeysRevoke';
-import AccessGrantForm from './AccessGrant';
-import AccessRevokeForm from './AccessRevoke';
-import AccessListForm from './AccessList';
-import ObjectsOwnedList from './ObjectsOwned';
-import AccessObtainedList from './AccessObtained';
+import { useEffect } from "react"
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import AccessGrantForm from './AccessGrant'
+import AccessListForm from './AccessList'
+import AccessObtainedList from './AccessObtained'
+import AccessRevokeForm from './AccessRevoke'
+import CovercryptRevokeForm from './CovercryptKeysRevoke'
+import CovercryptMasterKeyForm from './CovercryptMasterKey'
+import CovercryptUserKeyForm from './CovercryptUserKey'
+import ECDecryptForm from './ECDecrypt'
+import ECEncryptForm from './ECEncrypt'
+import ECKeyCreateForm from './ECKeysCreate'
+import KeyDestroyForm from './KeysDestroy'
+import KeyExportForm from './KeysExport'
+import KeyImportForm from './KeysImport'
+import KeyRevokeForm from './KeysRevoke'
+import LocateForm from './Locate'
+import MainLayout from './MainLayout'
+import ObjectsOwnedList from './ObjectsOwned'
+import RsaDecryptForm from './RsaDecrypt'
+import RsaEncryptForm from './RsaEncrypt'
+import RsaKeyCreateForm from './RsaKeysCreate'
+import SymKeyCreateForm from './SymKeysCreate'
+import SymmetricDecryptForm from './SymmetricDecrypt'
+import SymmetricEncryptForm from './SymmetricEncrypt'
+import init from "./wasm/pkg"
+
+
 
 function App() {
+  useEffect(() => {
+    async function loadWasm() {
+        await init();
+    }
+
+    loadWasm();
+}, []);
 
   return (
     <>

@@ -2,9 +2,9 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::Object,
     kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
+    requests::{create_symmetric_key_kmip_object, import_object_request},
 };
-use cosmian_kms_client::{import_object, KmsClient};
+use cosmian_kms_client::KmsClient;
 use cosmian_logger::log_init;
 use cosmian_pkcs11_module::traits::Backend;
 use kms_test_server::start_default_test_kms_server;
@@ -57,28 +57,32 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
 async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
     let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
     debug!("vol1: {}", vol1);
-    let _vol1_id = import_object(
-        kms_rest_client,
+    let import_object_request = import_object_request(
         Some("vol1".to_owned()),
         vol1,
         None,
         false,
         true,
         ["disk-encryption", "vol1"],
-    )
-    .await?;
+    );
+    let _vol1_id = kms_rest_client
+        .import(import_object_request)
+        .await?
+        .unique_identifier;
 
     let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
-    let _vol2_id = import_object(
-        kms_rest_client,
+    let import_object_request_2 = cosmian_kmip::kmip_2_1::requests::import_object_request(
         Some("vol2".to_owned()),
         vol2,
         None,
         false,
         true,
         ["disk-encryption", "vol2"],
-    )
-    .await?;
+    );
+    let _vol2_id = kms_rest_client
+        .import(import_object_request_2)
+        .await?
+        .unique_identifier;
 
     Ok(())
 }
@@ -107,17 +111,20 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
         },
     };
 
-    let p12_id = import_object(
-        &kms_rest_client,
+    let import_object_request = import_object_request(
         Some("test.p12".to_owned()),
         p12_sk,
         None,
         false,
         true,
         ["disk-encryption", "luks_volume"],
-    )
-    .await?;
-    Ok(p12_id)
+    );
+    let p12_id = kms_rest_client
+        .import(import_object_request)
+        .await?
+        .unique_identifier;
+
+    Ok(String::from(p12_id))
 }
 
 #[test]
