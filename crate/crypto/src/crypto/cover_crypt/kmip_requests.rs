@@ -2,7 +2,7 @@ use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+    kmip_operations::{Create, CreateKeyPair, Destroy, Import, ReKeyKeyPair},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
         Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
