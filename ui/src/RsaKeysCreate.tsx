@@ -18,13 +18,13 @@ const RsaKeyCreateForm: React.FC = () => {
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create an RSA Key Pair</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create an RSA key pair</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Create a new RSA key pair:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>The public key is used to encrypt and can be safely shared</li>
-                    <li>The private key is used to decrypt and must be kept secret</li>
+                    <li>The public key is used to encrypt or verify signatures and can be safely shared.</li>
+                    <li>The private key is used to decrypt or sign and must be kept secret.</li>
                 </ul>
             </div>
 
