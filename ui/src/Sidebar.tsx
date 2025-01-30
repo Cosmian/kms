@@ -23,7 +23,8 @@ const Sidebar: React.FC = () => {
             collapsible
             collapsed={collapsed}
             onCollapse={setCollapsed}
-            className="min-h-screen"
+            className="h-full"
+            style={{ position: 'sticky', top: 0 }}
         >
             <Menu
                 mode="inline"
@@ -32,7 +33,7 @@ const Sidebar: React.FC = () => {
                 defaultOpenKeys={['access-rights']}
                 items={menuItems}
                 onClick={({ key }) => navigate(key)}
-                className="h-full"
+                className="h-full border-r-0"
             />
         </Sider>
     );
