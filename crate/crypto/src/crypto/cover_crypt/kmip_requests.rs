@@ -270,19 +270,6 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     })
 }
 
-/// Build a `Locate` request to locate an `CoverCrypt` Symmetric Key
-pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, CryptoError> {
-    Ok(Locate {
-        attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: Some(ObjectType::SymmetricKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            ..Attributes::default()
-        },
-        ..Locate::default()
-    })
-}
 
 /// Build a `Destroy` request to destroy an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, CryptoError> {
