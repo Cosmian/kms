@@ -2,23 +2,65 @@ import { MenuItem } from './MenuItem';
 
 export const menuItems: MenuItem[] = [
     {
-        key: 'access-rights',
-        label: 'Access Rights',
+        key: 'locate',
+        label: 'Locate',
+    },
+    {
+        key: 'sym',
+        label: 'Symmetric',
         children: [
-            { key: 'access-rights/grant', label: 'Grant' },
-            { key: 'access-rights/revoke', label: 'Revoke' },
-            { key: 'access-rights/list', label: 'List' },
-            { key: 'access-rights/owned', label: 'Owned' },
-            { key: 'access-rights/obtained', label: 'Obtained' }
+            {
+                key: 'sym/keys',
+                label: 'Keys',
+                children: [
+                    { key: 'sym/keys/create', label: 'Create' },
+                    { key: 'sym/keys/re-key', label: 'Re-key' },
+                    { key: 'sym/keys/export', label: 'Export' },
+                    { key: 'sym/keys/import', label: 'Import' },
+                    { key: 'sym/keys/revoke', label: 'Revoke' },
+                    { key: 'sym/keys/destroy', label: 'Destroy' }
+                ]
+            },
+            { key: 'sym/encrypt', label: 'Encrypt' },
+            { key: 'sym/decrypt', label: 'Decrypt' }
         ]
     },
     {
-        key: 'attributes',
-        label: 'Attributes',
+        key: 'rsa',
+        label: 'RSA',
         children: [
-            { key: 'attributes/get', label: 'Get' },
-            { key: 'attributes/set', label: 'Set' },
-            { key: 'attributes/delete', label: 'Delete' }
+            {
+                key: 'rsa/keys',
+                label: 'Keys',
+                children: [
+                    { key: 'rsa/keys/create', label: 'Create' },
+                    { key: 'rsa/keys/export', label: 'Export' },
+                    { key: 'rsa/keys/import', label: 'Import' },
+                    { key: 'rsa/keys/revoke', label: 'Revoke' },
+                    { key: 'rsa/keys/destroy', label: 'Destroy' }
+                ]
+            },
+            { key: 'rsa/encrypt', label: 'Encrypt' },
+            { key: 'rsa/decrypt', label: 'Decrypt' }
+        ]
+    },
+    {
+        key: 'ec',
+        label: 'Elliptic Curve',
+        children: [
+            {
+                key: 'ec/keys',
+                label: 'Keys',
+                children: [
+                    { key: 'ec/keys/create', label: 'Create' },
+                    { key: 'ec/keys/export', label: 'Export' },
+                    { key: 'ec/keys/import', label: 'Import' },
+                    { key: 'ec/keys/revoke', label: 'Revoke' },
+                    { key: 'ec/keys/destroy', label: 'Destroy' }
+                ]
+            },
+            { key: 'ec/encrypt', label: 'Encrypt' },
+            { key: 'ec/decrypt', label: 'Decrypt' }
         ]
     },
     {
@@ -33,8 +75,6 @@ export const menuItems: MenuItem[] = [
                     { key: 'cc/keys/create-user-key', label: 'Create User Key' },
                     { key: 'cc/keys/export', label: 'Export' },
                     { key: 'cc/keys/import', label: 'Import' },
-                    { key: 'cc/keys/wrap', label: 'Wrap' },
-                    { key: 'cc/keys/unwrap', label: 'Unwrap' },
                     { key: 'cc/keys/revoke', label: 'Revoke' },
                     { key: 'cc/keys/destroy', label: 'Destroy' },
                     { key: 'cc/keys/rekey', label: 'Rekey' },
@@ -74,71 +114,28 @@ export const menuItems: MenuItem[] = [
         ]
     },
     {
-        key: 'ec',
-        label: 'Elliptic Curve',
+        key: 'attributes',
+        label: 'Attributes',
         children: [
-            {
-                key: 'ec/keys',
-                label: 'Keys',
-                children: [
-                    { key: 'ec/keys/create', label: 'Create' },
-                    { key: 'ec/keys/export', label: 'Export' },
-                    { key: 'ec/keys/import', label: 'Import' },
-                    { key: 'ec/keys/wrap', label: 'Wrap' },
-                    { key: 'ec/keys/unwrap', label: 'Unwrap' },
-                    { key: 'ec/keys/revoke', label: 'Revoke' },
-                    { key: 'ec/keys/destroy', label: 'Destroy' }
-                ]
-            },
-            { key: 'ec/encrypt', label: 'Encrypt' },
-            { key: 'ec/decrypt', label: 'Decrypt' }
+            { key: 'attributes/get', label: 'Get' },
+            { key: 'attributes/set', label: 'Set' },
+            { key: 'attributes/delete', label: 'Delete' }
         ]
     },
     {
-        key: 'locate',
-        label: 'Locate',
-    },
-    {
-        key: 'rsa',
-        label: 'RSA',
+        key: 'access-rights',
+        label: 'Access Rights',
         children: [
-            {
-                key: 'rsa/keys',
-                label: 'Keys',
-                children: [
-                    { key: 'rsa/keys/create', label: 'Create' },
-                    { key: 'rsa/keys/export', label: 'Export' },
-                    { key: 'rsa/keys/import', label: 'Import' },
-                    { key: 'rsa/keys/wrap', label: 'Wrap' },
-                    { key: 'rsa/keys/unwrap', label: 'Unwrap' },
-                    { key: 'rsa/keys/revoke', label: 'Revoke' },
-                    { key: 'rsa/keys/destroy', label: 'Destroy' }
-                ]
-            },
-            { key: 'rsa/encrypt', label: 'Encrypt' },
-            { key: 'rsa/decrypt', label: 'Decrypt' }
+            { key: 'access-rights/grant', label: 'Grant' },
+            { key: 'access-rights/revoke', label: 'Revoke' },
+            { key: 'access-rights/list', label: 'List' },
+            { key: 'access-rights/owned', label: 'Owned' },
+            { key: 'access-rights/obtained', label: 'Obtained' }
         ]
     },
-    {
-        key: 'sym',
-        label: 'Symmetric',
-        children: [
-            {
-                key: 'sym/keys',
-                label: 'Keys',
-                children: [
-                    { key: 'sym/keys/create', label: 'Create' },
-                    { key: 'sym/keys/re-key', label: 'Re-key' },
-                    { key: 'sym/keys/export', label: 'Export' },
-                    { key: 'sym/keys/import', label: 'Import' },
-                    { key: 'sym/keys/wrap', label: 'Wrap' },
-                    { key: 'sym/keys/unwrap', label: 'Unwrap' },
-                    { key: 'sym/keys/revoke', label: 'Revoke' },
-                    { key: 'sym/keys/destroy', label: 'Destroy' }
-                ]
-            },
-            { key: 'sym/encrypt', label: 'Encrypt' },
-            { key: 'sym/decrypt', label: 'Decrypt' }
-        ]
-    }
+
+
+
+
+
 ];
