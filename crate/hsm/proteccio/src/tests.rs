@@ -5,48 +5,19 @@
 //! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_all
 //! ```
 
-use std::{
-    collections::HashMap,
-    ptr,
-    sync::{Arc, Once},
-    thread,
-};
+use std::{collections::HashMap, ptr, sync::Arc, thread};
 
+use cosmian_kms_base_hsm::{
+    test_helpers::{get_hsm_password, initialize_logging},
+    AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
+};
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use libloading::Library;
 use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
-use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::info;
 use uuid::Uuid;
-use cosmian_kms_base_hsm::{AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager};
-use crate::{
-     Proteccio
-};
 
-static TRACING_INIT: Once = Once::new();
-fn initialize_logging() {
-    TRACING_INIT.call_once(|| {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::INFO) // Adjust the level as needed
-            .with_writer(std::io::stdout)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Setting default subscriber failed");
-    });
-}
-
-fn get_hsm_password() -> HResult<String> {
-    let user_password = option_env!("HSM_USER_PASSWORD")
-        .ok_or_else(|| {
-            HError::Default(
-                "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
-                 environment variable"
-                    .to_string(),
-            )
-        })?
-        .to_string();
-    Ok(user_password)
-}
+use crate::Proteccio;
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
@@ -244,11 +215,7 @@ fn test_rsa_pkcs_encrypt() -> HResult<()> {
     )?;
     let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(
-        sk,
-        HsmEncryptionAlgorithm::RsaPkcsV15,
-        &enc.ciphertext,
-    )?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with RSA PKCS");
     Ok(())
@@ -325,8 +292,7 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
                 RsaKeySize::Rsa2048,
                 true,
             )?;
-            let encrypted_content =
-                session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
+            let encrypted_content = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,

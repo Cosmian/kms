@@ -5,12 +5,15 @@ HSM library.
 
 ## Installation
 
-The library is installed at `/lib/libnethsm.so`
+The library must be installed at `/lib/libnethsm.so`
 
-The configuration file is at `/etc/proteccio/proteccio.rc`
-The log file and log level are specified in this file.
+All other files shouold go to `/etgc/proteccio`
+ - `proteccio.rc` is the configuration file
+ - `proteccio.crt` is the certificate file of the (net) HSM
+ - `proteccio_client.key` and `proteccio_client.crt` are the client certificate and key for the HSM
 
-to view the logs use the command `tail -f /var/log/proteccio.log`
+The log file and log level are specified in the `proteccio.rc` files.
+To view the logs use the command `tail -f /var/log/proteccio.log`
 
 To verify the configuration:
 
@@ -38,4 +41,9 @@ Serial Number:          81610-0040000161
     Flags               0X5
     Label:              HSM1-V1
 ...
+```
+To list tokens in a slot:
+
+```bash
+nethsmtool -l <slot_id> <slot_password>
 ```

@@ -12,22 +12,14 @@ description = "Proteccio HSM PKCS#11 loader"
 doctest = false
 
 [dependencies]
-async-trait = { workspace = true }
 cosmian_kms_base_hsm = { path = "../base_hsm" }
 cosmian_kms_interfaces = { path = "../../interfaces" }
 libloading = "0.8.6"
-lru = { workspace = true }
 pkcs11_sys = { path = "../../pkcs11/sys" }
-rand = "0.9.0-beta.1"
-thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 uuid = { version = "1.11.0", features = ["v4"] }
-zeroize = { workspace = true }
 
 [dev-dependencies]
-serial_test = { version = "3.2.0", default-features = false }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
 
 [features]
