@@ -2,7 +2,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::Object,
     kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    requests::create_symmetric_key_kmip_object,
+    requests::{create_symmetric_key_kmip_object, import_object_request},
 };
 use cosmian_kms_client::KmsClient;
 use cosmian_logger::log_init;
@@ -66,11 +66,12 @@ async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
         ["disk-encryption", "vol1"],
     );
     let _vol1_id = kms_rest_client
-        .import(import_object_request)?
+        .import(import_object_request)
+        .await?
         .unique_identifier;
 
     let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
-    let import_object_request = import_object_request(
+    let import_object_request_2 = cosmian_kmip::kmip_2_1::requests::import_object_request(
         Some("vol2".to_owned()),
         vol2,
         None,
@@ -79,7 +80,8 @@ async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
         ["disk-encryption", "vol2"],
     );
     let _vol2_id = kms_rest_client
-        .import(import_object_request)?
+        .import(import_object_request_2)
+        .await?
         .unique_identifier;
 
     Ok(())
@@ -118,10 +120,11 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
         ["disk-encryption", "luks_volume"],
     );
     let p12_id = kms_rest_client
-        .import(import_object_request)?
+        .import(import_object_request)
+        .await?
         .unique_identifier;
 
-    Ok(p12_id)
+    Ok(String::from(p12_id))
 }
 
 #[test]

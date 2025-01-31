@@ -16,8 +16,7 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
     replace_existing: bool,
     tags: T,
 ) -> Import {
-    let unique_identifier =
-        UniqueIdentifier::TextString(unique_identifier.clone().unwrap_or_default());
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier.unwrap_or_default());
     trace!("import_object_request: unique_identifier: {unique_identifier}");
     let object_type = object.object_type();
 

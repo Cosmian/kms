@@ -30,7 +30,7 @@ pub fn certify_ttlv_request(
     let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
     let certificate_request_type = certificate_request_type.and_then(|s| {
         CertificateRequestType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
             .ok()
     });
     let attributes = serde_wasm_bindgen::from_value(attributes)?;
@@ -59,7 +59,7 @@ pub fn create_rsa_key_pair_ttlv_request(
     let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
     let request: CreateKeyPair =
         create_rsa_key_pair_request(private_key_id, tags, cryptographic_length, sensitive)
-            .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {}", e)))?;
+            .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -71,15 +71,15 @@ pub fn create_rsa_key_pair_ttlv_request(
 pub fn create_ec_key_pair_ttlv_request(
     private_key_id: Option<String>,
     tags: Vec<String>,
-    recommended_curve: String,
+    recommended_curve: &str,
     sensitive: bool,
 ) -> Result<JsValue, JsValue> {
     let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
-    let recommended_curve = RecommendedCurve::from_str(&recommended_curve)
-        .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {}", e)))?;
+    let recommended_curve = RecommendedCurve::from_str(recommended_curve)
+        .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?;
     let request: CreateKeyPair =
         create_ec_key_pair_request(private_key_id, tags, recommended_curve, sensitive)
-            .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {}", e)))?;
+            .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -88,18 +88,20 @@ pub fn create_ec_key_pair_ttlv_request(
 }
 
 // Create request
+#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn create_sym_key_ttlv_request(
     key_id: Option<String>,
     tags: Vec<String>,
     key_len_in_bits: usize,
-    cryptographic_algorithm: String,
+    cryptographic_algorithm: &str,
     sensitive: bool,
     wrap_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let key_id = key_id.map(UniqueIdentifier::TextString);
-    let algorithm = CryptographicAlgorithm::from_str(&cryptographic_algorithm)
-        .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {}", e)))?;
+    let algorithm: CryptographicAlgorithm =
+        CryptographicAlgorithm::from_str(cryptographic_algorithm)
+            .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {e}")))?;
     let request: Create = symmetric_key_create_request(
         key_id,
         key_len_in_bits,
@@ -108,7 +110,7 @@ pub fn create_sym_key_ttlv_request(
         sensitive,
         wrap_key_id.as_ref(),
     )
-    .map_err(|e| JsValue::from_str(&format!("Sym key creation failed: {}", e)))?;
+    .map_err(|e| JsValue::from_str(&format!("Sym key creation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -119,7 +121,7 @@ pub fn create_sym_key_ttlv_request(
 // Decrypt request
 #[wasm_bindgen]
 pub fn decrypt_ttlv_request(
-    key_unique_identifier: String,
+    key_unique_identifier: &str,
     nonce: Option<Vec<u8>>,
     ciphertext: Vec<u8>,
     authenticated_tag: Option<Vec<u8>>,
@@ -133,7 +135,7 @@ pub fn decrypt_ttlv_request(
             Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
         };
     let request: Decrypt = decrypt_request(
-        &key_unique_identifier,
+        key_unique_identifier,
         nonce,
         ciphertext,
         authenticated_tag,
@@ -165,7 +167,7 @@ pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<J
 // Encrypt request
 #[wasm_bindgen]
 pub fn encrypt_ttlv_request(
-    key_unique_identifier: String,
+    key_unique_identifier: &str,
     encryption_policy: Option<String>,
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
@@ -180,7 +182,7 @@ pub fn encrypt_ttlv_request(
             Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
         };
     let request = encrypt_request(
-        &key_unique_identifier,
+        key_unique_identifier,
         encryption_policy,
         plaintext,
         header_metadata,
@@ -188,7 +190,7 @@ pub fn encrypt_ttlv_request(
         authentication_data,
         cryptographic_parameters,
     )
-    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {}", e)))?;
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -208,17 +210,17 @@ pub fn export_ttlv_request(
     let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
     let key_format_type = key_format_type.and_then(|s| {
         KeyFormatType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
             .ok()
     });
     let key_wrap_type = key_wrap_type.and_then(|s| {
         KeyWrapType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
             .ok()
     });
     let key_compression_type = key_compression_type.and_then(|s| {
         KeyCompressionType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {}", e)))
+            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
             .ok()
     });
     let key_wrapping_specification =
@@ -243,8 +245,8 @@ pub fn export_ttlv_request(
 
 // Get requests
 #[wasm_bindgen]
-pub fn get_rsa_private_key_ttlv_request(key_unique_identifier: String) -> Result<JsValue, JsValue> {
-    let request = get_rsa_private_key_request(&key_unique_identifier);
+pub fn get_rsa_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_rsa_private_key_request(key_unique_identifier);
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -253,8 +255,8 @@ pub fn get_rsa_private_key_ttlv_request(key_unique_identifier: String) -> Result
 }
 
 #[wasm_bindgen]
-pub fn get_rsa_public_key_ttlv_request(key_unique_identifier: String) -> Result<JsValue, JsValue> {
-    let request = get_rsa_public_key_request(&key_unique_identifier);
+pub fn get_rsa_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_rsa_public_key_request(key_unique_identifier);
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -263,8 +265,8 @@ pub fn get_rsa_public_key_ttlv_request(key_unique_identifier: String) -> Result<
 }
 
 #[wasm_bindgen]
-pub fn get_ec_private_key_ttlv_request(key_unique_identifier: String) -> Result<JsValue, JsValue> {
-    let request = get_ec_private_key_request(&key_unique_identifier);
+pub fn get_ec_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_ec_private_key_request(key_unique_identifier);
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -273,8 +275,8 @@ pub fn get_ec_private_key_ttlv_request(key_unique_identifier: String) -> Result<
 }
 
 #[wasm_bindgen]
-pub fn get_ec_public_key_ttlv_request(key_unique_identifier: String) -> Result<JsValue, JsValue> {
-    let request = get_ec_public_key_request(&key_unique_identifier);
+pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
+    let request = get_ec_public_key_request(key_unique_identifier);
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -308,7 +310,7 @@ pub fn import_ttlv_request(
     tags: Vec<String>,
 ) -> Result<JsValue, JsValue> {
     let object = serde_wasm_bindgen::from_value(object)
-        .map_err(|e| JsValue::from_str(&format!("Invalid object: {}", e)))?;
+        .map_err(|e| JsValue::from_str(&format!("Invalid object: {e}")))?;
     let attributes = serde_wasm_bindgen::from_value(attributes)?;
     let request = import_object_request(
         unique_identifier,
@@ -349,12 +351,12 @@ pub fn locate_ttlv_request(
 // Revoke request
 #[wasm_bindgen]
 pub fn revoke_key_ttlv_request(
-    unique_identifier: String,
+    unique_identifier: &str,
     revocation_reason: JsValue,
 ) -> Result<JsValue, JsValue> {
     let revocation_reason = serde_wasm_bindgen::from_value(revocation_reason)?;
-    let request = build_revoke_key_request(&unique_identifier, revocation_reason)
-        .map_err(|e| JsValue::from_str(&format!("Revocation failed: {}", e)))?;
+    let request = build_revoke_key_request(unique_identifier, revocation_reason)
+        .map_err(|e| JsValue::from_str(&format!("Revocation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
