@@ -12,6 +12,7 @@ use std::{
 };
 
 use cosmian_kms_base_hsm::{
+    test_helpers::{get_hsm_password, initialize_logging},
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
@@ -22,31 +23,6 @@ use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
 use crate::Utimaco;
-
-static TRACING_INIT: Once = Once::new();
-fn initialize_logging() {
-    TRACING_INIT.call_once(|| {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::INFO) // Adjust the level as needed
-            .with_writer(std::io::stdout)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Setting default subscriber failed");
-    });
-}
-
-fn get_hsm_password() -> HResult<String> {
-    let user_password = option_env!("HSM_USER_PASSWORD")
-        .ok_or_else(|| {
-            HError::Default(
-                "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
-                 environment variable"
-                    .to_string(),
-            )
-        })?
-        .to_string();
-    Ok(user_password)
-}
 
 fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
@@ -77,7 +53,7 @@ fn test_all() -> HResult<()> {
 fn low_level_test() -> HResult<()> {
     let path = "/lib/libcs_pkcs11_R3.so";
     let library = unsafe { Library::new(path) }?;
-    let init = unsafe { library.get::<fn(pInitArgs: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
+    let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
     let mut p_init_args = CK_C_INITIALIZE_ARGS {
         CreateMutex: None,

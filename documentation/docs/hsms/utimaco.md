@@ -1,25 +1,3 @@
-# HSM Support
-
-The Cosmian KMS can be configured to use Proteccio HSMs to store and manage keys and create KMS keys wrapped by the HSM
-keys. This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
-
-Cosmian KMS natively integrates with
-the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
-
-## Main use case and benefit
-
-The main use case for HSM support is to host keys in the KMS that are wrapped by keys stored in the HSM. This
-combination provides the best of both worlds: the scalability and performance of the KMS at runtime, and the security of
-the HSM at rest.
-
-At rest, KMS keys are stored in the KMS database in a wrapped form, and the wrapping key is stored in the HSM. This
-provides an additional layer of security for the keys stored in the KMS since the keys stored in the HSM are protected
-by the HSM's hardware security mechanisms, and benefit from the HSM certifications.
-
-At runtime, however, encryption and decryption requests from applications are processed by the KMS, which first unwraps
-the keys stored in the KMS database using the keys stored in the HSM. Contrarily to the HSM, the KMS is a highly
-scalable and performant system that can handle a large number of requests concurrently.
-
 ## Setup
 
 This solution works on Linux (x64_86) and has been validated against the Proteccio `nethsm` library version 3.17.
@@ -46,7 +24,8 @@ create objects on the HSM via the KMIP `Create` operation the delegate other ope
 The `--hsm-slot` and `--hsm-password` arguments are the slot number and password of the HSM slots to be used by the KMS.
 These arguments can be repeated multiple times to specify multiple slots.
 
-If using the TOML configuration file, see this [page](./server_configuration_file.md#toml-configuration-file) for more information on how to
+If using the TOML configuration file, see this [page](../server_configuration_file.md#toml-configuration-file) for more
+information on how to
 configure the HSM support.
 
 ## HSM operations

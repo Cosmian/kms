@@ -7,7 +7,8 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
   Cosmian VM. See our cloud-ready confidential KMS on the
-[Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./marketplace_guide.md)
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and
+  our [deployment guide](./marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./authentication.md))
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
@@ -41,53 +42,23 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The **Cosmian KMS** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/) package
-- Docker [image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
+- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/)
+  package
+- Docker [image](https://github.com/Cosmian/kms/pkgs/container/kms)
+  and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
 - Pre-built [binaries](https://package.cosmian.com/kms/4.21.2/) for multiple operating systems (Linux, Windows, MacOS)
 
 ## Client CLI
 
 The **Cosmian KMS** has an easy-to-use client command line interface built for many operating systems.
-The [Cosmian CLI](../cosmian_cli/index.md) can manage the server, and the keys and perform operations such as encryption or decryption.
+The [Cosmian CLI](../cosmian_cli/index.md) can manage the server, and the keys and perform operations such as encryption
+or decryption.
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/) package
+- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/)
+  package
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 
 **Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.
 
-!!! info "Quick start"
-
-    To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
-    inside the container, simply run the following command:
-
-    ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
-    ```
-
-    Using [Cosmian CLI](../cosmian_cli/index.md), you can easily manage the server:
-
-    1) Create a 256-bit symmetric key
-
-    ```sh
-    cosmian kms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
-    ...
-    The symmetric key was successfully generated.
-          Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
-    ```
-
-    2) Encrypt the `image.png` file with AES GCM using the key
-
-    ```sh
-    cosmian kms sym encrypt --tag my-file-key --output-file image.enc image.png
-    ...
-    The encrypted file is available at "image.enc"
-    ```
-
-    3) Decrypt the `image.enc` file using the key
-    ```sh
-    cosmian kms sym decrypt --tag my-file-key --output-file image2.png image.enc
-    ...
-    The decrypted file is available at "image2.png"
-    ```

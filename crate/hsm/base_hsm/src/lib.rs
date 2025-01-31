@@ -18,6 +18,8 @@ mod session;
 mod kms_hsm;
 mod slots;
 
+pub mod test_helpers;
+
 // AES key template
 // If sensitive is true, the key is not exportable
 // Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL

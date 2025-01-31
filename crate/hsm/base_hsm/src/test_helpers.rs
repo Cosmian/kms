@@ -1,15 +1,9 @@
-use std::{
-    ptr,
-    sync::{Arc, Once},
-    thread,
-};
+use std::sync::Once;
 
-use cosmian_kms_interfaces::KeyType;
-use pkcs11_sys::{CK_RV, CK_VOID_PTR};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-use crate::{ HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager};
+use crate::{HError, HResult};
 
 static TRACING_INIT: Once = Once::new();
 pub fn initialize_logging() {

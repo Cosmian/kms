@@ -2,9 +2,11 @@
 
 By default, the configuration filepath is retrieved in the following order:
 
-1. if the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use it as configuration file path.
+1. if the environment variable `COSMIAN_KMS_CONF` is set and the path behind exists, the KMS server will use it as
+   configuration file path.
 2. otherwise if a file is found at `/etc/cosmian_kms/kms.toml`, the KMS server will use it to configure itself.
-3. finally, if none of the above is found, the KMS server will load default configuration values in combination additional CLI arguments.
+3. finally, if none of the above is found, the KMS server will load default configuration values in combination
+   additional CLI arguments.
 
 The file should be a TOML file with the following structure:
 
@@ -14,10 +16,12 @@ force_default_username = false
 google_cse_kacls_url = "[google cse kacls url]"
 ms_dke_service_url = "[ms dke service url]"
 info = false
-hsm_model = "proteccio"
-hsm_admin = "[hsm admin username]" #for Create operation on HSM
-hsm_slot = [number_of_slot1, number_of_slot2, ...]
-hsm_password = [password_of_slot1, password_of_slot2, ...]
+
+# The following fields are only neeeded if an HSM is used. Check the HSMs pages for more information.
+hsm_model = "<hsm_name>"
+hsm_admin = "<hsm admin username>" #for Create operation on HSM
+hsm_slot = [1, 2, ...]
+hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...]
 
 [db]
 database_type = "[redis-findex, postgresql,...]"
