@@ -270,7 +270,6 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     })
 }
 
-
 /// Build a `Destroy` request to destroy an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, CryptoError> {
     Ok(Destroy {

@@ -3,7 +3,6 @@ use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
 use crate::kmip_2_1::{
-    kmip_objects::ObjectType,
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, Destroy, Export, GetAttributes, Locate, Validate,
     },
@@ -12,9 +11,9 @@ use crate::kmip_2_1::{
         KeyCompressionType, KeyFormatType, KeyWrapType, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
-        build_import_object_request, build_revoke_key_request, create_ec_key_pair_request,
-        create_rsa_key_pair_request, decrypt_request, encrypt_request, get_ec_private_key_request,
-        get_ec_public_key_request, get_rsa_private_key_request, get_rsa_public_key_request,
+        build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
+        decrypt_request, encrypt_request, get_ec_private_key_request, get_ec_public_key_request,
+        get_rsa_private_key_request, get_rsa_public_key_request, import_object_request,
         symmetric_key_create_request,
     },
     ttlv::serializer::to_ttlv,
@@ -301,23 +300,23 @@ pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue,
 // Import request
 #[wasm_bindgen]
 pub fn import_ttlv_request(
+    unique_identifier: Option<String>,
     object: JsValue,
-    object_type: String,
     attributes: JsValue,
-    unique_identifier: String,
-    replace_existing: Option<bool>,
+    unwrap: bool,
+    replace_existing: bool,
+    tags: Vec<String>,
 ) -> Result<JsValue, JsValue> {
     let object = serde_wasm_bindgen::from_value(object)
         .map_err(|e| JsValue::from_str(&format!("Invalid object: {}", e)))?;
-    let object_type = ObjectType::try_from(object_type.as_ref())
-        .map_err(|e| JsValue::from_str(&format!("Invalid object type: {}", e)))?;
     let attributes = serde_wasm_bindgen::from_value(attributes)?;
-    let request = build_import_object_request(
+    let request = import_object_request(
+        unique_identifier,
         object,
-        object_type,
         attributes,
-        &unique_identifier,
+        unwrap,
         replace_existing,
+        tags,
     );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))

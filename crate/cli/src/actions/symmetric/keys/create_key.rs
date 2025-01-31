@@ -4,10 +4,11 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
-    import_object,
     kmip_2_1::{
         kmip_types::UniqueIdentifier,
-        requests::{create_symmetric_key_kmip_object, symmetric_key_create_request},
+        requests::{
+            create_symmetric_key_kmip_object, import_object_request, symmetric_key_create_request,
+        },
     },
     KmsClient,
 };
@@ -144,18 +145,13 @@ impl CreateKeyAction {
                 let attributes = object.attributes_mut()?;
                 attributes.set_wrapping_key_id(wrapping_key_id);
             }
-            UniqueIdentifier::TextString(
-                import_object(
-                    kms_rest_client,
-                    self.key_id.clone(),
-                    object,
-                    None,
-                    false,
-                    false,
-                    &self.tags,
-                )
-                .await?,
-            )
+            let import_object_request =
+                import_object_request(self.key_id.clone(), object, None, false, false, &self.tags);
+            kms_rest_client
+                .import(import_object_request)
+                .await
+                .with_context(|| "failed importing the key")?
+                .unique_identifier
         } else {
             let key_id = self
                 .key_id

@@ -9,7 +9,8 @@ use cosmian_kms_client::{
             Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    import_object, read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
+    kmip_2_1::requests::import_object_request,
+    read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
 };
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
@@ -297,16 +298,19 @@ impl ImportCertificateAction {
             );
         }
 
-        let private_key_id = import_object(
-            kms_rest_client,
+        let import_object_request = import_object_request(
             self.certificate_id.clone(),
             private_key,
             Some(attributes),
             false,
             self.replace_existing,
             &self.tags,
-        )
-        .await?;
+        );
+        let private_key_id = kms_rest_client
+            .import(import_object_request)
+            .await?
+            .unique_identifier
+            .to_string();
         Ok(private_key_id)
     }
 
@@ -345,17 +349,20 @@ impl ImportCertificateAction {
                 );
             }
             // import the certificate
-            let unique_identifier = import_object(
-                kms_rest_client,
+            let import_object_request = import_object_request(
                 self.certificate_id.clone(),
                 object,
                 import_attributes,
                 false,
                 replace_existing,
                 &self.tags,
-            )
-            .await?;
-            previous_identifier = Some(unique_identifier);
+            );
+            let unique_identifier = kms_rest_client
+                .import(import_object_request)
+                .await?
+                .unique_identifier;
+
+            previous_identifier = Some(unique_identifier.to_string());
         }
         // return the identifier of the leaf certificate
         previous_identifier.ok_or_else(|| {
