@@ -68,5 +68,9 @@
     "editor.formatOnSaveMode": "file"
   },
   "rust-analyzer.showUnlinkedFileNotification": false,
+  "rust-analyzer.cargo.features": [
+    "utimaco",
+    "proteccio"
+  ],
   "editor.formatOnSave": true
 }

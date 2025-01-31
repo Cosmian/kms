@@ -6,9 +6,11 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_ATTRIBUTE_PTR, CK_BBOOL, CK_FALSE, CK_MECHANISM, CK_MECHANISM_PTR,
     CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CK_VOID_PTR,
 };
+use tracing::info;
 
 use crate::{session::Session, PError, PResult};
 
+#[derive(Debug)]
 pub enum AesKeySize {
     Aes128,
     Aes256,
@@ -89,6 +91,7 @@ impl Session {
         sensitive: bool,
     ) -> PResult<CK_OBJECT_HANDLE> {
         unsafe {
+            info!("Generating AES key id {:?}, size {:?}", id, size);
             let ck_fn = self.hsm().C_GenerateKey.ok_or_else(|| {
                 PError::Default("C_GenerateKey not available on library".to_string())
             })?;
@@ -117,7 +120,7 @@ impl Session {
                 &mut aes_key_handle,
             );
             if rv != CKR_OK {
-                return Err(PError::Default("Failed generating key".to_string()));
+                return Err(PError::Default(format!("Failed generating key {:?}", rv)));
             }
             self.object_handles_cache()
                 .insert(id.to_vec(), aes_key_handle);
