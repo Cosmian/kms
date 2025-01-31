@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::api::Covercrypt;
+use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
@@ -12,9 +12,46 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
-
     let app = test_utils::test_app(None).await;
-    let (msk,_) = Covercrypt::default().setup()?;
+    let mut policy = AccessStructure::new();
+
+    policy.add_anarchy("Department".to_owned())?;
+    [
+        ("HR", EncryptionHint::Classic),
+        ("MKG", EncryptionHint::Classic),
+        ("FIN", EncryptionHint::Classic),
+    ]
+    .into_iter()
+    .try_for_each(|(attribute, hint)| {
+        policy.add_attribute(
+            QualifiedAttribute {
+                dimension: "Department".to_owned(),
+                name: attribute.to_owned(),
+            },
+            hint,
+            None,
+        )
+    })?;
+
+    policy.add_hierarchy("Level".to_owned())?;
+
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Confidential".to_owned(),
+        },
+        EncryptionHint::Classic,
+        None,
+    )?;
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Top Secret".to_owned(),
+        },
+        EncryptionHint::Hybridized,
+        None,
+    )?;
+
     let request_message = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
@@ -26,10 +63,10 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(&msk, EMPTY_TAGS, false)?,
+                build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
             )),
         ],
     };

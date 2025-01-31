@@ -78,7 +78,6 @@ impl CovercryptDecryption {
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
         let encrypted_block = de.finalize();
-
         let header = encrypted_header
             .decrypt(&self.cover_crypt, user_decryption_key, ad)
             .map_err(CryptoError::Covercrypt)?

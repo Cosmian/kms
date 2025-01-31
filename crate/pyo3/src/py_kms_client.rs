@@ -130,14 +130,14 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
-        msk: &MasterSecretKey,
+        access_structure: &AccessStructure,
         sensitive: bool,
         tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Create the kmip query
         let request = build_create_covercrypt_master_keypair_request(
-            &msk,
+            &access_structure,
             tags.unwrap_or_default(),
             sensitive,
         )

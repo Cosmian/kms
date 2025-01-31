@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::api::Covercrypt;
+use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
@@ -24,11 +24,49 @@ use crate::{
 #[tokio::test]
 async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app(None).await;
-    let (msk,_) = Covercrypt::default().setup()?;
+    let mut policy = AccessStructure::new();
+
+    policy.add_anarchy("Department".to_owned())?;
+    [
+        ("HR", EncryptionHint::Classic),
+        ("MKG", EncryptionHint::Classic),
+        ("FIN", EncryptionHint::Classic),
+    ]
+    .into_iter()
+    .try_for_each(|(attribute, hint)| {
+        policy.add_attribute(
+            QualifiedAttribute {
+                dimension: "Department".to_owned(),
+                name: attribute.to_owned(),
+            },
+            hint,
+            None,
+        )
+    })?;
+
+    policy.add_hierarchy("Level".to_owned())?;
+
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Confidential".to_owned(),
+        },
+        EncryptionHint::Classic,
+        None,
+    )?;
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Top Secret".to_owned(),
+        },
+        EncryptionHint::Hybridized,
+        None,
+    )?;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_covercrypt_master_keypair_request(&msk, [mkp_tag], false)?;
+    let create_key_pair =
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -78,11 +116,49 @@ async fn integration_tests_with_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
 
     let app = test_utils::test_app(None).await;
-    let (msk,_) = Covercrypt::default().setup()?;
+    let mut policy = AccessStructure::new();
+
+    policy.add_anarchy("Department".to_owned())?;
+    [
+        ("HR", EncryptionHint::Classic),
+        ("MKG", EncryptionHint::Classic),
+        ("FIN", EncryptionHint::Classic),
+    ]
+    .into_iter()
+    .try_for_each(|(attribute, hint)| {
+        policy.add_attribute(
+            QualifiedAttribute {
+                dimension: "Department".to_owned(),
+                name: attribute.to_owned(),
+            },
+            hint,
+            None,
+        )
+    })?;
+
+    policy.add_hierarchy("Level".to_owned())?;
+
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Confidential".to_owned(),
+        },
+        EncryptionHint::Classic,
+        None,
+    )?;
+    policy.add_attribute(
+        QualifiedAttribute {
+            dimension: "Level".to_owned(),
+            name: "Top Secret".to_owned(),
+        },
+        EncryptionHint::Hybridized,
+        None,
+    )?;
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let create_key_pair = build_create_covercrypt_master_keypair_request(&msk, [mkp_tag], false)?;
+    let create_key_pair =
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 

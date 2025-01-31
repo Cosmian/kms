@@ -70,7 +70,7 @@ pub(crate) async fn test_user_decryption_key() -> CliResult<()> {
     let user_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
         &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
         &[],
         false,
     )?;

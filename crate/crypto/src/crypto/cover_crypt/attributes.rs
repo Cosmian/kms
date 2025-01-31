@@ -1,7 +1,8 @@
-use cosmian_cover_crypt::{AccessPolicy, AccessStructure, EncryptionHint, MasterSecretKey, QualifiedAttribute};
+use cosmian_cover_crypt::{AccessPolicy, AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN, kmip_types::{Attributes, VendorAttribute}
+    extra::VENDOR_ID_COSMIAN,
+    kmip_types::{Attributes, VendorAttribute},
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +15,7 @@ pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action
 
 /// Extract a `CoverCrypt` policy from attributes
 pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure, CryptoError> {
-    let msk = attributes
+    attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
         .map_or_else(
             || {
@@ -22,19 +23,20 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure
                     "the attributes do not contain a CoverCrypt Policy".to_owned(),
                 ))
             },
-            |bytes| {
-                MasterSecretKey::deserialize(bytes).map_err(|e| {
+            |bytes: &[u8]| {
+                AccessStructure::deserialize(bytes).map_err(|e| {
                     CryptoError::Kmip(format!(
                         "failed deserializing the CoverCrypt Policy from the attributes: {e}"
                     ))
                 })
             },
-        )?;
-        Ok(msk.access_structure)
+        )
 }
 
 /// Convert a policy to a vendor attribute
-pub fn policy_as_vendor_attribute(access_structure: &AccessStructure) -> Result<VendorAttribute, CryptoError> {
+pub fn policy_as_vendor_attribute(
+    access_structure: &AccessStructure,
+) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),

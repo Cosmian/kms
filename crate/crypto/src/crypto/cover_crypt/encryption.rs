@@ -1,4 +1,6 @@
-use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey};
+use cosmian_cover_crypt::{
+    api::Covercrypt, AccessPolicy, AccessStructure, EncryptedHeader, MasterPublicKey,
+};
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
@@ -14,7 +16,10 @@ use cosmian_kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::{crypto::EncryptionSystem, error::CryptoError};
+use crate::{
+    crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
+    error::CryptoError,
+};
 
 const SYM_KEY_LENGTH: usize = 32;
 /// Encrypt a single block of data using an hybrid encryption mode
@@ -23,6 +28,7 @@ pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
     public_key_bytes: Zeroizing<Vec<u8>>,
+    access_structure: AccessStructure,
 }
 
 impl CoverCryptEncryption {
@@ -31,15 +37,24 @@ impl CoverCryptEncryption {
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<Self, CryptoError> {
-        let (public_key_bytes, _public_key_attributes) =
+        let (public_key_bytes, public_key_attributes) =
             public_key.key_block()?.key_bytes_and_attributes()?;
+        let access_structure = policy_from_attributes(public_key_attributes.ok_or_else(|| {
+            CryptoError::Kmip(
+                "the master public key does not have attributes with the Policy".to_owned(),
+            )
+        })?)?;
 
-        trace!("Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}");
+        trace!(
+            "Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}, policy: \
+             {access_structure:#?}"
+        );
 
         Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
             public_key_bytes,
+            access_structure,
         })
     }
 
@@ -155,6 +170,8 @@ impl EncryptionSystem for CoverCryptEncryption {
             ad,
         )
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+        //todo : remove following line
+        let _t = &self.access_structure.clone();
 
         let symmetric_key = SymmetricKey::default();
 

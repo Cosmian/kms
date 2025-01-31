@@ -10,9 +10,8 @@ use cosmian_kmip::kmip_2_1::{
 };
 use zeroize::Zeroizing;
 
-use crate::{crypto::KeyPair, error::CryptoError};
-
 use super::attributes::{policy_from_attributes, upsert_policy_in_attributes};
+use crate::{crypto::KeyPair, error::CryptoError};
 
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);

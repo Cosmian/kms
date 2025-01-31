@@ -59,7 +59,6 @@ async fn test_view_policy() -> CliResult<()> {
     Ok(())
 }
 
-
 pub(crate) async fn rename(
     cli_conf_path: &str,
     master_private_key_id: &str,

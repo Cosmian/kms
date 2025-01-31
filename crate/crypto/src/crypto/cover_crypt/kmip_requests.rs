@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::MasterSecretKey;
+use cosmian_cover_crypt::{AccessStructure, MasterSecretKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -11,13 +11,14 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, policy_as_vendor_attribute, rekey_edit_action_as_vendor_attribute, RekeyEditAction
+    access_policy_as_vendor_attribute, policy_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
 };
 use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
-    msk: &MasterSecretKey,
+    access_structure: &AccessStructure,
     tags: T,
     sensitive: bool,
 ) -> Result<CreateKeyPair, CryptoError> {
@@ -25,7 +26,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-        vendor_attributes: Some(vec![policy_as_vendor_attribute(&msk.access_structure)?]),
+        vendor_attributes: Some(vec![policy_as_vendor_attribute(access_structure)?]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive,
         ..Attributes::default()
