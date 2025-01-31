@@ -18,49 +18,65 @@ mod session;
 mod kms_hsm;
 mod slots;
 
-/// A macro is used here to ensure inline expansion due to mutable pointer parameters
+// AES key template
+// If sensitive is true, the key is not exportable
+// Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL
+// so we do the same with other HSMs
+
 #[macro_export]
-macro_rules! aes_mechanism {
-    ($nonce:expr) => {{
-        let mut params = CK_AES_GCM_PARAMS {
-            pIv: $nonce as *mut u8,
-            ulIvLen: 12,
-            ulIvBits: 96,
-            pAAD: std::ptr::null_mut(),
-            ulAADLen: 0,
-            ulTagBits: 128,
-        };
-        CK_MECHANISM {
-            mechanism: CKM_AES_GCM,
-            pParameter: &mut params as *mut _ as CK_VOID_PTR,
-            ulParameterLen: std::mem::size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
-        }
-    }};
-}
-#[macro_export]
-macro_rules! rsa_mechanism {
-    ($algorithm:expr) => {
-        match $algorithm {
-            HsmEncryptionAlgorithm::RsaPkcsV15 => CK_MECHANISM {
-                mechanism: CKM_RSA_PKCS,
-                pParameter: std::ptr::null_mut(),
-                ulParameterLen: 0,
+macro_rules! aes_key_template {
+    ($id:expr, $size:expr, $sensitive:expr) => {
+        [
+            CK_ATTRIBUTE {
+                type_: CKA_CLASS,
+                pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_ULONG>() as CK_ULONG,
             },
-            HsmEncryptionAlgorithm::RsaOaep => {
-                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
-                    hashAlg: CKM_SHA256,
-                    mgf: CKG_MGF1_SHA256,
-                    source: CKZ_DATA_SPECIFIED,
-                    pSourceData: std::ptr::null_mut(),
-                    ulSourceDataLen: 0,
-                };
-                CK_MECHANISM {
-                    mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
-                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
-                }
-            }
-            _ => return Err(HError::Default("expecting an RSA algorithm".to_string())),
-        }
+            CK_ATTRIBUTE {
+                type_: CKA_KEY_TYPE,
+                pValue: &CKK_AES as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_ULONG>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE_LEN,
+                pValue: &$size as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_ULONG>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_TOKEN,
+                pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_ENCRYPT,
+                pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_DECRYPT,
+                pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_LABEL,
+                pValue: $id.as_ptr() as CK_VOID_PTR,
+                ulValueLen: $id.len() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_SENSITIVE,
+                pValue: &$sensitive as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_EXTRACTABLE,
+                pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                ulValueLen: std::mem::size_of::<CK_BBOOL>() as CK_ULONG,
+            },
+        ]
     };
 }

@@ -268,7 +268,53 @@ impl Session {
             };
 
             // Unwrap the key
-            let mut aes_key_template = aes_unwrap_key_template(aes_key_label);
+            let mut aes_key_template = [
+                CK_ATTRIBUTE {
+                    type_: CKA_CLASS,
+                    pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_KEY_TYPE,
+                    pValue: &CKK_AES as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_TOKEN,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_LABEL,
+                    pValue: aes_key_label.as_ptr() as CK_VOID_PTR,
+                    ulValueLen: aes_key_label.len() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_PRIVATE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_SENSITIVE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_EXTRACTABLE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_ENCRYPT,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_DECRYPT,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+            ];
             let mut unwrapped_key_handle: CK_OBJECT_HANDLE = 0;
             let rv = self.hsm().C_UnwrapKey.ok_or_else(|| {
                 HError::Default("C_UnwrapKey not available on library".to_string())
@@ -292,52 +338,3 @@ impl Session {
     }
 }
 
-pub(crate) const fn aes_unwrap_key_template(label: &str) -> [CK_ATTRIBUTE; 9] {
-    [
-        CK_ATTRIBUTE {
-            type_: CKA_CLASS,
-            pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_KEY_TYPE,
-            pValue: &CKK_AES as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_TOKEN,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: label.as_ptr() as CK_VOID_PTR,
-            ulValueLen: label.len() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_PRIVATE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_SENSITIVE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_EXTRACTABLE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_ENCRYPT,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_DECRYPT,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-    ]
-}

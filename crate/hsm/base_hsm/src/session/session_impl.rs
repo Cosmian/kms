@@ -47,7 +47,7 @@ use tracing::debug;
 use zeroize::Zeroizing;
 
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
-use crate::{aes_mechanism, rsa_mechanism, HError, HResult, ObjectHandlesCache};
+use crate::{HError, HResult, ObjectHandlesCache};
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM encryption
@@ -395,25 +395,64 @@ impl Session {
         Ok(match algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
                 let mut nonce = generate_random_nonce::<12>()?;
-                let ciphertext = self.encrypt_with_mechanism(
-                    key_handle,
-                    &mut aes_mechanism!(&mut nonce),
-                    plaintext,
-                )?;
+                let mut params = CK_AES_GCM_PARAMS {
+                    pIv: &mut nonce as *mut u8,
+                    ulIvLen: 12,
+                    ulIvBits: 96,
+                    pAAD: ptr::null_mut(),
+                    ulAADLen: 0,
+                    ulTagBits: 128,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_AES_GCM,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
+                };
+                let ciphertext =
+                    self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
                 EncryptedContent {
                     iv: Some(nonce.to_vec()),
                     ciphertext: ciphertext[..ciphertext.len() - 16].to_vec(),
                     tag: Some(ciphertext[ciphertext.len() - 16..].to_vec()),
                 }
             }
-            _ => EncryptedContent {
-                ciphertext: self.encrypt_with_mechanism(
-                    key_handle,
-                    &mut rsa_mechanism!(algorithm),
-                    plaintext,
-                )?,
-                ..Default::default()
-            },
+            HsmEncryptionAlgorithm::RsaPkcsV15 => {
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS,
+                    pParameter: std::ptr::null_mut(),
+                    ulParameterLen: 0,
+                };
+                EncryptedContent {
+                    ciphertext: self.encrypt_with_mechanism(
+                        key_handle,
+                        &mut mechanism,
+                        plaintext,
+                    )?,
+                    ..Default::default()
+                }
+            }
+            HsmEncryptionAlgorithm::RsaOaep => {
+                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA256,
+                    mgf: CKG_MGF1_SHA256,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: std::ptr::null_mut(),
+                    ulSourceDataLen: 0,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS_OAEP,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                };
+                EncryptedContent {
+                    ciphertext: self.encrypt_with_mechanism(
+                        key_handle,
+                        &mut mechanism,
+                        plaintext,
+                    )?,
+                    ..Default::default()
+                }
+            }
         })
     }
 
@@ -432,15 +471,45 @@ impl Session {
                 let mut nonce: [u8; 12] = ciphertext[..12]
                     .try_into()
                     .map_err(|_| HError::Default("Invalid AES GCM nonce".to_string()))?;
-                let plaintext = self.decrypt_with_mechanism(
-                    key_handle,
-                    &mut aes_mechanism!(&mut nonce),
-                    &ciphertext[12..],
-                )?;
+                let mut params = CK_AES_GCM_PARAMS {
+                    pIv: &mut nonce as *mut u8,
+                    ulIvLen: 12,
+                    ulIvBits: 96,
+                    pAAD: ptr::null_mut(),
+                    ulAADLen: 0,
+                    ulTagBits: 128,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_AES_GCM,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: size_of::<CK_AES_GCM_PARAMS>() as CK_ULONG,
+                };
+                let plaintext =
+                    self.decrypt_with_mechanism(key_handle, &mut mechanism, &ciphertext[12..])?;
                 Ok(plaintext)
             }
-            _ => {
-                self.decrypt_with_mechanism(key_handle, &mut rsa_mechanism!(algorithm), ciphertext)
+            HsmEncryptionAlgorithm::RsaPkcsV15 => {
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS,
+                    pParameter: std::ptr::null_mut(),
+                    ulParameterLen: 0,
+                };
+                self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
+            },
+            HsmEncryptionAlgorithm::RsaOaep => {
+                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+                    hashAlg: CKM_SHA256,
+                    mgf: CKG_MGF1_SHA256,
+                    source: CKZ_DATA_SPECIFIED,
+                    pSourceData: std::ptr::null_mut(),
+                    ulSourceDataLen: 0,
+                };
+                let mut mechanism = CK_MECHANISM {
+                    mechanism: CKM_RSA_PKCS_OAEP,
+                    pParameter: &mut params as *mut _ as CK_VOID_PTR,
+                    ulParameterLen: std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>() as CK_ULONG,
+                };
+                self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
         }
     }

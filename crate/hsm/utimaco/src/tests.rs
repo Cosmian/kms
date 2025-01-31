@@ -212,7 +212,6 @@ fn test_rsa_key_wrap() -> HResult<()> {
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
-    info!("Symmetric key handle: {symmetric_key}");
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
     let (sk, pk) = session.generate_rsa_key_pair(
@@ -221,12 +220,11 @@ fn test_rsa_key_wrap() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
     let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
     let decrypted_key =
         session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, "another_label")?;
-    info!("Unwrapped symmetric key handle: {}", decrypted_key);
+    info!("Unwrapped symmetric key with handle: {}", decrypted_key);
     Ok(())
 }
 
@@ -244,11 +242,11 @@ fn test_rsa_pkcs_encrypt() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
     let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
     let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with RSA PKCS");
     Ok(())
 }
 
@@ -266,11 +264,11 @@ fn test_rsa_oaep_encrypt() -> HResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
     let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
     let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
 }
 
@@ -299,6 +297,7 @@ fn test_aes_gcm_encrypt() -> HResult<()> {
         .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with AES GCM");
     Ok(())
 }
 
@@ -340,7 +339,7 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     for handle in handles {
         handle.join().expect("Thread panicked")?;
     }
-
+    info!("Successfully encrypted/decrypted with RSA OAEP in multiple threads");
     Ok(())
 }
 
@@ -399,6 +398,7 @@ fn test_list_objects() -> HResult<()> {
     assert_eq!(objects.len(), 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;
     assert_eq!(objects.len(), 1);
+    info!("Listed all objects");
     Ok(())
 }
 
@@ -464,6 +464,7 @@ fn test_get_key_metadata() -> HResult<()> {
     // assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), pk_id.as_str());
+    info!("Got key metadata");
     Ok(())
 }
 
@@ -478,5 +479,6 @@ fn test_destroy_all() -> HResult<()> {
     }
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 0);
+    info!("Destroyed all objects");
     Ok(())
 }

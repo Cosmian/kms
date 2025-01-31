@@ -1387,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "4.21.0"
+version = "4.21.2"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1397,8 +1397,6 @@ dependencies = [
  "rand 0.9.0-beta.1",
  "thiserror 2.0.3",
  "tracing",
- "tracing-subscriber",
- "uuid",
  "zeroize",
 ]
 
@@ -3778,6 +3776,7 @@ name = "proteccio_pkcs11_loader"
 version = "4.21.2"
 dependencies = [
  "async-trait",
+ "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
  "libloading",
  "lru",
@@ -5468,20 +5467,15 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "4.21.0"
+version = "4.21.2"
 dependencies = [
- "async-trait",
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
  "libloading",
- "lru",
  "pkcs11_sys",
- "rand 0.9.0-beta.1",
- "thiserror 2.0.3",
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zeroize",
 ]
 
 [[package]]

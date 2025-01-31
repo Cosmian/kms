@@ -13,6 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
+cosmian_kms_base_hsm = { path = "../base_hsm" }
 cosmian_kms_interfaces = { path = "../../interfaces" }
 libloading = "0.8.6"
 lru = { workspace = true }

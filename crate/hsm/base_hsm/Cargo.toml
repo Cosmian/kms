@@ -20,10 +20,5 @@ pkcs11_sys = { path = "../../pkcs11/sys" }
 rand = "0.9.0-beta.1"
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-uuid = { version = "1.11.0", features = ["v4"] }
 zeroize = { workspace = true }
 
-[dev-dependencies]
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-uuid = { workspace = true }
