@@ -58,7 +58,7 @@ plugins:
   - kroki
   - meta-descriptions
 nav:
-  - Specifications: index.md
+  - Why use the Cosmian KMS: index.md
   - Quick start: quick_start.md
   - Use cases and integrations:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
@@ -78,13 +78,13 @@ nav:
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
       - API Endpoints: api.md
-  - Server Installation:
-      - Single server mode: single_server_mode.md
-      - High-availability: high_availability_mode.md
-      - Deploying in Cosmian VM: marketplace_guide.md
-  - Server Configuration:
-      - Command Line Interface: server_cli.md
+  - Installation:
+      - Getting started: installation/installation_getting_started.md
+      - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
+      - High-availability: installation/high_availability_mode.md
+  - Configuration:
       - Configuration file: server_configuration_file.md
+      - Command line arguments: server_cli.md
       - Authenticating users to the server: authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md

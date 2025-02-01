@@ -1,20 +1,13 @@
-The single server mode uses an embedded SQLite database stored on a filesystem and therefore does
-not require access to an external database.
+Cosmian KMS may be installed on a variety of platforms, including Docker, Ubuntu, RHEL, MacOS, and Windows.
 
-Although it does not provide high availability through redundancy, this configuration is suitable
-for production and serving millions of cryptographic objects. The server will concurrently serve
-requests on as many threads as available cores to the docker container.
+It is also available on the major cloud providers marketplaces, prepackaged to run confidentially in a Cosmian VM.
+Please check [this page](./marketplace_guide.md) for more information.
 
-This configuration also supports user encrypted databases, a secure way to store cryptographic
-objects since database keys are provisioned on every request, and no database key is stored server
-side. To offer a fully secure solution suitable for deployment in a zero-trust environment such as
-the cloud, TLS must be enabled on the server, and the memory of the KMS server must also be
-protected during operation by running the server inside an enclave. Ask Cosmian for details.
+When installed using the options below, the KMS server will be automatically configured to run
+using an SQLite database.
+If you wish to change the database configuration, please refer to the [database guide](../database.md).
 
-### Quick start
-
-To run in single server mode, using the defaults and a SQLite database will be created. Otherwise,
-the database can be configured using classic databases such as PostgreSQL, MySQL or MariaDB or the Cosmian custom protected Redis, please follow [the database configuration page](./database.md).
+For high availability and scalability, please refer to the [high availability guide](./high_availability_mode.md).
 
 === "Docker"
 
