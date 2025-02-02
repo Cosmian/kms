@@ -1,14 +1,12 @@
-Just like the [Cosmian CLI](../cosmian_cli/index.md), the KMS server has a built-in help
-system that can be accessed using the `--help` command line option.
+When no [configuration file](./server_configuration_file.md) is provided, the KMS server can be
+configured using command line options. 
+
+The list of arguments can be printed using the `--help` command line option.
+
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:latest --help
-```
+-> docker run --rm ghcr.io/cosmian/kms:latest --help
 
-The options are enabled on the docker command line or using the environment variables listed in the
-options help.
-
-```text
 Cosmian Key Management Service
 
 Usage: cosmian_kms_server [OPTIONS]

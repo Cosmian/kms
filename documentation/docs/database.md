@@ -50,13 +50,11 @@ The database parameters may be configured either:
 - the [TOML configuration file](./server_configuration_file.md)
 - ot the [arguments passed to the server](./server_cli.md) on the command line.
 
-The
 
 #### SQLite
 
 This is the default configuration. To use SQLite, no additional configuration is needed.
 
-"postgresql", "mysql", "sqlite", "sqlite-enc", "redis-findex"
 
 === "kms.toml"
 
