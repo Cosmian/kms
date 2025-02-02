@@ -55,6 +55,7 @@ redis_master_password = "<redis master password>"
 redis_findex_label = "<redis findex label>"
 clear_database = false
 
+# Check the Enabling TLS pages for more information
 [http]
 # The KMS server port - defaults to 9998
 port = 9998
@@ -71,6 +72,7 @@ https_p12_password = "<https p12 password>"
 # The server must run in TLS mode for this to be used
 authority_cert_file = "<authority cert file>"
 
+# Check the Auhtenticating Users for more information
 [auth]
 # The issuer URI of the JWT token
 # To handle multiple identity managers, add different parameters 
