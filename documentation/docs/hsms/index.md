@@ -9,7 +9,7 @@ the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/tr
 the [Utimaco general purpose](https://utimaco.com/solutions/applications/general-purpose-hardware-security-modules)
 HSMs.
 
-## Main use case and benefit
+## Main use case and benefits
 
 Aside from providing a single interface to manage both KMS and HSM keys,
 the main use case for HSM support is to host keys in the KMS that
