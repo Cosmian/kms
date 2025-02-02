@@ -21,18 +21,22 @@ Specify the certificate name and mount the file to docker.
 Say the certificate is called `server.mydomain.com.p12`, is protected by the password `myPass`, and is in a directory
 called `/certificate` on the host disk.
 
-```sh
-docker run --rm -p 443:9998 \
-  -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=mysql \
-  --database-url=mysql://mysql_server:3306/kms \
-  --https-p12-file=server.mydomain.com.p12 \
-  --https-p12-password=myPass
-```
+=== "kms.toml"
+
+    ```toml
+    [http]
+    https-p12-file="<server.mydomain.com.p12>"
+    https-p12-password="<myPass>"
+    ```
+
+=== "Command line arguments"
+    ```sh
+    --https-p12-file=server.mydomain.com.p12 \
+    --https-p12-password=myPass
+    ```
 
 !!!info "Generate a PKCS#12 from PEM files"
-To generate a PKCS12 from PEM files, you can use `openssl`:
+    To generate a PKCS12 from PEM files, you can use `openssl`:
 
     ```sh
     openssl pkcs12 -export \

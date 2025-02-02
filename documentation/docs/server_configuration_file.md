@@ -98,6 +98,7 @@ root_data_path = "./cosmian-kms"
 # by no-one but the current instance during the current execution)
 tmp_path = "/tmp"
 
+# Check the logging pages for more information
 [telemetry]
 # The Open Telemetry OTLP collector URL
 otlp = "<url of the OTLP collector>"
