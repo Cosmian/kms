@@ -97,3 +97,8 @@ authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
 token_url = "https://oauth2.googleapis.com/token"
 scopes = ["openid", "email"]
 ```
+
+When you run the `cosmian kms login` command, the CLI will provide a URL for you to open in your browser.
+This URL initiates the login flow and sends the user token back to the CLI using a `redirect_url` set to a
+local URL (http://localhost/), as the CLI runs on your local machine. Ensure that your Identity Provider
+configuration permits this type of URL.
