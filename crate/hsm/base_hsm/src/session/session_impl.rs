@@ -495,7 +495,7 @@ impl Session {
                     ulParameterLen: 0,
                 };
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
-            },
+            }
             HsmEncryptionAlgorithm::RsaOaep => {
                 let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                     hashAlg: CKM_SHA256,
@@ -947,9 +947,9 @@ impl Session {
                 template.len() as CK_ULONG,
             );
             if rv == CKR_ATTRIBUTE_SENSITIVE {
-                return Err(HError::Default(format!(
-                    "This key {key_handle} cannot be exported from the HSM."
-                )));
+                return Err(HError::Default(
+                    "This key is sensitive and cannot be exported from the HSM.".to_string(),
+                ));
             }
             if rv == CKR_OBJECT_HANDLE_INVALID {
                 // The key was not found

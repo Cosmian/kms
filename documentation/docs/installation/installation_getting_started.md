@@ -9,6 +9,11 @@ If you wish to change the database configuration, please refer to the [database 
 
 For high availability and scalability, please refer to the [high availability guide](./high_availability_mode.md).
 
+!!!info "Cosmian CLI"
+    The Cosmian CLI lets you interact with the KMS from the command line.
+    Install it from [Cosmian CLI](https://package.cosmian.com/cli/)
+    and [configure it](../../cosmian_cli/index.md).
+
 === "Docker"
 
     Run the container as follows:
@@ -39,7 +44,7 @@ For high availability and scalability, please refer to the [high availability gu
 
     Download package and install it:
 
-    ```console title="On local machine"
+    ```sh
     sudo apt update && sudo apt install -y wget
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-20.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
@@ -48,17 +53,26 @@ For high availability and scalability, please refer to the [high availability gu
 
     Or install the FIPS version:
 
-    ```console title="FIPS version"
+    ```sh
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-20.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
+    ```
+
+    A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
+    The server will use a configuration file located at `/etc/cosmian_kms/kms.toml`.
+
+    To start the KMS, run:
+
+    ```sh
+    sudo systemctl start cosmian_kms
     ```
 
 === "Ubuntu 22.04"
 
     Download package and install it:
 
-    ```console title="On local machine"
+    ```sh
     sudo apt update && sudo apt install -y wget
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
@@ -67,17 +81,26 @@ For high availability and scalability, please refer to the [high availability gu
 
     Or install the FIPS version:
 
-    ```console title="FIPS version"
+    ```sh
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
+    ```
+
+    A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
+    The server will use a configuration file located at `/etc/cosmian_kms/kms.toml`.
+
+    To start the KMS, run:
+
+    ```sh
+    sudo systemctl start cosmian_kms
     ```
 
 === "Ubuntu 24.04"
 
     Download package and install it:
 
-    ```console title="On local machine"
+    ```sh
     sudo apt update && sudo apt install -y wget
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-24.04/cosmian-kms-server_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
@@ -86,17 +109,26 @@ For high availability and scalability, please refer to the [high availability gu
 
     Or install the FIPS version:
 
-    ```console title="FIPS version"
+    ```sh
     wget https://package.cosmian.com/kms/4.21.2/ubuntu-24.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
     sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
     cosmian_kms_server --version
+    ```
+
+    A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
+    The server will use a configuration file located at `/etc/cosmian_kms/kms.toml`.
+
+    To start the KMS, run:
+
+    ```sh
+    sudo systemctl start cosmian_kms
     ```
 
 === "RHEL 9"
 
     Download package and install it:
 
-    ```console title="On local machine"
+    ```sh
     sudo dnf update && dnf install -y wget
     wget https://package.cosmian.com/kms/4.21.2/rhel9/cosmian_kms_server-4.21.2-1.x86_64.rpm
     sudo dnf install ./cosmian_kms_server-4.21.2-1.x86_64.rpm
@@ -107,7 +139,7 @@ For high availability and scalability, please refer to the [high availability gu
 
     On ARM MacOS, download the build archive and extract it:
 
-    ```console title="On local machine"
+    ```sh
     wget https://package.cosmian.com/kms/4.21.2/macos_arm-release.zip
     unzip macos_arm-release.zip
     cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
@@ -117,7 +149,7 @@ For high availability and scalability, please refer to the [high availability gu
 
     On Intel MacOS, download the build archive and extract it:
 
-    ```console title="On local machine"
+    ```sh
     wget https://package.cosmian.com/kms/4.21.2/macos_intel-release.zip
     unzip macos_intel-release.zip
     cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
@@ -129,81 +161,18 @@ For high availability and scalability, please refer to the [high availability gu
 
     On Windows, download the build archive:
 
-    ```console title="Build archive"
+    ```sh
      https://package.cosmian.com/kms/4.21.2/windows-release.zip
     ```
 
     Extract the cosmian_kms_server from:
 
-    ```console title="cosmian_kms_server for Windows"
+    ```sh
     /windows-release/target/x86_64-pc-windows-msvc/release/cosmian_kms_server.exe
     ```
 
     Copy it to a folder in your PATH and run it:
 
-    ```console title="On local machine"
-    cosmian_kms_server --version
-    ```
-
-### Using client-side encrypted databases
-
-To start the KMS server with a client-side encrypted SQLite databases, pass the
-`--database-type=sqlite-enc` on start, e.g.
-
-```sh
-docker run --rm -p 9998:9998 \
-  -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=sqlite-enc
-```
-
-It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
-!!! important "Important: encrypted databases must be created first"
-
-    Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
-    The call will return a secret
-
-    === "cosmian"
-
-        ```sh
-        cosmian kms new-database
-        ```
-
-    === "curl"
-
-        ```sh
-        ➜ curl -X POST https://my-server:9998/new_database
-        "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
-        ```
-        The secret is the value between the quotes `""`.
-
-    Warning:
-
-        - This secret is only displayed **once** and is **not stored** anywhere on the server.
-        - Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
-
-Once an encrypted database is created, the secret must be passed in every subsequent query to the
-KMS server.
-Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
-databases can be used concurrently on the same KMS server.
-
-=== "cosmian"
-
-    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file.
-
-    ```toml
-    [kms_config.http_config]
-    server_url = "http://127.0.0.1:9990"
-    access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ik...yaJbDDql3A"
-    database_secret = "eyJncm91cF9pZCI6MTI5N...MWIwYjE5ZmNlN2U3In0="
-    ```
-
-=== "curl"
-
-    The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
-
     ```sh
-        curl \
-        -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
-        http://localhost:9998/objects/owned
+    cosmian_kms_server --version
     ```

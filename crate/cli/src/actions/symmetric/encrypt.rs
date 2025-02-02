@@ -66,14 +66,14 @@ pub struct EncryptAction {
     key_id: Option<String>,
 
     /// The data encryption algorithm.
-    /// If not specified, aes-gcm is used.
+    /// If not specified, `AesGcm` is used.
     ///
     /// If no key encryption algorithm is specified, the data will be sent to the server
     /// and will be encrypted server side.
     #[clap(
         long = "data-encryption-algorithm",
         short = 'd',
-        default_value = "aes-gcm"
+        default_value = "AesGcm"
     )]
     data_encryption_algorithm: DataEncryptionAlgorithm,
 

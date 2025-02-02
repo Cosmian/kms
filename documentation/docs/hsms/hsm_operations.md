@@ -15,7 +15,10 @@ Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
 ## KMIP operations
 
-The following KMIP operations can be performed on HSM keys via the KMS server API:
+Some KMIP operations can be performed on HSM keys via the KMS server API.
+
+First, make sure the HSM is configured and that the [Cosmian CLI](https://package.cosmian.com/cli/) is installed and
+configured.
 
 ### Create
 
@@ -28,13 +31,21 @@ When creating an RSA key, the `key_identifier` will be that of the private key. 
 automatically created and stored in the HSM with the same `key_identifier` but with the `_pk` suffix, for example, the
 public key of the `hsm::1::mykey` private key will be created with unique identifier `has::1::mykey_pk`.
 
-Using the `ckms` client, an RSA 4096-bit key can be created with the following command:
+Create an RSA 4096-bit key with the Cosmiian CLI:
 
 ```shell
-❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::4::mykey
+❯ cosmian kms rsa keys create --size_in_bits 4096 --sensitive hsm::4::my_rsa_key
 The RSA key pair has been created.
-      Public key unique identifier: hsm::4::mykey_pk
-      Private key unique identifier: hsm::4::mykey
+      Public key unique identifier: hsm::4::my_rsa_key_pk
+      Private key unique identifier: hsm::4::my_rsa_key
+```
+
+Create an AES 256-bit key with the Cosmiian CLI:
+
+```shell
+❯ cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::4::my_aes_key
+The symmetric key was successfully generated.
+	  Unique identifier: hsm::4::my_aes_key
 ```
 
 Keys should be flagged as `sensitive` when created in the HSM, so that the private key or symmetric key cannot be
@@ -50,12 +61,20 @@ key from the HSM.
 Only the user identified by the `--hsm-admin` argument or a user which has been granted the `Destroy` operation (by the
 HSM admin) can destroy keys in the HSM.
 
-To destroy the key `hsm::4::mykey`, the following command can be used:
+To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
 
 ```shell
-❯ ckms rsa keys destroy --key-id hsm::4::mykey
+❯ cosmian kms rsa keys destroy --key-id hsm::4::my_rsa_key
 Successfully destroyed the key.
       Unique identifier: hsm::4::mykey
+```
+
+To destroy the corresponding public key `hsm::4::my_rsa_key_pk`, the following command can be used:
+
+```shell
+❯ cosmian kms rsa keys destroy --key-id hsm::4::my_rsa_key_pk
+Successfully destroyed the object.
+	  Unique identifier: hsm::4::my_rsa_key_pk
 ```
 
 ### Get & Export
@@ -67,12 +86,29 @@ admin) can retrieve keys from the HSM.
 Private keys or symmetric keys marked as `sensitive` cannot be retrieved from the HSM. The public key of a keypair can
 always be retrieved.
 
-To export the public key `hsm::4::mykey_pk` in PKCS#8 PEM format, the following command can be used:
+To export the public key `hsm::4::my_rsa_key_pk` in PKCS#8 PEM format, the following command can be used:
 
 ```shell
-❯ ckms rsa keys export --key-id hsm::4::mykey_pk --key-format pkcs8-pem /tmp/pubkey.pem
-The key hsm::4::mykey_pk of type PublicKey was exported to "/tmp/pubkey.pem"
-      Unique identifier: hsm::4::mykey_pk
+❯ cosmian kms rsa keys export --key-id hsm::4::my_rsa_key_pk --key-format pkcs8-pem /tmp/pubkey.pem
+The key hsm::4::my_rsa_key_pk of type PublicKey was exported to "/tmp/pubkey.pem"
+	  Unique identifier: hsm::4::my_rsa_key_pk
+```
+
+To export the private key `hsm::4::mykey` in PKCS#8 PEM format, the following command can be used:
+
+```shell
+❯ cosmian kms rsa keys export --key-id hsm::4::my_rsa_key --key-format pkcs8-pem /tmp/privkey.pem
+The key hsm::4::my_rsa_key of type PrivateKey was exported to "/tmp/privkey.pem"
+	  Unique identifier: hsm::4::my_rsa_key
+```
+
+To export the symmetric key `hsm::4::my_aes_key` in raw format (i.e. raw bytes), 
+the following command can be used:
+
+```shell
+❯ cosmian kms sym keys export --key-id hsm::4::my_aes_key --key-format raw /tmp/symkey.raw
+The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw"
+	  Unique identifier: hsm::4::my_aes_key
 ```
 
 ### Encrypt
@@ -83,14 +119,24 @@ user which has been granted the `Encrypt` operation (by the HSM admin) can encry
 For symmetric keys, only AES GCM is supported. For RSA keys, CKM_RSA_PKCS_OAEP and the now deprecated, but still widely
 used, CKM_RSA_PKCS (v1.5) are supported. The hashing algorithm is fixed to SHA256.
 
-To encrypt a message with the public key `hsm::4::mykey_pk` and the CKM RSA PKCS OAEP algorithm, the following command
-can be used:
+When using RSA the maximum message size in bytes is:
+
+ - PKCS#1 v1.5: (key size in bits / 8) - 11
+ - OAEP: (key size in bits / 8) - 66
+
+To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, 
+the following command can be used:
 
 ```shell
-❯ ckms rsa encrypt --key-id hsm::4::mykey_pk --encryption-algorithm ckm-rsa-pkcs-oaep \
-/tmp/secret.pem
+❯ cosmian kms rsa encrypt --key-id hsm::4::my_rsa_key_pk --encryption-algorithm ckm-rsa-pkcs-oaep \
+/tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
 ```
+
+To encrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
+
+```shell
+❯ cosmian kms sym encrypt --key-id hsm::4::my_aes_key /tmp/secret.txt
 
 ### Decrypt
 
@@ -104,7 +150,7 @@ To decrypt a message with the private
 key `hsm::4::mykey` and the CKM RSA PKCS OAEP algorithm, the following command can be used:
 
 ```shell
-❯ ckms rsa decrypt --key-id hsm::4::mykey --encryption-algorithm ckm-rsa-pkcs-oaep \
+❯ cosmian kms rsa decrypt --key-id hsm::4::mykey --encryption-algorithm ckm-rsa-pkcs-oaep \
 /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.plain"
 ```
@@ -119,7 +165,7 @@ The user creating the key must be the HSM admin (see above) or have been granted
 For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key `hsm::4::mykey_pk`:
 
 ```shell
-❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
+❯ cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
 --wrapping-key-id hsm::4::mykey_pk my_sym_key
 The symmetric key was successfully generated.
       Unique identifier: my_sym_key
@@ -134,6 +180,6 @@ clear text symmetric key will be stored in the KMS database.
 For example, to encrypt a message with the key `my_sym_key`, the following command can be used:
 
 ```shell
-❯ ckms sym encrypt --key-id my_sym_key /tmp/secret.txt
+❯ cosmian kms sym encrypt --key-id my_sym_key /tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
 ```
