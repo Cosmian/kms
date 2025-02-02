@@ -102,7 +102,7 @@ The key hsm::4::my_rsa_key of type PrivateKey was exported to "/tmp/privkey.pem"
 	  Unique identifier: hsm::4::my_rsa_key
 ```
 
-To export the symmetric key `hsm::4::my_aes_key` in raw format (i.e. raw bytes), 
+To export the symmetric key `hsm::4::my_aes_key` in raw format (i.e. raw bytes),
 the following command can be used:
 
 ```shell
@@ -121,10 +121,10 @@ used, CKM_RSA_PKCS (v1.5) are supported. The hashing algorithm is fixed to SHA25
 
 When using RSA the maximum message size in bytes is:
 
- - PKCS#1 v1.5: (key size in bits / 8) - 11
- - OAEP: (key size in bits / 8) - 66
+- PKCS#1 v1.5: (key size in bits / 8) - 11
+- OAEP: (key size in bits / 8) - 66
 
-To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, 
+To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm,
 the following command can be used:
 
 ```shell
@@ -136,7 +136,9 @@ The encrypted file is available at "/tmp/secret.enc"
 To encrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
 
 ```shell
-❯ cosmian kms sym encrypt --key-id hsm::4::my_aes_key /tmp/secret.txt
+❯ cosmian kms sym encrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm /tmp/secret.txt
+The encrypted file is available at "/tmp/secret.enc"
+```
 
 ### Decrypt
 
@@ -147,12 +149,20 @@ For symmetric keys, only AES GCM is supported. For RSA keys, CKM_RSA_PKCS_OAEP a
 used, CKM_RSA_PKCS (v1.5) are supported. The hashing algorithm is fixed to SHA256.
 
 To decrypt a message with the private
-key `hsm::4::mykey` and the CKM RSA PKCS OAEP algorithm, the following command can be used:
+key `hsm::4::hsm::4::my_rsa_key` and the CKM RSA PKCS OAEP algorithm, the following command can be used:
 
 ```shell
-❯ cosmian kms rsa decrypt --key-id hsm::4::mykey --encryption-algorithm ckm-rsa-pkcs-oaep \
-/tmp/secret.enc
+❯ cosmian kms rsa decrypt --key-id hsm::4::my_rsa_key --encryption-algorithm ckm-rsa-pkcs-oaep \
+  --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.plain"
+```
+
+To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
+
+```shell
+> cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm AesGcm \
+  --output-file /tmp/secret.recovered.txt /tmp/secret.enc 
+The decrypted file is available at "/tmp/secret.recoverd.txt"
 ```
 
 ## Creating a KMS key wrapped by an HSM key
@@ -162,24 +172,34 @@ identifier of the HSM key.
 
 The user creating the key must be the HSM admin (see above) or have been granted the `Encrypt` operation on the HSM key.
 
-For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key `hsm::4::mykey_pk`:
+For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key
+`hsm::4::my_rsa_key_pk`:
 
 ```shell
-❯ cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
---wrapping-key-id hsm::4::mykey_pk my_sym_key
+> cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
+  --wrapping-key-id hsm::4::my_rsa_key_pk my_sym_key
 The symmetric key was successfully generated.
       Unique identifier: my_sym_key
 ```
 
 The symmetric key is now stored in the database encrypted (wrapped) by the HSM key. The encryption happened in the HSM.
 
-The key can now be used to encrypt, and decrypt data, and the KMS will transparently unwrap the key using the HSM key.
+The symmetric key can now be used to encrypt, and decrypt data, and the KMS will transparently unwrap the key using the
+HSM key.
+
 This unwrapping will happen once, and the unwrapped symmetric key will be cached in memory for later operations; no
 clear text symmetric key will be stored in the KMS database.
 
 For example, to encrypt a message with the key `my_sym_key`, the following command can be used:
 
 ```shell
-❯ cosmian kms sym encrypt --key-id my_sym_key /tmp/secret.txt
+> cosmian kms sym encrypt --key-id my_sym_key /tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
+```
+
+To decrypt a message with the key `my_sym_key`, the following command can be used:
+
+```shell
+> cosmian kms sym decrypt --key-id my_sym_key --output-file /tmp/secret.recovered.txt /tmp/secret.enc
+The decrypted file is available at "/tmp/secret.recovered.txt"
 ```

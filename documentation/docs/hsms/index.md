@@ -11,7 +11,9 @@ HSMs.
 
 ## Main use case and benefit
 
-The main use case for HSM support is to host keys in the KMS that are wrapped by keys stored in the HSM.
+Aside from providing a single interface to manage both KMS and HSM keys,
+the main use case for HSM support is to host keys in the KMS that
+are [wrapped by keys stored in the HSM](./hsm_operations/#creating-a-kms-key-wrapped-by-an-hsm-key).
 
 This combination provides the best of both worlds:
 
