@@ -4,6 +4,19 @@ and [MySQL](https://www.mysql.com/), as well as [Redis](https://redis.io/), usin
 the [Redis-with-Findex](#redis-with-findex)
 configuration.
 
+<!-- TOC -->
+  * [Selecting the database](#selecting-the-database)
+      * [Redis with Findex](#redis-with-findex)
+  * [Configuring the database](#configuring-the-database)
+      * [SQLite](#sqlite)
+      * [PostgreSQL](#postgresql)
+      * [MySQL or MariaDB](#mysql-or-mariadb)
+      * [Redis with Findex](#redis-with-findex-1)
+      * [SQLite encrypted](#sqlite-encrypted)
+  * [Clearing the database](#clearing-the-database)
+  * [Database migration](#database-migration)
+<!-- TOC -->
+
 ## Selecting the database
 
 All databases but SQLite and SQLite encrypted can be used in a high-availability setup.
@@ -12,7 +25,7 @@ The **SQLite** database can serve high loads and millions of objects, and is ver
 for scenarios that do not demand high availability. To use SQLIte encrypted, see
 the [SQLite encrypted](#sqlite-encrypted) section.
 
-### Redis with Findex
+#### Redis with Findex
 
 **Redis with Findex** offers the ability to use Redis as a database with application-level encryption: all data is
 encrypted (using AES 256 GCM) by the KMS servers before being sent to
@@ -34,58 +47,52 @@ to [run the Cosmian KMS in the cloud or any other zero-trust environment](instal
 
 The database parameters may be configured either:
 
-- the TOML configuration file
-- using options on the command line that is used to start the KMS server
+- the [TOML configuration file](./server_configuration_file.md)
+- ot the [arguments passed to the server](./server_cli.md) on the command line.
 
-### Configuring the database via the command line
+The
 
-For
+#### SQLite
 
-- PostgreSQL, use:
+This is the default configuration. To use SQLite, no additional configuration is needed.
 
-```sh
-docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=postgresql \
-  --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
-```
+"postgresql", "mysql", "sqlite", "sqlite-enc", "redis-findex"
 
-- MySQL or MariaDB, use:
+=== "kms.toml"
 
-```sh
-docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=mysql \
-  --database-url=mysql://kms_user:kms_password@mariadb:3306/kms
-```
+    ```toml
+    [db]
+    database_type = "sqlite"
+    sqlite_path = "./sqlite-data"
+    ```
 
-- Redis (with-Findex), use:
+=== "Command line arguments"
 
-For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
+    ```sh
+    --database-type=sqlite \
+    --sqlite-path="./sqlite-data"
+    ```
 
-- the `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
-  and indexes.
-- the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without
-  changing the password/key.
+#### PostgreSQL
 
-```sh
-docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=redis-findex \
-  --database-url=redis://localhost:6379 \
-  --redis-master-password password \
-  --redis-findex-label label
-```
+=== "kms.toml"
 
-The `redis-master-password` is the password from which a key will be derived (using Argon 2) to encrypt the Redis data
-and indexes.
+    ```toml
+    [db]
+    database-type="postgresql" 
+    database-url="postgres://kms_user:kms_password@pgsql-server:5432/kms"
+    ```
 
-The `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without
-changing the password/key.
+=== "Command line arguments"
+
+    ```sh
+    --database-type=postgresql \
+    --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
+    ```
 
 !!!info "Setting up a PostgreSQL database"
-Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
-These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
+    Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
+    These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
 
     1. Connect to psql under user `postgres`
     ```sh
@@ -102,95 +109,135 @@ These sample instructions create a database called `kms` owned by a user `kms_us
     create database kms owner=kms_user;
     ```
 
-## Using a certificate to authenticate to MySQL or Maria DB
+#### MySQL or MariaDB
 
-Use a certificate to authenticate to MySQL or Maria DB with the `--mysql-user-cert-file` option on the command line.
-Specify the certificate file name and mount the file to docker.
+=== "kms.toml"
 
-Say the certificate is called `cert.p12` and is in a directory called `/certificate` on the host disk.
+    ```toml
+    [db]
+    database-type="mysql"
+    database-url="mysql://kms_user:kms_password@mysql-server:3306/kms"
+    ```
 
-```sh
-docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:latest \
-  -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
-  --database-type=mysql \
-  --database-url=mysql://mysql_server:3306/kms \
-  --mysql-user-cert-file=cert.p12
-```
+=== "Command line arguments"
 
-## Database migration
+    ```sh
+    --database-type=mysql \
+    --database-url=mysql://kms_user:kms_password@mariadb:3306/kms
+    ```
 
-Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
-written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
+!!!info "Using a certificate to authenticate to MySQL or Maria DB"
 
-At first, the table `context` is responsible for storing the version of the software run and the state of the database.
-The state can be one of the following:
+    Use a certificate to authenticate to MySQL or Maria DB with the `mysql-user-cert-file` option to
+    specify the certificate file name.
+    
+    **Docker Example**: say the certificate is called `cert.p12` 
+    and is in a directory called `/certificate` on the host disk.
+    
+    ```sh
+    docker run --rm -p 9998:9998 \
+      --name kms ghcr.io/cosmian/kms:latest \
+      -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
+      --database-type=mysql \
+      --database-url=mysql://mysql_server:3306/kms \
+      --mysql-user-cert-file=cert.p12
+    ```
 
-- `ready`: the database is ready to be used
-- `upgrading`: the database is being upgraded
 
-On server startup:
+#### Redis with Findex
 
-- the server checks if the software version is greater than the last version run:
+For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
 
-    - if no, it simply starts;
-    - if yes:
+- the `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data
+  and indexes.
+- the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without
+  changing the password/key.
 
-        - it looks for all upgrades to apply in order from the last version run to this version;
-        - if there is any to run, it sets an upgrading flag on the db state field in the context table;
-        - it runs all the upgrades in order;
-        - it sets the flag from upgrading to ready;
 
-On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
-calls fail.
+=== "kms.toml"
 
-Upgrades resist to being interrupted in the middle and resumed from start if that happens.
+    ```toml
+    [db]
+    database-type="redis-findex"
+    database-url="redis://localhost:6379"
+    redis-master-password="password"
+    redis-findex-label="label"
+    ```
 
-## SQLite encrypted
+=== "Command line arguments"
 
-To start the KMS server with a client-side encrypted SQLite databases, pass the
-`--database-type=sqlite-enc` on start, e.g.
+    ```sh
+    --database-type=redis-findex \
+    --database-url=redis://localhost:6379 \
+    --redis-master-password=password \
+    --redis-findex-label=label
+    ```
 
-```sh
-docker run --rm -p 9998:9998 \
-  -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:latest \
-  --database-type=sqlite-enc
-```
+- Redis (with-Findex), use:
+
+
+
+
+#### SQLite encrypted
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "sqlite-enc"
+    sqlite_path = "./sqlite-data"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=sqlite-enc \
+    --sqlite-path="./sqlite-data"
+    ```
+
 
 It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
+
 !!! important "Important: encrypted databases must be created first"
 
-    Before using an encrypted database, you must create it by calling the `POST /new_database` endpoint.
+    Before using an encrypted database, you must create it by either using the [Cosmian CLI](../cosmian_cli/index.md)
+    or calling the `POST /new_database` endpoint.
     The call will return a secret
 
-    === "cosmian"
+    === "cosmian CLI"
 
         ```sh
-        cosmian kms new-database
+        ➜ cosmian kms new-database
+
+        eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=
         ```
 
     === "curl"
 
         ```sh
         ➜ curl -X POST https://my-server:9998/new_database
+        
         "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
         ```
         The secret is the value between the quotes `""`.
 
     Warning:
 
-        - This secret is only displayed **once** and is **not stored** anywhere on the server.
-        - Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
+    - This secret is only displayed **once** and is **not stored** 
+        anywhere on the server.
+    - Each call to `new_database` will create a **new additional** database. 
+      It will not return the secret of the last created database, 
+      and it will not overwrite the last created database.
 
 Once an encrypted database is created, the secret must be passed in every subsequent query to the
 KMS server.
 Passing the correct secret "auto-selects" the correct encrypted database: multiple encrypted
 databases can be used concurrently on the same KMS server.
 
-=== "cosmian"
+=== "cosmian CLI"
 
-    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file.
+    The secret must be set in `database_secret` property of the CLI `cosmian.json` configuration file,
+    and it will be used for all subsequent calls to the KMS server.
 
     ```toml
     [kms_config.http_config]
@@ -204,7 +251,54 @@ databases can be used concurrently on the same KMS server.
     The secret must be passed using a `DatabaseSecret` HTTP header, e.g.
 
     ```sh
-        curl \
-        -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
-        http://localhost:9998/objects/owned
+    curl \
+    -H "DatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
+    http://localhost:9998/objects/owned
     ```
+
+## Clearing the database
+
+The KMS server can be configured to automatically clear the database on restart.
+
+!!! warning "Warning: this operation is irreversible"
+    The cleanup operation will delete all objects and keys stored in the database.
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    cleanup_on_startup = true
+    ```
+=== "Command line arguments"
+
+    ```sh
+    --cleanup-on-startup
+    ```
+
+
+## Database migration
+
+Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
+written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
+
+At first, the table `context` is responsible for storing the version of the software run and the state of the database.
+The state can be one of the following:
+
+- `ready`: the database is ready to be used
+- `upgrading`: the database is being upgraded
+
+On startup, the server checks if the software version is greater than the last version run:
+
+- if no, it simply starts;
+- if yes:
+
+    - it looks for all upgrades to apply in order from the last version run to this version;
+    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
+    - it runs all the upgrades in order;
+    - it sets the flag from upgrading to ready;
+
+On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
+calls fail.
+
+Upgrades resist to being interrupted in the middle and resumed from start if that happens.
+

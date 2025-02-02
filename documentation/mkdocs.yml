@@ -85,11 +85,11 @@ nav:
   - Configuration:
       - Configuration file: server_configuration_file.md
       - Command line arguments: server_cli.md
+      - Databases: database.md
       - Authenticating users to the server: authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
-      - Database: database.md
       - S/MIME Email encryption: pki/smime.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
