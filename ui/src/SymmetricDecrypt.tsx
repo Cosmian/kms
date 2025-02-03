@@ -1,39 +1,51 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Form, Input, Select, Button, Upload } from 'antd';
-import type { UploadFile } from 'antd/es/upload/interface';
 
-interface SymmetricEncryptFormData {
-    inputFile: UploadFile[];
+interface SymmetricDecryptFormData {
+    inputFile: File;
     keyId?: string;
     tags?: string[];
-    dataEncryptionAlgorithm: 'aes-gcm' | 'aes-gcm-siv' | 'chacha20-poly1305' | 'aes-xts';
-    keyEncryptionAlgorithm?: 'rsa-oaep' | 'rsa-oaep-256' | 'rsa-oaep-384' | 'rsa-oaep-512';
+    dataEncryptionAlgorithm: 'aes-gcm' | 'aes-xts' | 'aes-gcm-siv' | 'chacha20-poly1305';
+    keyEncryptionAlgorithm?: 'nist-key-wrap' | 'aes-gcm' | 'rsa-pkcs-v15' | 'rsa-oaep' | 'rsa-aes-key-wrap';
     outputFile?: string;
-    nonce?: string;
     authenticationData?: string;
 }
 
-const SymmetricEncryptForm: React.FC = () => {
-    const [form] = Form.useForm<SymmetricEncryptFormData>();
-    const [isClientSide, setIsClientSide] = useState(false);
+const DATA_ENCRYPTION_ALGORITHMS = [
+    { label: 'AES-GCM (default)', value: 'aes-gcm' },
+    { label: 'AES-XTS', value: 'aes-xts' },
+    { label: 'AES-GCM-SIV', value: 'aes-gcm-siv' },
+    { label: 'ChaCha20-Poly1305', value: 'chacha20-poly1305' },
+];
 
-    const onFinish = (values: SymmetricEncryptFormData) => {
-        console.log('Encrypt values:', values);
+const KEY_ENCRYPTION_ALGORITHMS = [
+    { label: 'NIST Key Wrap (RFC 5649)', value: 'nist-key-wrap' },
+    { label: 'AES GCM', value: 'aes-gcm' },
+    { label: 'RSA PKCS v1.5', value: 'rsa-pkcs-v15' },
+    { label: 'RSA OAEP', value: 'rsa-oaep' },
+    { label: 'RSA AES Key Wrap', value: 'rsa-aes-key-wrap' },
+];
+
+const SymmetricDecryptForm: React.FC = () => {
+    const [form] = Form.useForm<SymmetricDecryptFormData>();
+
+    const onFinish = (values: SymmetricDecryptFormData) => {
+        console.log('Decrypt values:', values);
         // Handle form submission
     };
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Symmetric Encryption</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Symmetric Decryption</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
-                <p>Encrypt a file using a symmetric key.</p>
-                <p>Encryption can happen in two ways:</p>
+                <p>Decrypt a file using a symmetric key.</p>
+                <p>Decryption can happen in two ways:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>Server side: the data is sent to the server and encrypted there.</li>
-                    <li>Client side: The data encryption key (DEK) is encrypted server-side, then data is encrypted locally.</li>
+                    <li>Server side: the data is sent to the server and decrypted there.</li>
+                    <li>Client side: The data encryption key (DEK) is decrypted server-side, then data is decrypted locally.</li>
                 </ul>
-                <p className="text-sm text-yellow-600">Note: Server-side encryption loads the entire file in memory.</p>
+                <p className="text-sm text-yellow-600">Note: Server-side decryption loads the entire file in memory.</p>
             </div>
 
             <Form
@@ -49,7 +61,7 @@ const SymmetricEncryptForm: React.FC = () => {
                     <h3 className="text-sm font-medium text-gray-700">Input File</h3>
                     <Form.Item
                         name="inputFile"
-                        rules={[{ required: true, message: 'Please select a file to encrypt' }]}
+                        rules={[{ required: true, message: 'Please select a file to decrypt' }]}
                     >
                         <Upload.Dragger
                             beforeUpload={(file) => {
@@ -58,7 +70,7 @@ const SymmetricEncryptForm: React.FC = () => {
                             }}
                             maxCount={1}
                         >
-                            <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
+                            <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
                         </Upload.Dragger>
                     </Form.Item>
                 </div>
@@ -92,45 +104,27 @@ const SymmetricEncryptForm: React.FC = () => {
                     rules={[{ required: true }]}
                     help="Algorithm used to encrypt the data"
                 >
-                    <Select>
-                        <Select.Option value="aes-gcm">AES-GCM</Select.Option>
-                        <Select.Option value="aes-gcm-siv">AES-GCM-SIV</Select.Option>
-                        <Select.Option value="chacha20-poly1305">ChaCha20-Poly1305</Select.Option>
-                        <Select.Option value="aes-xts">AES-XTS</Select.Option>
-                    </Select>
+                    <Select options={DATA_ENCRYPTION_ALGORITHMS} />
                 </Form.Item>
 
                 <Form.Item
                     name="keyEncryptionAlgorithm"
                     label="Key Encryption Algorithm"
-                    help="Optional. If specified, encryption will be performed client-side"
+                    help="Optional. If not specified, decryption happens server-side"
                 >
                     <Select
-                        onChange={(value) => setIsClientSide(!!value)}
+                        options={KEY_ENCRYPTION_ALGORITHMS}
                         allowClear
-                        placeholder="Select for client-side encryption"
-                    >
-                        <Select.Option value="rsa-oaep">RSA-OAEP</Select.Option>
-                        <Select.Option value="rsa-oaep-256">RSA-OAEP-256</Select.Option>
-                        <Select.Option value="rsa-oaep-384">RSA-OAEP-384</Select.Option>
-                        <Select.Option value="rsa-oaep-512">RSA-OAEP-512</Select.Option>
-                    </Select>
-                </Form.Item>
-
-                <Form.Item
-                    name="nonce"
-                    label="Nonce/IV"
-                    help="Optional: random value will be generated if not provided (hex string)"
-                >
-                    <Input placeholder="Enter nonce in hex format" />
+                        placeholder="Select for client-side decryption"
+                    />
                 </Form.Item>
 
                 <Form.Item
                     name="authenticationData"
                     label="Authentication Data"
-                    help="Optional: additional authentication data (hex string)"
+                    help="Optional hex-encoded authentication data used during encryption"
                 >
-                    <Input placeholder="Enter authentication data in hex format" />
+                    <Input placeholder="Enter authentication data (hex)" />
                 </Form.Item>
 
                 <Form.Item>
@@ -139,7 +133,7 @@ const SymmetricEncryptForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isClientSide ? 'Encrypt File (Client-side)' : 'Encrypt File (Server-side)'}
+                        Decrypt File
                     </Button>
                 </Form.Item>
             </Form>
@@ -147,4 +141,4 @@ const SymmetricEncryptForm: React.FC = () => {
     );
 };
 
-export default SymmetricEncryptForm;
+export default SymmetricDecryptForm;
