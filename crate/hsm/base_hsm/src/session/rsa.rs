@@ -337,4 +337,3 @@ impl Session {
         }
     }
 }
-

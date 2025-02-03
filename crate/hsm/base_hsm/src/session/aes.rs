@@ -14,8 +14,6 @@ pub enum AesKeySize {
     Aes256,
 }
 
-
-
 impl Session {
     /// Generate an AES key
     ///

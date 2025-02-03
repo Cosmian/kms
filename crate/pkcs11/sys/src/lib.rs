@@ -30,7 +30,6 @@ mod pkcs11_unix;
 #[cfg(not(target_os = "windows"))]
 pub use pkcs11_unix::*;
 
-
 pub fn get_ck_rv_name(value: CK_RV) -> &'static str {
     match value {
         0 => "CKR_OK",
