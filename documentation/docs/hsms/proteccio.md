@@ -3,7 +3,7 @@ the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encr
 
 ### Proteccio library setup
 
-This solution works on Linux (x64_86) and has been validated against the Proteccio `nethsm` library version 3.17.
+This solution works on Linux (x86_64) and has been validated against the Proteccio `nethsm` library version 3.17.
 
 The KMS expects:
 
