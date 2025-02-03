@@ -13,6 +13,8 @@ import SymmetricDecryptForm from './SymmetricDecrypt';
 import RsaDecryptForm from './RsaDecrypt';
 import ECEncryptForm from './ECEncrypt';
 import ECDecryptForm from './ECDecrypt';
+import LocateForm from './Locate';
+import CovercryptMasterKeyForm from './CovercryptMasterKey';
 
 function App() {
 
@@ -21,6 +23,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<MainLayout />}>
+            <Route path="locate" element={<LocateForm />} />
             <Route path="sym/keys/create" element={<SymKeyCreateForm />} />
             <Route path="sym/keys/export" element={<KeyExportForm key_type={'symmetric'} />} />
             <Route path="sym/keys/import" element={<KeyImportForm key_type='symmetric' />} />
@@ -42,6 +45,7 @@ function App() {
             <Route path="ec/keys/destroy" element={<KeyDestroyForm key_type='ec' />} />
             <Route path="ec/encrypt" element={<ECEncryptForm />} />
             <Route path="ec/decrypt" element={<ECDecryptForm />} />
+            <Route path="cc/keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
           </Route>
         </Routes>
       </BrowserRouter>
