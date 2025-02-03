@@ -14,13 +14,13 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 cosmian_kms_interfaces = { path = "../../interfaces" }
-libloading = "0.8.6"
+libloading = { workspace = true }
 lru = { workspace = true }
 pkcs11_sys = { path = "../../pkcs11/sys" }
-rand = "0.9.0-beta.1"
+rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = "0.3.19"
+tracing-subscriber = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]

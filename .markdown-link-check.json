@@ -16,6 +16,21 @@
       "pattern": "kms.my_domain.com"
     },
     {
+      "pattern": "jwt.io"
+    },
+    {
+      "pattern": "www.mysql.com"
+    },
+    {
+      "pattern": "get--export"
+    },
+    {
+      "pattern": "not-possible"
+    },
+    {
+      "pattern": "wrapped-by-an-hsm-key"
+    },
+    {
       "pattern": "mailto:"
     }
   ]

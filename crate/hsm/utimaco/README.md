@@ -24,7 +24,7 @@ The simulator is a 32-bit ELF application on Linux.
 
 ### ARM
 
-When developing on 64-bit ARM system, such as a recent macbook, the easiest way to run the simulator,
+When developing on 64-bit ARM system, such as a recent MacBook, the easiest way to run the simulator,
 is to install a Windows VM, while performing the development on an Ubuntu VM configured to use Rosetta.
 
 Make sure that the VM network is in bridge mode so that it gets an IP address from the same network as the host.

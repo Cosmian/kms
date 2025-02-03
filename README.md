@@ -17,7 +17,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio HSM](./documentation/docs/hsm.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`

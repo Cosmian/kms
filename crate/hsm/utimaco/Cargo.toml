@@ -14,10 +14,10 @@ doctest = false
 [dependencies]
 cosmian_kms_base_hsm = { path = "../base_hsm" }
 cosmian_kms_interfaces = { path = "../../interfaces" }
-libloading = "0.8.6"
+libloading = { workspace = true }
 pkcs11_sys = { path = "../../pkcs11/sys" }
 tracing = { workspace = true }
-uuid = { version = "1.11.0", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
