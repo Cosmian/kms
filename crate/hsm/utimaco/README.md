@@ -33,7 +33,7 @@ check [this paragraph](#when-a-bridged-network-is-not-possible)
 When developing on a 64-bit AMD64 system, you must enable the 32 bit suppport by adding the i386 architecture:
 
 ```bash
-sudo dpkg --add-architecture i38
+sudo dpkg --add-architecture i386
 ```
 
 Then
@@ -52,7 +52,7 @@ https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation
 
 To run the simulator on Windows, open a terminal and run the following command:
 
-```shell
+```bash
 cd u.trust_anchor_integration_eval_bundle-6.0.0.0\Software\Windows\Simulator\sim5_windows\bin
 .\bl_sim5.exe -h -o -d ..\devices\
 ```
@@ -202,8 +202,7 @@ A token must be initialized in slot 0 before it can be used; the Security Office
 
 ## Using the p11tool2
 
-Due to a bug in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set 
-**then changed**.
+Due to a bug in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set  **then changed**.
 
 ```bash
 # set the SO PIN to 11223344

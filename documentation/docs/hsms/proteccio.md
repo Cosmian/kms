@@ -38,12 +38,10 @@ When the KMS is started from the command line, the HSM support can be enabled by
 --hsm-slot <number_of_2nd_slot> --hsm-password <password_of_2nd_slot>
 ```
 
-The `hsm-model` parameter is the HSM model to be used; only `proteccio` is supported in this release.
+The `hsm-model` parameter is the HSM model to be used; use `proteccio`
 
-The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can
-create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
+The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
 
-The `hsm-slot` and `hsm-password` parameters are the slot number and password of the HSM slots to be used by the KMS.
-These arguments can be repeated multiple times to specify multiple slots.
+The `hsm-slot` and `hsm-password` parameters are the slot number and password of the HSM slots to be used by the KMS. These arguments can be repeated multiple times to specify multiple slots.
 
 

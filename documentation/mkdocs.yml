@@ -72,7 +72,7 @@ nav:
           - Introduction: hsms/index.md
           - HSM keys & operations: hsms/hsm_operations.md
           - Trustway Proteccio: hsms/proteccio.md
-          - Utimaco: hsms/utimaco.md
+          - Utimaco General Purpose: hsms/utimaco.md
       - Disk Encryption:
           - Veracrypt: pkcs11/veracrypt.md
           - LUKS: pkcs11/luks.md
