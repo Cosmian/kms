@@ -15,6 +15,7 @@ import ECEncryptForm from './ECEncrypt';
 import ECDecryptForm from './ECDecrypt';
 import LocateForm from './Locate';
 import CovercryptMasterKeyForm from './CovercryptMasterKey';
+import CovercryptUserKeyForm from './CovercryptUserKey';
 
 function App() {
 
@@ -46,6 +47,7 @@ function App() {
             <Route path="ec/encrypt" element={<ECEncryptForm />} />
             <Route path="ec/decrypt" element={<ECDecryptForm />} />
             <Route path="cc/keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
+            <Route path="cc/keys/create-user-key" element={<CovercryptUserKeyForm />} />
           </Route>
         </Routes>
       </BrowserRouter>

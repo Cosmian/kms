@@ -1,25 +1,54 @@
 import React from 'react';
-import { Form, Select, Checkbox, Button, Upload } from 'antd';
+import { Form, Select, Checkbox, Button, Upload, Input } from 'antd';
 
 interface CovercryptMasterKeyFormData {
     policySpecifications?: File;
     policyBinary?: File;
     tags?: string[];
     sensitive: boolean;
+    policyJson?: string;
 }
+
+const POLICY_EXAMPLE = `{
+    "Security Level::<": [
+        "Protected",
+        "Confidential",
+        "Top Secret::+"
+    ],
+    "Department": [
+        "R&D",
+        "HR",
+        "MKG",
+        "FIN"
+    ]
+}`;
 
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
-    const [policyType, setPolicyType] = React.useState<'json' | 'binary'>('json');
+    const [policyType, setPolicyType] = React.useState<'json-file' | 'json-text' | 'binary'>('json-file');
 
     const onFinish = (values: CovercryptMasterKeyFormData) => {
         console.log('Create master key pair values:', values);
         // Handle form submission
     };
 
+    const PolicyExplanation = () => (
+        <div className="mt-2 space-y-1">
+            <p className="font-medium">This example creates a policy with:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li>Two policy axes: <code>Security Level</code> and <code>Department</code></li>
+                <li>Hierarchical <code>Security Level</code> axis (indicated by <code>::&lt;</code> suffix)</li>
+                <li>Three security levels: Protected, Confidential, and Top Secret</li>
+                <li>Four departments: R&D, HR, MKG, and FIN</li>
+                <li>Post-quantum encryption for Top Secret level (indicated by <code>::+</code> suffix)</li>
+                <li>Classic cryptography for other levels</li>
+            </ul>
+        </div>
+    );
+
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create Covercrypt master key pair</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create a Covercrypt master key pair</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Create a new master key pair for a given policy.</p>
@@ -46,47 +75,24 @@ const CovercryptMasterKeyForm: React.FC = () => {
                             value={policyType}
                             onChange={(value) => setPolicyType(value)}
                             options={[
-                                { label: 'JSON Policy Specifications', value: 'json' },
-                                { label: 'Binary Policy File', value: 'binary' },
+                                { label: 'Upload JSON Policy File', value: 'json-file' },
+                                { label: 'Enter JSON Policy', value: 'json-text' },
+                                { label: 'Upload Binary Policy File', value: 'binary' },
                             ]}
                         />
                     </Form.Item>
 
-                    {policyType === 'json' ? (
+                    {policyType !== 'binary' && (
+                        <div className="bg-gray-100 p-4 rounded mb-4">
+                            <p className="text-sm text-gray-700 mb-2">Example Policy Format:</p>
+                            <pre className="bg-white p-2 rounded text-xs overflow-auto">{POLICY_EXAMPLE}</pre>
+                            <PolicyExplanation />
+                        </div>
+                    )}
+
+                    {policyType === 'json-file' && (
                         <Form.Item
                             name="policySpecifications"
-                            help={
-                                <div className="text-gray-500 text-sm space-y-1">
-                                    <p>JSON file containing policy specifications.</p>
-                                    <p>Example format:</p>
-                                    <pre className="bg-gray-100 p-2 rounded text-xs">
-                                        {`{
-    "Security Level::<": [
-        "Protected",
-        "Confidential",
-        "Top Secret::+"
-    ],
-    "Department": [
-        "R&D",
-        "HR",
-        "MKG",
-        "FIN"
-    ]
-}`}
-                                    </pre>
-                                    <div className="mt-2 space-y-1">
-                                        <p className="font-medium">This example creates a policy with:</p>
-                                        <ul className="list-disc pl-5 space-y-1">
-                                            <li>Two policy axes: <code>Security Level</code> and <code>Department</code></li>
-                                            <li>Hierarchical <code>Security Level</code> axis (indicated by <code>::&lt;</code> suffix)</li>
-                                            <li>Three security levels: Protected, Confidential, and Top Secret</li>
-                                            <li>Four departments: R&D, HR, MKG, and FIN</li>
-                                            <li>Post-quantum encryption for Top Secret level (indicated by <code>::+</code> suffix)</li>
-                                            <li>Classic cryptography for other levels</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            }
                             rules={[{ required: true, message: 'Please provide policy specifications' }]}
                         >
                             <Upload.Dragger
@@ -100,7 +106,35 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 <p className="ant-upload-text">Click or drag JSON policy file</p>
                             </Upload.Dragger>
                         </Form.Item>
-                    ) : (
+                    )}
+
+                    {policyType === 'json-text' && (
+                        <Form.Item
+                            name="policyJson"
+                            rules={[
+                                { required: true, message: 'Please enter policy JSON' },
+                                {
+                                    validator: async (_, value) => {
+                                        if (value) {
+                                            try {
+                                                JSON.parse(value);
+                                            } catch (e) {
+                                                throw new Error('Invalid JSON format');
+                                            }
+                                        }
+                                    },
+                                },
+                            ]}
+                        >
+                            <Input.TextArea
+                                placeholder="Paste your JSON policy here"
+                                rows={10}
+                                className="font-mono text-sm"
+                            />
+                        </Form.Item>
+                    )}
+
+                    {policyType === 'binary' && (
                         <Form.Item
                             name="policyBinary"
                             help="Binary policy file generated using the policy command"
