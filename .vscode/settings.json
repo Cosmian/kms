@@ -61,15 +61,16 @@
   "[html]": {
     "editor.formatOnSave": false
   },
-  "python.analysis.typeCheckingMode": "basic",
   "rust-analyzer.check.command": "clippy",
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.autopep8"
-  },
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file"
   },
-  "rust-analyzer.showUnlinkedFileNotification": false
+  "rust-analyzer.showUnlinkedFileNotification": false,
+  "rust-analyzer.cargo.features": [
+    "utimaco",
+    "proteccio"
+  ],
+  "editor.formatOnSave": true
 }

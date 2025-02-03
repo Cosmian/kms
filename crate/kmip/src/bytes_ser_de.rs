@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_to_leb128_len() -> Result<(), KmipError> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut ser = Serializer::new();
         for i in 1..1000 {
             let n = rng.next_u32();

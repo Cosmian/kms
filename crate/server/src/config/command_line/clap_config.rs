@@ -95,8 +95,8 @@ pub struct ClapConfig {
     pub info: bool,
 
     /// The HSM model.
-    /// Only `proteccio` is supported for now.
-    #[clap(verbatim_doc_comment, long,value_parser(["proteccio"]), default_value = "proteccio")]
+    /// Trustway Proteccio and Utimaco General purpose HSMs are supported.
+    #[clap(verbatim_doc_comment, long,value_parser(["proteccio", "utimaco"]), default_value = "proteccio")]
     pub hsm_model: String,
 
     /// The username of the HSM admin.

@@ -1,0 +1,27 @@
+[package]
+name = "cosmian_kms_base_hsm"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Base PKCS#11 HSM integration implementation"
+
+[lib]
+doctest = false
+
+[dependencies]
+async-trait = { workspace = true }
+cosmian_kms_interfaces = { path = "../../interfaces" }
+libloading = { workspace = true }
+lru = { workspace = true }
+pkcs11_sys = { path = "../../pkcs11/sys" }
+rand = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

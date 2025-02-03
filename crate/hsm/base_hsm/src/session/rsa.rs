@@ -9,7 +9,7 @@ use pkcs11_sys::{
     CK_RSA_PKCS_OAEP_PARAMS, CK_TRUE, CK_ULONG, CK_VOID_PTR,
 };
 
-use crate::{session::Session, PError, PResult};
+use crate::{session::Session, HError, HResult};
 
 pub enum RsaKeySize {
     Rsa1024,
@@ -38,7 +38,7 @@ impl Session {
         pk_id: &[u8],
         key_size: RsaKeySize,
         sensitive: bool,
-    ) -> PResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
+    ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
         let key_size = match key_size {
             RsaKeySize::Rsa1024 => 1024,
             RsaKeySize::Rsa2048 => 2048,
@@ -150,7 +150,7 @@ impl Session {
             let pMechanism: CK_MECHANISM_PTR = &mut mechanism;
 
             let rv = self.hsm().C_GenerateKeyPair.ok_or_else(|| {
-                PError::Default("C_GenerateKeyPair not available on library".to_string())
+                HError::Default("C_GenerateKeyPair not available on library".to_string())
             })?(
                 self.session_handle(),
                 pMechanism,
@@ -163,7 +163,7 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed generating RSA key pair".to_string(),
                 ));
             }
@@ -181,7 +181,7 @@ impl Session {
         &self,
         wrapping_key_handle: CK_OBJECT_HANDLE,
         aes_key_handle: CK_OBJECT_HANDLE,
-    ) -> PResult<Vec<u8>> {
+    ) -> HResult<Vec<u8>> {
         unsafe {
             // Initialize the RSA-OAEP mechanism
             let mut oaep_params = CK_RSA_PKCS_OAEP_PARAMS {
@@ -203,7 +203,7 @@ impl Session {
             let rv = self
                 .hsm()
                 .C_WrapKey
-                .ok_or_else(|| PError::Default("C_WrapKey not available on library".to_string()))?(
+                .ok_or_else(|| HError::Default("C_WrapKey not available on library".to_string()))?(
                 self.session_handle(),
                 &mut mechanism,
                 wrapping_key_handle,
@@ -213,7 +213,7 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(PError::Default(
+                return Err(HError::Default(
                     "Failed to get wrapped key length".to_string(),
                 ));
             }
@@ -225,7 +225,7 @@ impl Session {
             let rv = self
                 .hsm()
                 .C_WrapKey
-                .ok_or_else(|| PError::Default("C_WrapKey not available on library".to_string()))?(
+                .ok_or_else(|| HError::Default("C_WrapKey not available on library".to_string()))?(
                 self.session_handle(),
                 &mut mechanism,
                 wrapping_key_handle,
@@ -235,7 +235,7 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to wrap key".to_string()));
+                return Err(HError::Default("Failed to wrap key".to_string()));
             }
 
             // Truncate the buffer to the actual size of the wrapped key
@@ -249,7 +249,7 @@ impl Session {
         unwrapping_key_handle: CK_OBJECT_HANDLE,
         wrapped_aes_key: &[u8],
         aes_key_label: &str,
-    ) -> PResult<CK_OBJECT_HANDLE> {
+    ) -> HResult<CK_OBJECT_HANDLE> {
         let mut wrapped_key = wrapped_aes_key.to_vec();
         unsafe {
             // Initialize the RSA-OAEP mechanism
@@ -268,10 +268,56 @@ impl Session {
             };
 
             // Unwrap the key
-            let mut aes_key_template = aes_unwrap_key_template(aes_key_label);
+            let mut aes_key_template = [
+                CK_ATTRIBUTE {
+                    type_: CKA_CLASS,
+                    pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_KEY_TYPE,
+                    pValue: &CKK_AES as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_TOKEN,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_LABEL,
+                    pValue: aes_key_label.as_ptr() as CK_VOID_PTR,
+                    ulValueLen: aes_key_label.len() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_PRIVATE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_SENSITIVE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_EXTRACTABLE,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_ENCRYPT,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+                CK_ATTRIBUTE {
+                    type_: CKA_DECRYPT,
+                    pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
+                    ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+                },
+            ];
             let mut unwrapped_key_handle: CK_OBJECT_HANDLE = 0;
             let rv = self.hsm().C_UnwrapKey.ok_or_else(|| {
-                PError::Default("C_UnwrapKey not available on library".to_string())
+                HError::Default("C_UnwrapKey not available on library".to_string())
             })?(
                 self.session_handle(),
                 &mut mechanism,
@@ -284,60 +330,10 @@ impl Session {
             );
 
             if rv != CKR_OK {
-                return Err(PError::Default("Failed to unwrap key".to_string()));
+                return Err(HError::Default("Failed to unwrap key".to_string()));
             }
 
             Ok(unwrapped_key_handle)
         }
     }
-}
-
-pub(crate) const fn aes_unwrap_key_template(label: &str) -> [CK_ATTRIBUTE; 9] {
-    [
-        CK_ATTRIBUTE {
-            type_: CKA_CLASS,
-            pValue: &CKO_SECRET_KEY as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_KEY_TYPE,
-            pValue: &CKK_AES as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_TOKEN,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: label.as_ptr() as CK_VOID_PTR,
-            ulValueLen: label.len() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_PRIVATE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_SENSITIVE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_EXTRACTABLE,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_ENCRYPT,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-        CK_ATTRIBUTE {
-            type_: CKA_DECRYPT,
-            pValue: &CK_TRUE as *const _ as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
-        },
-    ]
 }

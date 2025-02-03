@@ -58,8 +58,9 @@ plugins:
   - kroki
   - meta-descriptions
 nav:
-  - Getting started: index.md
-  - Use cases:
+  - Why use the Cosmian KMS: index.md
+  - Quick start: quick_start.md
+  - Use cases and integrations:
       - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
       - Google workspace Client-Side Encryption (CSE):
           - Getting started: google_cse/index.md
@@ -68,25 +69,28 @@ nav:
           - Migrating existing email to Gmail CSE: google_cse/migrating.md
       - Microsoft Double Key Encryption (DKE): ms_dke/index.md
       - HSM support:
-          - Proteccio: hsm.md
+          - Introduction: hsms/index.md
+          - HSM keys & operations: hsms/hsm_operations.md
+          - Trustway Proteccio: hsms/proteccio.md
+          - Utimaco General Purpose: hsms/utimaco.md
       - Disk Encryption:
           - Veracrypt: pkcs11/veracrypt.md
           - LUKS: pkcs11/luks.md
           - Cryhod: pkcs11/cryhod.md
+      - S/MIME Email encryption: pki/smime.md
       - API Endpoints: api.md
-  - Server Installation:
-      - Single server mode: single_server_mode.md
-      - High-availability: high_availability_mode.md
-      - Deploying in Confidential VM: marketplace_guide.md
-  - Server Configuration:
-      - Command Line Interface: server_cli.md
+  - Installation:
+      - Getting started: installation/installation_getting_started.md
+      - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
+      - High-availability: installation/high_availability_mode.md
+  - Configuration:
       - Configuration file: server_configuration_file.md
+      - Command line arguments: server_cli.md
+      - Databases: database.md
       - Authenticating users to the server: authentication.md
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
-      - Database: database.md
-      - S/MIME Email encryption: pki/smime.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:

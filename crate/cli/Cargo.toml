@@ -19,7 +19,11 @@ test = false
 doctest = false
 
 [features]
-fips = ["cosmian_kms_client/fips", "cosmian_kms_crypto/fips", "kms_test_server/fips"]
+fips = [
+  "cosmian_kms_client/fips",
+  "cosmian_kms_crypto/fips",
+  "kms_test_server/fips",
+]
 
 [dependencies]
 base64 = { workspace = true }
@@ -46,7 +50,7 @@ leb128 = { workspace = true }
 num-format = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }

@@ -66,7 +66,7 @@ pub struct EncryptAction {
     key_id: Option<String>,
 
     /// The data encryption algorithm.
-    /// If not specified, aes-gcm is used.
+    /// If not specified, `aes-gcm` is used.
     ///
     /// If no key encryption algorithm is specified, the data will be sent to the server
     /// and will be encrypted server side.
