@@ -7,6 +7,7 @@ import KeyRevokeForm from './KeysRevoke';
 import KeyDestroyForm from './KeysDestroy';
 import SymKeyCreateForm from './SymKeysCreate';
 import ECKeyCreateForm from './ECKeysCreate';
+import SymmetricEncryptForm from './SymmetricEncrypt';
 
 function App() {
 
@@ -20,6 +21,7 @@ function App() {
             <Route path="sym/keys/import" element={<KeyImportForm key_type='symmetric' />} />
             <Route path="sym/keys/revoke" element={<KeyRevokeForm key_type='symmetric' />} />
             <Route path="sym/keys/destroy" element={<KeyDestroyForm key_type='symmetric' />} />
+            <Route path="sym/encrypt" element={<SymmetricEncryptForm />} />
             <Route path="rsa/keys/create" element={<RsaKeyCreateForm />} />
             <Route path="rsa/keys/export" element={<KeyExportForm key_type={'rsa'} />} />
             <Route path="rsa/keys/import" element={<KeyImportForm key_type='rsa' />} />
