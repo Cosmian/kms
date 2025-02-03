@@ -1,8 +1,7 @@
 When no [configuration file](./server_configuration_file.md) is provided, the KMS server can be
-configured using command line options. 
+configured using command line options.
 
 The list of arguments can be printed using the `--help` command line option.
-
 
 ```sh
 -> docker run --rm ghcr.io/cosmian/kms:latest --help

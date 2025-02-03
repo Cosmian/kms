@@ -2,13 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.22.0] - 
+## [4.22.0] -
 
 ### 📚 Documentation
 
 - Clarified installation documentation
 - Improved database configuration
-- Improved HSM integration documentation 
+- Improved HSM integration documentation
 
 ### 🚀 Features
 
@@ -18,7 +18,6 @@ All notable changes to this project will be documented in this file.
 
 - Fixed HSM base code dangling pointer issue in `release` mode
 - Fixed unwanted `ValueEnum` in `cosmian sym encrypt`
-
 
 ## [4.21.2] - 2025-01-21
 

@@ -5,16 +5,16 @@ the [Redis-with-Findex](#redis-with-findex)
 configuration.
 
 <!-- TOC -->
-  * [Selecting the database](#selecting-the-database)
-      * [Redis with Findex](#redis-with-findex)
-  * [Configuring the database](#configuring-the-database)
-      * [SQLite](#sqlite)
-      * [PostgreSQL](#postgresql)
-      * [MySQL or MariaDB](#mysql-or-mariadb)
-      * [Redis with Findex](#redis-with-findex-1)
-      * [SQLite encrypted](#sqlite-encrypted)
-  * [Clearing the database](#clearing-the-database)
-  * [Database migration](#database-migration)
+- [Selecting the database](#selecting-the-database)
+    - [Redis with Findex](#redis-with-findex)
+- [Configuring the database](#configuring-the-database)
+    - [SQLite](#sqlite)
+        - [PostgreSQL](#postgresql)
+        - [MySQL or MariaDB](#mysql-or-mariadb)
+        - [Redis with Findex](#redis-with-findex-1)
+        - [SQLite encrypted](#sqlite-encrypted)
+- [Clearing the database](#clearing-the-database)
+- [Database migration](#database-migration)
 <!-- TOC -->
 
 ## Selecting the database
@@ -25,7 +25,7 @@ The **SQLite** database can serve high loads and millions of objects, and is ver
 for scenarios that do not demand high availability. To use SQLIte encrypted, see
 the [SQLite encrypted](#sqlite-encrypted) section.
 
-#### Redis with Findex
+### Redis with Findex
 
 **Redis with Findex** offers the ability to use Redis as a database with application-level encryption: all data is
 encrypted (using AES 256 GCM) by the KMS servers before being sent to
@@ -48,13 +48,11 @@ to [run the Cosmian KMS in the cloud or any other zero-trust environment](instal
 The database parameters may be configured either:
 
 - the [TOML configuration file](./server_configuration_file.md)
-- ot the [arguments passed to the server](./server_cli.md) on the command line.
+- or the [arguments passed to the server](./server_cli.md) on the command line.
 
-
-#### SQLite
+### SQLite
 
 This is the default configuration. To use SQLite, no additional configuration is needed.
-
 
 === "kms.toml"
 
@@ -77,7 +75,7 @@ This is the default configuration. To use SQLite, no additional configuration is
 
     ```toml
     [db]
-    database-type="postgresql" 
+    database-type="postgresql"
     database-url="postgres://kms_user:kms_password@pgsql-server:5432/kms"
     ```
 
@@ -128,10 +126,10 @@ This is the default configuration. To use SQLite, no additional configuration is
 
     Use a certificate to authenticate to MySQL or Maria DB with the `mysql-user-cert-file` option to
     specify the certificate file name.
-    
-    **Docker Example**: say the certificate is called `cert.p12` 
+
+    **Docker Example**: say the certificate is called `cert.p12`
     and is in a directory called `/certificate` on the host disk.
-    
+
     ```sh
     docker run --rm -p 9998:9998 \
       --name kms ghcr.io/cosmian/kms:latest \
@@ -141,7 +139,6 @@ This is the default configuration. To use SQLite, no additional configuration is
       --mysql-user-cert-file=cert.p12
     ```
 
-
 #### Redis with Findex
 
 For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
@@ -150,7 +147,6 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
   and indexes.
 - the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without
   changing the password/key.
-
 
 === "kms.toml"
 
@@ -173,9 +169,6 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
 
 - Redis (with-Findex), use:
 
-
-
-
 #### SQLite encrypted
 
 === "kms.toml"
@@ -192,7 +185,6 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
     --database-type=sqlite-enc \
     --sqlite-path="./sqlite-data"
     ```
-
 
 It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create a new encrypted database.
 
@@ -214,17 +206,17 @@ It requires now to install the [Cosmian CLI](../cosmian_cli/index.md) and create
 
         ```sh
         ➜ curl -X POST https://my-server:9998/new_database
-        
+
         "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
         ```
         The secret is the value between the quotes `""`.
 
     Warning:
 
-    - This secret is only displayed **once** and is **not stored** 
+    - This secret is only displayed **once** and is **not stored**
         anywhere on the server.
-    - Each call to `new_database` will create a **new additional** database. 
-      It will not return the secret of the last created database, 
+    - Each call to `new_database` will create a **new additional** database.
+      It will not return the secret of the last created database,
       and it will not overwrite the last created database.
 
 Once an encrypted database is created, the secret must be passed in every subsequent query to the
@@ -273,7 +265,6 @@ The KMS server can be configured to automatically clear the database on restart.
     --cleanup-on-startup
     ```
 
-
 ## Database migration
 
 Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
@@ -299,4 +290,3 @@ On every call to the database, a check is performed on the db state field to che
 calls fail.
 
 Upgrades resist to being interrupted in the middle and resumed from start if that happens.
-

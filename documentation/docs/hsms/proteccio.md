@@ -22,7 +22,7 @@ is enabled by configuring these 4 parameters:
 
 ```toml
 hsm_model = "proteccio"
-hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin" 
+hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
 hsm_slot = [0, 0, ] # example [1,4] for slots 1 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass1", "pass4"] for slots 1 and 4
 ```
@@ -43,5 +43,3 @@ The `hsm-model` parameter is the HSM model to be used; use `proteccio`
 The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
 
 The `hsm-slot` and `hsm-password` parameters are the slot number and password of the HSM slots to be used by the KMS. These arguments can be repeated multiple times to specify multiple slots.
-
-

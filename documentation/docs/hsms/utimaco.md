@@ -30,7 +30,7 @@ When using the [TOML configuration file](../server_configuration_file.md#toml-co
 
 ```toml
 hsm_model = "utimaco"
-hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin" 
+hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass0", "pass4"] for slots 0 and 4
 ```
@@ -43,7 +43,7 @@ When the KMS is started from the command line, the HSM support can be enabled by
 --hsm-model "utimaco" \
 --hsm-admin "<HSM_ADMIN_USERNAME>"  \
 --hsm-slot <number_of_1st_slot> --hsm-password <password_of_1st_slot> \
---hsm-slot <number_of_2nd_slot> --hsm-password <password_of_2nd_slot>
+--hsm-slot <number_of_2and_slot> --hsm-password <password_of_2and_slot>
 ```
 
 The `hsm-model` parameter is the HSM model to be used; use `utimaco`.
@@ -51,7 +51,6 @@ The `hsm-model` parameter is the HSM model to be used; use `utimaco`.
 The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
 
 The `hsm-slot` and `hsm-password` parameters are the slot number and user password of the HSM slots to be used by the KMS. These arguments can be repeated multiple times to specify multiple slots.
-
 
 ### Using the simulator
 
@@ -62,53 +61,52 @@ To install the simulator on a Debian based (e.g. Ubuntu) Linux amd64/x86_64, fol
 
 1. Enable 32 bit support
 
-```bash
-sudo dpkg --add-architecture i386
-```
+    ```bash
+    sudo dpkg --add-architecture i386
+    ```
 
-Then
+    Then
 
-```bash
-sudo apt-get update
-sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
-```
+    ```bash
+    sudo apt-get update
+    sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
+    ```
 
 2. Start the simulator
 
-In `<eval-bundle-6.0.0>\Software\Windows\Simulator\sim5_windows\bin`, run
+    In `<eval-bundle-6.0.0>\Software\Windows\Simulator\sim5_windows\bin`, run
 
-```sh
-.\bl_sim5.exe -h -o -d ..\devices\
-```
+    ```sh
+    .\bl_sim5.exe -h -o -d ..\devices\
+    ```
 
 3. Make sure the Device in `cs_pkcs11_R3.cfg` points to the simulator.
 
 4. Initialize a slot and create the Security Officer and User pins.
 
-Due to a bug (?)  in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set, and **then changed** as well.
+    Due to a bug (?)  in the simulator, the Security Officer PIN must be set **then changed** before the User PIN can be set, and **then changed** as well.
 
-```bash
-# Set the SO PIN to 11223344
-./p11tool2 Slot=0 login=ADMIN,./key/ADMIN_SIM.key  InitToken=11223344
-# Change the SO PIN to 12345678
-./p11tool2 Slot=0 LoginSO=11223344 SetPin=11223344,12345678
-```
+    ```bash
+    # Set the SO PIN to 11223344
+    ./p11tool2 Slot=0 login=ADMIN,./key/ADMIN_SIM.key  InitToken=11223344
+    # Change the SO PIN to 12345678
+    ./p11tool2 Slot=0 LoginSO=11223344 SetPin=11223344,12345678
+    ```
 
-Failing to change the SO PIN before setting the User PIN will result in the following error: `Error 0x000001B8 (
-CKR_PIN_TOO_WEAK)`
+    Failing to change the SO PIN before setting the User PIN will result in the following error: `Error 0x000001B8 (
+    CKR_PIN_TOO_WEAK)`
 
-```bash
-# Set the User PIN to 11223344
-./p11tool2 Slot=0 LoginSO=12345678 InitPin=11223344
-# Change the User PIN to 12345678
-./p11tool2 Slot=0 LoginUser=11223344 SetPin=11223344,12345678
-```
+    ```bash
+    # Set the User PIN to 11223344
+    ./p11tool2 Slot=0 LoginSO=12345678 InitPin=11223344
+    # Change the User PIN to 12345678
+    ./p11tool2 Slot=0 LoginUser=11223344 SetPin=11223344,12345678
+    ```
 
-Now, both the SO and User PINs have been set to 12345678.
+    Now, both the SO and User PINs have been set to 12345678.
 
-To list objects on Slot 0, use:
+    To list objects on Slot 0, use:
 
-```bash
-./p11tool2 Slot=0 LoginUser=12345678 ListObjects
-```
-
+    ```bash
+    ./p11tool2 Slot=0 LoginUser=12345678 ListObjects
+    ```

@@ -1,3 +1,5 @@
+# Quick start
+
 To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
 inside the container, simply run the following command:
 
@@ -13,25 +15,25 @@ You can then easily manage the server:
 
 1) Create a 256-bit symmetric key
 
-```sh
-cosmian kms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
-...
-The symmetric key was successfully generated.
-      Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
-```
+      ```sh
+      cosmian kms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
+      ...
+      The symmetric key was successfully generated.
+            Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
+      ```
 
 2) Encrypt the `image.png` file with AES GCM using the key
 
-```sh
-cosmian kms sym encrypt --tag my-file-key --output-file image.enc image.png
-...
-The encrypted file is available at "image.enc"
-```
+      ```sh
+      cosmian kms sym encrypt --tag my-file-key --output-file image.enc image.png
+      ...
+      The encrypted file is available at "image.enc"
+      ```
 
 3) Decrypt the `image.enc` file using the key
 
-```sh
-cosmian kms sym decrypt --tag my-file-key --output-file image2.png image.enc
-...
-The decrypted file is available at "image2.png"
-```
+      ```sh
+      cosmian kms sym decrypt --tag my-file-key --output-file image2.png image.enc
+      ...
+      The decrypted file is available at "image2.png"
+      ```

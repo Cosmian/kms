@@ -12,7 +12,7 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
   [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./ms_dke/index.md)
-- support for [HSMs](./hsms/index.md) (trustway Proteccio, Utimaco general pupose) with KMS keys wrapped by the HSM
+- support for [HSMs](./hsms/index.md) (trustway Proteccio, Utimaco general purpose) with KMS keys wrapped by the HSM
 - [Veracrypt](./pkcs11/veracrypt.md)
   and [LUKS](./pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./fips.md) mode gated behind the feature `fips`
@@ -63,4 +63,3 @@ The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 
 **Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.
-

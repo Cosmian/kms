@@ -1,6 +1,6 @@
 # TOML configuration file
 
-The KMS server can be configured using a TOML file. When a configuraton file is provided,
+The KMS server can be configured using a TOML file. When a configuration file is provided,
 the [command line arguments](./server_cli.md) are ignored.
 
 By default, the configuration filepath is retrieved in the following order:
@@ -15,14 +15,14 @@ The file should be a TOML file with the following structure:
 ```toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
-# When an authentication method is provided, perform the authentication 
+# When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
 
 # This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
-# It should contain the external URL of this server as configured 
-# in Google Workspace client side encryption settings For instance, 
-# if this server is running on domain `cse.my_domain.com`, 
+# It should contain the external URL of this server as configured
+# in Google Workspace client side encryption settings For instance,
+# if this server is running on domain `cse.my_domain.com`,
 # the URL should be something like <https://cse.my_domain.com/google_cse>
 google_cse_kacls_url = "<google cse kacls url>"
 
@@ -39,7 +39,7 @@ ms_dke_service_url = "<ms dke service url>"
 # Print the server configuration information and exit
 info = false
 
-# The following fields are only neeeded if an HSM is used. 
+# The following fields are only needed if an HSM is used.
 # Check the HSMs pages for more information.
 hsm_model = "<hsm_name>"
 hsm_admin = "<hsm admin username>" #for Create operation on HSM
@@ -61,13 +61,13 @@ clear_database = false
 port = 9998
 # The KMS server hostname - defaults to 0.0.0.0
 hostname = "<hostname>"
-# The KMS server optional PKCS#12 Certificates and Key file. 
+# The KMS server optional PKCS#12 Certificates and Key file.
 # If provided, this will start the server in HTTPS mode
 https_p12_file = "<https p12 file>"
 # The password to open the PKCS#12 Certificates and Key file
 https_p12_password = "<https p12 password>"
-#  The server optional authority X509 certificate in PEM format 
-# used to validate the client certificate presented for authentication. 
+#  The server optional authority X509 certificate in PEM format
+# used to validate the client certificate presented for authentication.
 # If provided, this will require clients to present a certificate signed by this authority for authentication.
 # The server must run in TLS mode for this to be used
 authority_cert_file = "<authority cert file>"
@@ -75,8 +75,8 @@ authority_cert_file = "<authority cert file>"
 # Check the Auhtenticating Users for more information
 [auth]
 # The issuer URI of the JWT token
-# To handle multiple identity managers, add different parameters 
-# under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience), 
+# To handle multiple identity managers, add different parameters
+# under each argument (jwt-issuer-uri, jwks-uri and optionally jwt-audience),
 # keeping them in the same order in the three lists.
 # For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 # For Google, this would be `https://accounts.google.com`
@@ -93,10 +93,10 @@ jwks_uri = ["<jwks uri>"]
 jwt_audience = ["<jwt audience>"]
 
 [workspace]
-# The root folder where the KMS will store its data 
+# The root folder where the KMS will store its data
 # A relative path is taken relative to the user HOME directory
 root_data_path = "./cosmian-kms"
-# The folder to store temporary data (non-persistent data readable 
+# The folder to store temporary data (non-persistent data readable
 # by no-one but the current instance during the current execution)
 tmp_path = "/tmp"
 

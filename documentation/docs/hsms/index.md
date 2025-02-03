@@ -31,7 +31,7 @@ Typical use cases include:
   Hadoop/Spark, [Snowflake](https://snowflake.com), [Databricks](https://databricks.com) where a large number of
   encryption and decryption requests need to be processed on each request on the fly.
 
-#### At Rest
+### At Rest
 
 KMS keys are stored in the KMS database in a wrapped form, and the wrapping key is stored in the HSM. This
 provides an additional layer of security for the keys stored in the KMS since the keys stored in the HSM are protected
@@ -42,4 +42,3 @@ by the HSM's hardware security mechanisms, and benefit from the HSM certificatio
 Encryption and decryption requests from applications are processed by the KMS, which first unwraps
 the keys stored in the KMS database using the keys stored in the HSM. Contrarily to the HSM, the KMS is a highly
 scalable and performant system that can handle a large number of requests concurrently.
-

@@ -1,7 +1,7 @@
 A KMS-ready instance based on Cosmian Confidential VM can be deployed on virtual machines
 that supports AMD SEV-SNP or Intel TDX technologies, and is available on the marketplace of the major cloud providers.
 
-If you are intersted in the confidential computing technology and the Cosmian VM,
+If you are interested in the confidential computing technology and the Cosmian VM,
 please first read the guide about [how to setup a Cosmian VM](../../cosmian_vm/deployment_guide.md).
 
 ## Deploy Cosmian VM KMS on a cloud provider
