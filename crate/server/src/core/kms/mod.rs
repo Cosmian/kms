@@ -88,15 +88,6 @@ impl KMS {
         let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
             None
         } else {
-            if server_params
-                .hsm_model
-                .as_ref()
-                .map(String::from)
-                .unwrap_or_default()
-                != "proteccio"
-            {
-                kms_bail!("The only supported HSM model is Proteccio for now")
-            }
             #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
             kms_bail!("Fatal: HSMs are only supported on Linux x86_64");
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -133,7 +124,7 @@ impl KMS {
                         );
                         Some(utimaco)
                     }
-                    _ => kms_bail!("The only supported HSM model is Proteccio for now"),
+                    _ => kms_bail!("The only supported HSM models are proteccio and utimaco"),
                 }
             }
         };
