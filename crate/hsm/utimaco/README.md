@@ -224,6 +224,12 @@ CKR_PIN_TOO_WEAK)`
 
 Now, both the SO and User PINs have been set to 12345678.
 
+To list objects on Slot 0, use:
+
+```bash
+./p11tool2 Slot=0 LoginUser=12345678 ListObjects
+```
+
 ## Using the CAT tool
 
 Use the CAT tool and make sure you can login as Admin using the
