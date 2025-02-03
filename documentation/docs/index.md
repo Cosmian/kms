@@ -44,11 +44,11 @@ Please refer to the list of [supported algorithms](./algorithms.md).
 
 The **Cosmian KMS** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/)
+- [Debian](https://package.cosmian.com/kms/4.22.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.22.0/rhel9/)
   package
 - Docker [image](https://github.com/Cosmian/kms/pkgs/container/kms)
   and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
-- Pre-built [binaries](https://package.cosmian.com/kms/4.21.2/) for multiple operating systems (Linux, Windows, MacOS)
+- Pre-built [binaries](https://package.cosmian.com/kms/4.22.0/) for multiple operating systems (Linux, Windows, MacOS)
 
 ## Client CLI
 
@@ -58,7 +58,7 @@ or decryption.
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.21.2/rhel9/)
+- [Debian](https://package.cosmian.com/kms/4.22.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/4.22.0/rhel9/)
   package
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 

@@ -13,7 +13,7 @@ ROOT_FOLDER=$(pwd)
 
 if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   # First build the Debian and RPM packages. It must come at first since
-  # after this step `ckms` and `cosmian_kms_server` are built with custom features flags (fips for example).
+  # after this step `ckms` and `cosmian_kms` are built with custom features flags (fips for example).
   rm -rf target/"$TARGET"/debian
   rm -rf target/"$TARGET"/generate-rpm
   if [ -f /etc/redhat-release ]; then
@@ -96,7 +96,7 @@ done
 ./target/"$TARGET/$DEBUG_OR_RELEASE"/ckms -h
 # Must use OpenSSL with this specific version 3.2.0
 OPENSSL_VERSION_REQUIRED="3.2.0"
-correct_openssl_version_found=$(./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server --info | grep "$OPENSSL_VERSION_REQUIRED")
+correct_openssl_version_found=$(./target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms --info | grep "$OPENSSL_VERSION_REQUIRED")
 if [ -z "$correct_openssl_version_found" ]; then
   echo "Error: The correct OpenSSL version $OPENSSL_VERSION_REQUIRED is not found."
   exit 1
@@ -104,10 +104,10 @@ fi
 
 if [ "$(uname)" = "Linux" ]; then
   ldd target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep ssl && exit 1
-  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server | grep ssl && exit 1
+  ldd target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep ssl && exit 1
 else
   otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/ckms | grep openssl && exit 1
-  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms_server | grep openssl && exit 1
+  otool -L target/"$TARGET/$DEBUG_OR_RELEASE"/cosmian_kms | grep openssl && exit 1
 fi
 
 find . -type d -name cosmian-kms -exec rm -rf \{\} \; -print || true

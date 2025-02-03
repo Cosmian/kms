@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "ckms_pkcs11"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
@@ -1357,7 +1357,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "bitflags 2.8.0",
  "chrono",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1387,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cloudproof",
  "cosmian_config_utils",
@@ -1461,7 +1461,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "aes-gcm-siv",
  "argon2",
@@ -1484,7 +1484,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1497,7 +1497,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1567,7 +1567,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -1608,7 +1608,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "bincode",
  "const-oid",
@@ -2881,7 +2881,7 @@ dependencies = [
 
 [[package]]
 name = "kms_test_server"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "actix-server",
  "base64 0.22.1",
@@ -3772,7 +3772,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",
@@ -5460,7 +5460,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "4.21.2"
+version = "4.22.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_interfaces",

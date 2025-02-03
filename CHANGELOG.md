@@ -2,22 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.22.0] -
+## [4.22.0] - 2025-02-03
+
+### 🚀 Features
+
+- Utimaco General Purpose HSMs support ([#367](https://github.com/Cosmian/kms/pull/367))
+
+### 🐛 Bug Fixes
+
+- Fixed HSM base code dangling pointer issue in `release` mode
+- Fixed unwanted `ValueEnum` in `cosmian sym encrypt`
+- Remove ckms linux packages in favor of cosmian packages ([#366](https://github.com/Cosmian/kms/pull/366))
+- Rename binary `cosmian_kms_server` to `cosmian_kms` - reuse same name as marketplace images
 
 ### 📚 Documentation
 
 - Clarified installation documentation
 - Improved database configuration
 - Improved HSM integration documentation
-
-### 🚀 Features
-
-- Add Utimaco General purpose HSM support
-
-### 🐛 Bug Fixes
-
-- Fixed HSM base code dangling pointer issue in `release` mode
-- Fixed unwanted `ValueEnum` in `cosmian sym encrypt`
 
 ## [4.21.2] - 2025-01-21
 
