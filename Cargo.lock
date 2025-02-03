@@ -1559,6 +1559,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
+ "utimaco_pkcs11_loader",
  "uuid",
  "x509-parser",
  "zeroize",

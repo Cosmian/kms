@@ -4,12 +4,7 @@
 //! HSM_USER_PASSWORD=XXX cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_all
 //! ```
 
-use std::{
-    collections::HashMap,
-    ptr,
-    sync::{Arc, Once},
-    thread,
-};
+use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
     test_helpers::{get_hsm_password, initialize_logging},
@@ -18,8 +13,7 @@ use cosmian_kms_base_hsm::{
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use libloading::Library;
 use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
-use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::Utimaco;
