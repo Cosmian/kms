@@ -369,3 +369,18 @@ pub struct AuthenticatedEncryptionAdditionalData(pub Vec<u8>);
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct AuthenticatedEncryptionTag(pub Vec<u8>);
+
+/// Derivation Parameters defines the parameters for a key derivation process
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct DerivationParameters {
+    /// The type of derivation method to be used
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    /// The initialization vector or nonce if required by the derivation algorithm
+    pub initialization_vector: Option<Vec<u8>>,
+    /// A value that identifies the derivation process
+    pub derivation_data: Option<Vec<u8>>,
+    /// The length in bits of the derived data
+    pub salt: Option<Vec<u8>>,
+    /// Optional iteration count used by the derivation method
+    pub iteration_count: Option<i32>,
+}
