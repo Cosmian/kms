@@ -32,12 +32,11 @@ Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
 Some KMIP operations can be performed on HSM keys via the KMS server API.
 
-First, make sure the HSM is configured and that the [Cosmian CLI](https://package.cosmian.com/cli/) is installed and
-configured.
+First, ensure the HSM is configured and, the [Cosmian CLI](https://package.cosmian.com/cli/) is installed and configured.
 
 ### Create
 
-Create a new key in the HSM. The key unique must be provided on the request and must follow the
+Create a new key in the HSM. The key unique identifer must be provided on the request and follow the
 `hsm::<slot_number>::<key_identifier>` format described above.
 Only the user identified by the `--hsm-admin` argument can create keys in the HSM.
 
@@ -73,7 +72,7 @@ Note: HSM keys do not support object tagging in this release.
 Contrarily to the KMS keys, HSM keys must not be Revoked before being Destroyed. The `Destroy` operation will remove the
 key from the HSM.
 
-Only the user identified by the `--hsm-admin` argument or a user which has been granted the `Destroy` operation (by the
+Only the user identified by the `hsm-admin` argument or a user granted the `Destroy` operation (by the
 HSM admin) can destroy keys in the HSM.
 
 To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
@@ -94,8 +93,8 @@ Successfully destroyed the object.
 
 ### Get - Export
 
-The `Get` and `Export` operations are used to retrieve the key material from the HSM.
-Only the user identified by the `--hsm-admin` argument or a user which has been granted the `Get` operation (by the HSM
+The `Get` and `Export` operations retrieve the key material from the HSM.
+Only the user identified by the `hsm-admin` argument or a user granted the `Get` operation (by the HSM
 admin) can retrieve keys from the HSM.
 
 Private keys or symmetric keys marked as `sensitive` cannot be retrieved from the HSM. The public key of a keypair can
@@ -131,8 +130,7 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `--hsm-admin` argument or a
 user which has been granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
 
-For symmetric keys, only AES GCM is supported. For RSA keys, CKM_RSA_PKCS_OAEP and the now deprecated, but still widely
-used, CKM_RSA_PKCS (v1.5) are supported. The hashing algorithm is fixed to SHA256.
+For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now deprecated but still widely used CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
 
 When using RSA the maximum message size in bytes is:
 
