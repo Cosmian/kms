@@ -21,7 +21,7 @@ use crate::{
         extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_operations::ErrorReason,
     },
-    kmip_error,
+    kmip_2_1_error,
 };
 pub const VENDOR_ATTR_AAD: &str = "aad";
 
@@ -1212,7 +1212,7 @@ impl Attributes {
     /// Raise error if object's `CryptographicUsageMask` is None.
     pub fn is_usage_authorized_for(&self, flag: CryptographicUsageMask) -> Result<bool, KmipError> {
         let usage_mask = self.cryptographic_usage_mask.ok_or_else(|| {
-            KmipError::InvalidKmipValue(
+            KmipError::InvalidKmip21Value(
                 ErrorReason::Incompatible_Cryptographic_Usage_Mask,
                 "CryptographicUsageMask is None".to_owned(),
             )
@@ -2270,7 +2270,7 @@ impl TryFrom<&str> for StateEnumeration {
             "Compromised" => Ok(Self::Compromised),
             "Destroyed" => Ok(Self::Destroyed),
             "Destroyed_Compromised" => Ok(Self::Destroyed_Compromised),
-            _ => Err(kmip_error!("Invalid StateEnumeration value: {value}")),
+            _ => Err(kmip_2_1_error!("Invalid StateEnumeration value: {value}")),
         }
     }
 }

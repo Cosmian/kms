@@ -4,7 +4,7 @@ use crate::kmip_2_1::extra::fips::{
     FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_RSA_MASK,
 };
 #[cfg(feature = "fips")]
-use crate::kmip_bail;
+use crate::kmip_2_1_bail;
 use crate::{
     kmip_2_1::{
         kmip_objects::ObjectType,

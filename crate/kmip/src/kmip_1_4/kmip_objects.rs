@@ -7,6 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+#[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};
 use crate::error::KmipError;
 
@@ -140,7 +141,7 @@ impl Display for Object {
 }
 
 impl Object {
-    /// Returns the corresponding ObjectType for that object
+    /// Returns the corresponding `ObjectType` for that object
     #[must_use]
     pub const fn object_type(&self) -> ObjectType {
         match self {
@@ -155,7 +156,7 @@ impl Object {
         }
     }
 
-    /// Returns the KeyBlock of that object if any, an error otherwise
+    /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block(&self) -> Result<&KeyBlock, KmipError> {
         match self {
             Self::SymmetricKey { key_block }
@@ -164,14 +165,14 @@ impl Object {
             | Self::SecretData { key_block, .. }
             | Self::PGPKey { key_block, .. }
             | Self::SplitKey { key_block, .. } => Ok(key_block),
-            _ => Err(KmipError::InvalidKmipObject(
-                ErrorRea
+            _ => Err(KmipError::InvalidKmip14Object(
+                ResultReason::InvalidField,
                 "This object does not have a key block".to_owned(),
             )),
         }
     }
 
-    /// Returns a mutable reference to the KeyBlock of that object if any, an error otherwise
+    /// Returns a mutable reference to the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmipError> {
         match self {
             Self::SymmetricKey { key_block }
@@ -180,13 +181,15 @@ impl Object {
             | Self::SecretData { key_block, .. }
             | Self::PGPKey { key_block, .. }
             | Self::SplitKey { key_block, .. } => Ok(key_block),
-            _ => Err(KmipError::InvalidKmipObject(
+            _ => Err(KmipError::InvalidKmip14Object(
+                ResultReason::InvalidField,
                 "This object does not have a key block".to_owned(),
             )),
         }
     }
 
     /// Gets a hash value for the object
+    #[must_use]
     pub fn hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         match self {
@@ -244,6 +247,7 @@ impl Object {
 /// The type of a KMIP 1.4 Objects
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
 #[serde(rename_all = "PascalCase")]
+#[repr(u32)]
 pub enum ObjectType {
     Certificate = 0x01,
     SymmetricKey = 0x02,
@@ -258,7 +262,17 @@ pub enum ObjectType {
 
 impl From<ObjectType> for u32 {
     fn from(object_type: ObjectType) -> Self {
-        object_type as u32
+        match object_type {
+            ObjectType::Certificate => 0x01,
+            ObjectType::SymmetricKey => 0x02,
+            ObjectType::PublicKey => 0x03,
+            ObjectType::PrivateKey => 0x04,
+            ObjectType::SplitKey => 0x05,
+            ObjectType::Template => 0x06,
+            ObjectType::SecretData => 0x07,
+            ObjectType::OpaqueObject => 0x08,
+            ObjectType::PGPKey => 0x09,
+        }
     }
 }
 
@@ -276,9 +290,10 @@ impl TryFrom<u32> for ObjectType {
             0x07 => Ok(Self::SecretData),
             0x08 => Ok(Self::OpaqueObject),
             0x09 => Ok(Self::PGPKey),
-            _ => Err(KmipError::InvalidKmipValue(format!(
-                "Invalid Object Type value: {value}"
-            ))),
+            _ => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                format!("Invalid Object Type value: {value}"),
+            )),
         }
     }
 }
@@ -300,6 +315,7 @@ impl Display for ObjectType {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -333,7 +349,7 @@ mod tests {
             ObjectType::OpaqueObject
         );
         assert_eq!(ObjectType::try_from(0x09).unwrap(), ObjectType::PGPKey);
-        assert!(ObjectType::try_from(0x0A).is_err());
+        ObjectType::try_from(0x0A).unwrap_err();
     }
 
     #[test]
