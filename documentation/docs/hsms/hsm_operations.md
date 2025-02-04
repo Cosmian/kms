@@ -3,14 +3,14 @@ In addition to managing its own keys, Cosmian KMS can act as a proxy to an HSM t
 <!-- TOC -->
 - [HSM keys](#hsm-keys)
 - [KMIP operations](#kmip-operations)
-    - [Create](#create)
-    - [Destroy](#destroy)
-    - [Get \& Export](#get--export)
-    - [Encrypt](#encrypt)
-    - [Decrypt](#decrypt)
+  - [Create](#create)
+  - [Destroy](#destroy)
+  - [Get - Export](#get---export)
+  - [Encrypt](#encrypt)
+  - [Decrypt](#decrypt)
 - [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
-    - [Small data: encrypting server side](#small-data-encrypting-server-side)
-        - [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
+  - [Small data: encrypting server side](#small-data-encrypting-server-side)
+  - [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
 <!-- TOC -->
 
 ## HSM keys
@@ -92,7 +92,7 @@ Successfully destroyed the object.
    Unique identifier: hsm::4::my_rsa_key_pk
 ```
 
-### Get & Export
+### Get - Export
 
 The `Get` and `Export` operations are used to retrieve the key material from the HSM.
 Only the user identified by the `--hsm-admin` argument or a user which has been granted the `Get` operation (by the HSM
@@ -175,7 +175,7 @@ The decrypted file is available at "/tmp/secret.plain"
 To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
 
 ```shell
-> cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm AesGcm \
+> cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.recoverd.txt"
 ```
@@ -221,7 +221,7 @@ To decrypt a message with the key `my_sym_key`, the following command can be use
 The decrypted file is available at "/tmp/secret.recovered.txt"
 ```
 
-#### Large data: encrypting client side with key wrapping
+### Large data: encrypting client side with key wrapping
 
 To encrypt a large file with the key `my_sym_key` client side, the following command can be used:
 
