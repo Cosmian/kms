@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.22.1] - 2025-02-04
+
+### 🧪 CI
+
+- Fix rhel9 artifact name
+
 ## [4.22.0] - 2025-02-03
 
 ### 🚀 Features
@@ -30,7 +36,7 @@ All notable changes to this project will be documented in this file.
 - VM marketplace guide examples ([#365](https://github.com/Cosmian/kms/pull/365))
 - *(google_cse)* Update authentication section ([#363](https://github.com/Cosmian/kms/pull/363))
 
-### Ci
+### 🧪 CI
 
 - Allow continue on error ([#362](https://github.com/Cosmian/kms/pull/362))
 
@@ -320,7 +326,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.14.2] - 2024-04-05
 
-### Ci
+### 🧪 CI
 
 - Add standalone workflow to test KMS in Cosmian
   VM ([#233](https://github.com/Cosmian/kms/pull/233))
@@ -331,7 +337,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.14.1] - 2024-04-04
 
-### Ci
+### 🧪 CI
 
 - Remove optimization RUSTFLAGS ([#227](https://github.com/Cosmian/kms/pull/227))
 
@@ -365,7 +371,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.13.4] - 2024-03-18
 
-### Ci
+### 🧪 CI
 
 - Push GCP images based on Cosmian VM 1.1.0-rc2
 
@@ -376,20 +382,20 @@ All notable changes to this project will be documented in this file.
 - `ckms` needs `kmip` dependency with
   features `openssl` ([#202](https://github.com/Cosmian/kms/pull/202))
 
-### Ci
+### 🧪 CI
 
 - Push GCP images on cosmian-dev and cosmian-public only
   once ([#203](https://github.com/Cosmian/kms/pull/203))
 
 ## [4.13.2] - 2024-03-09
 
-### Ci
+### 🧪 CI
 
 - Filter reboot test on GCP/RHEL instance.
 
 ## [4.13.1] - 2024-03-08
 
-### Ci
+### 🧪 CI
 
 - Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
 
@@ -411,7 +417,7 @@ All notable changes to this project will be documented in this file.
 
 - Rework utils/crypto [#178](https://github.com/Cosmian/kms/pull/178).
 
-### Ci
+### 🧪 CI
 
 - Add build on RHEL9 [#196](https://github.com/Cosmian/kms/pull/196).
 - Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
@@ -452,7 +458,7 @@ All notable changes to this project will be documented in this file.
 
 ## [4.11.2] - 2024-01-23
 
-### Ci
+### 🧪 CI
 
 - Test and deliver in CI missing FIPS binary (fips.so and openssl.cnf for
   FIPS) [#152](https://github.com/Cosmian/kms/issues/153)
@@ -463,7 +469,7 @@ All notable changes to this project will be documented in this file.
 
 - Load correct openssl provider on run
 
-### Ci
+### 🧪 CI
 
 - Pypi now requires a token to publish [#148](https://github.com/Cosmian/kms/issues/148)
 
@@ -534,7 +540,7 @@ All notable changes to this project will be documented in this file.
 
 - fix: migrate to num-bigint-dig for bigint (#85)
 
-### Ci
+### 🧪 CI
 
 - Test KMS inside an SGX machine
 
@@ -574,7 +580,7 @@ All notable changes to this project will be documented in this file.
     - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])
 
-### Ci
+### 🧪 CI
 
 - Trigger public_documentation build on tags
 
@@ -715,7 +721,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 - Add link to package.cosmian.com
 
-### Ci
+### 🧪 CI
 
 - Add github ci
 - Publish python kms packages
@@ -761,7 +767,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 ## [4.3.1] - 2023-02-16
 
-### Ci
+### 🧪 CI
 
 - Remove unused docker builds
 
@@ -794,7 +800,7 @@ Use the tags to export objects, locate them, or request data encryption and decr
 - Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
     - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
 
-### Ci
+### 🧪 CI
 
 - Fix tag matching in `python_publish`
 
