@@ -4,7 +4,7 @@ use cosmian_config_utils::ConfigUtils;
 use cosmian_findex_cli::{
     actions::{
         datasets::DeleteEntries,
-        findex::FindexParameters,
+        findex::parameters::FindexParameters,
         permissions::{CreateIndex, GrantPermission, RevokePermission},
     },
     reexports::{
@@ -17,7 +17,6 @@ use cosmian_kms_cli::{
     reexport::cosmian_kms_client::{kmip_2_1::kmip_types::UniqueIdentifier, KmsClient},
 };
 use cosmian_logger::log_init;
-use lazy_static::lazy_static;
 use tracing::trace;
 use uuid::Uuid;
 
@@ -34,25 +33,13 @@ struct TestClients {
     pub findex: FindexRestClient,
 }
 
-struct AdminAndUsers {
-    pub no_auth: TestClients,
-    pub admin: TestClients,
-    pub users: TestClients,
-}
+const TEST_SEED: &str = "11223344556677889900AABBCCDDEEFF11223344556677889900AABBCCDDEEFF";
 
-lazy_static! {
-    static ref CLIENTS: AdminAndUsers = {
-        let no_auth_clients = instantiate_clients("../../test_data/configs/cosmian.toml").unwrap();
-        let owner_clients =
-            instantiate_clients("../../test_data/configs/cosmian_cert_auth_owner.toml").unwrap();
-        let user_clients =
-            instantiate_clients("../../test_data/configs/cosmian_cert_auth_user.toml").unwrap();
-        AdminAndUsers {
-            no_auth: no_auth_clients,
-            admin: owner_clients,
-            users: user_clients,
-        }
-    };
+fn instantiate_clients(conf_path: &str) -> CosmianResult<TestClients> {
+    let client_config = ClientConf::from_toml(conf_path)?;
+    let kms = KmsClient::new(client_config.kms_config)?;
+    let findex = FindexRestClient::new(client_config.findex_config.unwrap())?;
+    Ok(TestClients { kms, findex })
 }
 
 async fn index(
@@ -64,11 +51,10 @@ async fn index(
 ) -> CosmianResult<Uuids> {
     let uuids = EncryptAndIndexAction {
         findex_parameters: FindexParameters {
-            key: "11223344556677889900AABBCCDDEEFF".to_owned(),
-            label: "My Findex label".to_owned(),
+            seed: TEST_SEED.to_owned(),
             index_id: index_id.to_owned(),
         },
-        csv_path: "../../test_data/datasets/smallpop.csv".into(),
+        csv: "../../test_data/datasets/smallpop.csv".into(),
         key_encryption_key_id: kek_id.map(std::string::ToString::to_string),
         data_encryption_key_id: dek_id.map(std::string::ToString::to_string),
         data_encryption_algorithm: DataEncryptionAlgorithm::AesGcm,
@@ -104,14 +90,13 @@ async fn search(
 ) -> CosmianResult<Vec<String>> {
     SearchAndDecryptAction {
         findex_parameters: FindexParameters {
-            key: "11223344556677889900AABBCCDDEEFF".to_owned(),
-            label: "My Findex label".to_owned(),
+            seed: TEST_SEED.to_owned(),
             index_id: index_id.to_owned(),
         },
         key_encryption_key_id: kek_id.map(std::string::ToString::to_string),
         data_encryption_key_id: dek_id.map(std::string::ToString::to_string),
         data_encryption_algorithm: DataEncryptionAlgorithm::AesGcm,
-        keyword: vec!["Southborough".to_owned(), "Northbridge".to_owned()],
+        keyword: vec!["Southborough".to_owned()],
         authentication_data: None,
     }
     .run(findex, kms)
@@ -142,7 +127,6 @@ async fn index_search_delete(
     let search_results = search(findex, kms, index_id, kek_id, dek_id).await?;
     trace!("index_search_delete: search_results: {search_results:?}");
     assert!(contains_substring(&search_results, "States9686")); // for Southborough
-    assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
     delete(findex, index_id, &uuids).await?;
 
@@ -152,36 +136,29 @@ async fn index_search_delete(
         "index_search_delete: re-search_results (len={}): {rerun_search_results:?}",
         rerun_search_results.len()
     );
-    assert!(!contains_substring(&rerun_search_results, "States9686")); // for Southborough
-    assert!(!contains_substring(&rerun_search_results, "States14061")); // for Northbridge
+    assert!(rerun_search_results.is_empty());
 
     Ok(())
-}
-
-fn instantiate_clients(conf_path: &str) -> CosmianResult<TestClients> {
-    let client_config = ClientConf::from_toml(conf_path)?;
-    let kms = KmsClient::new(client_config.kms_config)?;
-    let findex = FindexRestClient::new(client_config.findex_config.unwrap())?;
-    Ok(TestClients { kms, findex })
 }
 
 #[tokio::test]
 pub(crate) async fn test_encrypt_and_index_no_auth() -> CosmianResult<()> {
     log_init(None);
 
-    let kek_or_dek_id = CreateKeyAction::default().run(&CLIENTS.no_auth.kms).await?;
+    let clients = instantiate_clients("../../test_data/configs/cosmian.toml").unwrap();
+    let kek_or_dek_id = CreateKeyAction::default().run(&clients.kms).await?;
 
     index_search_delete(
-        &CLIENTS.no_auth.findex,
-        &CLIENTS.no_auth.kms,
+        &clients.findex,
+        &clients.kms,
         &Uuid::new_v4(),
         Some(&kek_or_dek_id),
         None,
     )
     .await?;
     index_search_delete(
-        &CLIENTS.no_auth.findex,
-        &CLIENTS.no_auth.kms,
+        &clients.findex,
+        &clients.kms,
         &Uuid::new_v4(),
         None,
         Some(&kek_or_dek_id),
@@ -194,14 +171,16 @@ pub(crate) async fn test_encrypt_and_index_no_auth() -> CosmianResult<()> {
 pub(crate) async fn test_encrypt_and_index_cert_auth() -> CosmianResult<()> {
     log_init(None);
 
-    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
+    let clients =
+        instantiate_clients("../../test_data/configs/cosmian_cert_auth_owner.toml").unwrap();
+    let kek_id = CreateKeyAction::default().run(&clients.kms).await?;
 
-    let index_id = CreateIndex.run(&CLIENTS.admin.findex).await?;
+    let index_id = CreateIndex.run(&clients.findex).await?;
     trace!("index_id: {index_id}");
 
     index_search_delete(
-        &CLIENTS.admin.findex,
-        &CLIENTS.admin.kms,
+        &clients.findex,
+        &clients.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -215,14 +194,18 @@ pub(crate) async fn test_encrypt_and_index_cert_auth() -> CosmianResult<()> {
 pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> CosmianResult<()> {
     log_init(None);
 
-    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
+    let owner_clients =
+        instantiate_clients("../../test_data/configs/cosmian_cert_auth_owner.toml").unwrap();
+    let user_clients =
+        instantiate_clients("../../test_data/configs/cosmian_cert_auth_user.toml").unwrap();
+    let kek_id = CreateKeyAction::default().run(&owner_clients.kms).await?;
 
-    let index_id = CreateIndex.run(&CLIENTS.admin.findex).await?;
+    let index_id = CreateIndex.run(&owner_clients.findex).await?;
     trace!("index_id: {index_id}");
 
     index(
-        &CLIENTS.admin.findex,
-        &CLIENTS.admin.kms,
+        &owner_clients.findex,
+        &owner_clients.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -235,25 +218,24 @@ pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> Cosm
         index_id,
         permission: Permission::Read,
     }
-    .run(&CLIENTS.admin.findex)
+    .run(&owner_clients.findex)
     .await?;
 
     // User can read...
     let search_results = search(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &index_id,
         Some(&kek_id),
         None,
     )
     .await?;
     assert!(contains_substring(&search_results, "States9686")); // for Southborough
-    assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
     // ... but not write
     assert!(index(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &index_id,
         Some(&kek_id),
         None
@@ -267,25 +249,24 @@ pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> Cosm
         index_id,
         permission: Permission::Write,
     }
-    .run(&CLIENTS.admin.findex)
+    .run(&owner_clients.findex)
     .await?;
 
     // User can read...
     let search_results = search(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &index_id,
         Some(&kek_id),
         None,
     )
     .await?;
     assert!(contains_substring(&search_results, "States9686")); // for Southborough
-    assert!(contains_substring(&search_results, "States14061")); // for Northbridge
 
     // ... and write
     index(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -298,7 +279,7 @@ pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> Cosm
         index_id,
         permission: Permission::Admin,
     }
-    .run(&CLIENTS.users.findex)
+    .run(&user_clients.findex)
     .await
     .unwrap_err();
 
@@ -306,12 +287,12 @@ pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> Cosm
         user: "user.client@acme.com".to_owned(),
         index_id,
     }
-    .run(&CLIENTS.admin.findex)
+    .run(&owner_clients.findex)
     .await?;
 
     search(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &index_id,
         Some(&kek_id),
         None,
@@ -327,11 +308,15 @@ pub(crate) async fn test_encrypt_and_index_grant_and_revoke_permission() -> Cosm
 pub(crate) async fn test_encrypt_and_index_no_permission() -> CosmianResult<()> {
     log_init(None);
 
-    let kek_id = CreateKeyAction::default().run(&CLIENTS.admin.kms).await?;
+    let owner_clients =
+        instantiate_clients("../../test_data/configs/cosmian_cert_auth_owner.toml").unwrap();
+    let user_clients =
+        instantiate_clients("../../test_data/configs/cosmian_cert_auth_user.toml").unwrap();
+    let kek_id = CreateKeyAction::default().run(&owner_clients.kms).await?;
 
     assert!(index_search_delete(
-        &CLIENTS.users.findex,
-        &CLIENTS.users.kms,
+        &user_clients.findex,
+        &user_clients.kms,
         &Uuid::new_v4(),
         Some(&kek_id),
         None

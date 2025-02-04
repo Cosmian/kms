@@ -6,13 +6,15 @@ use std::{
 
 use clap::Parser;
 use cosmian_findex_cli::{
-    actions::findex::{instantiate_findex, FindexParameters},
+    actions::findex::parameters::FindexParameters,
     reexports::{
-        cloudproof_findex::reexport::cosmian_findex::{
-            Data, IndexedValue, IndexedValueToKeywordsMap, Keyword, Keywords,
+        cosmian_findex_client::{
+            reexport::cosmian_findex::{Findex, IndexADT, Value},
+            FindexRestClient,
         },
-        cosmian_findex_client::FindexRestClient,
-        cosmian_findex_structs::{EncryptedEntries, Uuids},
+        cosmian_findex_structs::{
+            EncryptedEntries, Keyword, KeywordToDataSetsMap, Keywords, Uuids, WORD_LENGTH,
+        },
     },
 };
 use cosmian_kms_cli::{
@@ -39,7 +41,7 @@ pub struct EncryptAndIndexAction {
 
     /// The path to the CSV file path containing the data to index
     #[clap(long)]
-    pub(crate) csv_path: PathBuf,
+    pub(crate) csv: PathBuf,
 
     /// The key encryption key (KEK) unique identifier.
     /// If provided, all encryption is done client side. The KEK is first
@@ -99,9 +101,9 @@ impl EncryptAndIndexAction {
         key_encryption_algorithm: KeyEncryptionAlgorithm,
         nonce: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
-    ) -> CosmianResult<(EncryptedEntries, IndexedValueToKeywordsMap)> {
+    ) -> CosmianResult<(EncryptedEntries, KeywordToDataSetsMap)> {
         let mut encrypted_entries = EncryptedEntries::new();
-        let mut indexed_value_to_keywords = Vec::new();
+        let mut keywords_values: HashMap<Keyword, HashSet<Value>> = HashMap::new();
 
         let encrypt_action = EncryptAction::default();
         // Generate an ephemeral key (DEK) and wrap it with the KEK.
@@ -120,7 +122,6 @@ impl EncryptAndIndexAction {
             // The iterator yields Result<StringRecord, Error>, so we check the
             // error here.
             let record = result?;
-            trace!("CSV line: {record:?}");
             let record_bytes = record.as_slice();
             let encrypted_record = encrypt_action.client_side_encrypt_with_buffer(
                 &dek,
@@ -133,19 +134,17 @@ impl EncryptAndIndexAction {
             let new_uuid = uuid::Uuid::new_v4();
             encrypted_entries.insert(new_uuid, encrypted_record);
 
-            let indexed_value = IndexedValue::Data(Data::from(new_uuid.as_bytes().to_vec()));
-            let keywords = record.iter().map(Keyword::from).collect::<HashSet<_>>();
-            trace!("my keywords: {}", Keywords::from(keywords.clone()));
-            indexed_value_to_keywords.push((indexed_value, keywords));
+            let indexed_value = Value::from(new_uuid.as_bytes().to_vec());
+            for keyword in record.iter().map(Keyword::from) {
+                trace!("keyword: {}", keyword);
+                keywords_values
+                    .entry(keyword)
+                    .or_default()
+                    .insert(indexed_value.clone());
+            }
         }
-        let indexed_value_to_keywords_map = IndexedValueToKeywordsMap::from(
-            indexed_value_to_keywords
-                .iter()
-                .cloned()
-                .collect::<HashMap<IndexedValue<Keyword, Data>, HashSet<Keyword>>>(),
-        );
 
-        Ok((encrypted_entries, indexed_value_to_keywords_map))
+        Ok((encrypted_entries, KeywordToDataSetsMap(keywords_values)))
     }
 
     pub(crate) async fn client_side_encrypt_entries(
@@ -155,9 +154,9 @@ impl EncryptAndIndexAction {
         key_encryption_key_id: &str,
         nonce: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
-    ) -> CosmianResult<(EncryptedEntries, IndexedValueToKeywordsMap)> {
+    ) -> CosmianResult<(EncryptedEntries, KeywordToDataSetsMap)> {
         let mut encrypted_entries = EncryptedEntries::new();
-        let mut indexed_value_to_keywords = Vec::new();
+        let mut keywords_values: HashMap<Keyword, HashSet<Value>> = HashMap::new();
 
         let encrypt_action = EncryptAction::default();
         // Generate an ephemeral key (DEK) and wrap it with the KEK.
@@ -174,7 +173,6 @@ impl EncryptAndIndexAction {
             // The iterator yields Result<StringRecord, Error>, so we check the
             // error here.
             let record = result?;
-            trace!("CSV line: {record:?}");
             let record_bytes = record.as_slice();
             let encrypted_record = encrypt_action.client_side_encrypt_with_buffer(
                 &dek,
@@ -187,19 +185,18 @@ impl EncryptAndIndexAction {
             let new_uuid = uuid::Uuid::new_v4();
             encrypted_entries.insert(new_uuid, encrypted_record);
 
-            let indexed_value = IndexedValue::Data(Data::from(new_uuid.as_bytes().to_vec()));
+            let indexed_value = Value::from(new_uuid.as_bytes().to_vec());
             let keywords = record.iter().map(Keyword::from).collect::<HashSet<_>>();
-            trace!("my keywords: {}", Keywords::from(keywords.clone()));
-            indexed_value_to_keywords.push((indexed_value, keywords));
+            trace!("keywords: {}", Keywords(keywords.clone()));
+            for keyword in keywords {
+                keywords_values
+                    .entry(keyword)
+                    .or_default()
+                    .insert(indexed_value.clone());
+            }
         }
-        let indexed_value_to_keywords_map = IndexedValueToKeywordsMap::from(
-            indexed_value_to_keywords
-                .iter()
-                .cloned()
-                .collect::<HashMap<IndexedValue<Keyword, Data>, HashSet<Keyword>>>(),
-        );
 
-        Ok((encrypted_entries, indexed_value_to_keywords_map))
+        Ok((encrypted_entries, KeywordToDataSetsMap(keywords_values)))
     }
 
     pub(crate) async fn server_side_encrypt_entries(
@@ -209,9 +206,9 @@ impl EncryptAndIndexAction {
         data_encryption_key_id: &str,
         nonce: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
-    ) -> CosmianResult<(EncryptedEntries, IndexedValueToKeywordsMap)> {
+    ) -> CosmianResult<(EncryptedEntries, KeywordToDataSetsMap)> {
         let mut encrypted_entries = EncryptedEntries::new();
-        let mut indexed_value_to_keywords = Vec::new();
+        let mut keywords_values: HashMap<Keyword, HashSet<Value>> = HashMap::new();
 
         let encrypt_action = EncryptAction::default();
 
@@ -221,7 +218,6 @@ impl EncryptAndIndexAction {
             // The iterator yields Result<StringRecord, Error>, so we check the
             // error here.
             let record = result?;
-            trace!("CSV line: {record:?}");
             let record_bytes = record.as_slice();
             let (nonce, data, tag) = encrypt_action
                 .server_side_encrypt(
@@ -242,19 +238,18 @@ impl EncryptAndIndexAction {
             let new_uuid = uuid::Uuid::new_v4();
             encrypted_entries.insert(new_uuid, encrypted_record);
 
-            let indexed_value = IndexedValue::Data(Data::from(new_uuid.as_bytes().to_vec()));
+            let indexed_value = Value::from(new_uuid.as_bytes().to_vec());
             let keywords = record.iter().map(Keyword::from).collect::<HashSet<_>>();
-            trace!("my keywords: {}", Keywords::from(keywords.clone()));
-            indexed_value_to_keywords.push((indexed_value, keywords));
+            trace!("keywords: {}", Keywords(keywords.clone()));
+            for keyword in keywords {
+                keywords_values
+                    .entry(keyword)
+                    .or_default()
+                    .insert(indexed_value.clone());
+            }
         }
-        let indexed_value_to_keywords_map = IndexedValueToKeywordsMap::from(
-            indexed_value_to_keywords
-                .iter()
-                .cloned()
-                .collect::<HashMap<IndexedValue<Keyword, Data>, HashSet<Keyword>>>(),
-        );
 
-        Ok((encrypted_entries, indexed_value_to_keywords_map))
+        Ok((encrypted_entries, KeywordToDataSetsMap(keywords_values)))
     }
 
     /// Adds the data from the CSV file to the Findex index.
@@ -263,8 +258,6 @@ impl EncryptAndIndexAction {
     ///
     /// This function will return an error if:
     /// - There is an error instantiating the Findex client.
-    /// - There is an error retrieving the user key or label from the Findex
-    ///   parameters.
     /// - There is an error converting the CSV file to a hashmap.
     /// - There is an error adding the data to the Findex index.
     /// - There is an error writing the result to the console.
@@ -288,13 +281,13 @@ impl EncryptAndIndexAction {
             .transpose()
             .with_context(|| "failed to decode the authentication data")?;
 
-        let (encrypted_entries, indexed_value_to_keywords_map) = match (
+        let (encrypted_entries, keywords_indexed_value_map) = match (
             self.key_encryption_key_id.clone(),
             self.data_encryption_key_id.clone(),
         ) {
             (Some(key_encryption_key_id), None) => {
                 self.client_side_encrypt_entries(
-                    self.csv_path.clone(),
+                    self.csv.clone(),
                     kms_rest_client,
                     &key_encryption_key_id,
                     nonce,
@@ -304,7 +297,7 @@ impl EncryptAndIndexAction {
             }
             (None, Some(data_encryption_key_id)) => {
                 self.server_side_encrypt_entries(
-                    self.csv_path.clone(),
+                    self.csv.clone(),
                     kms_rest_client,
                     &data_encryption_key_id,
                     nonce,
@@ -321,15 +314,18 @@ impl EncryptAndIndexAction {
             .add_entries(&self.findex_parameters.index_id, &encrypted_entries)
             .await?;
 
-        let keywords = instantiate_findex(findex_rest_client, &self.findex_parameters.index_id)
-            .await?
-            .add(
-                &self.findex_parameters.user_key()?,
-                &self.findex_parameters.label(),
-                indexed_value_to_keywords_map,
-            )
-            .await?;
-        trace!("indexing done: keywords: {keywords}");
+        let findex: Findex<WORD_LENGTH, Value, String, FindexRestClient> =
+            findex_rest_client.clone().instantiate_findex(
+                self.findex_parameters.index_id,
+                &self.findex_parameters.seed()?,
+            )?;
+
+        for (key, value) in keywords_indexed_value_map.iter() {
+            findex.insert(key, value.clone()).await?;
+        }
+        let written_keywords =
+            Keywords::from(keywords_indexed_value_map.keys().collect::<Vec<_>>());
+        trace!("indexing done: keywords: {written_keywords}");
 
         let uuids = encrypted_entries.get_uuids();
         println!("Data behind those UUIDS were encrypted and indexed: {uuids}");

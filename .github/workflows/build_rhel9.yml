@@ -74,7 +74,7 @@ jobs:
           find target/ -type f -size ++100M -delete
 
       - name: Upload CLI for RHEL 9
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
@@ -89,7 +89,7 @@ jobs:
     name: Clean env test ${{ inputs.archive-name }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
 

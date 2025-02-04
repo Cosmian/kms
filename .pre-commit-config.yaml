@@ -110,16 +110,17 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.33
+    rev: v1.0.36
     hooks:
       - id: cargo-format
       # - id: dprint-toml-fix
       # - id: cargo-upgrade
       # - id: cargo-update
       - id: cargo-machete
-      - id: cargo-build-all
+      - id: cargo-build
       - id: renew-cosmian-markdown
       - id: docker-compose-up
+      - id: cargo-build-all
       - id: cargo-test
         args: [--, --skip, test_wrap_auth, --skip, google_cse]
       - id: clippy-autofix-unreachable-pub
