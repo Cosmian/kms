@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Layout, Menu } from 'antd';
-import { useNavigate } from 'react-router-dom';
-import { menuItems } from './menuItems';
-import { MenuItem } from './MenuItem';
+import { Layout, Menu } from 'antd'
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { MenuItem } from './MenuItem'
+import { menuItems } from './menuItems'
 
 const { Sider } = Layout;
 
@@ -24,7 +24,7 @@ const Sidebar: React.FC = () => {
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            style={{ position: 'sticky', top: 0 }}
+            style={{ position: 'sticky', top: 0, overflow: 'auto' }}
         >
             <Menu
                 mode="inline"

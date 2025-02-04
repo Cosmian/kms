@@ -39,8 +39,6 @@ time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde", "js"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
-serde-wasm-bindgen = "0.6.5"
-wasm-bindgen = "0.2.100"
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

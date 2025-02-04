@@ -5,6 +5,7 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
+use cosmian_kms_ui_utils::export_utils::tag_from_object;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
@@ -87,26 +88,6 @@ pub fn write_kmip_object_to_file(
     ttlv.tag = tag_from_object(kmip_object);
     // write the JSON TTLV to a file
     write_json_object_to_file(&ttlv, object_file)
-}
-
-#[must_use]
-/// Return the KMIP tag for a given object
-/// This is required to match the Java library behavior which expects
-/// the first tag to describe the type of object and not simply equal 'Object'
-// TODO: check what is specified by the KMIP norm if any
-fn tag_from_object(object: &Object) -> String {
-    match &object {
-        Object::PublicKey { .. } => "PublicKey",
-        Object::SecretData { .. } => "SecretData",
-        Object::PGPKey { .. } => "PGPKey",
-        Object::SymmetricKey { .. } => "SymmetricKey",
-        Object::SplitKey { .. } => "SplitKey",
-        Object::Certificate { .. } => "Certificate",
-        Object::CertificateRequest { .. } => "CertificateRequest",
-        Object::OpaqueObject { .. } => "OpaqueObject",
-        Object::PrivateKey { .. } => "PrivateKey",
-    }
-    .to_string()
 }
 
 /// Write the decrypted data to a file

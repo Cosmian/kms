@@ -1,5 +1,5 @@
-import React from 'react';
-import { Form, Select, Checkbox, Button, Upload, Input } from 'antd';
+import { Button, Checkbox, Form, Input, Select, Upload } from 'antd'
+import React from 'react'
 
 interface CovercryptMasterKeyFormData {
     policySpecifications?: File;
@@ -26,10 +26,26 @@ const POLICY_EXAMPLE = `{
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
     const [policyType, setPolicyType] = React.useState<'json-file' | 'json-text' | 'binary'>('json-file');
+    // const [res, setRes] = useState<undefined | string>(undefined);
+    // const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: CovercryptMasterKeyFormData) => {
+    const onFinish = async (values: CovercryptMasterKeyFormData) => {
         console.log('Create master key pair values:', values);
-        // Handle form submission
+        // setIsLoading(true);
+        // setRes(undefined);
+        // const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
+        // try {
+        //     const result_str = await sendKmipRequest(request);
+        //     if (result_str) {
+        //         const result: CreateResponse = await parse_create_ttlv_response(result_str)
+        //         setRes(`${result.UniqueIdentifier} has been created.`)
+        //     }
+        // } catch (e) {
+        //     setRes(`${e}`)
+        //     console.error(e);
+        // } finally {
+        //     setIsLoading(false);
+        // }
     };
 
     const PolicyExplanation = () => (
@@ -181,10 +197,17 @@ const CovercryptMasterKeyForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Create Master Key Pair
+                        {/* {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Create Master Key pair'
+                        )} */}
                     </Button>
                 </Form.Item>
             </Form>
+            {/* {res && <div>{res}</div>} */}
         </div>
     );
 };

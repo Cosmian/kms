@@ -1,6 +1,9 @@
-import React from 'react';
-import { Form, Input, Select, Checkbox, Button } from 'antd';
-import { WarningFilled } from '@ant-design/icons';
+import { LoadingOutlined, WarningFilled } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg"
+
 
 interface DestroyKeyFormData {
     keyId?: string;
@@ -10,16 +13,41 @@ interface DestroyKeyFormData {
 
 type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
-interface KeyDestroyFormProps {
+interface DestroyKeyFormProps {
     key_type: KeyType;
 }
 
-const KeyDestroyForm: React.FC<KeyDestroyFormProps> = (props: KeyDestroyFormProps) => {
-    const [form] = Form.useForm<DestroyKeyFormData>();
+type DestroyKeyResponse = {
+    UniqueIdentifier: string,
+}
 
-    const onFinish = (values: DestroyKeyFormData) => {
+const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProps) => {
+    const [form] = Form.useForm<DestroyKeyFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const onFinish = async (values: DestroyKeyFormData) => {
+        setIsLoading(true);
+        setRes(undefined);
         console.log('Destroy key values:', values);
-        // Handle form submission
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined; // TODO: check tags handling for revokation
+        if (id == undefined) {
+            setRes("Missing key identifier.")
+            throw Error("Missing key identifier")
+        }
+        const request = destroy_ttlv_request(id, values.remove);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: DestroyKeyResponse = await parse_destroy_ttlv_response(result_str)
+                setRes(`${result.UniqueIdentifier} has been destroyed.`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     let key_type_string = '';
@@ -105,17 +133,25 @@ const KeyDestroyForm: React.FC<KeyDestroyFormProps> = (props: KeyDestroyFormProp
 
                 <div className="pt-4">
                     <Form.Item>
-                        <Button
+                    <Button
                             type="primary"
                             htmlType="submit"
                             danger
+                            disabled={isLoading}
                             className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                         >
-                            Destroy Key
+                            {isLoading ? (
+                                <Spin
+                                    indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                                />
+                            ) : (
+                                'Destroy Key'
+                            )}
                         </Button>
                     </Form.Item>
                 </div>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

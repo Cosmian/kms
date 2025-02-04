@@ -1,9 +1,13 @@
-import React from 'react';
-import { Form, Input, InputNumber, Select, Checkbox, Button } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
+
 
 interface SymKeyCreateFormData {
     keyId?: string;
-    algorithm: 'aes' | 'chacha20' | 'sha3' | 'shake';
+    algorithm: 'Aes' | 'ChaCha20' | 'Sha3' | 'Shake';
     numberOfBits?: number;
     bytesB64?: string;
     tags: string[];
@@ -11,12 +15,33 @@ interface SymKeyCreateFormData {
     wrappingKeyId?: string;
 }
 
+type CreateResponse = {
+    ObjectType: string,
+    UniqueIdentifier: string,
+}
+
 const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: SymKeyCreateFormData) => {
+    const onFinish = async (values: SymKeyCreateFormData) => {
         console.log('Create symmetric key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: CreateResponse = await parse_create_ttlv_response(result_str)
+                setRes(`${result.UniqueIdentifier} has been created.`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -37,7 +62,7 @@ const SymKeyCreateForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    algorithm: 'aes',
+                    algorithm: 'Aes',
                     numberOfBits: 256,
                     tags: [],
                     sensitive: false,
@@ -50,10 +75,10 @@ const SymKeyCreateForm: React.FC = () => {
                     rules={[{ required: true, message: 'Please select an algorithm' }]}
                 >
                     <Select className="max-w-[500px]">
-                        <Select.Option value="aes">AES</Select.Option>
-                        <Select.Option value="chacha20">ChaCha20</Select.Option>
-                        <Select.Option value="sha3">SHA3</Select.Option>
-                        <Select.Option value="shake">SHAKE</Select.Option>
+                        <Select.Option value="Aes">Aes</Select.Option>
+                        <Select.Option value="ChaCha20">ChaCha20</Select.Option>
+                        <Select.Option value="Sha3">SHA3</Select.Option>
+                        <Select.Option value="Shake">SHAKE</Select.Option>
                     </Select>
                 </Form.Item>
 
@@ -133,9 +158,16 @@ const SymKeyCreateForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Create a symmetric key
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Create symmetric key'
+                        )}
                     </Button>
                 </Form.Item>
+                {res && <div>{res}</div>}
             </Form>
         </div>
     );

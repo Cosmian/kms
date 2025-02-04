@@ -1,5 +1,8 @@
-import React from 'react';
-import { Form, Input, Select, Checkbox, Button } from 'antd';
+import { LoadingOutlined, UploadOutlined } from "@ant-design/icons"
+import { Button, Checkbox, Form, Input, Select, Spin, Upload } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
 
 type ImportKeyFormat =
     | 'json-ttlv' | 'pem' | 'sec1'
@@ -36,10 +39,27 @@ interface KeyImportFormProps {
 
 const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) => {
     const [form] = Form.useForm<ImportKeyFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: ImportKeyFormData) => {
+    const onFinish = async (values: ImportKeyFormData) => {
         console.log('Import key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId. values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result = await parse_import_ttlv_response(result_str)
+                console.log(result)
+                setRes("File has been imported")
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     let key_type_string = '';
@@ -129,10 +149,22 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                 <Form.Item
                     name="keyFile"
                     label="Key File"
-                    rules={[{ required: true, message: 'Please specify the key file path' }]}
-                    help="The path to the key file to import"
+                    rules={[{ required: true, message: "Please upload a key file" }]}
+                    help="Upload the key file to import"
                 >
-                    <Input placeholder="Enter key file path" />
+                    <Upload
+                        beforeUpload={(file) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                form.setFieldsValue({ keyFile: e.target?.result });
+                            };
+                            reader.readAsText(file);
+                            return false;
+                        }}
+                        maxCount={1}
+                    >
+                        <Button icon={<UploadOutlined />}>Upload Key File</Button>
+                    </Upload>
                 </Form.Item>
 
                 <Form.Item
@@ -236,10 +268,17 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Import Key
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Import key'
+                        )}
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };
