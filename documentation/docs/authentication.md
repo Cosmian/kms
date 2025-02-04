@@ -23,7 +23,6 @@ The configuration file should be edited manually to reflect the actual
 configuration of the products KMS and Findex server.
 Each product has its own `http_config` configuration.
 
-
 - `server_url` is MANDATORY and is the URL of the server
 - `access_token` is OPTIONAL and is the access token used to authenticate to
   the server.
@@ -92,8 +91,13 @@ server_url = "http://127.0.0.1:9998"
 
 [kms_config.http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
-client_secret = "G0ABCD-aAbBcDeFgHiJkLmNoPqRsTuVwXyZ"
+client_secret = "XXX"
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
 token_url = "https://oauth2.googleapis.com/token"
 scopes = ["openid", "email"]
 ```
+
+When you run the `cosmian kms login` command, the CLI will provide a URL for you to open in your browser.
+This URL initiates the login flow and sends the user token back to the CLI using a `redirect_url` set to a
+local URL (http://localhost/), as the CLI runs on your local machine. Ensure that your Identity Provider
+configuration permits this type of URL.

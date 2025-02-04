@@ -43,7 +43,7 @@ access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
 
 [kms_config.http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
-client_secret = "G0ABCD-aAbBcDeFgHiJkLmNoPqRsTuVwXyZ"
+client_secret = "XXX"
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
 token_url = "https://oauth2.googleapis.com/token"
 scopes = ["openid", "email"]
@@ -66,7 +66,7 @@ access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
 
 [kms_config.http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
-client_secret = "G0ABCD-aAbBcDeFgHiJkLmNoPqRsTuVwXyZ"
+client_secret = "XXX"
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
 token_url = "https://oauth2.googleapis.com/token"
 scopes = ["openid", "email"]

@@ -53,14 +53,14 @@ lazy_static = "1.5"
 openssl = { workspace = true }
 predicates = "3.1"
 regex = { version = "1.11", default-features = false }
-tempfile = "3.15"
+tempfile = "3.16"
 x509-parser = { workspace = true, features = ["verify"] }
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
 [package.metadata.deb]
 maintainer = "Emmanuel Coste <emmanuel.coste@cosmian.com>"
-copyright = "2024, Cosmian Tech SAS <tech@cosmian.com>"
+copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
 license-file = ["../../LICENSE", "0"]
 changelog = "../../CHANGELOG.md"
 section = "security"

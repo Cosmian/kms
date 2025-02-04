@@ -1,7 +1,7 @@
 ---
 site_name: Cosmian CLI
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2024 Cosmian. All rights reserved
+copyright: © Copyright 2018-2025 Cosmian. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material

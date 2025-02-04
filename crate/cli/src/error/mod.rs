@@ -4,15 +4,19 @@ use std::str::Utf8Error;
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_findex_cli::reexports::{
-    cloudproof_findex::{db_interfaces::DbInterfaceError, reexport::cosmian_findex},
-    cosmian_findex_client::FindexClientError,
+    cosmian_findex_client::{
+        reexport::cosmian_findex::{self, Address, ADDRESS_LENGTH},
+        FindexClientError,
+    },
+    cosmian_findex_structs::StructsError,
 };
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientError;
 use thiserror::Error;
 
 pub mod result;
 
-// Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
+// Each error type must have a corresponding HTTP status code (see
+// `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
 pub enum CosmianError {
     // When a user requests an endpoint which does not exist
@@ -74,6 +78,9 @@ pub enum CosmianError {
     KmsCliError(#[from] cosmian_kms_cli::error::CliError),
 
     #[error(transparent)]
+    Findex(#[from] cosmian_findex::Error<Address<ADDRESS_LENGTH>>),
+
+    #[error(transparent)]
     FindexClientConfig(#[from] FindexClientError),
 
     #[error(transparent)]
@@ -86,16 +93,13 @@ pub enum CosmianError {
     CsvError(#[from] csv::Error),
 
     #[error(transparent)]
-    FindexInterfaceError(#[from] cosmian_findex::Error<DbInterfaceError>),
-
-    #[error(transparent)]
-    DbInterfaceError(#[from] DbInterfaceError),
-
-    #[error(transparent)]
     Utf8Error(#[from] Utf8Error),
 
     #[error(transparent)]
     UuidError(#[from] uuid::Error),
+
+    #[error(transparent)]
+    StructsError(#[from] StructsError),
 
     #[error(transparent)]
     ConfigUtilsError(#[from] ConfigUtilsError),

@@ -158,12 +158,6 @@ set_var("RUST_BACKTRACE", "1");
 log_init(None);
 ```
 
-## Versioning
-
-| CLI version  | KMS version | Findex server version |
-| ------------ | ----------- | --------------------- |
-| 0.1.0, 0.1.1 | 4.20.x      | 0.1.0                 |
-
 ## Releases
 
 All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/cli/).

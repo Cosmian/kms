@@ -50,25 +50,27 @@ Handle KMS actions
 
 **`bench`** [[1.3]](#13-cosmian-kms-bench)  Run a set of benches to check the server performance
 
-**`certificates`** [[1.4]](#14-cosmian-kms-certificates)  Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+**`cc`** [[1.4]](#14-cosmian-kms-cc)  Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
 
-**`ec`** [[1.5]](#15-cosmian-kms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+**`certificates`** [[1.5]](#15-cosmian-kms-certificates)  Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
-**`google`** [[1.6]](#16-cosmian-kms-google)  Manage google elements. Handle key pairs and identities from Gmail API
+**`ec`** [[1.6]](#16-cosmian-kms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
-**`locate`** [[1.7]](#17-cosmian-kms-locate)  Locate cryptographic objects inside the KMS
+**`google`** [[1.7]](#17-cosmian-kms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
-**`login`** [[1.8]](#18-cosmian-kms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+**`locate`** [[1.8]](#18-cosmian-kms-locate)  Locate cryptographic objects inside the KMS
 
-**`logout`** [[1.9]](#19-cosmian-kms-logout)  Logout from the Identity Provider.
+**`login`** [[1.9]](#19-cosmian-kms-login)  Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
-**`new-database`** [[1.10]](#110-cosmian-kms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+**`logout`** [[1.10]](#110-cosmian-kms-logout)  Logout from the Identity Provider.
 
-**`rsa`** [[1.11]](#111-cosmian-kms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
+**`new-database`** [[1.11]](#111-cosmian-kms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`server-version`** [[1.12]](#112-cosmian-kms-server-version)  Print the version of the server
+**`rsa`** [[1.12]](#112-cosmian-kms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
-**`sym`** [[1.13]](#113-cosmian-kms-sym)  Manage symmetric keys. Encrypt and decrypt data
+**`server-version`** [[1.13]](#113-cosmian-kms-server-version)  Print the version of the server
+
+**`sym`** [[1.14]](#114-cosmian-kms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
 ---
 
@@ -337,7 +339,550 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.4 cosmian kms certificates
+## 1.4 cosmian kms cc
+
+Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+
+### Usage
+`cosmian kms cc <subcommand>`
+
+### Subcommands
+
+**`keys`** [[1.4.1]](#141-cosmian-kms-cc-keys)  Create, destroy, import, export, and rekey `Covercrypt` master and user keys
+
+**`policy`** [[1.4.2]](#142-cosmian-kms-cc-policy)  Extract, view, or edit policies of existing keys, and create a binary policy from specifications
+
+**`encrypt`** [[1.4.3]](#143-cosmian-kms-cc-encrypt)  Encrypt a file using Covercrypt
+
+**`decrypt`** [[1.4.4]](#144-cosmian-kms-cc-decrypt)  Decrypt a file using Covercrypt
+
+---
+
+## 1.4.1 cosmian kms cc keys
+
+Create, destroy, import, export, and rekey `Covercrypt` master and user keys
+
+### Usage
+`cosmian kms cc keys <subcommand>`
+
+### Subcommands
+
+**`create-master-key-pair`** [[1.4.1.1]](#1411-cosmian-kms-cc-keys-create-master-key-pair)  Create a new master key pair for a given policy and return the key IDs.
+
+**`create-user-key`** [[1.4.1.2]](#1412-cosmian-kms-cc-keys-create-user-key)  Create a new user decryption key given an access policy expressed as a boolean expression.
+
+**`export`** [[1.4.1.3]](#1413-cosmian-kms-cc-keys-export)  Export a key from the KMS
+
+**`import`** [[1.4.1.4]](#1414-cosmian-kms-cc-keys-import)  Import a private or public key in the KMS.
+
+**`wrap`** [[1.4.1.5]](#1415-cosmian-kms-cc-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+
+**`unwrap`** [[1.4.1.6]](#1416-cosmian-kms-cc-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[1.4.1.7]](#1417-cosmian-kms-cc-keys-revoke)  Revoke a Covercrypt master or user decryption key
+
+**`destroy`** [[1.4.1.8]](#1418-cosmian-kms-cc-keys-destroy)  Destroy a Covercrypt master or user decryption key
+
+**`rekey`** [[1.4.1.9]](#1419-cosmian-kms-cc-keys-rekey)  Rekey the master and user keys for a given access policy.
+
+**`prune`** [[1.4.1.10]](#14110-cosmian-kms-cc-keys-prune)  Prune the master and user keys for a given access policy.
+
+---
+
+## 1.4.1.1 cosmian kms cc keys create-master-key-pair
+
+Create a new master key pair for a given policy and return the key IDs.
+
+### Usage
+`cosmian kms cc keys create-master-key-pair [options]`
+### Arguments
+`--policy-specifications [-s] <POLICY_SPECIFICATIONS_FILE>` The JSON policy specifications file to use to generate the keys. See the inline doc of the `create-master-key-pair` command for details
+
+`--policy-binary [-b] <POLICY_BINARY_FILE>` When not using policy specifications, a policy binary file can be used instead. See the `policy` command, to create this binary file from policy specifications or to extract it from existing keys
+
+`--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+`--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 1.4.1.2 cosmian kms cc keys create-user-key
+
+Create a new user decryption key given an access policy expressed as a boolean expression.
+
+### Usage
+`cosmian kms cc keys create-user-key [options] <MASTER_PRIVATE_KEY_ID>
+ <ACCESS_POLICY>
+`
+### Arguments
+` <MASTER_PRIVATE_KEY_ID>` The master private key unique identifier
+
+` <ACCESS_POLICY>` The access policy as a boolean expression combining policy attributes
+
+`--tag [-t] <TAG>` The tag to associate with the user decryption key. To specify multiple tags, use the option multiple times
+
+`--sensitive <SENSITIVE>` Sensitive: if set, the key will not be exportable
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 1.4.1.3 cosmian kms cc keys export
+
+Export a key from the KMS
+
+### Usage
+`cosmian kms cc keys export [options] <KEY_FILE>
+`
+### Arguments
+` <KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
+
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "base64", "raw"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrapping-algorithm [-m] <WRAPPING_ALGORITHM>` Wrapping algorithm to use when exporting the key
+By default, the algorithm used is
+
+- `NISTKeyWrap` for symmetric keys (a.k.a. RFC 5649)
+- `RsaPkcsOaep` for RSA keys
+
+Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-aes-key-wrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
+
+
+
+---
+
+## 1.4.1.4 cosmian kms cc keys import
+
+Import a private or public key in the KMS.
+
+### Usage
+`cosmian kms cc keys import [options] <KEY_FILE>
+ [KEY_ID]
+`
+### Arguments
+` <KEY_FILE>` The KMIP JSON TTLV key file
+
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key id if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key id if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+`--key-usage <KEY_USAGE>` For what operations should the key be used
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Optional authenticated encryption additional data to use for AES256GCM authenticated encryption unwrapping
+
+
+
+---
+
+## 1.4.1.5 cosmian kms cc keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+`cosmian kms cc keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified, the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into a AES-256 symmetric key. For security reasons, a fresh salt is internally handled and generated by `ckms` and this final AES symmetric key will be displayed only once
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+
+
+---
+
+## 1.4.1.6 cosmian kms cc keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+`cosmian kms cc keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
+`
+### Arguments
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 1.4.1.7 cosmian kms cc keys revoke
+
+Revoke a Covercrypt master or user decryption key
+
+### Usage
+`cosmian kms cc keys revoke [options] <REVOCATION_REASON>
+`
+### Arguments
+` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 1.4.1.8 cosmian kms cc keys destroy
+
+Destroy a Covercrypt master or user decryption key
+
+### Usage
+`cosmian kms cc keys destroy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 1.4.1.9 cosmian kms cc keys rekey
+
+Rekey the master and user keys for a given access policy.
+
+### Usage
+`cosmian kms cc keys rekey [options] <ACCESS_POLICY>
+`
+### Arguments
+` <ACCESS_POLICY>` The access policy to rekey. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 1.4.1.10 cosmian kms cc keys prune
+
+Prune the master and user keys for a given access policy.
+
+### Usage
+`cosmian kms cc keys prune [options] <ACCESS_POLICY>
+`
+### Arguments
+` <ACCESS_POLICY>` The access policy to prune. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+
+---
+
+## 1.4.2 cosmian kms cc policy
+
+Extract, view, or edit policies of existing keys, and create a binary policy from specifications
+
+### Usage
+`cosmian kms cc policy <subcommand>`
+
+### Subcommands
+
+**`view`** [[1.4.2.1]](#1421-cosmian-kms-cc-policy-view)  View the policy of an existing public or private master key.
+
+**`specs`** [[1.4.2.2]](#1422-cosmian-kms-cc-policy-specs)  Extract the policy specifications from a public or private master key to a policy specifications file
+
+**`binary`** [[1.4.2.3]](#1423-cosmian-kms-cc-policy-binary)  Extract the policy from a public or private master key to a policy binary file
+
+**`create`** [[1.4.2.4]](#1424-cosmian-kms-cc-policy-create)  Create a policy binary file from policy specifications
+
+**`add-attribute`** [[1.4.2.5]](#1425-cosmian-kms-cc-policy-add-attribute)  Add an attribute to the policy of an existing private master key.
+
+**`remove-attribute`** [[1.4.2.6]](#1426-cosmian-kms-cc-policy-remove-attribute)  Remove an attribute from the policy of an existing private master key.
+Permanently removes the ability to use this attribute in both encryptions and decryptions.
+
+**`disable-attribute`** [[1.4.2.7]](#1427-cosmian-kms-cc-policy-disable-attribute)  Disable an attribute from the policy of an existing private master key.
+Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+
+**`rename-attribute`** [[1.4.2.8]](#1428-cosmian-kms-cc-policy-rename-attribute)  Rename an attribute in the policy of an existing private master key.
+
+---
+
+## 1.4.2.1 cosmian kms cc policy view
+
+View the policy of an existing public or private master key.
+
+### Usage
+`cosmian kms cc policy view [options]`
+### Arguments
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in TTLV format
+
+`--detailed [-d] <DETAILED>` Show all the policy details rather than just the specifications
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 1.4.2.2 cosmian kms cc policy specs
+
+Extract the policy specifications from a public or private master key to a policy specifications file
+
+### Usage
+`cosmian kms cc policy specs [options]`
+### Arguments
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in JSON TTLV format
+
+`--specifications [-s] <POLICY_SPECS_FILE>` The output policy specifications file
+
+
+
+---
+
+## 1.4.2.3 cosmian kms cc policy binary
+
+Extract the policy from a public or private master key to a policy binary file
+
+### Usage
+`cosmian kms cc policy binary [options]`
+### Arguments
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in TTLV format
+
+`--policy [-p] <POLICY_BINARY_FILE>` The output binary policy file
+
+
+
+---
+
+## 1.4.2.4 cosmian kms cc policy create
+
+Create a policy binary file from policy specifications
+
+### Usage
+`cosmian kms cc policy create [options]`
+### Arguments
+`--specifications [-s] <POLICY_SPECIFICATIONS_FILE>` The policy specifications filename. The policy is expressed as a JSON object describing the Policy axes. See the documentation for details
+
+`--policy [-p] <POLICY_BINARY_FILE>` The output binary policy file generated from the specifications file
+
+
+
+---
+
+## 1.4.2.5 cosmian kms cc policy add-attribute
+
+Add an attribute to the policy of an existing private master key.
+
+### Usage
+`cosmian kms cc policy add-attribute [options] <ATTRIBUTE>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to create. Example: `department::rd`
+
+`--hybridized <HYBRIDIZED>` Set encryption hint for the new attribute to use hybridized keys
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 1.4.2.6 cosmian kms cc policy remove-attribute
+
+Remove an attribute from the policy of an existing private master key.
+Permanently removes the ability to use this attribute in both encryptions and decryptions.
+
+### Usage
+`cosmian kms cc policy remove-attribute [options] <ATTRIBUTE>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to remove. Example: `department::marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 1.4.2.7 cosmian kms cc policy disable-attribute
+
+Disable an attribute from the policy of an existing private master key.
+Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+
+### Usage
+`cosmian kms cc policy disable-attribute [options] <ATTRIBUTE>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to disable. Example: `department::marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 1.4.2.8 cosmian kms cc policy rename-attribute
+
+Rename an attribute in the policy of an existing private master key.
+
+### Usage
+`cosmian kms cc policy rename-attribute [options] <ATTRIBUTE>
+ <NEW_NAME>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to rename. Example: `department::mkg`
+
+` <NEW_NAME>` The new name for the attribute. Example: `marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+
+---
+
+## 1.4.3 cosmian kms cc encrypt
+
+Encrypt a file using Covercrypt
+
+### Usage
+`cosmian kms cc encrypt [options] <FILE>...
+ <ENCRYPTION_POLICY>
+`
+### Arguments
+` <FILE>` The files to encrypt
+
+` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "`department::marketing` && `level::confidential`"
+
+`--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+
+
+---
+
+## 1.4.4 cosmian kms cc decrypt
+
+Decrypt a file using Covercrypt
+
+### Usage
+`cosmian kms cc decrypt [options] <FILE>...
+`
+### Arguments
+` <FILE>` The files to decrypt
+
+`--key-id [-k] <KEY_ID>` The user key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+
+
+
+---
+
+## 1.5 cosmian kms certificates
 
 Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
@@ -346,30 +891,30 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 ### Subcommands
 
-**`certify`** [[1.4.1]](#141-cosmian-kms-certificates-certify)  Issue or renew a X509 certificate
+**`certify`** [[1.5.1]](#151-cosmian-kms-certificates-certify)  Issue or renew a X509 certificate
 
-**`decrypt`** [[1.4.2]](#142-cosmian-kms-certificates-decrypt)  Decrypt a file using the private key of a certificate
+**`decrypt`** [[1.5.2]](#152-cosmian-kms-certificates-decrypt)  Decrypt a file using the private key of a certificate
 
-**`encrypt`** [[1.4.3]](#143-cosmian-kms-certificates-encrypt)  Encrypt a file using the certificate public key
+**`encrypt`** [[1.5.3]](#153-cosmian-kms-certificates-encrypt)  Encrypt a file using the certificate public key
 
-**`export`** [[1.4.4]](#144-cosmian-kms-certificates-export)  Export a certificate from the KMS
+**`export`** [[1.5.4]](#154-cosmian-kms-certificates-export)  Export a certificate from the KMS
 
-**`import`** [[1.4.5]](#145-cosmian-kms-certificates-import)  Import one of the following:
+**`import`** [[1.5.5]](#155-cosmian-kms-certificates-import)  Import one of the following:
 
 - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
 - a certificate chain as a PEM-stack (chain)
 - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
 - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 
-**`revoke`** [[1.4.6]](#146-cosmian-kms-certificates-revoke)  Revoke a certificate
+**`revoke`** [[1.5.6]](#156-cosmian-kms-certificates-revoke)  Revoke a certificate
 
-**`destroy`** [[1.4.7]](#147-cosmian-kms-certificates-destroy)  Destroy a certificate
+**`destroy`** [[1.5.7]](#157-cosmian-kms-certificates-destroy)  Destroy a certificate
 
-**`validate`** [[1.4.8]](#148-cosmian-kms-certificates-validate)  Validate a certificate
+**`validate`** [[1.5.8]](#158-cosmian-kms-certificates-validate)  Validate a certificate
 
 ---
 
-## 1.4.1 cosmian kms certificates certify
+## 1.5.1 cosmian kms certificates certify
 
 Issue or renew a X509 certificate
 
@@ -397,7 +942,7 @@ the subject name to use.
 
 `--algorithm [-a] <ALGORITHM>` The algorithm to use for the keypair generation
 
-Possible values:  `"nist-p224", "nist-p256", "nist-p384", "nist-p521", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
@@ -414,7 +959,7 @@ with the x509 extensions to use. For instance:
 
 ---
 
-## 1.4.2 cosmian kms certificates decrypt
+## 1.5.2 cosmian kms certificates decrypt
 
 Decrypt a file using the private key of a certificate
 
@@ -436,13 +981,13 @@ Decrypt a file using the private key of a certificate
 This is only available for RSA keys for now.
 The default for RSA is `PKCS_OAEP`.
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
 
 
 
 ---
 
-## 1.4.3 cosmian kms certificates encrypt
+## 1.5.3 cosmian kms certificates encrypt
 
 Encrypt a file using the certificate public key
 
@@ -464,13 +1009,13 @@ Encrypt a file using the certificate public key
 This is only available for RSA keys for now.
 The default for RSA is `PKCS_OAEP`.
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
 
 
 
 ---
 
-## 1.4.4 cosmian kms certificates export
+## 1.5.4 cosmian kms certificates export
 
 Export a certificate from the KMS
 
@@ -488,7 +1033,7 @@ To specify multiple tags, use the option multiple times.
 
 `--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
 
-Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs7"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "pkcs12", "pkcs12-legacy", "pkcs7"` [default: `"json-ttlv"`]
 
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
 
@@ -502,7 +1047,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.4.5 cosmian kms certificates import
+## 1.5.5 cosmian kms certificates import
 
 Import one of the following:
 
@@ -548,7 +1093,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.4.6 cosmian kms certificates revoke
+## 1.5.6 cosmian kms certificates revoke
 
 Revoke a certificate
 
@@ -566,7 +1111,7 @@ Revoke a certificate
 
 ---
 
-## 1.4.7 cosmian kms certificates destroy
+## 1.5.7 cosmian kms certificates destroy
 
 Destroy a certificate
 
@@ -577,11 +1122,18 @@ Destroy a certificate
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the certificate should be removed from the database
+If not specified, the certificate will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 ---
 
-## 1.4.8 cosmian kms certificates validate
+## 1.5.8 cosmian kms certificates validate
 
 Validate a certificate
 
@@ -599,7 +1151,7 @@ Validate a certificate
 
 ---
 
-## 1.5 cosmian kms ec
+## 1.6 cosmian kms ec
 
 Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
@@ -608,11 +1160,15 @@ Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
 ### Subcommands
 
-**`keys`** [[1.5.1]](#151-cosmian-kms-ec-keys)  Create, destroy, import, and export elliptic curve key pairs
+**`keys`** [[1.6.1]](#161-cosmian-kms-ec-keys)  Create, destroy, import, and export elliptic curve key pairs
+
+**`encrypt`** [[1.6.2]](#162-cosmian-kms-ec-encrypt)  Encrypt a file with the given public key using ECIES
+
+**`decrypt`** [[1.6.3]](#163-cosmian-kms-ec-decrypt)  Decrypts a file with the given private key using ECIES
 
 ---
 
-## 1.5.1 cosmian kms ec keys
+## 1.6.1 cosmian kms ec keys
 
 Create, destroy, import, and export elliptic curve key pairs
 
@@ -621,23 +1177,23 @@ Create, destroy, import, and export elliptic curve key pairs
 
 ### Subcommands
 
-**`create`** [[1.5.1.1]](#1511-cosmian-kms-ec-keys-create)  Create an elliptic curve key pair
+**`create`** [[1.6.1.1]](#1611-cosmian-kms-ec-keys-create)  Create an elliptic curve key pair
 
-**`export`** [[1.5.1.2]](#1512-cosmian-kms-ec-keys-export)  Export a key from the KMS
+**`export`** [[1.6.1.2]](#1612-cosmian-kms-ec-keys-export)  Export a key from the KMS
 
-**`import`** [[1.5.1.3]](#1513-cosmian-kms-ec-keys-import)  Import a private or public key in the KMS.
+**`import`** [[1.6.1.3]](#1613-cosmian-kms-ec-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[1.5.1.4]](#1514-cosmian-kms-ec-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[1.6.1.4]](#1614-cosmian-kms-ec-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[1.5.1.5]](#1515-cosmian-kms-ec-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[1.6.1.5]](#1615-cosmian-kms-ec-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[1.5.1.6]](#1516-cosmian-kms-ec-keys-revoke)  Revoke a public or private key
+**`revoke`** [[1.6.1.6]](#1616-cosmian-kms-ec-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[1.5.1.7]](#1517-cosmian-kms-ec-keys-destroy)  Destroy a public or private key
+**`destroy`** [[1.6.1.7]](#1617-cosmian-kms-ec-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 1.5.1.1 cosmian kms ec keys create
+## 1.6.1.1 cosmian kms ec keys create
 
 Create an elliptic curve key pair
 
@@ -647,7 +1203,7 @@ Create an elliptic curve key pair
 ### Arguments
 `--curve [-c] <CURVE>` The elliptic curve
 
-Possible values:  `"nist-p224", "nist-p256", "nist-p384", "nist-p521"` [default: `"nist-p256"`]
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448"` [default: `"nist-p256"`]
 
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
 
@@ -661,7 +1217,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.5.1.2 cosmian kms ec keys export
+## 1.6.1.2 cosmian kms ec keys export
 
 Export a key from the KMS
 
@@ -715,7 +1271,7 @@ Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-
 
 ---
 
-## 1.5.1.3 cosmian kms ec keys import
+## 1.6.1.3 cosmian kms ec keys import
 
 Import a private or public key in the KMS.
 
@@ -758,7 +1314,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.5.1.4 cosmian kms ec keys wrap
+## 1.6.1.4 cosmian kms ec keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -783,7 +1339,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.5.1.5 cosmian kms ec keys unwrap
+## 1.6.1.5 cosmian kms ec keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -806,7 +1362,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.5.1.6 cosmian kms ec keys revoke
+## 1.6.1.6 cosmian kms ec keys revoke
 
 Revoke a public or private key
 
@@ -824,7 +1380,7 @@ Revoke a public or private key
 
 ---
 
-## 1.5.1.7 cosmian kms ec keys destroy
+## 1.6.1.7 cosmian kms ec keys destroy
 
 Destroy a public or private key
 
@@ -835,13 +1391,64 @@ Destroy a public or private key
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
 
 ---
 
-## 1.6 cosmian kms google
+## 1.6.2 cosmian kms ec encrypt
+
+Encrypt a file with the given public key using ECIES
+
+### Usage
+`cosmian kms ec encrypt [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to encrypt
+
+`--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+
+
+---
+
+## 1.6.3 cosmian kms ec decrypt
+
+Decrypts a file with the given private key using ECIES
+
+### Usage
+`cosmian kms ec decrypt [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to decrypt
+
+`--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+
+
+
+---
+
+## 1.7 cosmian kms google
 
 Manage google elements. Handle key pairs and identities from Gmail API
 
@@ -850,13 +1457,13 @@ Manage google elements. Handle key pairs and identities from Gmail API
 
 ### Subcommands
 
-**`key-pairs`** [[1.6.1]](#161-cosmian-kms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
+**`key-pairs`** [[1.7.1]](#171-cosmian-kms-google-key-pairs)  Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
-**`identities`** [[1.6.2]](#162-cosmian-kms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
+**`identities`** [[1.7.2]](#172-cosmian-kms-google-identities)  Insert, get, list, patch and delete identities from Gmail API
 
 ---
 
-## 1.6.1 cosmian kms google key-pairs
+## 1.7.1 cosmian kms google key-pairs
 
 Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
@@ -865,30 +1472,30 @@ Insert, get, list, enable, disabled and obliterate key pairs to Gmail API
 
 ### Subcommands
 
-**`get`** [[1.6.1.1]](#1611-cosmian-kms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
+**`get`** [[1.7.1.1]](#1711-cosmian-kms-google-key-pairs-get)  Retrieves an existing client-side encryption key pair.
 
-**`list`** [[1.6.1.2]](#1612-cosmian-kms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
+**`list`** [[1.7.1.2]](#1712-cosmian-kms-google-key-pairs-list)  Lists client-side encryption key pairs for a user.
 
-**`enable`** [[1.6.1.3]](#1613-cosmian-kms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
+**`enable`** [[1.7.1.3]](#1713-cosmian-kms-google-key-pairs-enable)  Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
 
-**`disable`** [[1.6.1.4]](#1614-cosmian-kms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
+**`disable`** [[1.7.1.4]](#1714-cosmian-kms-google-key-pairs-disable)  Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
 key pairs.enable to turn on the key pair. After 30 days, you can permanently delete the key pair
 by using the key pairs.obliterate method.
 
-**`obliterate`** [[1.6.1.5]](#1615-cosmian-kms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
+**`obliterate`** [[1.7.1.5]](#1715-cosmian-kms-google-key-pairs-obliterate)  Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
 the key pairs disable method. Gmail can't restore or decrypt any messages that were encrypted by
 an obliterated key. Authenticated users and Google Workspace administrators lose access to
 reading the encrypted messages.
 
-**`create`** [[1.6.1.6]](#1616-cosmian-kms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
+**`create`** [[1.7.1.6]](#1716-cosmian-kms-google-key-pairs-create)  Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
 
 ---
 
-## 1.6.1.1 cosmian kms google key-pairs get
+## 1.7.1.1 cosmian kms google key-pairs get
 
 Retrieves an existing client-side encryption key pair.
 
@@ -904,7 +1511,7 @@ Retrieves an existing client-side encryption key pair.
 
 ---
 
-## 1.6.1.2 cosmian kms google key-pairs list
+## 1.7.1.2 cosmian kms google key-pairs list
 
 Lists client-side encryption key pairs for a user.
 
@@ -918,7 +1525,7 @@ Lists client-side encryption key pairs for a user.
 
 ---
 
-## 1.6.1.3 cosmian kms google key-pairs enable
+## 1.7.1.3 cosmian kms google key-pairs enable
 
 Turns on a client-side encryption key pair that was turned off. The key pair becomes active
 again for any associated client-side encryption identities.
@@ -935,7 +1542,7 @@ again for any associated client-side encryption identities.
 
 ---
 
-## 1.6.1.4 cosmian kms google key-pairs disable
+## 1.7.1.4 cosmian kms google key-pairs disable
 
 Turns off a client-side encryption key pair. The authenticated user can no longer use the key
 pair to decrypt incoming CSE message texts or sign outgoing CSE mail. To regain access, use the
@@ -954,7 +1561,7 @@ by using the key pairs.obliterate method.
 
 ---
 
-## 1.6.1.5 cosmian kms google key-pairs obliterate
+## 1.7.1.5 cosmian kms google key-pairs obliterate
 
 Deletes a client-side encryption key pair permanently and immediately. You can only permanently
 delete key pairs that have been turned off for more than 30 days. To turn off a key pair, use
@@ -974,7 +1581,7 @@ reading the encrypted messages.
 
 ---
 
-## 1.6.1.6 cosmian kms google key-pairs create
+## 1.7.1.6 cosmian kms google key-pairs create
 
 Creates and uploads a client-side encryption S/MIME public key certificate chain and private key
 metadata for a user.
@@ -1007,7 +1614,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.6.2 cosmian kms google identities
+## 1.7.2 cosmian kms google identities
 
 Insert, get, list, patch and delete identities from Gmail API
 
@@ -1016,24 +1623,24 @@ Insert, get, list, patch and delete identities from Gmail API
 
 ### Subcommands
 
-**`get`** [[1.6.2.1]](#1621-cosmian-kms-google-identities-get)  Retrieves a client-side encryption identity configuration.
+**`get`** [[1.7.2.1]](#1721-cosmian-kms-google-identities-get)  Retrieves a client-side encryption identity configuration.
 
-**`list`** [[1.6.2.2]](#1622-cosmian-kms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
+**`list`** [[1.7.2.2]](#1722-cosmian-kms-google-identities-list)  Lists the client-side encrypted identities for an authenticated user.
 
-**`insert`** [[1.6.2.3]](#1623-cosmian-kms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
+**`insert`** [[1.7.2.3]](#1723-cosmian-kms-google-identities-insert)  Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
 people within a Google Workspace organization can encrypt and send mail to the identity.
 
-**`delete`** [[1.6.2.4]](#1624-cosmian-kms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
+**`delete`** [[1.7.2.4]](#1724-cosmian-kms-google-identities-delete)  Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
 the identities.create method to create another identity with the same configuration.
 
-**`patch`** [[1.6.2.5]](#1625-cosmian-kms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
+**`patch`** [[1.7.2.5]](#1725-cosmian-kms-google-identities-patch)  Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.
 
 ---
 
-## 1.6.2.1 cosmian kms google identities get
+## 1.7.2.1 cosmian kms google identities get
 
 Retrieves a client-side encryption identity configuration.
 
@@ -1047,7 +1654,7 @@ Retrieves a client-side encryption identity configuration.
 
 ---
 
-## 1.6.2.2 cosmian kms google identities list
+## 1.7.2.2 cosmian kms google identities list
 
 Lists the client-side encrypted identities for an authenticated user.
 
@@ -1061,7 +1668,7 @@ Lists the client-side encrypted identities for an authenticated user.
 
 ---
 
-## 1.6.2.3 cosmian kms google identities insert
+## 1.7.2.3 cosmian kms google identities insert
 
 Creates and configures a client-side encryption identity that's authorized to send mail from the
 user account. Google publishes the S/MIME certificate to a shared domain-wide directory so that
@@ -1079,7 +1686,7 @@ people within a Google Workspace organization can encrypt and send mail to the i
 
 ---
 
-## 1.6.2.4 cosmian kms google identities delete
+## 1.7.2.4 cosmian kms google identities delete
 
 Deletes a client-side encryption identity. The authenticated user can no longer use the identity
 to send encrypted messages. You cannot restore the identity after you delete it. Instead, use
@@ -1095,7 +1702,7 @@ the identities.create method to create another identity with the same configurat
 
 ---
 
-## 1.6.2.5 cosmian kms google identities patch
+## 1.7.2.5 cosmian kms google identities patch
 
 Associates a different key pair with an existing client-side encryption identity. The updated
 key pair must validate against Google's S/MIME certificate profiles.
@@ -1114,7 +1721,7 @@ key pair must validate against Google's S/MIME certificate profiles.
 
 ---
 
-## 1.7 cosmian kms locate
+## 1.8 cosmian kms locate
 
 Locate cryptographic objects inside the KMS
 
@@ -1142,7 +1749,7 @@ To specify multiple tags, use the option multiple times.
 
 ---
 
-## 1.8 cosmian kms login
+## 1.9 cosmian kms login
 
 Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
@@ -1152,7 +1759,7 @@ Login to the Identity Provider of the KMS server using the `OAuth2` authorizatio
 
 ---
 
-## 1.9 cosmian kms logout
+## 1.10 cosmian kms logout
 
 Logout from the Identity Provider.
 
@@ -1162,7 +1769,7 @@ Logout from the Identity Provider.
 
 ---
 
-## 1.10 cosmian kms new-database
+## 1.11 cosmian kms new-database
 
 Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
@@ -1172,7 +1779,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ---
 
-## 1.11 cosmian kms rsa
+## 1.12 cosmian kms rsa
 
 Manage RSA keys. Encrypt and decrypt data using RSA keys
 
@@ -1181,15 +1788,15 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Subcommands
 
-**`keys`** [[1.11.1]](#1111-cosmian-kms-rsa-keys)  Create, destroy, import, and export RSA key pairs
+**`keys`** [[1.12.1]](#1121-cosmian-kms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[1.11.2]](#1112-cosmian-kms-rsa-encrypt)  Encrypt a file with the given public key using either
+**`encrypt`** [[1.12.2]](#1122-cosmian-kms-rsa-encrypt)  Encrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`decrypt`** [[1.11.3]](#1113-cosmian-kms-rsa-decrypt)  Decrypt a file with the given public key using either
+**`decrypt`** [[1.12.3]](#1123-cosmian-kms-rsa-decrypt)  Decrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -1197,7 +1804,7 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ---
 
-## 1.11.1 cosmian kms rsa keys
+## 1.12.1 cosmian kms rsa keys
 
 Create, destroy, import, and export RSA key pairs
 
@@ -1206,23 +1813,23 @@ Create, destroy, import, and export RSA key pairs
 
 ### Subcommands
 
-**`create`** [[1.11.1.1]](#11111-cosmian-kms-rsa-keys-create)  Create a new RSA key pair
+**`create`** [[1.12.1.1]](#11211-cosmian-kms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[1.11.1.2]](#11112-cosmian-kms-rsa-keys-export)  Export a key from the KMS
+**`export`** [[1.12.1.2]](#11212-cosmian-kms-rsa-keys-export)  Export a key from the KMS
 
-**`import`** [[1.11.1.3]](#11113-cosmian-kms-rsa-keys-import)  Import a private or public key in the KMS.
+**`import`** [[1.12.1.3]](#11213-cosmian-kms-rsa-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[1.11.1.4]](#11114-cosmian-kms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[1.12.1.4]](#11214-cosmian-kms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[1.11.1.5]](#11115-cosmian-kms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[1.12.1.5]](#11215-cosmian-kms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[1.11.1.6]](#11116-cosmian-kms-rsa-keys-revoke)  Revoke a public or private key
+**`revoke`** [[1.12.1.6]](#11216-cosmian-kms-rsa-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[1.11.1.7]](#11117-cosmian-kms-rsa-keys-destroy)  Destroy a public or private key
+**`destroy`** [[1.12.1.7]](#11217-cosmian-kms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 1.11.1.1 cosmian kms rsa keys create
+## 1.12.1.1 cosmian kms rsa keys create
 
 Create a new RSA key pair
 
@@ -1244,7 +1851,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.11.1.2 cosmian kms rsa keys export
+## 1.12.1.2 cosmian kms rsa keys export
 
 Export a key from the KMS
 
@@ -1298,7 +1905,7 @@ Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-
 
 ---
 
-## 1.11.1.3 cosmian kms rsa keys import
+## 1.12.1.3 cosmian kms rsa keys import
 
 Import a private or public key in the KMS.
 
@@ -1341,7 +1948,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.11.1.4 cosmian kms rsa keys wrap
+## 1.12.1.4 cosmian kms rsa keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -1366,7 +1973,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.11.1.5 cosmian kms rsa keys unwrap
+## 1.12.1.5 cosmian kms rsa keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -1389,7 +1996,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.11.1.6 cosmian kms rsa keys revoke
+## 1.12.1.6 cosmian kms rsa keys revoke
 
 Revoke a public or private key
 
@@ -1407,7 +2014,7 @@ Revoke a public or private key
 
 ---
 
-## 1.11.1.7 cosmian kms rsa keys destroy
+## 1.12.1.7 cosmian kms rsa keys destroy
 
 Destroy a public or private key
 
@@ -1418,12 +2025,19 @@ Destroy a public or private key
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 
 ---
 
-## 1.11.2 cosmian kms rsa encrypt
+## 1.12.2 cosmian kms rsa encrypt
 
 Encrypt a file with the given public key using either
 
@@ -1443,7 +2057,7 @@ Encrypt a file with the given public key using either
 
 `--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
 
 `--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm
 
@@ -1455,7 +2069,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 1.11.3 cosmian kms rsa decrypt
+## 1.12.3 cosmian kms rsa decrypt
 
 Decrypt a file with the given public key using either
 
@@ -1475,7 +2089,7 @@ Decrypt a file with the given public key using either
 
 `--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
 
-Possible values:  `"ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
+Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"` [default: `"ckm-rsa-pkcs-oaep"`]
 
 `--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm (for OAEP and AES key wrap)
 
@@ -1488,7 +2102,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 1.12 cosmian kms server-version
+## 1.13 cosmian kms server-version
 
 Print the version of the server
 
@@ -1498,7 +2112,7 @@ Print the version of the server
 
 ---
 
-## 1.13 cosmian kms sym
+## 1.14 cosmian kms sym
 
 Manage symmetric keys. Encrypt and decrypt data
 
@@ -1507,15 +2121,15 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[1.13.1]](#1131-cosmian-kms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[1.14.1]](#1141-cosmian-kms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[1.13.2]](#1132-cosmian-kms-sym-encrypt)  Encrypt a file using a symmetric cipher
+**`encrypt`** [[1.14.2]](#1142-cosmian-kms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
-**`decrypt`** [[1.13.3]](#1133-cosmian-kms-sym-decrypt)  Decrypt a file using a symmetric key.
+**`decrypt`** [[1.14.3]](#1143-cosmian-kms-sym-decrypt)  Decrypt a file using a symmetric key.
 
 ---
 
-## 1.13.1 cosmian kms sym keys
+## 1.14.1 cosmian kms sym keys
 
 Create, destroy, import, and export symmetric keys
 
@@ -1524,25 +2138,25 @@ Create, destroy, import, and export symmetric keys
 
 ### Subcommands
 
-**`create`** [[1.13.1.1]](#11311-cosmian-kms-sym-keys-create)  Create a new symmetric key
+**`create`** [[1.14.1.1]](#11411-cosmian-kms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[1.13.1.2]](#11312-cosmian-kms-sym-keys-re-key)  Refresh an existing symmetric key
+**`re-key`** [[1.14.1.2]](#11412-cosmian-kms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[1.13.1.3]](#11313-cosmian-kms-sym-keys-export)  Export a key from the KMS
+**`export`** [[1.14.1.3]](#11413-cosmian-kms-sym-keys-export)  Export a key from the KMS
 
-**`import`** [[1.13.1.4]](#11314-cosmian-kms-sym-keys-import)  Import a private or public key in the KMS.
+**`import`** [[1.14.1.4]](#11414-cosmian-kms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[1.13.1.5]](#11315-cosmian-kms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[1.14.1.5]](#11415-cosmian-kms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[1.13.1.6]](#11316-cosmian-kms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[1.14.1.6]](#11416-cosmian-kms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[1.13.1.7]](#11317-cosmian-kms-sym-keys-revoke)  Revoke a symmetric key
+**`revoke`** [[1.14.1.7]](#11417-cosmian-kms-sym-keys-revoke)  Revoke a symmetric key
 
-**`destroy`** [[1.13.1.8]](#11318-cosmian-kms-sym-keys-destroy)  Destroy a symmetric key
+**`destroy`** [[1.14.1.8]](#11418-cosmian-kms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
-## 1.13.1.1 cosmian kms sym keys create
+## 1.14.1.1 cosmian kms sym keys create
 
 Create a new symmetric key
 
@@ -1556,7 +2170,7 @@ Create a new symmetric key
 
 `--algorithm [-a] <ALGORITHM>` The algorithm
 
-Possible values:  `"aes", "sha3", "shake"` [default: `"aes"`]
+Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
@@ -1577,7 +2191,7 @@ If the wrapping key is:
 
 ---
 
-## 1.13.1.2 cosmian kms sym keys re-key
+## 1.14.1.2 cosmian kms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -1590,7 +2204,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 1.13.1.3 cosmian kms sym keys export
+## 1.14.1.3 cosmian kms sym keys export
 
 Export a key from the KMS
 
@@ -1644,7 +2258,7 @@ Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-
 
 ---
 
-## 1.13.1.4 cosmian kms sym keys import
+## 1.14.1.4 cosmian kms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -1687,7 +2301,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.13.1.5 cosmian kms sym keys wrap
+## 1.14.1.5 cosmian kms sym keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -1712,7 +2326,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.13.1.6 cosmian kms sym keys unwrap
+## 1.14.1.6 cosmian kms sym keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -1735,7 +2349,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.13.1.7 cosmian kms sym keys revoke
+## 1.14.1.7 cosmian kms sym keys revoke
 
 Revoke a symmetric key
 
@@ -1753,7 +2367,7 @@ Revoke a symmetric key
 
 ---
 
-## 1.13.1.8 cosmian kms sym keys destroy
+## 1.14.1.8 cosmian kms sym keys destroy
 
 Destroy a symmetric key
 
@@ -1764,12 +2378,19 @@ Destroy a symmetric key
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+Please note that the KMIP specification does not support the removal of objects.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 
 ---
 
-## 1.13.2 cosmian kms sym encrypt
+## 1.14.2 cosmian kms sym encrypt
 
 Encrypt a file using a symmetric cipher
 
@@ -1781,13 +2402,13 @@ Encrypt a file using a symmetric cipher
 
 `--key-id [-k] <KEY_ID>` The symmetric key unique identifier. If not specified, tags should be specified
 
-`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
+`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, `aes-gcm` is used
 
-Possible values:  `"AesGcm", "AesXts"` [default: `"aes-gcm"`]
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
 
 `--key-encryption-algorithm [-e] <KEY_ENCRYPTION_ALGORITHM>` The optional key encryption algorithm used to encrypt the data encryption key.
 
-Possible values:  `"AesGcm", "AesXts", "RFC5649"`
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rfc5649"`
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
@@ -1801,7 +2422,7 @@ Possible values:  `"AesGcm", "AesXts", "RFC5649"`
 
 ---
 
-## 1.13.3 cosmian kms sym decrypt
+## 1.14.3 cosmian kms sym decrypt
 
 Decrypt a file using a symmetric key.
 
@@ -1813,15 +2434,16 @@ Decrypt a file using a symmetric key.
 
 `--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
 
-`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
-Possible values:  `"AesGcm", "AesXts"` [default: `"aes-gcm"`]
+`--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm.
+If not specified, aes-gcm is used.
+
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
 
 `--key-encryption-algorithm [-e] <KEY_ENCRYPTION_ALGORITHM>` The optional key encryption algorithm used to decrypt the data encryption key.
 
-Possible values:  `"AesGcm", "AesXts", "RFC5649"`
-
-`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rfc5649"`
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
@@ -1850,16 +2472,15 @@ Handle Findex server actions
 
 **`delete`** [[2.4]](#24-cosmian-findex-server-delete)  Delete indexed keywords
 
-**`index`** [[2.5]](#25-cosmian-findex-server-index)  Index new keywords
+**`insert`** [[2.5]](#25-cosmian-findex-server-insert)  Insert new keywords
 
-**`login`** [[2.6]](#26-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2`
-authorization code flow.
+**`login`** [[2.6]](#26-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
 
 **`logout`** [[2.7]](#27-cosmian-findex-server-logout)  Logout from the Identity Provider.
 
 **`permissions`** [[2.8]](#28-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
 
-**`search`** [[2.9]](#29-cosmian-findex-server-search)  Findex: Search keywords.
+**`search`** [[2.9]](#29-cosmian-findex-server-search)  Search words.
 
 **`server-version`** [[2.10]](#210-cosmian-findex-server-server-version)  Print the version of the server
 
@@ -1872,13 +2493,11 @@ Encrypt entries and index the corresponding database UUIDs with the Findex.
 ### Usage
 `cosmian findex-server encrypt-and-index [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
-
-`--label [-l] <LABEL>` The Findex label
+`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
-`--csv-path <CSV_PATH>` The path to the CSV file path containing the data to index
+`--csv <CSV>` The path to the CSV file path containing the data to index
 
 `--kek-id <KEY_ENCRYPTION_KEY_ID>` The key encryption key (KEK) unique identifier. If provided, all encryption is done client side. The KEK is first exported locally and is used in the KEM to encapsulates the ephemeral Data Encryption Key (DEK). This KEK has been created in KMS and provides the Key Encapsulation Mechanism (KEM) parameters such as algorithm and mode. KEM supported are: - RFC5649 - AES-GCM - RSA PKCS#1 v1.5 - RSA-OAEP - RSA-AES hybrid key wrapping - Salsa Sealed Box - ECIES
 
@@ -1886,7 +2505,7 @@ Encrypt entries and index the corresponding database UUIDs with the Findex.
 
 `--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
 
-Possible values:  `"AesGcm", "AesXts"` [default: `"AesGcm"`]
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"AesGcm"`]
 
 `--nonce [-n] <NONCE>` Optional nonce/IV (or tweak for XTS) as a hex string. If not provided, a random value is generated
 
@@ -1903,9 +2522,7 @@ Search keywords and decrypt the content of corresponding UUIDs.
 ### Usage
 `cosmian findex-server search-and-decrypt [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
-
-`--label [-l] <LABEL>` The Findex label
+`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -1917,7 +2534,7 @@ Search keywords and decrypt the content of corresponding UUIDs.
 
 `--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
 
-Possible values:  `"AesGcm", "AesXts"` [default: `"AesGcm"`]
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"AesGcm"`]
 
 `--authentication-data [-a] <AUTHENTICATION_DATA>` Optional additional authentication data as a hex string. This data needs to be provided back for decryption. This data is ignored with XTS
 
@@ -1938,7 +2555,7 @@ Manage encrypted datasets
 
 **`delete`** [[2.3.2]](#232-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
 
-**`get`** [[2.3.3]](#233-cosmian-findex-server-datasets-get)  Get datasets entries using corresponding entries UUID. Returns the entries
+**`get`** [[2.3.3]](#233-cosmian-findex-server-datasets-get)  Return datasets entries matching given UUID
 
 ---
 
@@ -1974,7 +2591,7 @@ Delete datasets entries using corresponding entries UUID
 
 ## 2.3.3 cosmian findex-server datasets get
 
-Get datasets entries using corresponding entries UUID. Returns the entries
+Return datasets entries matching given UUID
 
 ### Usage
 `cosmian findex-server datasets get [options]`
@@ -1995,9 +2612,7 @@ Delete indexed keywords
 ### Usage
 `cosmian findex-server delete [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
-
-`--label [-l] <LABEL>` The Findex label
+`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -2007,16 +2622,14 @@ Delete indexed keywords
 
 ---
 
-## 2.5 cosmian findex-server index
+## 2.5 cosmian findex-server insert
 
-Index new keywords
+Insert new keywords
 
 ### Usage
-`cosmian findex-server index [options]`
+`cosmian findex-server insert [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
-
-`--label [-l] <LABEL>` The Findex label
+`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -2028,8 +2641,7 @@ Index new keywords
 
 ## 2.6 cosmian findex-server login
 
-Login to the Identity Provider of the Findex server using the `OAuth2`
-authorization code flow.
+Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
 
 ### Usage
 `cosmian findex-server login`
@@ -2123,14 +2735,12 @@ Revoke user permission
 
 ## 2.9 cosmian findex-server search
 
-Findex: Search keywords.
+Search words.
 
 ### Usage
 `cosmian findex-server search [options]`
 ### Arguments
-`--key [-k] <KEY>` The user findex key used (to add, search, delete and compact). The key is a 16 bytes hex string
-
-`--label [-l] <LABEL>` The Findex label
+`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
 `--index-id [-i] <INDEX_ID>` The index ID
 

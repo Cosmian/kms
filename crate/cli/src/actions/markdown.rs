@@ -17,7 +17,8 @@ impl MarkdownAction {
     ///
     /// # Errors
     ///
-    /// Returns an error if there is an issue creating or writing to the markdown file.
+    /// Returns an error if there is an issue creating or writing to the
+    /// markdown file.
     #[allow(clippy::print_stdout)]
     pub fn process(&self, cmd: &Command) -> CosmianResult<()> {
         let mut output = String::new();
