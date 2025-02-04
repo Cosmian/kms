@@ -10,19 +10,20 @@ written in [**Rust**](https://www.rust-lang.org/) that presents some unique feat
 
 - the ability to confidentially run in a public cloud — or any zero-trust environment — using
   Cosmian VM. See our cloud-ready confidential KMS on the
-  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and our [deployment guide](./documentation/docs/marketplace_guide.md)
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) and
+  our [deployment guide](documentation/docs/installation/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of
   [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support
   of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [Proteccio HSM](./documentation/docs/hsm.md) with KMS keys wrapped by the HSM
+- support for the [Proteccio HSM](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](./documentation/docs/pkcs11/veracrypt.md)
   and [LUKS](./documentation/docs/pkcs11/luks.md) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [JSON KMIP 2.1](./documentation/docs/kmip_2_1/index.md) compliant interface
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
-- a [high-availability mode](./documentation/docs/high_availability_mode.md) with simple horizontal scaling
+- a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
 - a support of Python, Javascript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
   on [Cosmian Github](https://github.com/Cosmian))
 - integrated with [OpenTelemetry](https://opentelemetry.io/)
@@ -43,24 +44,24 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
 - [Cosmian KMS](#cosmian-kms)
-    - [Quick start](#quick-start)
-        - [Example](#example)
-    - [Repository content](#repository-content)
-    - [Building the KMS](#building-the-kms)
-        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-        - [Windows](#windows)
-        - [Build the KMS](#build-the-kms)
-        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-    - [Server parameters](#server-parameters)
-    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [Releases](#releases)
-    - [Benchmarks](#benchmarks)
+  - [Quick start](#quick-start)
+    - [Example](#example)
+  - [Repository content](#repository-content)
+  - [Building the KMS](#building-the-kms)
+    - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+    - [Windows](#windows)
+    - [Build the KMS](#build-the-kms)
+    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+  - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+  - [Development: running the server with cargo](#development-running-the-server-with-cargo)
+  - [Server parameters](#server-parameters)
+  - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+  - [Releases](#releases)
+  - [Benchmarks](#benchmarks)
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.21.2/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.22.0/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
@@ -117,7 +118,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 The server is written in [Rust](https://www.rust-lang.org/) and is broken down into several
 binaries:
 
-- A server (`cosmian_kms_server`) which is the KMS itself
+- A server (`cosmian_kms`) which is the KMS itself
 - A CLI (`ckms`) to interact with this server
 
 And also some crates:
@@ -248,7 +249,7 @@ log level and select the correct backend (which defaults to `sqlite-enc`).
 
 ```sh
 RUST_LOG="info,cosmian_kms_server=debug" \
-cargo run --bin cosmian_kms_server -- \
+cargo run --bin cosmian_kms -- \
 --database-type redis-findex --database-url redis://localhost:6379 \
 --redis-master-password secret --redis-findex-label label
 ```
@@ -268,7 +269,7 @@ Otherwise, the parameters are set following this order:
 
 ## Use the KMS inside a Cosmian VM on SEV/TDX
 
-See the [Marketplace guide](./documentation/docs/marketplace_guide.md) for more details about Cosmian VM.
+See the [Marketplace guide](documentation/docs/installation/marketplace_guide.md) for more details about Cosmian VM.
 
 ## Releases
 

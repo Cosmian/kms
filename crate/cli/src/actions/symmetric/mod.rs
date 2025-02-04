@@ -3,7 +3,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
     KmsClient,
 };
-use strum::{Display, EnumIter};
+use strum::EnumIter;
 
 pub use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::result::CliResult;
@@ -42,18 +42,15 @@ impl SymmetricCommands {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq, Display)]
+#[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq, strum::Display)]
+#[strum(serialize_all = "kebab-case")]
 pub enum DataEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
-    #[value(name = "Chacha20Poly1305")]
     Chacha20Poly1305,
     #[default]
-    #[value(name = "AesGcm")]
     AesGcm,
-    #[value(name = "AesXts")]
     AesXts,
     #[cfg(not(feature = "fips"))]
-    #[value(name = "AesGcmSiv")]
     AesGcmSiv,
 }
 
@@ -85,19 +82,15 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy, EnumIter, Display)]
+#[derive(ValueEnum, Debug, Clone, Copy, EnumIter, strum::Display)]
+#[strum(serialize_all = "kebab-case")]
 pub enum KeyEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
-    #[value(name = "Chacha20Poly1305")]
     Chacha20Poly1305,
-    #[value(name = "AesGcm")]
     AesGcm,
-    #[value(name = "AesXts")]
     AesXts,
     #[cfg(not(feature = "fips"))]
-    #[value(name = "AesGcmSiv")]
     AesGcmSiv,
-    #[value(name = "RFC5649")]
     RFC5649,
 }
 

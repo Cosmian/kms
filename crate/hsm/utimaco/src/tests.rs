@@ -1,62 +1,33 @@
-//! These tests  require a connection to a working HSM and are gated behind the `proteccio` feature.
+//! These tests  require a connection to a working HSM and are gated behind the `utimaco` feature.
 //! To run a test, cd into the crate directory and run (replace `XXX` with the actual password):
 //! ```
-//! HSM_USER_PASSWORD=XXX cargo test --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_all
+//! HSM_USER_PASSWORD=XXX cargo test --target x86_64-unknown-linux-gnu --features utimaco -- tests::test_all
 //! ```
 
-use std::{
-    collections::HashMap,
-    ptr,
-    sync::{Arc, Once},
-    thread,
-};
+use std::{collections::HashMap, ptr, sync::Arc, thread};
 
+use cosmian_kms_base_hsm::{
+    test_helpers::{get_hsm_password, initialize_logging},
+    AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
+};
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use libloading::Library;
 use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
-use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::info;
 use uuid::Uuid;
 
-use crate::{
-    AesKeySize, PError, PResult, Proteccio, ProteccioEncryptionAlgorithm, RsaKeySize, SlotManager,
-};
+use crate::Utimaco;
 
-static TRACING_INIT: Once = Once::new();
-fn initialize_logging() {
-    TRACING_INIT.call_once(|| {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::INFO) // Adjust the level as needed
-            .with_writer(std::io::stdout)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Setting default subscriber failed");
-    });
-}
-
-fn get_hsm_password() -> PResult<String> {
-    let user_password = option_env!("HSM_USER_PASSWORD")
-        .ok_or_else(|| {
-            PError::Default(
-                "The user password for the HSM is not set. Please set the HSM_USER_PASSWORD \
-                 environment variable"
-                    .to_string(),
-            )
-        })?
-        .to_string();
-    Ok(user_password)
-}
-
-fn get_slot() -> PResult<Arc<SlotManager>> {
+fn get_slot() -> HResult<Arc<SlotManager>> {
     let user_password = get_hsm_password()?;
-    let passwords = HashMap::from([(0x04, Some(user_password.clone()))]);
-    let hsm = Proteccio::instantiate("/lib/libnethsm64.so", passwords)?;
-    let manager = hsm.get_slot(0x04)?;
+    let passwords = HashMap::from([(0x00, Some(user_password.clone()))]);
+    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", passwords)?;
+    let manager = hsm.get_slot(0x00)?;
     Ok(manager)
 }
 
 #[test]
-fn test_all() -> PResult<()> {
+fn test_all() -> HResult<()> {
     test_hsm_get_info()?;
     test_destroy_all()?;
     test_generate_aes_key()?;
@@ -73,12 +44,12 @@ fn test_all() -> PResult<()> {
 }
 
 #[test]
-fn low_level_test() -> PResult<()> {
-    let path = "/lib/libnethsm64.so";
+fn low_level_test() -> HResult<()> {
+    let path = "/lib/libcs_pkcs11_R3.so";
     let library = unsafe { Library::new(path) }?;
-    let init = unsafe { library.get::<fn(pInitArgs: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
+    let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
-    let mut pInitArgs = CK_C_INITIALIZE_ARGS {
+    let mut p_init_args = CK_C_INITIALIZE_ARGS {
         CreateMutex: None,
         DestroyMutex: None,
         LockMutex: None,
@@ -86,23 +57,23 @@ fn low_level_test() -> PResult<()> {
         flags: CKF_OS_LOCKING_OK,
         pReserved: ptr::null_mut(),
     };
-    let rv = init(&mut pInitArgs as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
+    let rv = init(&mut p_init_args as *const CK_C_INITIALIZE_ARGS as CK_VOID_PTR);
     assert_eq!(rv, CKR_OK);
 
     Ok(())
 }
 
 #[test]
-fn test_hsm_get_info() -> PResult<()> {
+fn test_hsm_get_info() -> HResult<()> {
     initialize_logging();
-    let hsm = Proteccio::instantiate("/lib/libnethsm64.so", HashMap::new())?;
+    let hsm = Utimaco::instantiate("/lib/libcs_pkcs11_R3.so", HashMap::new())?;
     let info = hsm.get_info()?;
     info!("Connected to the HSM: {info}");
     Ok(())
 }
 
 #[test]
-fn test_generate_aes_key() -> PResult<()> {
+fn test_generate_aes_key() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -144,7 +115,7 @@ fn test_generate_aes_key() -> PResult<()> {
 }
 
 #[test]
-fn test_generate_rsa_keypair() -> PResult<()> {
+fn test_generate_rsa_keypair() -> HResult<()> {
     initialize_logging();
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
@@ -205,13 +176,12 @@ fn test_generate_rsa_keypair() -> PResult<()> {
 }
 
 #[test]
-fn test_rsa_key_wrap() -> PResult<()> {
+fn test_rsa_key_wrap() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
     let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
-    info!("Symmetric key handle: {symmetric_key}");
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
     let (sk, pk) = session.generate_rsa_key_pair(
@@ -220,17 +190,16 @@ fn test_rsa_key_wrap() -> PResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
     let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
     let decrypted_key =
         session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, "another_label")?;
-    info!("Unwrapped symmetric key handle: {}", decrypted_key);
+    info!("Unwrapped symmetric key with handle: {}", decrypted_key);
     Ok(())
 }
 
 #[test]
-fn test_rsa_pkcs_encrypt() -> PResult<()> {
+fn test_rsa_pkcs_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -243,20 +212,16 @@ fn test_rsa_pkcs_encrypt() -> PResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
-    let enc = session.encrypt(pk, ProteccioEncryptionAlgorithm::RsaPkcsV15, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(
-        sk,
-        ProteccioEncryptionAlgorithm::RsaPkcsV15,
-        &enc.ciphertext,
-    )?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with RSA PKCS");
     Ok(())
 }
 
 #[test]
-fn test_rsa_oaep_encrypt() -> PResult<()> {
+fn test_rsa_oaep_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -269,16 +234,16 @@ fn test_rsa_oaep_encrypt() -> PResult<()> {
         RsaKeySize::Rsa2048,
         true,
     )?;
-    info!("RSA handles sk: {sk}, pl: {pk}");
-    let enc = session.encrypt(pk, ProteccioEncryptionAlgorithm::RsaOaep, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
-    let plaintext = session.decrypt(sk, ProteccioEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
+    let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaep, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with RSA OAEP");
     Ok(())
 }
 
 #[test]
-fn test_aes_gcm_encrypt() -> PResult<()> {
+fn test_aes_gcm_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -286,13 +251,13 @@ fn test_aes_gcm_encrypt() -> PResult<()> {
     let key_id = Uuid::new_v4().to_string();
     let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
     info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, ProteccioEncryptionAlgorithm::AesGcm, data)?;
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
     assert_eq!(enc.iv.clone().unwrap_or_default().len(), 12);
     let plaintext = session.decrypt(
         sk,
-        ProteccioEncryptionAlgorithm::AesGcm,
+        HsmEncryptionAlgorithm::AesGcm,
         [
             enc.iv.unwrap_or_default(),
             enc.ciphertext,
@@ -302,11 +267,12 @@ fn test_aes_gcm_encrypt() -> PResult<()> {
         .as_slice(),
     )?;
     assert_eq!(plaintext.as_slice(), data);
+    info!("Successfully encrypted/decrypted with AES GCM");
     Ok(())
 }
 
 #[test]
-fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
+fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     initialize_logging();
 
     // Initialize the HSM once and share it across threads
@@ -327,16 +293,15 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
                 true,
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
-            let encrypted_content =
-                session.encrypt(pk, ProteccioEncryptionAlgorithm::RsaOaep, data)?;
+            let encrypted_content = session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaep, data)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(
                 sk,
-                ProteccioEncryptionAlgorithm::RsaOaep,
+                HsmEncryptionAlgorithm::RsaOaep,
                 &encrypted_content.ciphertext,
             )?;
             assert_eq!(plaintext.as_slice(), data);
-            Ok::<(), PError>(())
+            Ok::<(), HError>(())
         });
         handles.push(handle);
     }
@@ -344,12 +309,12 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> PResult<()> {
     for handle in handles {
         handle.join().expect("Thread panicked")?;
     }
-
+    info!("Successfully encrypted/decrypted with RSA OAEP in multiple threads");
     Ok(())
 }
 
 #[test]
-fn test_list_objects() -> PResult<()> {
+fn test_list_objects() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -403,11 +368,12 @@ fn test_list_objects() -> PResult<()> {
     assert_eq!(objects.len(), 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;
     assert_eq!(objects.len(), 1);
+    info!("Listed all objects");
     Ok(())
 }
 
 #[test]
-fn test_get_key_metadata() -> PResult<()> {
+fn test_get_key_metadata() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -418,12 +384,12 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::AesKey);
     // get the metadata
     let metadata = session
         .get_key_metadata(key_handle)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::AesKey);
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
@@ -442,13 +408,13 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the private key basics
     let key_type = session
         .get_key_type(sk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::RsaPrivateKey);
 
     // get the private key metadata
     let metadata = session
         .get_key_metadata(sk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPrivateKey);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), sk_id.as_str());
@@ -457,22 +423,23 @@ fn test_get_key_metadata() -> PResult<()> {
     // get the public key basics
     let key_type = session
         .get_key_type(pk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(key_type, KeyType::RsaPublicKey);
 
     // get the public key metadata
     let metadata = session
         .get_key_metadata(pk)?
-        .ok_or_else(|| PError::Default("Key not found".to_string()))?;
+        .ok_or_else(|| HError::Default("Key not found".to_string()))?;
     assert_eq!(metadata.key_type, KeyType::RsaPublicKey);
     // assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), pk_id.as_str());
+    info!("Got key metadata");
     Ok(())
 }
 
 #[test]
-fn test_destroy_all() -> PResult<()> {
+fn test_destroy_all() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -482,5 +449,6 @@ fn test_destroy_all() -> PResult<()> {
     }
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     assert_eq!(objects.len(), 0);
+    info!("Destroyed all objects");
     Ok(())
 }

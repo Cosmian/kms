@@ -1,12 +1,8 @@
-# Deploy KMS in a Confidential Virtual Machine (CVM)
+A KMS-ready instance based on Cosmian Confidential VM can be deployed on virtual machines
+that supports AMD SEV-SNP or Intel TDX technologies, and is available on the marketplace of the major cloud providers.
 
-A KMS-ready instance based on Cosmian VM can be deployed on virtual machines
-that supports AMD SEV-SNP or Intel TDX technologies.
-
-This instance can be deployed on virtual machines that supports AMD SEV-SNP or
-Intel TDX technologies.
-
-Please first read the guide about [how to setup a Cosmian VM](../cosmian_vm/deployment_guide.md).
+If you are interested in the confidential computing technology and the Cosmian VM,
+please first read the guide about [how to setup a Cosmian VM](../../cosmian_vm/deployment_guide.md).
 
 ## Deploy Cosmian VM KMS on a cloud provider
 
@@ -34,7 +30,7 @@ The Cosmian KMS contains:
 - a ready-to-go Nginx setup (listening on port `443` and locally on port `9998`)
 - a ready-to-go KMS service
 - the Cosmian VM software stack. As reminder, Cosmian VM Agent is listening
-    on port `5555`.
+  on port `5555`.
 
 ## Configure the KMS 📜
 
@@ -44,9 +40,9 @@ By default:
 
 - the KMS server is locally listening on port 9998
 - its database is a local Redis database with encrypted data
-using the scheme [Findex](../search/findex.md).
+  using the scheme [Findex](../../search/findex.md).
 - the KMS configuration file is located in the encrypted LUKS container
-at `/var/lib/cosmian_vm/data/app.conf` and has the following content:
+  at `/var/lib/cosmian_vm/data/app.conf` and has the following content:
 
 ```toml
 default_username = "admin"
@@ -62,7 +58,8 @@ redis_master_password = "master-password"
 redis_findex_label = "label"
 ```
 
-For testing purposes (connectivity, features, etc.), KMS server can also use a SQLite database by modifying the configuration file:
+For testing purposes (connectivity, features, etc.), KMS server can also use a SQLite database by modifying the
+configuration file:
 
 ```toml
 default_username = "admin"
@@ -84,7 +81,7 @@ hostname = "0.0.0.0"
 ### Override the default configuration
 
 The default configuration can be overridden remotely by using the
-[Cosmian VM CLI](../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli)
+[Cosmian VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli)
 without any SSH connection.
 
 It is safe to provide secrets (such as passwords) in
@@ -92,11 +89,11 @@ the configuration file because this file is going to be stored in the encrypted
 folder (LUKS) of the Cosmian VM KMS (which is mounted by default on `/var/lib/cosmian_vm/data`).
 
 Cosmian VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker).
-Please follow the [installation instructions](../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli).
+Please follow the [installation instructions](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli).
 
 Then proceed as follows:
 
-```console title="On the local machine"
+```shell title="On the local machine"
 cosmian_vm --url https://${COSMIAN_KMS_IP_ADDR}:5555 \
            --allow-insecure-tls \
            app init -c kms.toml
@@ -111,7 +108,7 @@ contained in an encrypted container (LUKS).
 
 where `kms.toml` can be:
 
-```toml title="kms.toml"
+```toml
 default_username = "admin"
 
 [http]
@@ -126,11 +123,11 @@ redis_findex_label = "label"
 ```
 
 - The database type `redis-findex` is a Redis database with encrypted data and
-encrypted indexes thanks to Cosmian Findex.
+  encrypted indexes thanks to Cosmian Findex.
 - The `database_url` points to the Redis, typically an external managed Redis database.
 - The `redis_master_password` is used to encrypt the Redis data and indexes.
 - The `redis_findex_label` is a public arbitrary label that can be changed
-to rotate the Findex ciphertexts without changing the key.
+  to rotate the Findex ciphertexts without changing the key.
 
 ### Service
 
@@ -153,7 +150,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"4.21.2"
+"4.22.0"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"
@@ -177,7 +174,7 @@ information, creates self-signed certificate for Nginx and starts a snapshot.
 Wait for the agent to initialize the LUKS and generate the certificates.
 This is automatically at boot.
 
-In short, to generate a snapshot, please [follow](../cosmian_vm/deployment_guide.md#snapshot-the-vm-remotely).
+In short, to generate a snapshot, please [follow](../../cosmian_vm/deployment_guide.md#snapshot-the-vm-remotely).
 
 The associated command is:
 
@@ -188,7 +185,7 @@ cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls snapsho
 ## Verify the Cosmian VM KMS integrity ✅
 
 Verifying trustworthiness of the Cosmian VM KMS is exactly the same process
-as [verifying the Cosmian VM](../cosmian_vm/overview.md) itself.
+as [verifying the Cosmian VM](../../cosmian_vm/overview.md) itself.
 
 In short, to verify a snapshot, please [follow](../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
 

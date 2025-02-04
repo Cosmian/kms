@@ -82,7 +82,7 @@ jobs:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe
-            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
             fips.dll
             legacy.dll
@@ -109,8 +109,8 @@ jobs:
           Copy-Item -Path legacy.dll -Destination C:/Windows/System32/OpenSSL/lib/ossl-modules/legacy.dll
           Get-ChildItem -Recurse C:/Windows/System32/OpenSSL
 
-      - name: Launch ckms and cosmian_kms_server
+      - name: Launch ckms and cosmian_kms
         run: |
           pwd
           ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe -V
-          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms_server.exe --info
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms.exe --info

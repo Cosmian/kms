@@ -1,6 +1,7 @@
 # Microsoft Double Key Encryption (DKE)
 
-Microsoft Double Key Encryption (DKE) is a [feature of Microsoft 365](https://learn.microsoft.com/en-us/purview/double-key-encryption)
+Microsoft Double Key Encryption (DKE) is
+a [feature of Microsoft 365](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 that allows you to protect your most sensitive
 data by encrypting data on the client computer before sending it to Microsoft servers.
 One of the keys used to encrypt remains under your control and makes the data unreadable by Microsoft. This key is kept
@@ -59,14 +60,15 @@ Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to 
 corresponding entry in the server TOML configuration file.
 
 !!! warning "No authentication => firewalling is critical"
-      The Office client does not send any authentication information when calling the Cosmian KMS. Firewalling the
-      Cosmian KMS server to only accept requests from valid Office clients is critical.
+The Office client does not send any authentication information when calling the Cosmian KMS. Firewalling the
+Cosmian KMS server to only accept requests from valid Office clients is critical.
 
 !!! important "Running the KMS server in the cloud for DKE"
-      It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-      Cosmian VM](../marketplace_guide.md). However, due to the lack of authentication, and thus the need to firewall the server,
-      one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
-      particularly if running on Azure.
+It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
+Cosmian VM](../installation/marketplace_guide.md). However, due to the lack of authentication, and thus the need to
+firewall the server,
+one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
+particularly if running on Azure.
 
 ### Create an RSA key with tag `dke_key`
 
@@ -77,11 +79,13 @@ cosmian kms rsa keys create --tag dke_key --size_in_bits 2048
 ```
 
 The tag can be changed to any value, but it must be used in the URL of the sensitivity label in the Microsoft Purview
-compliance portal. See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
+compliance portal. See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for
+details.
 
 #### Rotate the DKE key
 
-If later on you need to rotate the DKE key, you can use the [Cosmian CLI](../../cosmian_cli/index.md) to create a new key with a new tag.
+If later on you need to rotate the DKE key, you can use the [Cosmian CLI](../../cosmian_cli/index.md) to create a new
+key with a new tag.
 You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
 
@@ -190,7 +194,7 @@ Select `Use Double Key Encryption` on the encryption configuration screen and ma
 you do not activate co-authoring.
 
 !!! important "Use the correct URL"
-      The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
+The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
 
       - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
       - `ms_dke` is the root of REST path for the DKE services.

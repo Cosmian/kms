@@ -9,6 +9,8 @@ use cosmian_kms_server_database::Database;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::Proteccio;
 use tokio::sync::RwLock;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use utimaco_pkcs11_loader::Utimaco;
 
 use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
 
@@ -41,37 +43,7 @@ impl KMS {
     /// A new KMS instance.
     #[allow(clippy::as_conversions)]
     pub(crate) async fn instantiate(server_params: ServerParams) -> KResult<Self> {
-        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
-        let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
-            None
-        } else {
-            if server_params
-                .hsm_model
-                .as_ref()
-                .map(String::from)
-                .unwrap_or_default()
-                != "proteccio"
-            {
-                kms_bail!("The only supported HSM model is Proteccio for now")
-            }
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            kms_bail!("Fatal: Proteccio HSM is only supported on Linux x86_64");
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            {
-                let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
-                    Proteccio::instantiate(
-                        "/lib/libnethsm.so",
-                        server_params.slot_passwords.clone(),
-                    )
-                    .map_err(|e| {
-                        KmsError::InvalidRequest(format!(
-                            "Failed to instantiate the Proteccio HSM: {e}"
-                        ))
-                    })?,
-                );
-                Some(proteccio)
-            }
-        };
+        let hsm = Self::instantiate_hsm(&server_params)?;
 
         // Instantiate the main database
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
@@ -107,5 +79,55 @@ impl KMS {
             database,
             encryption_oracles: RwLock::new(encryption_oracles),
         })
+    }
+
+    fn instantiate_hsm(
+        server_params: &ServerParams,
+    ) -> Result<Option<Arc<dyn HSM + Send + Sync>>, KmsError> {
+        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
+        let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
+            None
+        } else {
+            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+            kms_bail!("Fatal: HSMs are only supported on Linux x86_64");
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            {
+                let hsm_model = server_params.hsm_model.as_ref().ok_or_else(|| {
+                    KmsError::InvalidRequest("The HSM model is not specified".to_owned())
+                })?;
+                match hsm_model.as_str() {
+                    "proteccio" => {
+                        let proteccio: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Proteccio::instantiate(
+                                "/lib/libnethsm.so",
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Proteccio HSM: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(proteccio)
+                    }
+                    "utimaco" => {
+                        let utimaco: Arc<dyn HSM + Send + Sync> = Arc::new(
+                            Utimaco::instantiate(
+                                "/lib/libcs_pkcs11_R3.so",
+                                server_params.slot_passwords.clone(),
+                            )
+                            .map_err(|e| {
+                                KmsError::InvalidRequest(format!(
+                                    "Failed to instantiate the Utimaco HSM: {e}"
+                                ))
+                            })?,
+                        );
+                        Some(utimaco)
+                    }
+                    _ => kms_bail!("The only supported HSM models are proteccio and utimaco"),
+                }
+            }
+        };
+        Ok(hsm)
     }
 }

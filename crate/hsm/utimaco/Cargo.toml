@@ -1,0 +1,28 @@
+[package]
+name = "utimaco_pkcs11_loader"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "utimaco HSM PKCS#11 loader"
+
+[lib]
+doctest = false
+
+[dependencies]
+cosmian_kms_base_hsm = { path = "../base_hsm" }
+cosmian_kms_interfaces = { path = "../../interfaces" }
+libloading = { workspace = true }
+pkcs11_sys = { path = "../../pkcs11/sys" }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+uuid = { workspace = true }
+
+[features]
+# Enable this feature to run utimaco tests (they require a utimaco HSM)
+utimaco = []

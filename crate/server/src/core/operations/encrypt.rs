@@ -209,13 +209,10 @@ async fn encrypt_using_encryption_oracle(
             request.authenticated_encryption_additional_data.as_deref(),
         )
         .await?;
-    let ciphertext_len = encrypted_content.ciphertext.len();
-    debug!("Encrypted using oracle: algorithm: {ca:?}, ciphertext length: {ciphertext_len}");
-    if ciphertext_len < 28 {
-        return Err(KmsError::CryptographicError(
-            "Encrypt: encryption oracle returned invalid ciphertext".to_owned(),
-        ))
-    }
+    debug!(
+        "Encrypted using oracle: algorithm: {ca:?}, ciphertext length: {}",
+        encrypted_content.ciphertext.len()
+    );
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),

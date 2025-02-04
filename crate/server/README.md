@@ -47,7 +47,7 @@ The server configuration can be passed through the server using:
 The list of parameters, which depends on the compiled features, can be obtained by doing:
 
 ```sh
-cosmian_kms_server -h
+cosmian_kms -h
 ```
 
 A server for development can be quickly run as follow (with sqlite):

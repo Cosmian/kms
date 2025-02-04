@@ -9,7 +9,7 @@ rust-version.workspace = true
 description = "Cosmian Key Management Service"
 
 [[bin]]
-name = "cosmian_kms_server"
+name = "cosmian_kms"
 path = "src/main.rs"
 test = false
 
@@ -69,7 +69,7 @@ opentelemetry = "0.23.0"
 opentelemetry-otlp = { version = "0.16.0", features = ["tonic"] }
 opentelemetry-semantic-conventions = { version = "0.15.0" }
 opentelemetry_sdk = { version = "0.23.0", features = ["rt-tokio"] }
-proteccio_pkcs11_loader = { path = "../pkcs11/proteccio" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio" }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
@@ -88,6 +88,7 @@ tracing = { workspace = true }
 tracing-opentelemetry = "0.24.0"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
@@ -114,7 +115,7 @@ section = "security"
 priority = "optional"
 assets = [
   [
-    "target/release/cosmian_kms_server",
+    "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
   ],
@@ -142,7 +143,7 @@ systemd-units = [
 features = ["fips"]
 assets = [
   [
-    "target/release/cosmian_kms_server",
+    "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
   ],
@@ -181,7 +182,7 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "target/release/cosmian_kms_server", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
   { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian_kms/README", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian_kms/kms.toml", mode = "400" },

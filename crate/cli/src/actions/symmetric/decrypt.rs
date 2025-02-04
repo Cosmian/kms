@@ -76,6 +76,11 @@ pub struct DecryptAction {
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+
     /// The data encryption algorithm.
     /// If not specified, aes-gcm is used.
     ///
@@ -84,7 +89,8 @@ pub struct DecryptAction {
     #[clap(
         long = "data-encryption-algorithm",
         short = 'd',
-        default_value = "aes-gcm"
+        default_value = "aes-gcm",
+        verbatim_doc_comment
     )]
     data_encryption_algorithm: DataEncryptionAlgorithm,
 
@@ -102,17 +108,12 @@ pub struct DecryptAction {
     #[clap(long = "key-encryption-algorithm", short = 'e', verbatim_doc_comment)]
     key_encryption_algorithm: Option<KeyEncryptionAlgorithm>,
 
-    /// Tag to use to retrieve the key when no key id is specified.
-    /// To specify multiple tags, use the option multiple times.
-    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
-    tags: Option<Vec<String>>,
-
     /// The encrypted output file path
-    #[clap(required = false, long, short = 'o')]
+    #[clap(long, short = 'o')]
     output_file: Option<PathBuf>,
 
     /// Optional authentication data that was supplied during encryption as a hex string.
-    #[clap(required = false, long, short)]
+    #[clap(long, short = 'a')]
     authentication_data: Option<String>,
 }
 
@@ -217,6 +218,9 @@ impl DecryptAction {
             }
             a => cli_bail!("Unsupported cryptographic algorithm: {:?}", a),
         };
+        if nonce_size + tag_size > ciphertext.len() {
+            cli_bail!("The ciphertext is too short to contain the nonce/tweak and the tag")
+        }
         let nonce = ciphertext.drain(..nonce_size).collect::<Vec<_>>();
         let tag = ciphertext
             .drain(ciphertext.len() - tag_size..)
