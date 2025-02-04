@@ -15,7 +15,7 @@ use crate::error::KmipError;
 ///
 /// A KMIP Object. The top level structure
 /// Serialization is carried out internally tagged
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
@@ -165,6 +165,7 @@ impl Object {
             | Self::PGPKey { key_block, .. }
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
+                ErrorRea
                 "This object does not have a key block".to_owned(),
             )),
         }
