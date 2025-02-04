@@ -1,6 +1,9 @@
-import React from 'react';
-import { Form, Input, Select, Button } from 'antd';
-import { WarningFilled } from '@ant-design/icons';
+import { LoadingOutlined, WarningFilled } from '@ant-design/icons'
+import { Button, Form, Input, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { parse_revoke_ttlv_response, revoke_key_ttlv_request } from "./wasm/pkg"
+
 
 interface RevokeKeyFormData {
     revocationReason: string;
@@ -13,12 +16,40 @@ type KeyType = 'rsa' | 'ec' | 'symmetric';
 interface KeyRevokeFormProps {
     key_type: KeyType;
 }
+
+
+type RevokeKeyResponse = {
+    UniqueIdentifier: string,
+}
+
 const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) => {
     const [form] = Form.useForm<RevokeKeyFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: RevokeKeyFormData) => {
+
+    const onFinish = async (values: RevokeKeyFormData) => {
         console.log('Revoke key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        if (id == undefined) {
+            setRes("Missing key identifier.")
+            throw Error("Missing key identifier")
+        }
+        const request = revoke_key_ttlv_request(id , values.revocationReason);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: RevokeKeyResponse = await parse_revoke_ttlv_response(result_str)
+                setRes(`${result.UniqueIdentifier} has been revoked.`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     let key_type_string = '';
@@ -106,10 +137,17 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
                         danger
                         className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Revoke Key
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Revoke key'
+                        )}
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

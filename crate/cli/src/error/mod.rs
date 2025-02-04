@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
         KmipError,
     },
-    reexport::cosmian_http_client::HttpClientError,
+    reexport::{cosmian_http_client::HttpClientError, cosmian_kms_ui_utils::error::UtilsError},
     KmsClientError,
 };
 use cosmian_kms_crypto::CryptoError;
@@ -112,6 +112,9 @@ pub enum CliError {
 
     #[error(transparent)]
     Utf8Error(#[from] Utf8Error),
+
+    #[error(transparent)]
+    UtilsError(#[from] UtilsError),
 }
 
 impl CliError {

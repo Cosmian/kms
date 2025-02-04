@@ -6,12 +6,14 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{
+    reexport::cosmian_kms_ui_utils::create_utils::SymmetricAlgorithm, KMS_CLI_CONF_ENV,
+};
 use kms_test_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         utils::{extract_uids::extract_uid, recover_cmd_logs},

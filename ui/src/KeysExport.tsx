@@ -1,5 +1,8 @@
-import React from 'react';
-import { Form, Input, Select, Checkbox, Button } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { export_ttlv_request, parse_export_ttlv_response } from "./wasm/pkg"
 
 interface KeyExportFormData {
     keyId?: string;
@@ -38,12 +41,62 @@ interface KeyExportFormProps {
     key_type: KeyType;
 }
 
+const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+};
+
+
 const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) => {
     const [form] = Form.useForm<KeyExportFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: KeyExportFormData) => {
+    const onFinish = async (values: KeyExportFormData) => {
         console.log('Export key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        if (id == undefined) {
+            setRes("Missing key identifier.")
+            throw Error("Missing key identifier")
+        }
+        const request = export_ttlv_request(id , values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const data = await parse_export_ttlv_response(result_str, values.keyFormat)
+                const filename = `export_${id}.${values.keyFormat}`;
+                console.log(data)
+                let mimeType;
+                    switch (values.keyFormat) {
+                        case "JsonTtlv":
+                            mimeType = "application/json";
+                            break;
+                        case "Base64":
+                            mimeType = "text/plain";
+                            break;
+                        default:
+                            mimeType = "application/octet-stream";
+                    }
+                downloadFile(data, filename, mimeType);
+                setRes("File has been exported")
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     let key_type_string = '';
@@ -195,10 +248,17 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Export Key
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Export key'
+                        )}
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

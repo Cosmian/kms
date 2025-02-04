@@ -1,5 +1,9 @@
-import React from 'react';
-import { Form, Input, Select, Checkbox, Button } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
+
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -8,12 +12,33 @@ interface ECKeyCreateFormData {
     sensitive: boolean;
 }
 
+type CreateKeyPairResponse = {
+    PrivateKeyUniqueIdentifier: string,
+    PublicKeyUniqueIdentifier: string,
+}
+
 const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: ECKeyCreateFormData) => {
+    const onFinish = async (values: ECKeyCreateFormData) => {
         console.log('Create EC key pair values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
+                setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -98,10 +123,17 @@ const ECKeyCreateForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Create an EC key pair
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Create a EC Key pair'
+                        )}
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

@@ -11,7 +11,7 @@ use crate::{
 pub(crate) mod decrypt;
 pub(crate) mod encrypt;
 pub(crate) mod keys;
-pub(crate) mod policy;
+pub mod policy;
 
 /// Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]

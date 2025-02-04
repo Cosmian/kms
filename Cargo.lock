@@ -1355,14 +1355,12 @@ dependencies = [
  "pyo3",
  "rand 0.9.0",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "strum",
  "thiserror 2.0.12",
  "time",
  "tracing",
  "uuid",
- "wasm-bindgen",
  "zeroize",
 ]
 
@@ -1436,6 +1434,7 @@ dependencies = [
  "cosmian_http_client",
  "cosmian_kmip",
  "cosmian_kms_access",
+ "cosmian_kms_ui_utils",
  "cosmian_logger",
  "der",
  "pem",
@@ -1583,6 +1582,29 @@ dependencies = [
  "url",
  "uuid",
  "version-compare",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_ui_utils"
+version = "4.21.2"
+dependencies = [
+ "base64 0.21.7",
+ "cloudproof",
+ "cosmian_config_utils",
+ "cosmian_kmip",
+ "cosmian_kms_access",
+ "cosmian_logger",
+ "der",
+ "js-sys",
+ "pem",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "strum",
+ "thiserror 2.0.11",
+ "tracing",
+ "wasm-bindgen",
  "zeroize",
 ]
 

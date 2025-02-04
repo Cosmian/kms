@@ -17,6 +17,7 @@ members = [
   "crate/server",
   "crate/server_database",
   "crate/test_server",
+  "crate/ui-utils",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2

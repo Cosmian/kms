@@ -1,5 +1,8 @@
-import React from 'react';
-import { Form, Input, InputNumber, Select, Checkbox, Button } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
 
 interface RsaKeyCreateFormData {
     privateKeyId?: string;
@@ -8,12 +11,34 @@ interface RsaKeyCreateFormData {
     sensitive: boolean;
 }
 
+type CreateKeyPairResponse = {
+    PrivateKeyUniqueIdentifier: string,
+    PublicKeyUniqueIdentifier: string,
+}
+
 const RsaKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<RsaKeyCreateFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: RsaKeyCreateFormData) => {
+    const onFinish = async (values: RsaKeyCreateFormData) => {
         console.log('Create key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
+        try {
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
+                console.log(result)
+                setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -93,10 +118,17 @@ const RsaKeyCreateForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Create RSA Key Pair
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Create a RSA Key pair'
+                        )}
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };
