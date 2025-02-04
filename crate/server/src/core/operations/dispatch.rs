@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{
+use cosmian_kmip::{
+    kmip_2_1::kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
         GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
         SetAttribute, Validate,

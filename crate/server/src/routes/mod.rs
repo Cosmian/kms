@@ -34,7 +34,8 @@ impl actix_web::error::ResponseError for KmsError {
             | Self::ServerError(_)
             | Self::Default(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            Self::KmipError(..)
+            Self::Kmip21Error(..)
+            | Self::Kmip14Error(..)
             | Self::NotSupported(_)
             | Self::UnsupportedProtectionMasks
             | Self::UnsupportedPlaceholder

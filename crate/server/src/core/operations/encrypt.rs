@@ -145,7 +145,7 @@ pub(crate) async fn encrypt(
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::KmipError(
+        KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             format!("Encrypt: no valid key for id: {unique_identifier}"),
         )
@@ -362,7 +362,7 @@ fn get_key_and_cipher(
         .attributes()?
         .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
     {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
         ))
@@ -411,7 +411,7 @@ fn encrypt_with_public_key(
         .attributes()?
         .is_usage_authorized_for(CryptographicUsageMask::Encrypt)?
     {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
         ))

@@ -203,7 +203,7 @@ pub(crate) async fn recursively_destroy_object(
     }
 
     if count == 0 {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
         ))
