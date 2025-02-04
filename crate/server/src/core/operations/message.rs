@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader},
-    kmip_operations::ErrorReason,
-    kmip_types::ResultStatusEnumeration,
+use cosmian_kmip::{
+    kmip_2_1::{
+        kmip_messages::{
+            Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader,
+        },
+        kmip_operations::ErrorReason,
+        kmip_types::ResultStatusEnumeration,
+    },
     ttlv::serializer::to_ttlv,
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -45,7 +49,7 @@ pub(crate) async fn message(
                     None,
                     Some(operation),
                 ),
-                Err(KmsError::KmipError(reason, error_message)) => (
+                Err(KmsError::Kmip21Error(reason, error_message)) => (
                     ResultStatusEnumeration::OperationFailed,
                     Some(reason),
                     Some(error_message),

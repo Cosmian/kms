@@ -11,7 +11,7 @@ use actix_web::{
     web::{self, Data},
     App,
 };
-use cosmian_kmip::kmip_2_1::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
+use cosmian_kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 

@@ -4,8 +4,8 @@ use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cloudproof_findex::implementations::redis::FindexRedisError;
 use cosmian_kmip::{
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-    KmipError,
+    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason,
+    ttlv::error::TtlvError, KmipError,
 };
 use cosmian_kms_crypto::CryptoError;
 use cosmian_kms_interfaces::InterfaceError;
@@ -56,7 +56,11 @@ pub enum KmsError {
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip21Error(ErrorReason, String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    Kmip14Error(ResultReason, String),
 
     // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
@@ -96,15 +100,15 @@ impl KmsError {
     #[must_use]
     pub(crate) fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
+            Self::Kmip21Error(_r, e) => Self::Kmip21Error(reason, e.clone()),
+            e => Self::Kmip21Error(reason, e.to_string()),
         }
     }
 }
 
 impl From<TtlvError> for KmsError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip21Error(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
@@ -203,7 +207,7 @@ impl From<KmipError> for KmsError {
         match e {
             KmipError::InvalidKmip21Value(r, s)
             | KmipError::InvalidKmip21Object(r, s)
-            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
             KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
@@ -216,12 +220,15 @@ impl From<KmipError> for KmsError {
             KmipError::TryFromSliceError(t) => Self::NotSupported(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::NotSupported(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e)
+                Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21Error(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e)
+            | KmipError::InvalidKmip14Object(result_reason, e)
+            | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
     }
 }

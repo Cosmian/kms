@@ -5,8 +5,8 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::Message,
+use cosmian_kmip::{
+    kmip_2_1::kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;

@@ -217,7 +217,7 @@ async fn get_master_keys_and_policy(
 
     // Recover the Master Public Key
     let Object::PrivateKey { key_block } = &msk else {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Invalid_Object_Type,
             "KmsError::KmipErrorIP Private Key".to_owned(),
         ))
@@ -226,7 +226,7 @@ async fn get_master_keys_and_policy(
     let mpk_uid = key_block
         .get_linked_object_id(LinkType::PublicKeyLink)?
         .ok_or_else(|| {
-            KmsError::KmipError(
+            KmsError::Kmip21Error(
                 ErrorReason::Invalid_Object_Type,
                 "Private key MUST contain a public key link".to_owned(),
             )
@@ -339,7 +339,7 @@ async fn update_usk(
         key_wrap_type: None,
         attributes: updated_user_decryption_key
             .attributes()
-            .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
+            .map_err(|e| KmsError::Kmip21Error(ErrorReason::Attribute_Not_Found, e.to_string()))?
             .clone(),
         object: updated_user_decryption_key,
     };

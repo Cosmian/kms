@@ -105,7 +105,7 @@ pub(crate) async fn decrypt(
             .retrieve_object(&uid, params.clone())
             .await?
             .ok_or_else(|| {
-                KmsError::KmipError(
+                KmsError::Kmip21Error(
                     ErrorReason::Item_Not_Found,
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
@@ -149,7 +149,7 @@ pub(crate) async fn decrypt(
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::KmipError(
+        KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             format!("Decrypt: no valid key for id: {unique_identifier}"),
         )
