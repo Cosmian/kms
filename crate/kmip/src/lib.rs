@@ -64,6 +64,7 @@ mod error;
 pub mod kmip_1_4;
 pub mod kmip_2_1;
 mod safe_biguint;
+pub mod ttlv;
 
 pub use safe_biguint::SafeBigUint;
 

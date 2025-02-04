@@ -1,13 +1,12 @@
 use cosmian_logger::log_init;
 use num_bigint_dig::BigUint;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
 use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    SafeBigUint,
-    error::{KmipError, result::KmipResult},
+    error::{result::KmipResult, KmipError},
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
@@ -26,8 +25,9 @@ use crate::{
             MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
-        ttlv::{TTLV, TTLVEnumeration, TTLValue, deserializer::from_ttlv, serializer::to_ttlv},
     },
+    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
+    SafeBigUint,
 };
 
 fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
@@ -80,37 +80,42 @@ fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
 fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyValue".to_owned(),
-        value: TTLValue::Structure(vec![aes_key_material_ttlv(key_value), TTLV {
-            tag: "Attributes".to_owned(),
-            value: TTLValue::Structure(vec![
-                TTLV {
-                    tag: "CryptographicAlgorithm".to_owned(),
-                    value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
-                },
-                TTLV {
-                    tag: "CryptographicLength".to_owned(),
-                    value: TTLValue::Integer(key_value.len() as i32 * 8),
-                },
-                TTLV {
-                    tag: "CryptographicUsageMask".to_owned(),
-                    value: TTLValue::Integer(4),
-                },
-                TTLV {
-                    tag: "KeyFormatType".to_owned(),
-                    value: TTLValue::Enumeration(TTLVEnumeration::Name(
-                        "TransparentSymmetricKey".to_owned(),
-                    )),
-                },
-                TTLV {
-                    tag: "ObjectType".to_owned(),
-                    value: TTLValue::Enumeration(TTLVEnumeration::Name("SymmetricKey".to_owned())),
-                },
-                TTLV {
-                    tag: "Sensitive".to_owned(),
-                    value: TTLValue::Boolean(false),
-                },
-            ]),
-        }]),
+        value: TTLValue::Structure(vec![
+            aes_key_material_ttlv(key_value),
+            TTLV {
+                tag: "Attributes".to_owned(),
+                value: TTLValue::Structure(vec![
+                    TTLV {
+                        tag: "CryptographicAlgorithm".to_owned(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
+                    },
+                    TTLV {
+                        tag: "CryptographicLength".to_owned(),
+                        value: TTLValue::Integer(key_value.len() as i32 * 8),
+                    },
+                    TTLV {
+                        tag: "CryptographicUsageMask".to_owned(),
+                        value: TTLValue::Integer(4),
+                    },
+                    TTLV {
+                        tag: "KeyFormatType".to_owned(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                            "TransparentSymmetricKey".to_owned(),
+                        )),
+                    },
+                    TTLV {
+                        tag: "ObjectType".to_owned(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                            "SymmetricKey".to_owned(),
+                        )),
+                    },
+                    TTLV {
+                        tag: "Sensitive".to_owned(),
+                        value: TTLValue::Boolean(false),
+                    },
+                ]),
+            },
+        ]),
     }
 }
 
