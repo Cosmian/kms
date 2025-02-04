@@ -9,20 +9,22 @@ use std::{
 use actix_http::{Request, body::MessageBody};
 use actix_service::Service;
 use actix_web::dev::ServiceResponse;
-use base64::{Engine, engine::general_purpose};
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Certify, Get, Import, ImportResponse},
-    kmip_types::{
-        Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
-        EncodingOption, EncryptionKeyInformation, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
+use base64::{engine::general_purpose, Engine};
+use cosmian_kmip::{
+    kmip_2_1::{
+        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Certify, Get, Import, ImportResponse},
+        kmip_types::{
+            Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
+            EncodingOption, EncryptionKeyInformation, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
+        },
+        requests::create_rsa_key_pair_request,
+        KmipOperation,
     },
-    requests::create_rsa_key_pair_request,
-    ttlv::{TTLV, deserializer::from_ttlv},
+    ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;

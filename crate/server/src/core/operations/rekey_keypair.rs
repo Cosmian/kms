@@ -88,7 +88,7 @@ pub(crate) async fn rekey_keypair(
         ))
     }
 
-    Err(KmsError::KmipError(
+    Err(KmsError::Kmip21Error(
         ErrorReason::Item_Not_Found,
         uid_or_tags.to_owned(),
     ))

@@ -4,9 +4,9 @@ use actix_web::{
     HttpRequest, post,
     web::{Data, Json},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_messages::Message,
-    ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv},
+use cosmian_kmip::{
+    kmip_2_1::kmip_messages::Message,
+    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::info;

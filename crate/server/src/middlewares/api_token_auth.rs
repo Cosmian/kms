@@ -40,7 +40,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
         .retrieve_object(api_token_id, None)
         .await?
         .ok_or_else(|| {
-            KmsError::KmipError(
+            KmsError::Kmip21Error(
                 ErrorReason::Item_Not_Found,
                 format!("The symmetric key of unique identifier {api_token_id} could not be found"),
             )

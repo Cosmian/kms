@@ -1,6 +1,9 @@
 use std::array::TryFromSliceError;
 
 use cloudproof_findex::implementations::redis::FindexRedisError;
+use cosmian_kmip::{
+    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason, KmipError,
+};
 use cosmian_crypto_core::CryptoCoreError;
 use cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason};
 use cosmian_kms_crypto::CryptoError;
@@ -52,7 +55,11 @@ pub enum DbError {
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip14Error(ResultReason, String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    Kmip21Error(ErrorReason, String),
 
     // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
@@ -171,7 +178,7 @@ impl From<KmipError> for DbError {
         match e {
             KmipError::InvalidKmip21Value(r, s)
             | KmipError::InvalidKmip21Object(r, s)
-            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
             KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
@@ -184,12 +191,15 @@ impl From<KmipError> for DbError {
             KmipError::TryFromSliceError(s) => Self::ConversionError(s.to_string()),
             KmipError::SerdeJsonError(s) => Self::ConversionError(s.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e)
+                Self::Kmip21Error(ErrorReason::Codec_Error, e)
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21Error(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e)
+            | KmipError::InvalidKmip14Object(result_reason, e)
+            | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
     }
 }

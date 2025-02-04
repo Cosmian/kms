@@ -252,7 +252,7 @@ pub(crate) async fn recursively_revoke_key(
     }
 
     if count == 0 {
-        return Err(KmsError::KmipError(
+        return Err(KmsError::Kmip21Error(
             ErrorReason::Item_Not_Found,
             unique_identifier.to_string(),
         ))

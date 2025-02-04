@@ -11,8 +11,8 @@ use actix_web::{
     test::{self, call_service, read_body},
     web::{self, Data},
 };
-use cosmian_kmip::kmip_2_1::ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv};
-use serde::{Serialize, de::DeserializeOwned};
+use cosmian_kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
+use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;
