@@ -32,7 +32,7 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
     { label: 'RSA AES Key Wrap', value: 'rsa-aes-key-wrap' },
 ];
 
-type KeyType = 'rsa' | 'ec' | 'symmetric';
+type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
 interface KeyExportFormProps {
     key_type: KeyType;
@@ -74,14 +74,20 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: 'Base64', value: 'base64' },
             { label: 'Raw', value: 'raw' },
         ]
-    } else {
+    } else if (props.key_type === 'symmetric') {
         key_type_string = 'a symmetric';
         key_formats = [
             { label: 'JSON TTLV (default)', value: 'json-ttlv' },
             { label: 'Base64', value: 'base64' },
             { label: 'Raw', value: 'raw' },
         ]
-    };
+    } else {
+        key_type_string = 'a Covercrypt';
+        key_formats = [
+            { label: 'JSON TTLV (default)', value: 'json-ttlv' },
+            { label: 'Raw', value: 'raw' },
+        ]
+    }
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">

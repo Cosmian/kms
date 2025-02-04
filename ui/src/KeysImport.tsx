@@ -28,7 +28,7 @@ interface ImportKeyFormData {
 
 
 
-type KeyType = 'rsa' | 'ec' | 'symmetric';
+type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -80,7 +80,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: 'Wrap', value: 'wrap' },
             { label: 'Unwrap', value: 'unwrap' },
         ];
-    } else {
+    } else if (props.key_type === 'symmetric') {
         key_type_string = 'a symmetric';
         key_formats = [
             { label: 'JSON TTLV (default)', value: 'json-ttlv' },
@@ -94,7 +94,17 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: 'Wrap', value: 'wrap' },
             { label: 'Unwrap', value: 'unwrap' },
         ];
-    };
+    } else {
+        key_type_string = 'a Covercrypt';
+        key_formats = [
+            { label: 'JSON TTLV (default)', value: 'json-ttlv' },
+        ];
+        key_usages = [
+            { label: 'Encrypt', value: 'encrypt' },
+            { label: 'Decrypt', value: 'decrypt' },
+        ];
+    }
+
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <h1 className="text-2xl font-bold text-gray-900 mb-6">Import {key_type_string} key</h1>

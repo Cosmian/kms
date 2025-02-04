@@ -16,6 +16,7 @@ import ECDecryptForm from './ECDecrypt';
 import LocateForm from './Locate';
 import CovercryptMasterKeyForm from './CovercryptMasterKey';
 import CovercryptUserKeyForm from './CovercryptUserKey';
+import CovercryptRevokeForm from './CovercryptKeysRevoke';
 
 function App() {
 
@@ -48,6 +49,10 @@ function App() {
             <Route path="ec/decrypt" element={<ECDecryptForm />} />
             <Route path="cc/keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
             <Route path="cc/keys/create-user-key" element={<CovercryptUserKeyForm />} />
+            <Route path="cc/keys/export" element={<KeyExportForm key_type={'covercrypt'} />} />
+            <Route path="cc/keys/import" element={<KeyImportForm key_type={'covercrypt'} />} />
+            <Route path="cc/keys/revoke" element={<CovercryptRevokeForm />} />
+            <Route path="cc/keys/destroy" element={<KeyDestroyForm key_type='covercrypt' />} />
           </Route>
         </Routes>
       </BrowserRouter>

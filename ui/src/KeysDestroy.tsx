@@ -8,7 +8,7 @@ interface DestroyKeyFormData {
     remove: boolean;
 }
 
-type KeyType = 'rsa' | 'ec' | 'symmetric';
+type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
 interface KeyDestroyFormProps {
     key_type: KeyType;
@@ -27,6 +27,8 @@ const KeyDestroyForm: React.FC<KeyDestroyFormProps> = (props: KeyDestroyFormProp
         key_type_string = 'an RSA';
     } else if (props.key_type === 'ec') {
         key_type_string = 'an EC';
+    } else if (props.key_type === 'covercrypt') {
+        key_type_string = 'a Covercrypt';
     } else {
         key_type_string = 'a symmetric';
     };
@@ -44,7 +46,7 @@ const KeyDestroyForm: React.FC<KeyDestroyFormProps> = (props: KeyDestroyFormProp
                         <p className="font-bold">Warning: This is a destructive action!</p>
                         <ul className="list-disc pl-5 space-y-1">
                             <li>The key must be revoked first</li>
-                            {props.key_type === 'rsa' || props.key_type === 'ec' ? (
+                            {props.key_type === 'rsa' || props.key_type === 'ec' || props.key_type === 'covercrypt' ? (
                                 <li>Destroying either public or private key will destroy the whole key pair</li>
                             ) : null}
                             <li>Keys in external stores (HSMs) are automatically removed</li>
