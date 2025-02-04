@@ -44,24 +44,24 @@ to be used in various applications, such as in _S/MIME_ encrypted emails.
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
 - [Cosmian KMS](#cosmian-kms)
-  - [Quick start](#quick-start)
-    - [Example](#example)
-  - [Repository content](#repository-content)
-  - [Building the KMS](#building-the-kms)
-    - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
-    - [Windows](#windows)
-    - [Build the KMS](#build-the-kms)
-    - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-  - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-  - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-  - [Server parameters](#server-parameters)
-  - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-  - [Releases](#releases)
-  - [Benchmarks](#benchmarks)
+    - [Quick start](#quick-start)
+        - [Example](#example)
+    - [Repository content](#repository-content)
+    - [Building the KMS](#building-the-kms)
+        - [Linux or MacOS (CPU Intel or MacOs ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+        - [Windows](#windows)
+        - [Build the KMS](#build-the-kms)
+        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
+    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
+    - [Server parameters](#server-parameters)
+    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+    - [Releases](#releases)
+    - [Benchmarks](#benchmarks)
 
 ## Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/4.22.0/)
+Pre-built binaries [are available](https://package.cosmian.com/kms/4.22.1/)
 for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
 available in your path (see "building the KMS" below for details); other binaries do not have this
 requirement.
