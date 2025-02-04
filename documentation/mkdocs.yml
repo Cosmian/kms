@@ -55,7 +55,8 @@ nav:
   - Installation: installation.md
   - Configuration:
       - Authentication: authentication.md
-      - KMS access rights: authorization.md
       - Examples: configuration.md
+  - Usage:
       - Usage: usage.md
+      - KMS access rights: authorization.md
   - User manual: cli/main_commands.md
