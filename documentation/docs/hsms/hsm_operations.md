@@ -192,7 +192,7 @@ Successfully destroyed the object.
    Unique identifier: hsm::4::my_rsa_key_pk
 ```
 
-### Get & Export
+### Get - Export
 
 The `Get` and `Export` operations are used to retrieve the key material from the HSM.
 Only the user identified by the `--hsm-admin` argument or a user who has been granted the `Get` operation (by the HSM
@@ -275,7 +275,72 @@ The decrypted file is available at "/tmp/secret.plain"
 To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
 
 ```shell
-> cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm AesGcm \
+> cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.recoverd.txt"
+```
+
+## Creating a KMS key wrapped by an HSM key
+
+To create a KMS key wrapped by an HSM key, the `--wrapping-key-id` argument must be used to specify the unique
+identifier of the HSM key.
+
+The user creating the key must be the HSM admin (see above) or have been granted the `Encrypt` operation on the HSM key.
+
+For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key
+`hsm::4::my_rsa_key_pk`:
+
+```shell
+> cosmian kms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
+  --wrapping-key-id hsm::4::my_rsa_key_pk my_sym_key
+The symmetric key was successfully generated.
+      Unique identifier: my_sym_key
+```
+
+The symmetric key is now stored in the database encrypted (wrapped) by the HSM key. The encryption happened in the HSM.
+
+The symmetric key can now be used to encrypt, and decrypt data, and the KMS will transparently unwrap the key using the
+HSM key.
+
+This unwrapping will happen once, and the unwrapped symmetric key will be cached in memory for later operations; no
+clear text symmetric key will be stored in the KMS database.
+
+### Small data: encrypting server side
+
+For example, to encrypt a message with the key `my_sym_key` server side, the following command can be used:
+
+```shell
+> cosmian kms sym encrypt --key-id my_sym_key /tmp/secret.txt
+The encrypted file is available at "/tmp/secret.enc"
+```
+
+To decrypt a message with the key `my_sym_key`, the following command can be used:
+
+```shell
+> cosmian kms sym decrypt --key-id my_sym_key --output-file /tmp/secret.recovered.txt /tmp/secret.enc
+The decrypted file is available at "/tmp/secret.recovered.txt"
+```
+
+#### Large data: encrypting client side with key wrapping
+
+To encrypt a large file with the key `my_sym_key` client side, the following command can be used:
+
+```shell
+>cosmian kms sym encrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
+--key-encryption-algorithm rfc5649 /tmp/large.bin
+The encrypted file is available at "/tmp/large.enc"
+```
+
+In this case an ephemeral symmetric key (the Data Encryption Key, DEK)
+is generated and used to encrypt the data. The DEK is then encrypted/wrapped with RFC4659 (a.k.a NIST AES Key Wrap)
+with the key `my_sym_key`, called the Key Encryption Key, KEK. The wrapping of the DEK by the KEK
+is stored at the beginning of the encrypted file.
+At rest, in the KMS database, `my_sym_key` is stored encrypted/wrapped with the HSM key `hsm::4::my_rsa_key_pk`.
+
+To decrypt a large file with the KEK `my_sym_key` client side, the following command can be used:
+
+```shell
+> cosmian kms sym decrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
+  --key-encryption-algorithm rfc5649 --output-file /tmp/large.recoverd.bin /tmp/large.enc
+The decrypted file is available at "/tmp/large.recoverd.bin"
 ```
