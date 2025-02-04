@@ -105,7 +105,7 @@ impl KeyBlock {
             KeyMaterial::TransparentECPublicKey { q_string, .. } => {
                 Ok(Zeroizing::new(q_string.clone()))
             }
-            _ => Err(KmipError::InvalidKmipValue(
+            _ => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Data_Type,
                 "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
                  material."
@@ -121,7 +121,7 @@ impl KeyBlock {
         &self,
     ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
         let key = self.key_bytes().map_err(|e| {
-            KmipError::InvalidKmipValue(ErrorReason::Invalid_Data_Type, e.to_string())
+            KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
         Ok((key, self.key_value.attributes.as_ref()))
     }
@@ -240,7 +240,7 @@ fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Optio
 impl KeyValue {
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         self.attributes.as_ref().ok_or_else(|| {
-            KmipError::InvalidKmipValue(
+            KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its attributes".to_owned(),
             )
@@ -249,7 +249,7 @@ impl KeyValue {
 
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
         self.attributes.as_mut().ok_or_else(|| {
-            KmipError::InvalidKmipValue(
+            KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "key is missing its mutable attributes".to_owned(),
             )
@@ -260,7 +260,7 @@ impl KeyValue {
         match &self.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
             KeyMaterial::ByteString(v) => Ok(v),
-            other => Err(KmipError::KmipNotSupported(
+            other => Err(KmipError::Kmip21NotSupported(
                 ErrorReason::Invalid_Data_Type,
                 format!("The key has an invalid key material: {other}"),
             )),

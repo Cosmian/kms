@@ -7,7 +7,7 @@ use std::{
 
 use zeroize::Zeroizing;
 
-use crate::{KmipError, kmip_bail};
+use crate::{kmip_2_1_bail, KmipError};
 
 /// A `Serializable` object can easily be serialized and deserialized into an
 /// array of bytes.
@@ -249,17 +249,17 @@ pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<
     let w = T::deserialize(&bytes)
         .map_err(|e| KmipError::Deserialization(format!("Error deserializing: {e}")))?;
     if bytes.len() != v.length() {
-        kmip_bail!(
+        kmip_2_1_bail!(
             "incorrect serialized length (1): {} != {}",
             bytes.len(),
             v.length()
         );
     }
     if v != &w {
-        kmip_bail!("incorrect deserialization: {:?} != {:?}", v, w);
+        kmip_2_1_bail!("incorrect deserialization: {:?} != {:?}", v, w);
     }
     if bytes.len() != w.length() {
-        kmip_bail!(
+        kmip_2_1_bail!(
             "incorrect serialized length (2): {} != {}",
             bytes.len(),
             w.length()
@@ -273,8 +273,8 @@ pub fn test_serialization<T: PartialEq + Debug + Serializable>(v: &T) -> Result<
 mod tests {
     use rand::RngCore;
 
-    use super::{Deserializer, Serializable, Serializer, to_leb128_len};
-    use crate::{KmipError, kmip_bail};
+    use super::{to_leb128_len, Deserializer, Serializable, Serializer};
+    use crate::{kmip_2_1_bail, KmipError};
 
     /// We don't have a non-fixed size implementation of Serializable inside
     /// `crypto_core` so just have a dummy implementation here.
@@ -349,7 +349,7 @@ mod tests {
                 Err(KmipError::Deserialization(e)) => {
                     assert_eq!("empty bytes", e);
                 }
-                _ => kmip_bail!("unexpected error"),
+                _ => kmip_2_1_bail!("unexpected error"),
             }
         }
 
