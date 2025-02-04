@@ -9,7 +9,7 @@ rust-version.workspace = true
 description = "Cosmian Key Management Service"
 
 [[bin]]
-name = "cosmian_kms_server"
+name = "cosmian_kms"
 path = "src/main.rs"
 test = false
 
@@ -115,7 +115,7 @@ section = "security"
 priority = "optional"
 assets = [
   [
-    "target/release/cosmian_kms_server",
+    "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
   ],
@@ -143,7 +143,7 @@ systemd-units = [
 features = ["fips"]
 assets = [
   [
-    "target/release/cosmian_kms_server",
+    "target/release/cosmian_kms",
     "usr/sbin/cosmian_kms",
     "500",
   ],
@@ -182,7 +182,7 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "target/release/cosmian_kms_server", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
   { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian_kms/README", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian_kms/kms.toml", mode = "400" },

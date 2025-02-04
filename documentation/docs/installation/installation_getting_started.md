@@ -46,17 +46,17 @@ For high availability and scalability, please refer to the [high availability gu
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-20.04/cosmian-kms-server_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-20.04/cosmian-kms-server_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-20.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-20.04/cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
@@ -74,17 +74,17 @@ For high availability and scalability, please refer to the [high availability gu
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/cosmian-kms-server_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-22.04/cosmian-kms-server_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-22.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-22.04/cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
@@ -102,17 +102,17 @@ For high availability and scalability, please refer to the [high availability gu
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-24.04/cosmian-kms-server_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-24.04/cosmian-kms-server_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     Or install the FIPS version:
 
     ```sh
-    wget https://package.cosmian.com/kms/4.21.2/ubuntu-24.04/cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_4.21.0-1_amd64.deb
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/ubuntu-24.04/cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips_4.22.0-1_amd64.deb
+    cosmian_kms --version
     ```
 
     A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
@@ -130,9 +130,9 @@ For high availability and scalability, please refer to the [high availability gu
 
     ```sh
     sudo dnf update && dnf install -y wget
-    wget https://package.cosmian.com/kms/4.21.2/rhel9/cosmian_kms_server-4.21.2-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-4.21.2-1.x86_64.rpm
-    cosmian_kms_server --version
+    wget https://package.cosmian.com/kms/4.22.0/rhel9/cosmian_kms_server-4.22.0-1.x86_64.rpm
+    sudo dnf install ./cosmian_kms_server-4.22.0-1.x86_64.rpm
+    cosmian_kms --version
     ```
 
 === "MacOS"
@@ -140,21 +140,21 @@ For high availability and scalability, please refer to the [high availability gu
     On ARM MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/4.21.2/macos_arm-release.zip
+    wget https://package.cosmian.com/kms/4.22.0/macos_arm-release.zip
     unzip macos_arm-release.zip
-    cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian_kms_server
-    cosmian_kms_server --version
+    cp ./macos_arm-release/Users/runner/work/kms/kms/target/aarch64-apple-darwin/release/cosmian_kms /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian_kms
+    cosmian_kms --version
     ```
 
     On Intel MacOS, download the build archive and extract it:
 
     ```sh
-    wget https://package.cosmian.com/kms/4.21.2/macos_intel-release.zip
+    wget https://package.cosmian.com/kms/4.22.0/macos_intel-release.zip
     unzip macos_intel-release.zip
-    cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms_server /usr/local/bin/
-    chmod u+x /usr/local/bin/cosmian_kms_server
-    cosmian_kms_server --version
+    cp ./macos_intel-release/Users/runner/work/kms/kms/target/x86_64-apple-darwin/release/cosmian_kms /usr/local/bin/
+    chmod u+x /usr/local/bin/cosmian_kms
+    cosmian_kms --version
     ```
 
 === "Windows"
@@ -162,17 +162,17 @@ For high availability and scalability, please refer to the [high availability gu
     On Windows, download the build archive:
 
     ```sh
-     https://package.cosmian.com/kms/4.21.2/windows-release.zip
+     https://package.cosmian.com/kms/4.22.0/windows-release.zip
     ```
 
-    Extract the cosmian_kms_server from:
+    Extract the cosmian_kms from:
 
     ```sh
-    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian_kms_server.exe
+    /windows-release/target/x86_64-pc-windows-msvc/release/cosmian_kms.exe
     ```
 
     Copy it to a folder in your PATH and run it:
 
     ```sh
-    cosmian_kms_server --version
+    cosmian_kms --version
     ```

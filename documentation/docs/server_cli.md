@@ -8,7 +8,7 @@ The list of arguments can be printed using the `--help` command line option.
 
 Cosmian Key Management Service
 
-Usage: cosmian_kms_server [OPTIONS]
+Usage: cosmian_kms [OPTIONS]
 
 Options:
       --database-type <DATABASE_TYPE>
@@ -72,7 +72,7 @@ Options:
           Print the server configuration information and exit
       --hsm-model <HSM_MODEL>
           The HSM model.
-          Only `proteccio` is supported for now. [default: proteccio] [possible values: proteccio]
+          Trustway Proteccio and Utimaco General purpose HSMs are supported. [default: proteccio] [possible values: proteccio, utimaco]
       --hsm-admin <HSM_ADMIN>
           The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
       --hsm-slot <HSM_SLOT>

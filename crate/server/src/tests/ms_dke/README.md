@@ -21,7 +21,7 @@ and which maps the path `/ms_dke` to the corresponding path of the Cosmian KMS s
 Enable DKE in the Cosmian KMS server by setting the `--ms-dke` flag.
 
 ```bash
-RUST_LOG="cosmian_kms_server=trace" cargo run --bin cosmian_kms_server -- --ms-dke-service-url https://dke.cosmian.com/ms_dke
+RUST_LOG="cosmian_kms_server=trace" cargo run --bin cosmian_kms -- --ms-dke-service-url https://dke.cosmian.com/ms_dke
 ```
 
 ## Generate a RSA key pair for DKE

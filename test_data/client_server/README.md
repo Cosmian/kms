@@ -7,7 +7,7 @@ The [generate.sh](./generate_certs.sh) script will generate
 Since the PKCS12 password is `password` (see script), the following command will start the server:
 
 ```sh
-RUST_LOG="cosmian=debug" cargo run --bin cosmian_kms_server -- \
+RUST_LOG="cosmian=debug" cargo run --bin cosmian_kms -- \
     --https-p12-file ./crate/cli/test_data/certificates/kmserver.cosmian.com.p12 --https-p12-password password \
     --authority-cert-file ./crate/cli/test_data/certificates/ca.crt
 ```

@@ -79,7 +79,7 @@ jobs:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
-            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms_server
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
             target/${{ inputs.target }}/debian/*.deb
             ${{ inputs.artifacts }}
@@ -98,7 +98,7 @@ jobs:
       - run: find .
         if: contains(runner.os, 'linux')
 
-      - name: Linux launch ckms and cosmian_kms_server
+      - name: Linux launch ckms and cosmian_kms
         if: contains(runner.os, 'Linux')
         run: |
           set -ex
@@ -110,7 +110,7 @@ jobs:
           #   home/runner/work/kms/kms/target/
           KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
-          chmod u+x ./$KMS_PATH/cosmian_kms_server
+          chmod u+x ./$KMS_PATH/cosmian_kms
 
           ./$KMS_PATH/ckms -V
 
@@ -120,9 +120,9 @@ jobs:
           rsync -ru usr/local/openssl/ /usr/local/openssl/
           find /usr/local/openssl
           chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
-          ./$KMS_PATH/cosmian_kms_server --info
+          ./$KMS_PATH/cosmian_kms --info
 
-      - name: MacOS launch ckms and cosmian_kms_server
+      - name: MacOS launch ckms and cosmian_kms
         if: contains(runner.os, 'macos')
         run: |
           set -ex
@@ -135,7 +135,7 @@ jobs:
           #   Users/runner/work/kms/kms/target/
           KMS_PATH="Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
           chmod u+x ./$KMS_PATH/ckms
-          chmod u+x ./$KMS_PATH/cosmian_kms_server
+          chmod u+x ./$KMS_PATH/cosmian_kms
 
           ./$KMS_PATH/ckms -V
 
@@ -145,4 +145,4 @@ jobs:
           rsync -ru usr/local/openssl/ /usr/local/openssl/
           find /usr/local/openssl
           chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
-          ./$KMS_PATH/cosmian_kms_server --info
+          ./$KMS_PATH/cosmian_kms --info
