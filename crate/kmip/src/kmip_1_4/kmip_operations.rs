@@ -455,8 +455,7 @@ impl Operation {
             }
             Self::ObtainLease(_) | Self::ObtainLeaseResponse(_) => {
                 OperationEnumeration::ObtainLease
-            }
-            // ... continue matching remaining operations
+            } // ... continue matching remaining operations
         }
     }
 }
@@ -512,6 +511,28 @@ impl Display for Operation {
             Self::GetAttributesResponse(get_attrs_resp) => {
                 write!(f, "GetAttributesResponse({get_attrs_resp:?})")
             } // ... continue implementing Display for remaining operations...
+            Self::GetAttributeList(get_attr_list) => {
+                write!(f, "GetAttributeList({get_attr_list:?})")
+            }
+            Self::GetAttributeListResponse(get_attr_list_resp) => {
+                write!(f, "GetAttributeListResponse({get_attr_list_resp:?})")
+            }
+            Self::AddAttribute(add_attr) => write!(f, "AddAttribute({add_attr:?})"),
+            Self::AddAttributeResponse(add_attr_resp) => {
+                write!(f, "AddAttributeResponse({add_attr_resp:?})")
+            }
+            Self::ModifyAttribute(modify_attr) => write!(f, "ModifyAttribute({modify_attr:?})"),
+            Self::ModifyAttributeResponse(modify_attr_resp) => {
+                write!(f, "ModifyAttributeResponse({modify_attr_resp:?})")
+            }
+            Self::DeleteAttribute(delete_attr) => write!(f, "DeleteAttribute({delete_attr:?})"),
+            Self::DeleteAttributeResponse(delete_attr_resp) => {
+                write!(f, "DeleteAttributeResponse({delete_attr_resp:?})")
+            }
+            Self::ObtainLease(obtain_lease) => write!(f, "ObtainLease({obtain_lease:?})"),
+            Self::ObtainLeaseResponse(obtain_lease_resp) => {
+                write!(f, "ObtainLeaseResponse({obtain_lease_resp:?})")
+            }
         }
     }
 }

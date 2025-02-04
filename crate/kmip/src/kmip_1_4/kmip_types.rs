@@ -340,7 +340,7 @@ pub enum PutFunction {
 
 /// KMIP 1.4 Operation Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
-pub enum Operation {
+pub enum OperationEnumeration {
     Create = 0x1,
     CreateKeyPair = 0x2,
     Register = 0x3,
