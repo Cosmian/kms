@@ -2,17 +2,6 @@ pub mod deserializer;
 pub mod error;
 pub mod serializer;
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::as_conversions,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod tests;
-
 use core::fmt;
 
 use num_bigint_dig::BigUint;
@@ -24,6 +13,17 @@ use serde::{
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::error::result::KmipResult;
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::as_conversions,
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod tests;
 
 pub enum ItemTypeEnumeration {
     Structure = 0x01,

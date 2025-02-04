@@ -3,8 +3,8 @@ use std::num::TryFromIntError;
 use thiserror::Error;
 
 use crate::{
-    kmip_1_4::kmip_types::ResultReason,
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason,
+    ttlv::error::TtlvError,
 };
 
 pub(crate) mod result;

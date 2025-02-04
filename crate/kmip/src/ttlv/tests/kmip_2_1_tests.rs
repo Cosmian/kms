@@ -25,8 +25,8 @@ use crate::{
             MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
-        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
+    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     SafeBigUint,
 };
 
