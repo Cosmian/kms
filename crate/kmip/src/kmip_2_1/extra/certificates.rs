@@ -27,11 +27,11 @@ impl Attributes {
             .map(|value| {
                 String::from_utf8(value)
                     .map_err(|e| {
-                        KmipError::InvalidKmipValue(ErrorReason::Codec_Error, e.to_string())
+                        KmipError::InvalidKmip21Value(ErrorReason::Codec_Error, e.to_string())
                     })
                     .and_then(|s| {
                         s.parse::<usize>().map_err(|e| {
-                            KmipError::InvalidKmipValue(ErrorReason::Codec_Error, e.to_string())
+                            KmipError::InvalidKmip21Value(ErrorReason::Codec_Error, e.to_string())
                         })
                     })
             })

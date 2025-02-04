@@ -27,7 +27,7 @@ impl Attributes {
         let wrapping_key_id = bytes
             .map(|value| {
                 String::from_utf8(value).map_err(|e| {
-                    KmipError::InvalidKmipValue(ErrorReason::Codec_Error, e.to_string())
+                    KmipError::InvalidKmip21Value(ErrorReason::Codec_Error, e.to_string())
                 })
             })
             .transpose()?;

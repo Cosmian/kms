@@ -223,7 +223,7 @@ impl Object {
             | Self::PGPKey { key_block, .. }
             | Self::SymmetricKey { key_block }
             | Self::SplitKey { key_block, .. } => Ok(key_block),
-            _ => Err(KmipError::InvalidKmipObject(
+            _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block".to_owned(),
             )),
@@ -259,7 +259,7 @@ impl Object {
             | Self::PGPKey { key_block, .. }
             | Self::SymmetricKey { key_block }
             | Self::SplitKey { key_block, .. } => Ok(key_block),
-            _ => Err(KmipError::InvalidKmipObject(
+            _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block (function `key_block_mut`)".to_owned(),
             )),
@@ -313,7 +313,7 @@ impl TryFrom<&[u8]> for Object {
 
     fn try_from(object_bytes: &[u8]) -> Result<Self, Self::Error> {
         serde_json::from_slice(object_bytes).map_err(|_e| {
-            Self::Error::InvalidKmipValue(
+            Self::Error::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed deserializing to an Object".to_owned(),
             )
@@ -326,7 +326,7 @@ impl TryInto<Vec<u8>> for Object {
 
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
         serde_json::to_vec(&self).map_err(|_e| {
-            Self::Error::InvalidKmipObject(
+            Self::Error::InvalidKmip21Object(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed serializing Object to bytes".to_owned(),
             )
@@ -365,7 +365,7 @@ impl TryFrom<&str> for ObjectType {
             "OpaqueObject" => Ok(Self::OpaqueObject),
             "PGPKey" => Ok(Self::PGPKey),
             "CertificateRequest" => Ok(Self::CertificateRequest),
-            _ => Err(KmipError::InvalidKmipObject(
+            _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
                 format!("{object_type} is not a valid ObjectType"),
             )),

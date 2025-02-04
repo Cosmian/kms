@@ -47,11 +47,11 @@ impl Pkcs11Error {}
 impl From<KmipError> for Pkcs11Error {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s)
-            | KmipError::InvalidKmipObject(r, s)
-            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip21Value(r, s)
+            | KmipError::InvalidKmip21Object(r, s)
+            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
-            | KmipError::KmipNotSupported(_, s)
+            | KmipError::Kmip21NotSupported(_, s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
             | KmipError::InvalidTag(s)

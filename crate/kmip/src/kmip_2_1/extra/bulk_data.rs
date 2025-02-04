@@ -42,7 +42,7 @@ impl BulkData {
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");
-            return Err(KmipError::InvalidKmipObject(
+            return Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Illegal_Object_Type,
                 "Not a BulkData".to_owned(),
             ));

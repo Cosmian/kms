@@ -140,10 +140,10 @@ impl From<CargoError> for CliError {
 impl From<KmipError> for CliError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s)
-            | KmipError::InvalidKmipObject(r, s)
-            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s)
+            KmipError::InvalidKmip21Value(r, s)
+            | KmipError::InvalidKmip21Object(r, s)
+            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)

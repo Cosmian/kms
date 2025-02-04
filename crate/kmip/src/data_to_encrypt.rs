@@ -66,7 +66,7 @@ impl DataToEncrypt {
             .map(|ep| (!ep.is_empty()).then_some(ep))?
             .map(|ep| {
                 String::from_utf8(ep).map_err(|e| {
-                    KmipError::Kmip(
+                    KmipError::Kmip21(
                         ErrorReason::Invalid_Message,
                         format!("failed deserializing the encryption policy string: {e}"),
                     )

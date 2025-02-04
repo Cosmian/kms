@@ -18,7 +18,7 @@ where
     E: std::error::Error,
 {
     fn reason(self, reason: ErrorReason) -> KmipResult<T> {
-        self.map_err(|e| KmipError::Default(e.to_string()).reason(reason))
+        self.map_err(|e| KmipError::Default(e.to_string()).reason_2_1(reason))
     }
 
     fn context(self, context: &str) -> KmipResult<T> {

@@ -93,10 +93,10 @@ impl From<der::Error> for KmsClientError {
 impl From<KmipError> for KmsClientError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
-            KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::Kmip(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip21Value(r, s) => Self::InvalidKmipValue(r, s),
+            KmipError::InvalidKmip21Object(r, s) => Self::InvalidKmipObject(r, s),
+            KmipError::Kmip21NotSupported(r, s) => Self::KmipNotSupported(r, s),
+            KmipError::Kmip21(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)

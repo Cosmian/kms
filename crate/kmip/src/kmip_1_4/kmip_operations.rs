@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::wildcard_imports)]
 use super::{
     kmip_data_structures::*,
     kmip_objects::{Object, ObjectType},
@@ -338,6 +339,7 @@ pub struct ObtainLeaseResponse {
 /// The operation that processes a specific request
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum Operation {
     Create(Create),
     CreateResponse(CreateResponse),
