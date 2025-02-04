@@ -6,9 +6,10 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use crate::kmip_2_1::{
-    kmip_objects::{Object, ObjectType},
-    ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
+use super::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV};
+use crate::{
+    // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
+    kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -104,9 +105,15 @@ where
             Ok(self)
         }
     }
-    impl PostFix for Object {
+    // impl PostFix for Object14 {
+    //     fn post_fix(self, tag: &str) -> Result<Self> {
+    //         let object_type = ObjectType14::try_from(tag)?;
+    //         Ok(Self::post_fix(object_type, self))
+    //     }
+    // }
+    impl PostFix for Object21 {
         fn post_fix(self, tag: &str) -> Result<Self> {
-            let object_type = ObjectType::try_from(tag)?;
+            let object_type = ObjectType21::try_from(tag)?;
             Ok(Self::post_fix(object_type, self))
         }
     }
