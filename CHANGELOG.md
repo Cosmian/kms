@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2025-02-04
+
+### 🚀 Features
+
+- Support Findex server v0.2 (including findex v7) ([#9](https://github.com/Cosmian/cli/pull/9))
+
+### 📚 Documentation
+
+- Edit authentication section ([#7](https://github.com/Cosmian/cli/pull/7))
+
+### 🧪 Testing
+
+- Run all tests on ubuntu runners
+
 ## [0.1.3] - 2025-01-09
 
 ### 🧪 Testing
