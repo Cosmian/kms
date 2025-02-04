@@ -90,6 +90,55 @@ pub fn create_rsa_key_pair_ttlv_request(
         })
 }
 
+#[derive(Debug, Clone, Copy, EnumString)]
+#[strum(serialize_all = "kebab-case")]
+pub enum Curve {
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "nist-p192")]
+    NistP192,
+    #[strum(to_string = "nist-p224")]
+    NistP224,
+    #[strum(to_string = "nist-p256")]
+    NistP256,
+    #[strum(to_string = "nist-p384")]
+    NistP384,
+    #[strum(to_string = "nist-p521")]
+    NistP521,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "x25519")]
+    X25519,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "ed25519")]
+    Ed25519,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "x448")]
+    X448,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "ed448")]
+    Ed448,
+}
+
+impl From<Curve> for RecommendedCurve {
+    fn from(curve: Curve) -> Self {
+        match curve {
+            #[cfg(not(feature = "fips"))]
+            Curve::NistP192 => Self::P192,
+            Curve::NistP224 => Self::P224,
+            Curve::NistP256 => Self::P256,
+            Curve::NistP384 => Self::P384,
+            Curve::NistP521 => Self::P521,
+            #[cfg(not(feature = "fips"))]
+            Curve::X25519 => Self::CURVE25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed25519 => Self::CURVEED25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::X448 => Self::CURVE448,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed448 => Self::CURVEED448,
+        }
+    }
+}
+
 #[wasm_bindgen]
 pub fn create_ec_key_pair_ttlv_request(
     private_key_id: Option<String>,
@@ -98,8 +147,9 @@ pub fn create_ec_key_pair_ttlv_request(
     sensitive: bool,
 ) -> Result<JsValue, JsValue> {
     let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
-    let recommended_curve = RecommendedCurve::from_str(recommended_curve)
-        .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?;
+    let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
+        .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
+        .into();
     let request: CreateKeyPair =
         create_ec_key_pair_request(private_key_id, tags, recommended_curve, sensitive)
             .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
@@ -160,7 +210,8 @@ pub fn create_sym_key_ttlv_request(
             384 => CryptographicAlgorithm::SHA3384,
             512 => CryptographicAlgorithm::SHA3512,
             _ => Err(JsValue::from_str(&format!(
-                "Invalid cryptographic key length: {number_of_bits}")))?,
+                "Invalid cryptographic key length: {number_of_bits}"
+            )))?,
         },
         SymmetricAlgorithm::Shake => match number_of_bits {
             128 => CryptographicAlgorithm::SHAKE128,

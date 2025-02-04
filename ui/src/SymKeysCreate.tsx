@@ -1,5 +1,7 @@
-import { Button, Checkbox, Form, Input, InputNumber, Select } from 'antd'
+import { LoadingOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
 import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
 import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
 
 
@@ -13,37 +15,32 @@ interface SymKeyCreateFormData {
     wrappingKeyId?: string;
 }
 
-type SymKeyCreateResponse = {
+type CreateResponse = {
     ObjectType: string,
     UniqueIdentifier: string,
 }
 
 const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
-    const [res, setRes] = useState<undefined | SymKeyCreateResponse>(undefined);
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
     const onFinish = async (values: SymKeyCreateFormData) => {
         console.log('Create symmetric key values:', values);
+        setIsLoading(true);
+        setRes(undefined);
         const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
-        const url = "http://0.0.0.0:9998/kmip/2_1";
         try {
-            const response = await fetch(url, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(request)
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result: CreateResponse = await parse_create_ttlv_response(result_str)
+                setRes(`${result.UniqueIdentifier} has been created.`)
             }
-
-            const result_str = JSON.stringify(await response.json()); // Parse JSON response
-            const result: SymKeyCreateResponse = await parse_create_ttlv_response(result_str)
-            setRes(result)
-        } catch (error) {
-            console.error("Error:", error);
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -161,10 +158,16 @@ const SymKeyCreateForm: React.FC = () => {
                         htmlType="submit"
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Create a symmetric key
+                        {isLoading ? (
+                            <Spin
+                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                        ) : (
+                            'Create symmetric key'
+                        )}
                     </Button>
                 </Form.Item>
-                {res && <div>{res.ObjectType} {res.UniqueIdentifier} created</div>}
+                {res && <div>{res}</div>}
             </Form>
         </div>
     );
