@@ -38,7 +38,9 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   KMS_DESTINATION_DIR=/mnt/package/kms/4.22.1
   FINDEX_SERVER_DESTINATION_DIR=/mnt/package/findex-server/0.2.0
 
-  ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
+  for dir in "$DESTINATION_DIR" "$KMS_DESTINATION_DIR" "$FINDEX_SERVER_DESTINATION_DIR"; do
+    ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$dir"/{rhel9,ubuntu-20.04,ubuntu-22.04,ubuntu-24.04}
+  done
 
   # RedHat 9 package
   for dir in "$DESTINATION_DIR/rhel9" "$KMS_DESTINATION_DIR/rhel9" "$FINDEX_SERVER_DESTINATION_DIR/rhel9"; do

@@ -16,7 +16,6 @@ By leveraging Cosmian CLI, users can seamlessly integrate advanced cryptographic
   - [Version correspondence](#version-correspondence)
   - [Installation](#installation)
   - [Configuration](#configuration)
-  - [KMS objects access rights](#kms-objects-access-rights)
   - [Usage](#usage)
 
 !!! info "Download cosmian and cosmian_gui"
@@ -31,10 +30,10 @@ By leveraging Cosmian CLI, users can seamlessly integrate advanced cryptographic
     The versions of the CLI, KMS, and Findex server must be compatible.
     The following table shows the compatibility between the versions:
 
-| CLI version | KMS version   | Findex server version |
-| ----------- | ------------- | --------------------- |
-| 0.1.*       | 4,20,*,4.21.* | 0.1.0                 |
-| 0.2.0       | 4.22.*        | 0.2.0                 |
+| CLI version | KMS version      | Findex server version |
+| ----------- | ---------------- | --------------------- |
+| 0.1.*       | 4.20.\*, 4.21.\* | 0.1.0                 |
+| 0.2.0       | 4.22.*           | 0.2.0                 |
 
 ## Installation
 
@@ -45,11 +44,6 @@ By leveraging Cosmian CLI, users can seamlessly integrate advanced cryptographic
 ## Configuration
 
 To communicate with KMS and Findex server, the clients `cosmian` and `cosmian_gui` expect the same configuration file. Please read the [configuration](./configuration.md) section.
-
-## KMS objects access rights
-
-When [authentication](./authentication.md) is enabled, each KMS object requires explicit authorization from its owner to be accessed or used by others.
-The Cosmian CLI then [allows to manage the access rights](./authorization.md) of users to cryptographic objects stored in the KMS.
 
 ## Usage
 
