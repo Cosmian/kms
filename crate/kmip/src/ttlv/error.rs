@@ -59,3 +59,15 @@ impl From<KmipError> for TtlvError {
         Self::new(&err.to_string())
     }
 }
+
+impl From<std::io::Error> for TtlvError {
+    fn from(err: std::io::Error) -> Self {
+        Self::new(&err.to_string())
+    }
+}
+
+impl From<strum::ParseError> for TtlvError {
+    fn from(err: strum::ParseError) -> Self {
+        Self::new(&err.to_string())
+    }
+}
