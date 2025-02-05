@@ -95,20 +95,5 @@ pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
     .err()
     .unwrap();
     assert!(err.to_string().contains("ERROR: could not open the file"));
-
-    let err = create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-binary",
-        "../../test_data/policy.bad",
-        &[],
-        false,
-    )
-    .err()
-    .unwrap();
-    assert!(
-        err.to_string()
-            .contains("ERROR: policy binary is malformed")
-    );
-
     Ok(())
 }

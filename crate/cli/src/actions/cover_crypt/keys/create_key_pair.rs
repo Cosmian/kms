@@ -1,15 +1,21 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kms_client::KmsClient;
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
+use cosmian_cover_crypt::MasterSecretKey;
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_kms_client::{read_bytes_from_file, KmsClient};
+use cosmian_kms_crypto::{
+    crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request, CryptoError,
+};
 
-use super::update_msk::{policy_from_binary_file, policy_from_json_file};
 use crate::{
     actions::console,
-    cli_bail,
-    error::result::{CliResult, CliResultHelper},
+    error::{
+        result::{CliResult, CliResultHelper},
+        CliError,
+    },
 };
+
 /// Create a new master key pair for a given policy and return the key IDs.
 ///
 ///
@@ -49,12 +55,6 @@ pub struct CreateMasterKeyPairAction {
     #[clap(long = "policy-specifications", short = 's', group = "policy")]
     policy_specifications_file: Option<PathBuf>,
 
-    /// When not using policy specifications, a policy binary file can be used instead.
-    /// See the `policy` command, to create this binary file from policy specifications
-    /// or to extract it from existing keys.
-    #[clap(long = "policy-binary", short = 'b', group = "policy")]
-    policy_binary_file: Option<PathBuf>,
-
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
@@ -68,15 +68,19 @@ pub struct CreateMasterKeyPairAction {
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Parse the json policy file
-        let access_structure = if let Some(specs_file) = &self.policy_specifications_file {
-            policy_from_json_file(specs_file)?
-        } else if let Some(binary_file) = &self.policy_binary_file {
-            policy_from_binary_file(binary_file)?
-        } else {
-            cli_bail!("either a policy specifications or policy binary file must be provided");
-        };
 
+        let file = &self
+            .policy_specifications_file
+            .clone()
+            .ok_or_else(|| CliError::Default("File not found".to_string()))?;
+        let policy_buffer = read_bytes_from_file(&file)?;
+        let msk = MasterSecretKey::deserialize(&policy_buffer).map_err(|e| {
+            CryptoError::Kmip(format!(
+                "Failed deserializing the CoverCrypt Master Private Key: {e}"
+            ))
+        })?;
         // Create the kmip query
+        let access_structure = msk.access_structure.serialize()?;
         let create_key_pair = build_create_covercrypt_master_keypair_request(
             &access_structure,
             &self.tags,

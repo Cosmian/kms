@@ -1,6 +1,4 @@
-use cosmian_cover_crypt::{
-    api::Covercrypt, AccessPolicy, AccessStructure, EncryptedHeader, MasterPublicKey,
-};
+use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey};
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
@@ -28,7 +26,6 @@ pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
     public_key_bytes: Zeroizing<Vec<u8>>,
-    access_structure: AccessStructure,
 }
 
 impl CoverCryptEncryption {
@@ -39,22 +36,18 @@ impl CoverCryptEncryption {
     ) -> Result<Self, CryptoError> {
         let (public_key_bytes, public_key_attributes) =
             public_key.key_block()?.key_bytes_and_attributes()?;
-        let access_structure = policy_from_attributes(public_key_attributes.ok_or_else(|| {
+        policy_from_attributes(public_key_attributes.ok_or_else(|| {
             CryptoError::Kmip(
                 "the master public key does not have attributes with the Policy".to_owned(),
             )
         })?)?;
 
-        trace!(
-            "Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}, policy: \
-             {access_structure:#?}"
-        );
+        trace!("Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}");
 
         Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
             public_key_bytes,
-            access_structure,
         })
     }
 
@@ -170,8 +163,6 @@ impl EncryptionSystem for CoverCryptEncryption {
             ad,
         )
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-        //todo : remove following line
-        let _t = &self.access_structure.clone();
 
         let symmetric_key = SymmetricKey::default();
 
