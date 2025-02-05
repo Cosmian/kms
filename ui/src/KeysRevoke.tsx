@@ -32,7 +32,7 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
         console.log('Revoke key values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const id = values.keyId ? values.keyId : values.tags ? values.tags[0] : undefined; // TODO: check tags handling for revokation
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         if (id == undefined) {
             setRes("Missing key identifier.")
             throw Error("Missing key identifier")

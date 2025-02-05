@@ -1,28 +1,30 @@
 use std::str::FromStr;
+use std::fmt::Display;
 
 use base64::{engine::general_purpose, Engine as _};
 use serde::{de::DeserializeOwned, Serialize};
 use strum::EnumString;
 use wasm_bindgen::prelude::*;
+use pem::{EncodeConfig, LineEnding};
+use zeroize::Zeroizing;
+use js_sys::Uint8Array;
 
 use crate::kmip_2_1::{
-    kmip_operations::{
+    kmip_objects::{Object, ObjectType},
+    kmip_data_structures::KeyWrappingSpecification, kmip_operations::{
         Certify, CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
         DecryptResponse, Destroy, DestroyResponse, EncryptResponse, Export, ExportResponse,
         GetAttributes, GetAttributesResponse, ImportResponse, Locate, LocateResponse,
         RevokeResponse, Validate, ValidateResponse,
-    },
-    kmip_types::{
+    }, kmip_types::{
         CertificateRequestType, CryptographicAlgorithm, CryptographicParameters,
-        KeyCompressionType, KeyFormatType, KeyWrapType, RecommendedCurve, UniqueIdentifier,
-    },
-    requests::{
+        KeyFormatType, RecommendedCurve, UniqueIdentifier, WrappingMethod, EncodingOption, EncryptionKeyInformation, HashingAlgorithm, PaddingMethod, BlockCipherMode
+    }, requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
         create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
         get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
         get_rsa_public_key_request, import_object_request, symmetric_key_create_request,
-    },
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+    }, ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV}
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -358,43 +360,146 @@ pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 }
 
 // Export request
+#[derive(Debug, Clone, PartialEq, Eq, EnumString)]
+#[strum(serialize_all = "kebab-case")]
+pub enum ExportKeyFormat {
+    JsonTtlv,
+    Sec1Pem,
+    Sec1Der,
+    Pkcs1Pem,
+    Pkcs1Der,
+    Pkcs8Pem,
+    Pkcs8Der,
+    SpkiPem,
+    SpkiDer,
+    Base64,
+    Raw,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumString)]
+#[strum(serialize_all = "kebab-case")]
+pub(crate) enum WrappingAlgorithm {
+    NistKeyWrap,
+    AesGCM,
+    RsaPkcsV15,
+    RsaOaep,
+    RsaAesKeyWrap,
+}
+
+impl WrappingAlgorithm {
+    pub(crate) const fn as_str(&self) -> &'static str {
+        match self {
+            Self::NistKeyWrap => "nist-key-wrap",
+            Self::AesGCM => "aes-gcm",
+            Self::RsaPkcsV15 => "rsa-pkcs-v15",
+            Self::RsaOaep => "rsa-oaep",
+            Self::RsaAesKeyWrap => "rsa-aes-key-wrap",
+        }
+    }
+}
+
+impl Display for WrappingAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[wasm_bindgen]
 pub fn export_ttlv_request(
-    unique_identifier: Option<String>,
-    key_format_type: Option<String>,
-    key_wrap_type: Option<String>,
-    key_compression_type: Option<String>,
-    key_wrapping_specification: JsValue,
+    unique_identifier: String,
+    unwrap: bool,
+    key_format: Option<String>,
+    wrap_key_id: Option<String>,
+    wrapping_algorithm: Option<String>,
+    authentication_data: Option<String>
 ) -> Result<JsValue, JsValue> {
-    let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
-    let key_format_type = key_format_type.and_then(|s| {
-        KeyFormatType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let key_format: Option<ExportKeyFormat> = key_format.and_then(|s| {
+        ExportKeyFormat::from_str(&s)
+            .map_err(|e| JsValue::from_str(&format!("Invalid export key format type: {e}")))
             .ok()
     });
-    let key_wrap_type = key_wrap_type.and_then(|s| {
-        KeyWrapType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
-            .ok()
-    });
-    let key_compression_type = key_compression_type.and_then(|s| {
-        KeyCompressionType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
-            .ok()
-    });
-    let key_wrapping_specification =
-        if key_wrapping_specification.is_null() || key_wrapping_specification.is_undefined() {
-            None
-        } else {
-            Some(serde_wasm_bindgen::from_value(key_wrapping_specification)?)
-        };
-    let request = Export {
-        unique_identifier,
-        key_format_type,
-        key_wrap_type,
-        key_compression_type,
-        key_wrapping_specification,
+    let key_format_type = match key_format {
+        // For Raw: use the default format then do the local extraction of the bytes
+        Some(ExportKeyFormat::JsonTtlv)
+        | Some(ExportKeyFormat::Raw)
+        | Some(ExportKeyFormat::Base64) => None,
+
+        Some(ExportKeyFormat::Sec1Pem) => Some(KeyFormatType::ECPrivateKey),
+        Some(ExportKeyFormat::Sec1Der) => Some(KeyFormatType::ECPrivateKey),
+
+        Some(ExportKeyFormat::Pkcs1Pem) => Some(KeyFormatType::PKCS1),
+        Some(ExportKeyFormat::Pkcs1Der) => Some(KeyFormatType::PKCS1),
+
+        Some(ExportKeyFormat::Pkcs8Pem)
+        | Some(ExportKeyFormat::SpkiPem) => Some(KeyFormatType::PKCS8),
+
+        Some(ExportKeyFormat::Pkcs8Der)
+        | Some(ExportKeyFormat::SpkiDer) => Some(KeyFormatType::PKCS8),
+
+        None => None, // Default case for when key_format is None
     };
+    let encode_to_ttlv = key_format == Some(ExportKeyFormat::JsonTtlv);
+
+    let wrapping_algorithm= wrapping_algorithm.and_then(|s| {
+        WrappingAlgorithm::from_str(&s)
+            .map_err(|e| JsValue::from_str(&format!("Invalid wrapping algorithm: {e}")))
+            .ok()
+    });
+    let cryptographic_parameters = wrapping_algorithm
+    .as_ref()
+    .map(|wrapping_algorithm| match wrapping_algorithm {
+        WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
+            ..CryptographicParameters::default()
+        },
+        WrappingAlgorithm::AesGCM => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..CryptographicParameters::default()
+        },
+        WrappingAlgorithm::RsaPkcsV15 => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::PKCS1v15),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        },
+        WrappingAlgorithm::RsaOaep => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        },
+        WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        },
+    });
+
+    let request = Export::new(
+        unique_identifier,
+        unwrap,
+        wrap_key_id.map(|wrapping_key_id| {
+            KeyWrappingSpecification {
+                wrapping_method: WrappingMethod::Encrypt,
+                encryption_key_information: Some(EncryptionKeyInformation {
+                    unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_string()),
+                    cryptographic_parameters,
+                }),
+                attribute_name: authentication_data.map(|data| vec![data]),
+                encoding_option: Some(if encode_to_ttlv {
+                    EncodingOption::TTLVEncoding
+                } else {
+                    EncodingOption::NoEncoding
+                }),
+                ..KeyWrappingSpecification::default()
+            }
+        }),
+        key_format_type,
+    );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -402,9 +507,140 @@ pub fn export_ttlv_request(
         })
 }
 
+#[must_use]
+/// Return the KMIP tag for a given object
+/// This is required to match the Java library behavior which expects
+/// the first tag to describe the type of object and not simply equal 'Object'
+// TODO: check what is specified by the KMIP norm if any
+fn tag_from_object(object: &Object) -> String {
+    match &object {
+        Object::PublicKey { .. } => "PublicKey",
+        Object::SecretData { .. } => "SecretData",
+        Object::PGPKey { .. } => "PGPKey",
+        Object::SymmetricKey { .. } => "SymmetricKey",
+        Object::SplitKey { .. } => "SplitKey",
+        Object::Certificate { .. } => "Certificate",
+        Object::CertificateRequest { .. } => "CertificateRequest",
+        Object::OpaqueObject { .. } => "OpaqueObject",
+        Object::PrivateKey { .. } => "PrivateKey",
+    }
+    .to_string()
+}
+
+/// Converts DER bytes to PEM bytes for keys
+pub fn der_to_pem(
+    bytes: &[u8],
+    key_format_type: KeyFormatType,
+    object_type: ObjectType,
+) -> Result<Zeroizing<Vec<u8>>, JsValue> {
+    let pem = match key_format_type {
+        KeyFormatType::PKCS1 => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "RSA PRIVATE KEY",
+                ObjectType::PublicKey => "RSA PUBLIC KEY",
+                x => {
+                    Err(JsValue::from_str(&format!(
+                        "Object type {x:?} not supported for PKCS1. Must be a private key or \
+                    //      public key"
+                    )))?
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        KeyFormatType::PKCS8 => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "PRIVATE KEY",
+                ObjectType::PublicKey => "PUBLIC KEY",
+                x => {
+                    Err(JsValue::from_str(&format!(
+                        "Object type {x:?} not supported for PKCS#8 / SPKI. Must be a private key \
+                        PKCS#8) or public key (SPKI)"
+                    )))?
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        KeyFormatType::ECPrivateKey => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "EC PRIVATE KEY",
+                x => {
+                    Err(JsValue::from_str(&format!(
+                        "Object type {x:?} not supported for SEC1. Must be a private key."
+                    )))?
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        _ => {
+            Err(JsValue::from_str(&format!(
+                "Key format type {key_format_type:?} not supported for PEM conversion"
+            )))?
+        }
+    };
+    Ok(Zeroizing::new(
+        pem::encode_config(&pem, EncodeConfig::new().set_line_ending(LineEnding::LF)).into_bytes(),
+    ))
+}
+
+
 #[wasm_bindgen]
-pub fn parse_export_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ExportResponse>(response)
+pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<JsValue, JsValue> {
+    // let response = parse_ttlv_response::<ExportResponse>(response)?;
+    let key_format = ExportKeyFormat::from_str(&key_format)
+            .map_err(|e| JsValue::from_str(&format!("Invalid export key format type: {e}")))?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let response: ExportResponse = from_ttlv(&ttlv)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let data = match key_format {
+        ExportKeyFormat::JsonTtlv => {
+            let kmip_object = response.object;
+            let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
+            ttlv.tag = tag_from_object(&kmip_object);
+            let bytes = serde_json::to_vec::<TTLV>(&ttlv).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            JsValue::from(Uint8Array::from(bytes.as_slice()))
+        },
+        ExportKeyFormat::Base64 => {
+            let key_block = response.object.key_block().map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            let string = base64::engine::general_purpose::STANDARD
+                .encode(key_block.key_bytes().map_err(|e| JsValue::from_str(&format!("{e}")))?)
+                .to_lowercase();
+            JsValue::from(string)
+        },
+        _ => {
+            let key_block = response.object.key_block().map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            let object_type = response.object.object_type();
+            let bytes = {
+                let mut bytes = key_block.key_bytes().map_err(|e| JsValue::from_str(&format!("{e}")))?;
+                let (key_format_type, encode_to_pem) = match key_format {
+                    // For Raw: use the default format then do the local extraction of the bytes
+                    ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => {
+                        (None, false)
+                    }
+                    ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+                    ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+                    ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+                    ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+                    ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => {
+                        (Some(KeyFormatType::PKCS8), true)
+                    }
+                    ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => {
+                        (Some(KeyFormatType::PKCS8), false)
+                    }
+                };
+
+                if encode_to_pem {
+                    bytes = der_to_pem(
+                        bytes.as_slice(),
+                        key_format_type.unwrap(),
+                        object_type,
+                    )?;
+                }
+                bytes
+            };
+            JsValue::from(Uint8Array::from(bytes.as_slice()))
+        },
+    };
+    Ok(data)
 }
 
 // Get requests
@@ -535,7 +771,7 @@ pub fn revoke_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let revocation_reason = serde_wasm_bindgen::from_value(revocation_reason)?;
     let request = build_revoke_key_request(unique_identifier, revocation_reason)
-        .map_err(|e| JsValue::from_str(&format!("Revocation failed: {e}")))?;
+        .map_err(|e| JsValue::from_str(&format!("Revocation request creation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
@@ -573,3 +809,27 @@ pub fn validate_certificate_ttlv_request(
 pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<ValidateResponse>(response)
 }
+
+
+// // Covercrypt requests
+// #[wasm_bindgen]
+// pub fn create_covercrypt_master_keypair_ttlv_request(
+//     policy: &str,
+//     tags: Vec<String>,
+//     sensitive: bool,
+// ) -> Result<JsValue, JsValue> {
+//     let policy = if let Some(specs_file) = &policy_specifications_file {
+//         policy_from_json_file(specs_file)?
+//     } else if let Some(binary_file) = &policy_binary_file {
+//         policy_from_binary_file(binary_file)?
+//     } else {
+//         Err(JsValue::from_str(&"Invalid policy specification"))?;
+//     };
+//     let request = build_create_covercrypt_master_keypair_request(&policy, &tags, sensitive)
+//         .map_err(|e| JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}")))?;
+//     to_ttlv(&request)
+//         .map_err(|e| JsValue::from(e.to_string()))
+//         .and_then(|objects| {
+//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+//         })
+// }

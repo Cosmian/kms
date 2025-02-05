@@ -42,6 +42,8 @@ zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 serde-wasm-bindgen = "0.6.5"
 wasm-bindgen = "0.2.100"
 base64.workspace = true
+pem.workspace = true
+js-sys = "0.3.77"
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

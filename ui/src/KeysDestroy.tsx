@@ -30,7 +30,7 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
         setIsLoading(true);
         setRes(undefined);
         console.log('Destroy key values:', values);
-        const id = values.keyId ? values.keyId : values.tags ? values.tags[0] : undefined; // TODO: check tags handling for revokation
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined; // TODO: check tags handling for revokation
         if (id == undefined) {
             setRes("Missing key identifier.")
             throw Error("Missing key identifier")
