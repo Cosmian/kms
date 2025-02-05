@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
@@ -27,7 +27,7 @@ pub enum AttributeValue {
     Boolean(bool),
     TextString(String),
     ByteString(Vec<u8>),
-    DateTime(DateTime<Utc>),
+    DateTime(OffsetDateTime),
     Interval(i32),
     Structure(Vec<Attribute>),
 }

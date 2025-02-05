@@ -1,16 +1,68 @@
+//! TTLV (Tag, Type, Length, Value) implementation for KMIP protocol
+//!
+//! This module provides the core TTLV data structures and their serialization/deserialization implementations
+//! for the KMIP (Key Management Interoperability Protocol) protocol.
+//!
+//! # Key Components
+//!
+//! * `ItemTypeEnumeration` - Defines the possible TTLV data types according to KMIP specification
+//! * `TTLVEnumeration` - Represents enumeration values that can be either integers or named strings
+//! * `TTLValue` - The main enum containing all possible TTLV value types
+//! * `TTLV` - The complete TTLV structure combining a tag and its value
+//!
+//! # Value Types
+//!
+//! The module supports various KMIP data types including:
+//! - Structure (nested TTLV objects)
+//! - Integer types (32-bit, 64-bit, and arbitrary precision)
+//! - Bitmasks
+//! - Enumerations
+//! - Boolean values
+//! - Text and byte strings
+//! - Date/time values (with standard and extended precision)
+//! - Intervals
+//!
+//! # Serialization
+//!
+//! The module implements Serde's `Serialize` and `Deserialize` traits for all major types,
+//! supporting both binary and text-based formats. Special handling is provided for:
+//!
+//! - Hexadecimal representations of integers and bitmasks
+//! - ISO-8601 datetime formatting
+//! - Extended precision timestamps
+//! - Big integer conversion and padding
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use kmip::ttlv::{TTLV, TTLValue};
+//!
+//! // Create a simple text TTLV
+//! let ttlv = TTLV {
+//!     tag: "TextValue".to_string(),
+//!     value: TTLValue::TextString("Hello KMIP".to_string())
+//! };
+//! ```
+//!
+//! # Note
+//!
+//! This implementation follows the KMIP specification for TTLV encoding,
+//! ensuring compatibility with KMIP servers and clients. All numeric values
+//! are handled in big-endian format as required by the protocol.
 pub mod deserializer;
 pub mod error;
+pub mod serde_ttlv;
 pub mod serializer;
 
 use core::fmt;
 
 use num_bigint_dig::BigUint;
 use serde::{
-    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct, Serializer},
+    Deserialize, Serialize,
 };
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Iso8601, OffsetDateTime};
 
 use crate::error::result::KmipResult;
 
@@ -209,8 +261,8 @@ impl Serialize for TTLV {
                 serializer,
                 &self.tag,
                 "DateTime",
-                &v.format(&Rfc3339).map_err(|err| {
-                    ser::Error::custom(format!("Cannot format DateTime {v} into RFC3339: {err}"))
+                &v.format(&Iso8601::DEFAULT).map_err(|err| {
+                    ser::Error::custom(format!("Cannot format DateTime {v} into ISO8601: {err}"))
                 })?,
             ),
             TTLValue::Interval(v) => serialize(serializer, &self.tag, "Interval", v),
@@ -259,7 +311,9 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
                 E: de::Error,
             {
                 Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
-                    de::Error::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
+                    de::Error::custom(format!(
+                        "Unexpected value: {v}, expected a 64 bit unaigned integer"
+                    ))
                 })?))
             }
 
@@ -446,12 +500,17 @@ impl<'de> Deserialize<'de> for TTLV {
                                 }
                                 "DateTime" => {
                                     let d: String = map.next_value()?;
-                                    let date =
-                                        OffsetDateTime::parse(&d, &Rfc3339).map_err(|_e| {
-                                            de::Error::custom(format!(
-                                                "Invalid value for an RFC3339 date: {d}"
-                                            ))
-                                        })?;
+                                    let date = if d.starts_with("0x") {
+                                        parse_hex_time::<V>(&d, HexTimeUnit::Seconds)?
+                                    } else {
+                                        OffsetDateTime::parse(&d, &Iso8601::DEFAULT).map_err(
+                                            |_e| {
+                                                de::Error::custom(format!(
+                                                    "Invalid value for an RFC3339 date: {d}"
+                                                ))
+                                            },
+                                        )?
+                                    };
                                     TTLValue::DateTime(date)
                                 }
                                 "Interval" => TTLValue::Interval(map.next_value()?),
@@ -469,33 +528,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                              start with 0x)"
                                         )))
                                     }
-                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
-                                        de::Error::custom(format!(
-                                            "visit_map: indexing slicing failed for \
-                                             DateTimeExtended 2..: {hex}"
-                                        ))
-                                    })?)
-                                    .map_err(|e| {
-                                        de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {hex} (not a hex \
-                                             string). Error: {e}",
-                                        ))
-                                    })?;
-                                    let v = i128::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|e| {
-                                            de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {hex}. Error: \
-                                                 {e}",
-                                            ))
-                                        })?,
-                                    );
-                                    let dt = OffsetDateTime::from_unix_timestamp_nanos(v * 1000)
-                                        .map_err(|e| {
-                                            de::Error::custom(format!(
-                                                "Invalid value for unix timestamp: {hex}. Error: \
-                                                 {e}",
-                                            ))
-                                        })?;
+                                    let dt = parse_hex_time::<V>(&hex, HexTimeUnit::Microseconds)?;
                                     TTLValue::DateTimeExtended(dt)
                                 }
                                 t => return Err(de::Error::custom(format!("Unknown type: {t}"))),
@@ -512,6 +545,58 @@ impl<'de> Deserialize<'de> for TTLV {
         const FIELDS: &[&str] = &["tag", "value"];
         deserializer.deserialize_struct("TTLV", FIELDS, TTLVVisitor)
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum HexTimeUnit {
+    Seconds,
+    Microseconds,
+}
+
+/// Parse a hex string into a `OffsetDateTime`.
+/// The hex string is expected to be in big-endian format
+/// and in the format `0x<hex>`.
+fn parse_hex_time<'de, V>(hex: &str, unit: HexTimeUnit) -> Result<OffsetDateTime, V::Error>
+where
+    V: MapAccess<'de>,
+{
+    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
+        de::Error::custom(format!(
+            "visit_map: indexing slicing failed for DateTimeExtended 2..: {hex}"
+        ))
+    })?)
+    .map_err(|e| {
+        de::Error::custom(format!(
+            "Invalid value for i64 hex String: {hex} (not a hex string). Error: {e}",
+        ))
+    })?;
+
+    Ok(match unit {
+        HexTimeUnit::Seconds => {
+            let v = i64::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for i64 hex String: {hex}. Error: {e}",
+                ))
+            })?);
+            OffsetDateTime::from_unix_timestamp(v).map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for unix seconds timestamp: {hex}. Error: {e}",
+                ))
+            })?
+        }
+        HexTimeUnit::Microseconds => {
+            let v = i128::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for i128 hex String: {hex}. Error: {e}",
+                ))
+            })?);
+            OffsetDateTime::from_unix_timestamp_nanos(v * 1000).map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for unix micro-seconds timestamp: {hex}. Error: {e}",
+                ))
+            })?
+        }
+    })
 }
 
 /// Convert a `BigUint` into a `Vec<u32>`.
