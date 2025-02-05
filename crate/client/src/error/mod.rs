@@ -2,8 +2,8 @@ use std::io;
 
 use cosmian_http_client::HttpClientError;
 use cosmian_kmip::{
-    kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-    KmipError,
+    kmip_1_4::kmip_types::ResultReason, kmip_2_1::kmip_operations::ErrorReason,
+    ttlv::error::TtlvError, KmipError,
 };
 use thiserror::Error;
 
@@ -17,17 +17,29 @@ pub enum KmsClientError {
     #[error("{0}")]
     Default(String),
 
-    #[error("Invalid KMIP Object: {0}: {1}")]
-    InvalidKmipObject(ErrorReason, String),
+    #[error("Invalid 2.1 KMIP Object: {0}: {1}")]
+    InvalidKmip21Object(ErrorReason, String),
 
-    #[error("Invalid KMIP value: {0}: {1}")]
-    InvalidKmipValue(ErrorReason, String),
+    #[error("Invalid 2.1 KMIP value: {0}: {1}")]
+    InvalidKmip21Value(ErrorReason, String),
 
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip21Error(ErrorReason, String),
 
-    #[error("Kmip Not Supported: {0}: {1}")]
-    KmipNotSupported(ErrorReason, String),
+    #[error("Kmip 2.1Not Supported: {0}: {1}")]
+    Kmip21NotSupported(ErrorReason, String),
+
+    #[error("Invalid 1.4 KMIP Object: {0}: {1}")]
+    InvalidKmip14Object(ResultReason, String),
+
+    #[error("Invalid 1.4 KMIP value: {0}: {1}")]
+    InvalidKmip14Value(ResultReason, String),
+
+    #[error("{0}: {1}")]
+    Kmip14Error(ResultReason, String),
+
+    #[error("Kmip 1.4 Not Supported: {0}: {1}")]
+    Kmip14NotSupported(ResultReason, String),
 
     #[error("Not Supported: {0}")]
     NotSupported(String),
@@ -93,10 +105,10 @@ impl From<der::Error> for KmsClientError {
 impl From<KmipError> for KmsClientError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmip21Value(r, s) => Self::InvalidKmipValue(r, s),
-            KmipError::InvalidKmip21Object(r, s) => Self::InvalidKmipObject(r, s),
-            KmipError::Kmip21NotSupported(r, s) => Self::KmipNotSupported(r, s),
-            KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmip21Value(r, s) => Self::InvalidKmip21Value(r, s),
+            KmipError::InvalidKmip21Object(r, s) => Self::InvalidKmip21Object(r, s),
+            KmipError::Kmip21NotSupported(r, s) => Self::Kmip21NotSupported(r, s),
+            KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
@@ -108,12 +120,19 @@ impl From<KmipError> for KmsClientError {
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipNotSupported(ErrorReason::Codec_Error, e.to_string())
+                Self::Kmip21NotSupported(ErrorReason::Codec_Error, e.to_string())
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipNotSupported(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21NotSupported(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e) => {
+                Self::InvalidKmip14Value(result_reason, e)
+            }
+            KmipError::InvalidKmip14Object(result_reason, e) => {
+                Self::InvalidKmip14Object(result_reason, e)
+            }
+            KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
     }
 }

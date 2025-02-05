@@ -4,10 +4,8 @@ use std::{num::TryFromIntError, str::Utf8Error};
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kms_client::{
-    cosmian_kmip::{
-        kmip_2_1::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-        KmipError,
-    },
+    cosmian_kmip::{kmip_2_1::kmip_operations::ErrorReason, ttlv::error::TtlvError, KmipError},
+    kmip_1_4::kmip_types::ResultReason,
     reexport::cosmian_http_client::HttpClientError,
     KmsClientError,
 };
@@ -75,7 +73,11 @@ pub enum CliError {
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
+    Kmip21Error(ErrorReason, String),
+
+    // Any errors on KMIP format due to mistake of the user
+    #[error("{0}: {1}")]
+    Kmip14Error(ResultReason, String),
 
     #[error(transparent)]
     KmsClientError(#[from] KmsClientError),
@@ -118,15 +120,15 @@ impl CliError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
+            Self::Kmip21Error(_r, e) => Self::Kmip21Error(reason, e.clone()),
+            e => Self::Kmip21Error(reason, e.to_string()),
         }
     }
 }
 
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
-        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::Kmip21Error(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
@@ -142,7 +144,7 @@ impl From<KmipError> for CliError {
         match e {
             KmipError::InvalidKmip21Value(r, s)
             | KmipError::InvalidKmip21Object(r, s)
-            | KmipError::Kmip21(r, s) => Self::KmipError(r, s),
+            | KmipError::Kmip21(r, s) => Self::Kmip21Error(r, s),
             KmipError::Kmip21NotSupported(_, s)
             | KmipError::NotSupported(s)
             | KmipError::Default(s)
@@ -155,12 +157,15 @@ impl From<KmipError> for CliError {
             KmipError::TryFromSliceError(t) => Self::Conversion(t.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
             KmipError::Deserialization(_) | KmipError::Serialization(_) => {
-                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+                Self::Kmip21Error(ErrorReason::Codec_Error, e.to_string())
             }
-            KmipError::DeserializationSize(expected, actual) => Self::KmipError(
+            KmipError::DeserializationSize(expected, actual) => Self::Kmip21Error(
                 ErrorReason::Codec_Error,
                 format!("Deserialization: invalid size: {actual}, expected: {expected}"),
             ),
+            KmipError::InvalidKmip14Value(result_reason, e)
+            | KmipError::InvalidKmip14Object(result_reason, e)
+            | KmipError::Kmip14(result_reason, e) => Self::Kmip14Error(result_reason, e),
         }
     }
 }

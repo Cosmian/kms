@@ -5,9 +5,10 @@ use cosmian_kms_client::{
     kmip_2_1::{
         kmip_objects::Object,
         kmip_types::{Attributes, KeyFormatType, LinkType},
-        ttlv::{deserializer::from_ttlv, TTLV},
     },
-    read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    read_from_json_file, read_object_from_json_ttlv_file,
+    ttlv::{deserializer::from_ttlv, TTLV},
+    KMS_CLI_CONF_ENV,
 };
 use kms_test_server::start_default_test_kms_server;
 use openssl::{
