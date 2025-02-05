@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 #[allow(clippy::wildcard_imports)]
 use super::{
@@ -331,7 +331,7 @@ pub struct ObtainLease {
 pub struct ObtainLeaseResponse {
     pub unique_identifier: String,
     pub lease_time: i32,
-    pub last_change_date: DateTime<Utc>,
+    pub last_change_date: OffsetDateTime,
 }
 
 // Continue implementing remaining operations...

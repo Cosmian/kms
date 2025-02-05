@@ -19,12 +19,12 @@ use std::fmt::{self, Display, Formatter};
 /// Indicator in the header of a batched request.
 /// The batched responses MAY contain a mixture of synchronous and
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
-use chrono::Utc;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
     Deserialize, Serialize,
 };
+use time::OffsetDateTime;
 
 use super::{
     kmip_operations::{Direction, ErrorReason, Operation},
@@ -459,7 +459,7 @@ impl Default for MessageResponseHeader {
     #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
     fn default() -> Self {
         Self {
-            timestamp: Utc::now().timestamp() as u64,
+            timestamp: OffsetDateTime::now_utc().unix_timestamp() as u64,
             protocol_version: ProtocolVersion::default(),
             nonce: None,
             server_hashed_password: None,

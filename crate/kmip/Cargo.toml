@@ -19,7 +19,6 @@ fips = []
 
 [dependencies]
 bitflags = { workspace = true }
-chrono = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 leb128 = { workspace = true }

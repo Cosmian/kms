@@ -1360,7 +1360,6 @@ name = "cosmian_kmip"
 version = "4.22.1"
 dependencies = [
  "bitflags 2.8.0",
- "chrono",
  "cosmian_logger",
  "hex",
  "leb128",
