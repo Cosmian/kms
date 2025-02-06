@@ -2,17 +2,15 @@ use std::str::FromStr;
 
 use base64::Engine as _;
 use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingSpecification,
     kmip_operations::{
         Certify, CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-        DecryptResponse, Destroy, DestroyResponse, EncryptResponse, Export, ExportResponse,
-        GetAttributes, GetAttributesResponse, ImportResponse, Locate, LocateResponse,
-        RevokeResponse, Validate, ValidateResponse,
+        DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
+        GetAttributesResponse, ImportResponse, Locate, LocateResponse, RevokeResponse, Validate,
+        ValidateResponse,
     },
     kmip_types::{
-        BlockCipherMode, CertificateRequestType, CryptographicAlgorithm, CryptographicParameters,
-        EncodingOption, EncryptionKeyInformation, HashingAlgorithm, KeyFormatType, PaddingMethod,
-        RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        CertificateRequestType, CryptographicParameters, KeyFormatType, RecommendedCurve,
+        UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -28,8 +26,10 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
-    export_utils::{der_to_pem, tag_from_object},
-    types::{ExportKeyFormat, WrappingAlgorithm},
+    export_utils::{
+        der_to_pem, export_request, prepare_key_export_elements, tag_from_object, ExportKeyFormat,
+        WrappingAlgorithm,
+    },
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -283,98 +283,29 @@ pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 pub fn export_ttlv_request(
     unique_identifier: String,
     unwrap: bool,
-    key_format: Option<String>,
+    key_format: String,
     wrap_key_id: Option<String>,
     wrapping_algorithm: Option<String>,
     authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
-    let key_format: Option<ExportKeyFormat> = key_format.and_then(|s| {
-        ExportKeyFormat::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid export key format type: {e}")))
-            .ok()
-    });
-    let key_format_type = match key_format {
-        // For Raw: use the default format then do the local extraction of the bytes
-        Some(ExportKeyFormat::JsonTtlv)
-        | Some(ExportKeyFormat::Raw)
-        | Some(ExportKeyFormat::Base64) => None,
-
-        Some(ExportKeyFormat::Sec1Pem) => Some(KeyFormatType::ECPrivateKey),
-        Some(ExportKeyFormat::Sec1Der) => Some(KeyFormatType::ECPrivateKey),
-
-        Some(ExportKeyFormat::Pkcs1Pem) => Some(KeyFormatType::PKCS1),
-        Some(ExportKeyFormat::Pkcs1Der) => Some(KeyFormatType::PKCS1),
-
-        Some(ExportKeyFormat::Pkcs8Pem) | Some(ExportKeyFormat::SpkiPem) => {
-            Some(KeyFormatType::PKCS8)
-        }
-
-        Some(ExportKeyFormat::Pkcs8Der) | Some(ExportKeyFormat::SpkiDer) => {
-            Some(KeyFormatType::PKCS8)
-        }
-
-        None => None, // Default case for when key_format is None
-    };
-    let encode_to_ttlv = key_format == Some(ExportKeyFormat::JsonTtlv);
-
+    let key_format = ExportKeyFormat::from_str(&key_format)
+        .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
         WrappingAlgorithm::from_str(&s)
             .map_err(|e| JsValue::from_str(&format!("Invalid wrapping algorithm: {e}")))
             .ok()
     });
-    let cryptographic_parameters =
-        wrapping_algorithm
-            .as_ref()
-            .map(|wrapping_algorithm| match wrapping_algorithm {
-                WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
-                    ..CryptographicParameters::default()
-                },
-                WrappingAlgorithm::AesGCM => CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    block_cipher_mode: Some(BlockCipherMode::GCM),
-                    ..CryptographicParameters::default()
-                },
-                WrappingAlgorithm::RsaPkcsV15 => CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    padding_method: Some(PaddingMethod::PKCS1v15),
-                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                    ..CryptographicParameters::default()
-                },
-                WrappingAlgorithm::RsaOaep => CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    padding_method: Some(PaddingMethod::OAEP),
-                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                    ..CryptographicParameters::default()
-                },
-                WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    padding_method: Some(PaddingMethod::OAEP),
-                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                    ..CryptographicParameters::default()
-                },
-            });
-
-    let request = Export::new(
-        unique_identifier,
+    let (key_format_type, _encode_to_pem, encode_to_ttlv, wrapping_cryptographic_parameters) =
+        prepare_key_export_elements(&key_format, &wrapping_algorithm)
+            .map_err(|e| JsValue::from_str(&format!("Error preparing export elements: {e}")))?;
+    let request = export_request(
+        &unique_identifier,
         unwrap,
-        wrap_key_id.map(|wrapping_key_id| KeyWrappingSpecification {
-            wrapping_method: WrappingMethod::Encrypt,
-            encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_string()),
-                cryptographic_parameters,
-            }),
-            attribute_name: authentication_data.map(|data| vec![data]),
-            encoding_option: Some(if encode_to_ttlv {
-                EncodingOption::TTLVEncoding
-            } else {
-                EncodingOption::NoEncoding
-            }),
-            ..KeyWrappingSpecification::default()
-        }),
+        wrap_key_id.as_deref(),
         key_format_type,
+        encode_to_ttlv,
+        wrapping_cryptographic_parameters,
+        authentication_data,
     );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
