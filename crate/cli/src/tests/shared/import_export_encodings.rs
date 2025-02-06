@@ -1,10 +1,14 @@
 use std::path::PathBuf;
 
-use cosmian_kms_client::read_bytes_from_file;
+use cosmian_kms_client::{
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::{
+        export_utils::ExportKeyFormat, import_utils::ImportKeyFormat,
+    },
+};
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     error::result::CliResult,
     tests::shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
 };
@@ -26,11 +30,6 @@ async fn test_import_export_encodings() -> CliResult<()> {
     )?;
     test_pems(
         ctx,
-        "../../test_data/key_encodings/ec_public_key_spki.pem",
-        ExportKeyFormat::SpkiPem,
-    )?;
-    test_pems(
-        ctx,
         "../../test_data/key_encodings/rsa_private_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
@@ -43,11 +42,6 @@ async fn test_import_export_encodings() -> CliResult<()> {
         ctx,
         "../../test_data/key_encodings/rsa_public_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
-    )?;
-    test_pems(
-        ctx,
-        "../../test_data/key_encodings/rsa_public_key_spki.pem",
-        ExportKeyFormat::SpkiPem,
     )?;
 
     Ok(())

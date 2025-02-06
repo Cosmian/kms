@@ -1,92 +1,18 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{GetAttributes, Operation},
-    kmip_types::{AttributeReference, CryptographicParameters, EncodingOption},
+    kmip_types::{AttributeReference, CryptographicParameters},
 };
+use cosmian_kms_ui_utils::export_utils::{export_request, get_request};
 
 use crate::{
     batch_utils::batch_operations,
     cosmian_kmip::kmip_2_1::{
-        kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
-        kmip_operations::{Export, Get},
-        kmip_types::{
-            Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
-        },
+        kmip_types::{Attributes, KeyFormatType, UniqueIdentifier},
     },
     error::result::{KmsClientResult, KmsClientResultHelper},
     KmsClient, KmsClientError,
 };
-
-fn export_request(
-    object_id_or_tags: &str,
-    unwrap: bool,
-    wrapping_key_id: Option<&str>,
-    key_format_type: Option<KeyFormatType>,
-    encoding_to_ttlv: bool,
-    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
-) -> Export {
-    Export::new(
-        UniqueIdentifier::TextString(object_id_or_tags.to_string()),
-        unwrap,
-        wrapping_key_id.map(|wrapping_key_id| {
-            key_wrapping_specification(
-                wrapping_key_id,
-                wrapping_cryptographic_parameters,
-                authenticated_encryption_additional_data,
-                encoding_to_ttlv,
-            )
-        }),
-        key_format_type,
-    )
-}
-
-fn get_request(
-    object_id_or_tags: &str,
-    unwrap: bool,
-    wrapping_key_id: Option<&str>,
-    key_format_type: Option<KeyFormatType>,
-    encoding_to_ttlv: bool,
-    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
-) -> Get {
-    Get::new(
-        UniqueIdentifier::TextString(object_id_or_tags.to_string()),
-        unwrap,
-        wrapping_key_id.map(|wrapping_key_id| {
-            key_wrapping_specification(
-                wrapping_key_id,
-                wrapping_cryptographic_parameters,
-                authenticated_encryption_additional_data,
-                encoding_to_ttlv,
-            )
-        }),
-        key_format_type,
-    )
-}
-
-/// Determine the `KeyWrappingSpecification`
-fn key_wrapping_specification(
-    wrapping_key_id: &str,
-    cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
-    encode_to_ttlv: bool,
-) -> KeyWrappingSpecification {
-    KeyWrappingSpecification {
-        wrapping_method: WrappingMethod::Encrypt,
-        encryption_key_information: Some(EncryptionKeyInformation {
-            unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_string()),
-            cryptographic_parameters,
-        }),
-        attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
-        encoding_option: Some(if encode_to_ttlv {
-            EncodingOption::TTLVEncoding
-        } else {
-            EncodingOption::NoEncoding
-        }),
-        ..KeyWrappingSpecification::default()
-    }
-}
 
 #[derive(Default)]
 pub struct ExportObjectParams<'a> {

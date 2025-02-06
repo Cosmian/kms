@@ -2,7 +2,9 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
+    read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_ui_utils::import_utils::{ImportKeyFormat, KeyUsage},
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
@@ -15,7 +17,6 @@ use crate::tests::{
     symmetric::create_key::create_symmetric_key,
 };
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
     error::{result::CliResult, CliError},
     tests::{
         shared::{export::export_key, ExportKeyParams},
@@ -63,8 +64,8 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CliResult<String> {
             ImportKeyFormat::Sec1 => "sec1",
             ImportKeyFormat::Pkcs1Priv => "pkcs1-priv",
             ImportKeyFormat::Pkcs1Pub => "pkcs1-pub",
-            ImportKeyFormat::Pkcs8 => "pkcs8",
-            ImportKeyFormat::Spki => "spki",
+            ImportKeyFormat::Pkcs8Pub => "pkcs8-pub",
+            ImportKeyFormat::Pkcs8Priv => "pkcs8-priv",
             ImportKeyFormat::Aes => "aes",
             ImportKeyFormat::Chacha20 => "chacha20",
         };

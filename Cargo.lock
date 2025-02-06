@@ -1587,9 +1587,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_ui_utils"
-version = "4.21.2"
+version = "4.22.1"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "cloudproof",
  "cosmian_config_utils",
  "cosmian_kmip",
@@ -1602,9 +1602,10 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "strum",
- "thiserror 2.0.11",
+ "thiserror 2.0.12",
  "tracing",
  "wasm-bindgen",
+ "web-sys",
  "zeroize",
 ]
 

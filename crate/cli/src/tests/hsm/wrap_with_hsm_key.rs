@@ -1,13 +1,12 @@
-use cosmian_kms_client::reexport::cosmian_kms_ui_utils::create_utils::SymmetricAlgorithm;
+use cosmian_kms_client::reexport::cosmian_kms_ui_utils::{
+    create_utils::SymmetricAlgorithm, export_utils::ExportKeyFormat,
+};
 use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::{
-    actions::{
-        shared::ExportKeyFormat,
-        symmetric::{
-            keys::create_key::CreateKeyAction, DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
-        },
+    actions::symmetric::{
+        keys::create_key::CreateKeyAction, DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
     },
     error::result::CliResult,
     tests::{

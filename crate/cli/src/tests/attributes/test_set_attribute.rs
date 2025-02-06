@@ -1,6 +1,11 @@
-use cosmian_kms_client::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute},
+use cosmian_kms_client::{
+    kmip_2_1::{
+        extra::VENDOR_ID_COSMIAN,
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, LinkType, Tag, VendorAttribute,
+        },
+    },
+    reexport::cosmian_kms_ui_utils::import_utils::{build_usage_mask_from_key_usage, KeyUsage},
 };
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use strum::IntoEnumIterator;
@@ -12,7 +17,6 @@ use crate::{
             CCryptographicAlgorithm, CLinkType, SetOrDeleteAttributes, VendorAttributeCli,
         },
         certificates::Algorithm,
-        shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::CliResult,

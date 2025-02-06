@@ -10,20 +10,14 @@ use cosmian_kms_client::{
             VendorAttribute,
         },
     },
+    reexport::cosmian_kms_ui_utils::import_utils::{build_usage_mask_from_key_usage, KeyUsage},
     KmsClient,
 };
 use serde::Deserialize;
 use strum::EnumIter;
 use tracing::{info, trace};
 
-use crate::{
-    actions::{
-        console,
-        shared::utils::{build_usage_mask_from_key_usage, KeyUsage},
-    },
-    cli_bail,
-    error::result::CliResult,
-};
+use crate::{actions::console, cli_bail, error::result::CliResult};
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(ValueEnum, Clone, Copy, Debug, EnumIter)]

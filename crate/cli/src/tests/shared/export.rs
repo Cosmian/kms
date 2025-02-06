@@ -5,7 +5,9 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
     kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
-    read_bytes_from_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
+    read_bytes_from_file, read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_ui_utils::export_utils::{ExportKeyFormat, WrappingAlgorithm},
+    KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_client::{
@@ -27,10 +29,7 @@ use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 use crate::{
-    actions::{
-        shared::{export_key::WrappingAlgorithm, ExportKeyFormat},
-        symmetric::keys::create_key::CreateKeyAction,
-    },
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::{result::CliResult, CliError},
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -76,8 +75,6 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CliResult<()> {
             ExportKeyFormat::Pkcs1Der => "pkcs1-der",
             ExportKeyFormat::Pkcs8Pem => "pkcs8-pem",
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
-            ExportKeyFormat::SpkiPem => "spki-pem",
-            ExportKeyFormat::SpkiDer => "spki-der",
             ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
         };
@@ -575,7 +572,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
             .to_str()
             .unwrap()
             .to_owned(),
-        key_format: Some(ExportKeyFormat::SpkiDer),
+        key_format: Some(ExportKeyFormat::Pkcs8Der),
         ..Default::default()
     })?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
