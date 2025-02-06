@@ -127,6 +127,20 @@ pub fn der_to_pem(
     ))
 }
 
+pub fn get_export_key_format_type(key_format: &ExportKeyFormat) -> (Option<KeyFormatType>, bool) {
+    let (key_format_type, encode_to_pem) = match key_format {
+        // For Raw: use the default format then do the local extraction of the bytes
+        ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => (None, false),
+        ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+        ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+        ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+        ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+        ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
+        ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
+    };
+    (key_format_type, encode_to_pem)
+}
+
 pub fn prepare_key_export_elements(
     key_format: &ExportKeyFormat,
     wrapping_algorithm: &Option<WrappingAlgorithm>,
@@ -139,17 +153,7 @@ pub fn prepare_key_export_elements(
     ),
     UtilsError,
 > {
-    let (key_format_type, encode_to_pem) = match key_format {
-        // For Raw: use the default format then do the local extraction of the bytes
-        ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => (None, false),
-        ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
-        ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
-        ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
-        ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-        ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
-        ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
-    };
-
+    let (key_format_type, encode_to_pem) = get_export_key_format_type(key_format);
     let encode_to_ttlv = *key_format == ExportKeyFormat::JsonTtlv;
 
     let wrapping_cryptographic_parameters =

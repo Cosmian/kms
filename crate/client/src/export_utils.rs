@@ -2,19 +2,17 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{GetAttributes, Operation},
     kmip_types::{AttributeReference, CryptographicParameters},
 };
-use cosmian_kms_ui_utils::export_utils::{get_request, export_request};
+use cosmian_kms_ui_utils::export_utils::{export_request, get_request};
+
 use crate::{
     batch_utils::batch_operations,
     cosmian_kmip::kmip_2_1::{
         kmip_objects::Object,
-        kmip_types::{
-            Attributes, KeyFormatType, UniqueIdentifier,
-        },
+        kmip_types::{Attributes, KeyFormatType, UniqueIdentifier},
     },
     error::result::{KmsClientResult, KmsClientResultHelper},
     KmsClient, KmsClientError,
 };
-
 
 #[derive(Default)]
 pub struct ExportObjectParams<'a> {

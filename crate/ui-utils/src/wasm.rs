@@ -9,8 +9,7 @@ use cosmian_kmip::kmip_2_1::{
         ValidateResponse,
     },
     kmip_types::{
-        CertificateRequestType, CryptographicParameters, KeyFormatType, RecommendedCurve,
-        UniqueIdentifier,
+        CertificateRequestType, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -27,8 +26,8 @@ use wasm_bindgen::prelude::*;
 use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     export_utils::{
-        der_to_pem, export_request, prepare_key_export_elements, tag_from_object, ExportKeyFormat,
-        WrappingAlgorithm,
+        der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
+        tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
 };
 
@@ -354,22 +353,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
                 let mut bytes = key_block
                     .key_bytes()
                     .map_err(|e| JsValue::from_str(&format!("{e}")))?;
-                let (key_format_type, encode_to_pem) = match key_format {
-                    // For Raw: use the default format then do the local extraction of the bytes
-                    ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => {
-                        (None, false)
-                    }
-                    ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
-                    ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
-                    ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
-                    ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-                    ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => {
-                        (Some(KeyFormatType::PKCS8), true)
-                    }
-                    ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => {
-                        (Some(KeyFormatType::PKCS8), false)
-                    }
-                };
+                let (key_format_type, encode_to_pem) = get_export_key_format_type(&key_format);
 
                 if encode_to_pem {
                     bytes = der_to_pem(bytes.as_slice(), key_format_type.unwrap(), object_type)
