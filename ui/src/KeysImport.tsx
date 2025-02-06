@@ -46,8 +46,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
         console.log('Import key values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId. values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage);
         try {
+            const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId, values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage, values.authenticatedAdditionalData);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result = await parse_import_ttlv_response(result_str)
@@ -55,8 +55,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                 setRes("File has been imported")
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error importing key: ${e}`)
+            console.error("Error importing key:", e);
         } finally {
             setIsLoading(false);
         }
@@ -72,7 +72,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: 'PEM (auto-detect format)', value: 'pem' },
             { label: 'PKCS#1 DER (RSA private)', value: 'pkcs1-priv' },
             { label: 'PKCS#1 DER (RSA public)', value: 'pkcs1-pub' },
-            { label: 'PKCS#8 DER (RSA private)', value: 'pkcs8' },
+            { label: 'PKCS#8 DER (RSA private)', value: 'pkcs8-priv' },
+            { label: 'PKCS#8 DER (RSA public)', value: 'pkcs8-pub' },
             { label: 'SPKI DER (RSA public)', value: 'spki' },
         ];
         key_usages = [
@@ -89,8 +90,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             { label: 'JSON TTLV (default)', value: 'json-ttlv' },
             { label: 'PEM (auto-detect format)', value: 'pem' },
             { label: 'SEC1 DER (EC private)', value: 'sec1' },
-            { label: 'PKCS#8 DER (EC private)', value: 'pkcs8' },
-            { label: 'SPKI DER (EC public)', value: 'spki' },
+            { label: 'PKCS#8 DER (RSA public)', value: 'pkcs8-pub' },
+            { label: 'PKCS#8 DER (RSA private)', value: 'pkcs8-priv' },
         ];
         key_usages = [
             { label: 'Sign', value: 'sign' },

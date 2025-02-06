@@ -8,9 +8,13 @@ use cosmian_kms_client::{
         kmip_types::{
             Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
+        requests::import_object_request,
     },
-    kmip_2_1::requests::import_object_request,
-    read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
+    read_bytes_from_file, read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_ui_utils::import_utils::{
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage, KeyUsage,
+    },
+    KmsClient,
 };
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
@@ -18,13 +22,7 @@ use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{
-        console,
-        shared::{
-            import_key::build_private_key_from_der_bytes,
-            utils::{build_usage_mask_from_key_usage, KeyUsage},
-        },
-    },
+    actions::console,
     error::{result::CliResult, CliError},
 };
 

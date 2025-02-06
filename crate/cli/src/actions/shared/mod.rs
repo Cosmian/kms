@@ -7,7 +7,7 @@ mod wrap_key;
 
 mod unwrap_key;
 
-pub use export_key::{ExportKeyAction, ExportKeyFormat};
+pub use export_key::ExportKeyAction;
 pub use import_key::ImportKeyAction;
 pub use locate::LocateObjectsAction;
 pub use unwrap_key::UnwrapKeyAction;

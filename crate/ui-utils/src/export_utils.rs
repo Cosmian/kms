@@ -1,8 +1,14 @@
 use std::fmt::Display;
 
 use cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
-    kmip_types::KeyFormatType,
+    kmip_operations::{Export, Get},
+    kmip_types::{
+        BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, EncodingOption,
+        EncryptionKeyInformation, HashingAlgorithm, KeyFormatType, PaddingMethod, UniqueIdentifier,
+        WrappingMethod,
+    },
 };
 use pem::{EncodeConfig, LineEnding};
 use strum::EnumString;
@@ -20,15 +26,13 @@ pub enum ExportKeyFormat {
     Pkcs1Der,
     Pkcs8Pem,
     Pkcs8Der,
-    SpkiPem,
-    SpkiDer,
     Base64,
     Raw,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumString)]
 #[strum(serialize_all = "kebab-case")]
-pub(crate) enum WrappingAlgorithm {
+pub enum WrappingAlgorithm {
     NistKeyWrap,
     AesGCM,
     RsaPkcsV15,
@@ -71,7 +75,7 @@ pub fn tag_from_object(object: &Object) -> String {
         Object::OpaqueObject { .. } => "OpaqueObject",
         Object::PrivateKey { .. } => "PrivateKey",
     }
-    .to_string()
+    .to_owned()
 }
 
 /// Converts DER bytes to PEM bytes for keys
@@ -119,4 +123,150 @@ pub fn der_to_pem(
     Ok(Zeroizing::new(
         pem::encode_config(&pem, EncodeConfig::new().set_line_ending(LineEnding::LF)).into_bytes(),
     ))
+}
+
+#[must_use]
+pub const fn get_export_key_format_type(
+    key_format: &ExportKeyFormat,
+) -> (Option<KeyFormatType>, bool) {
+    let (key_format_type, encode_to_pem) = match key_format {
+        // For Raw: use the default format then do the local extraction of the bytes
+        ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => (None, false),
+        ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+        ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+        ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+        ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+        ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
+        ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+    };
+    (key_format_type, encode_to_pem)
+}
+
+pub fn prepare_key_export_elements(
+    key_format: &ExportKeyFormat,
+    wrapping_algorithm: &Option<WrappingAlgorithm>,
+) -> Result<
+    (
+        Option<KeyFormatType>,
+        bool,
+        bool,
+        Option<CryptographicParameters>,
+    ),
+    UtilsError,
+> {
+    let (key_format_type, encode_to_pem) = get_export_key_format_type(key_format);
+    let encode_to_ttlv = *key_format == ExportKeyFormat::JsonTtlv;
+
+    let wrapping_cryptographic_parameters =
+        wrapping_algorithm
+            .as_ref()
+            .map(|wrapping_algorithm| match wrapping_algorithm {
+                WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
+                    ..CryptographicParameters::default()
+                },
+                WrappingAlgorithm::AesGCM => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    block_cipher_mode: Some(BlockCipherMode::GCM),
+                    ..CryptographicParameters::default()
+                },
+                WrappingAlgorithm::RsaPkcsV15 => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    padding_method: Some(PaddingMethod::PKCS1v15),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                },
+                WrappingAlgorithm::RsaOaep => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    padding_method: Some(PaddingMethod::OAEP),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                },
+                WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    padding_method: Some(PaddingMethod::OAEP),
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                },
+            });
+    Ok((
+        key_format_type,
+        encode_to_pem,
+        encode_to_ttlv,
+        wrapping_cryptographic_parameters,
+    ))
+}
+
+#[must_use]
+pub fn export_request(
+    object_id_or_tags: &str,
+    unwrap: bool,
+    wrapping_key_id: Option<&str>,
+    key_format_type: Option<KeyFormatType>,
+    encoding_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
+    authenticated_encryption_additional_data: Option<String>,
+) -> Export {
+    Export::new(
+        UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
+        unwrap,
+        wrapping_key_id.map(|wrapping_key_id| {
+            key_wrapping_specification(
+                wrapping_key_id,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data,
+                encoding_to_ttlv,
+            )
+        }),
+        key_format_type,
+    )
+}
+
+#[must_use]
+pub fn get_request(
+    object_id_or_tags: &str,
+    unwrap: bool,
+    wrapping_key_id: Option<&str>,
+    key_format_type: Option<KeyFormatType>,
+    encoding_to_ttlv: bool,
+    wrapping_cryptographic_parameters: Option<CryptographicParameters>,
+    authenticated_encryption_additional_data: Option<String>,
+) -> Get {
+    Get::new(
+        UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
+        unwrap,
+        wrapping_key_id.map(|wrapping_key_id| {
+            key_wrapping_specification(
+                wrapping_key_id,
+                wrapping_cryptographic_parameters,
+                authenticated_encryption_additional_data,
+                encoding_to_ttlv,
+            )
+        }),
+        key_format_type,
+    )
+}
+
+/// Determine the `KeyWrappingSpecification`
+fn key_wrapping_specification(
+    wrapping_key_id: &str,
+    cryptographic_parameters: Option<CryptographicParameters>,
+    authenticated_encryption_additional_data: Option<String>,
+    encode_to_ttlv: bool,
+) -> KeyWrappingSpecification {
+    KeyWrappingSpecification {
+        wrapping_method: WrappingMethod::Encrypt,
+        encryption_key_information: Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_owned()),
+            cryptographic_parameters,
+        }),
+        attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
+        encoding_option: Some(if encode_to_ttlv {
+            EncodingOption::TTLVEncoding
+        } else {
+            EncodingOption::NoEncoding
+        }),
+        ..KeyWrappingSpecification::default()
+    }
 }

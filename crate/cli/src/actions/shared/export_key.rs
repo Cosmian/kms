@@ -1,14 +1,12 @@
-use std::{fmt::Display, path::PathBuf};
+use std::path::PathBuf;
 
 use base64::Engine;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, KeyFormatType},
     export_object,
-    kmip_2_1::kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
+    reexport::cosmian_kms_ui_utils::export_utils::{
+        der_to_pem, prepare_key_export_elements, ExportKeyFormat, WrappingAlgorithm,
     },
-    reexport::cosmian_kms_ui_utils::export_utils::der_to_pem,
     write_bytes_to_file, write_kmip_object_to_file, ExportObjectParams, KmsClient,
 };
 
@@ -17,48 +15,6 @@ use crate::{
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };
-
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
-pub enum ExportKeyFormat {
-    JsonTtlv,
-    Sec1Pem,
-    Sec1Der,
-    Pkcs1Pem,
-    Pkcs1Der,
-    Pkcs8Pem,
-    Pkcs8Der,
-    SpkiPem,
-    SpkiDer,
-    Base64,
-    Raw,
-}
-
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WrappingAlgorithm {
-    NistKeyWrap,
-    AesGCM,
-    RsaPkcsV15,
-    RsaOaep,
-    RsaAesKeyWrap,
-}
-
-impl WrappingAlgorithm {
-    pub(crate) const fn as_str(&self) -> &'static str {
-        match self {
-            Self::NistKeyWrap => "nist-key-wrap",
-            Self::AesGCM => "aes-gcm",
-            Self::RsaPkcsV15 => "rsa-pkcs-v15",
-            Self::RsaOaep => "rsa-oaep",
-            Self::RsaAesKeyWrap => "rsa-aes-key-wrap",
-        }
-    }
-}
-
-impl Display for WrappingAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
 
 /// Export a key from the KMS
 ///
@@ -99,7 +55,6 @@ pub struct ExportKeyAction {
     ///  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
     ///  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
     ///  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-    ///  - `spki-pem` and `spki-der` only apply to RSA and EC public keys
     ///  - `raw` returns the raw bytes of
     ///       - symmetric keys
     ///       - Covercrypt keys
@@ -181,60 +136,8 @@ impl ExportKeyAction {
         } else {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
-
-        let (key_format_type, encode_to_pem) = match self.key_format {
-            // For Raw: use the default format then do the local extraction of the bytes
-            ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => {
-                (None, false)
-            }
-            ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
-            ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
-            ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
-            ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-            ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => {
-                (Some(KeyFormatType::PKCS8), true)
-            }
-            ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => {
-                (Some(KeyFormatType::PKCS8), false)
-            }
-        };
-
-        let encode_to_ttlv = self.key_format == ExportKeyFormat::JsonTtlv;
-
-        let wrapping_cryptographic_parameters =
-            self.wrapping_algorithm
-                .as_ref()
-                .map(|wrapping_algorithm| match wrapping_algorithm {
-                    WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                        block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
-                        ..CryptographicParameters::default()
-                    },
-                    WrappingAlgorithm::AesGCM => CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                        block_cipher_mode: Some(BlockCipherMode::GCM),
-                        ..CryptographicParameters::default()
-                    },
-                    WrappingAlgorithm::RsaPkcsV15 => CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        padding_method: Some(PaddingMethod::PKCS1v15),
-                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                        ..CryptographicParameters::default()
-                    },
-                    WrappingAlgorithm::RsaOaep => CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        padding_method: Some(PaddingMethod::OAEP),
-                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                        ..CryptographicParameters::default()
-                    },
-                    WrappingAlgorithm::RsaAesKeyWrap => CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                        padding_method: Some(PaddingMethod::OAEP),
-                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                        ..CryptographicParameters::default()
-                    },
-                });
-
+        let (key_format_type, encode_to_pem, encode_to_ttlv, wrapping_cryptographic_parameters) =
+            prepare_key_export_elements(&self.key_format, &self.wrapping_algorithm)?;
         // export the object
         let (id, object, _) = export_object(
             kms_rest_client,

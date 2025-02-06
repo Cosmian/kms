@@ -1,7 +1,14 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::{
+        export_utils::{ExportKeyFormat, WrappingAlgorithm},
+        import_utils::{ImportKeyFormat, KeyUsage},
+    },
+    KMS_CLI_CONF_ENV,
+};
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::{debug, trace};
@@ -9,14 +16,7 @@ use uuid::Uuid;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::{
-        certificates::CertificateInputFormat,
-        rsa::RsaEncryptionAlgorithm,
-        shared::{
-            export_key::WrappingAlgorithm, import_key::ImportKeyFormat, utils::KeyUsage,
-            ExportKeyFormat,
-        },
-    },
+    actions::{certificates::CertificateInputFormat, rsa::RsaEncryptionAlgorithm},
     error::{result::CliResult, CliError},
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},
