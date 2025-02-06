@@ -17,6 +17,11 @@ import LocateForm from './Locate';
 import CovercryptMasterKeyForm from './CovercryptMasterKey';
 import CovercryptUserKeyForm from './CovercryptUserKey';
 import CovercryptRevokeForm from './CovercryptKeysRevoke';
+import AccessGrantForm from './AccessGrant';
+import AccessRevokeForm from './AccessRevoke';
+import AccessListForm from './AccessList';
+import ObjectsOwnedList from './ObjectsOwned';
+import AccessObtainedList from './AccessObtained';
 
 function App() {
 
@@ -53,6 +58,11 @@ function App() {
             <Route path="cc/keys/import" element={<KeyImportForm key_type={'covercrypt'} />} />
             <Route path="cc/keys/revoke" element={<CovercryptRevokeForm />} />
             <Route path="cc/keys/destroy" element={<KeyDestroyForm key_type='covercrypt' />} />
+            <Route path="access-rights/grant" element={<AccessGrantForm />} />
+            <Route path="access-rights/revoke" element={<AccessRevokeForm />} />
+            <Route path="access-rights/list" element={<AccessListForm />} />
+            <Route path="access-rights/owned" element={<ObjectsOwnedList />} />
+            <Route path="access-rights/obtained" element={<AccessObtainedList />} />
           </Route>
         </Routes>
       </BrowserRouter>
