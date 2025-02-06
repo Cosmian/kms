@@ -54,5 +54,4 @@
 pub mod create_utils;
 pub mod error;
 pub mod export_utils;
-pub mod types;
 pub mod wasm;

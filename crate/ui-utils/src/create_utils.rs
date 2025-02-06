@@ -1,9 +1,59 @@
 use std::fmt::Display;
+
 use base64::{engine::general_purpose, Engine as _};
-use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, RecommendedCurve};
 use strum::EnumString;
 
 use crate::error::UtilsError;
+
+#[derive(Debug, Clone, Copy, EnumString)]
+#[strum(serialize_all = "kebab-case")]
+pub enum Curve {
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "nist-p192")]
+    NistP192,
+    #[strum(to_string = "nist-p224")]
+    NistP224,
+    #[strum(to_string = "nist-p256")]
+    NistP256,
+    #[strum(to_string = "nist-p384")]
+    NistP384,
+    #[strum(to_string = "nist-p521")]
+    NistP521,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "x25519")]
+    X25519,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "ed25519")]
+    Ed25519,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "x448")]
+    X448,
+    #[cfg(not(feature = "fips"))]
+    #[strum(to_string = "ed448")]
+    Ed448,
+}
+
+impl From<Curve> for RecommendedCurve {
+    fn from(curve: Curve) -> Self {
+        match curve {
+            #[cfg(not(feature = "fips"))]
+            Curve::NistP192 => Self::P192,
+            Curve::NistP224 => Self::P224,
+            Curve::NistP256 => Self::P256,
+            Curve::NistP384 => Self::P384,
+            Curve::NistP521 => Self::P521,
+            #[cfg(not(feature = "fips"))]
+            Curve::X25519 => Self::CURVE25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed25519 => Self::CURVEED25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::X448 => Self::CURVE448,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed448 => Self::CURVEED448,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, EnumString)]
 pub enum SymmetricAlgorithm {
@@ -16,17 +66,16 @@ pub enum SymmetricAlgorithm {
 }
 
 impl Display for SymmetricAlgorithm {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-          #[cfg(not(feature = "fips"))]
-          Self::Chacha20 => write!(f, "chacha20"),
-          Self::Aes => write!(f, "aes"),
-          Self::Sha3 => write!(f, "sha3"),
-          Self::Shake => write!(f, "shake"),
-      }
-  }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(not(feature = "fips"))]
+            Self::Chacha20 => write!(f, "chacha20"),
+            Self::Aes => write!(f, "aes"),
+            Self::Sha3 => write!(f, "sha3"),
+            Self::Shake => write!(f, "shake"),
+        }
+    }
 }
-
 
 pub fn prepare_sym_key_elements(
     number_of_bits: Option<usize>,

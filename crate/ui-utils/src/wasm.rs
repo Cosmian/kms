@@ -27,9 +27,9 @@ use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    create_utils::{prepare_sym_key_elements, SymmetricAlgorithm},
+    create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     export_utils::{der_to_pem, tag_from_object},
-    types::{Curve, ExportKeyFormat, WrappingAlgorithm},
+    types::{ExportKeyFormat, WrappingAlgorithm},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
