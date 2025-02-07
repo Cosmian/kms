@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
 
+use time::OffsetDateTime;
+
 use super::{error::TtlvError, ItemTypeEnumeration, TTLValue, TTLV};
 use crate::kmip_2_1::kmip_types::Tag;
 
@@ -61,18 +63,17 @@ where
                 write_type(&mut self.writer, ItemTypeEnumeration::Structure)?;
 
                 // Calculate total length of nested items
-                let mut length = 0_u32;
-                let mut temp_writer = Vec::new();
+                let mut temp_buffer = Vec::new();
+                let mut temp_serializer = TTLVSerializer::new(&mut temp_buffer);
                 for item in items {
-                    self.write_ttlv(item)?;
-                    length += temp_writer.len() as u32;
+                    temp_serializer.write_ttlv(item)?;
                 }
 
                 // Write Length (4 bytes)
-                write_length(&mut self.writer, length)?;
+                write_length(&mut self.writer, temp_buffer.len() as u32)?;
 
                 // Write actual nested items
-                self.writer.write_all(&temp_writer)?;
+                self.writer.write_all(&temp_buffer)?;
             }
             TTLValue::Integer(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::Integer)?;
@@ -99,10 +100,12 @@ where
                 write_type(&mut self.writer, ItemTypeEnumeration::Enumeration)?;
                 write_length(&mut self.writer, 4)?;
                 match value {
-                    super::TTLVEnumeration::Integer(i) => self.writer.write_i32::<BigEndian>(*i)?,
+                    super::TTLVEnumeration::Integer(i) => {
+                        self.writer.write_all(&i.to_be_bytes())?
+                    }
                     super::TTLVEnumeration::Name(_) => {
-                        return Err(KmipError::InvalidKmipValue(
-                            "Enumeration names not supported in TTLV format".to_owned(),
+                        return Err(TtlvError::from(
+                            "Enumeration names not supported in TTLV format",
                         ))
                     }
                 }
@@ -110,9 +113,9 @@ where
             TTLValue::Boolean(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::Boolean)?;
                 write_length(&mut self.writer, 8)?;
-                self.writer.write_u8(if *value { 1 } else { 0 })?;
-                // Pad with 7 zeros as per spec
-                self.writer.write_all(&[0; 7])?;
+                let mut buf = [0_u8; 8];
+                buf[7] = if *value { 1 } else { 0 };
+                self.writer.write_all(&buf)?;
             }
             TTLValue::TextString(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::TextString)?;
@@ -127,18 +130,19 @@ where
             TTLValue::DateTime(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::DateTime)?;
                 write_length(&mut self.writer, 8)?;
-                self.writer.write_i64::<BigEndian>(value.unix_timestamp())?;
+                self.writer
+                    .write_all(&value.unix_timestamp().to_be_bytes())?;
             }
             TTLValue::Interval(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::Interval)?;
                 write_length(&mut self.writer, 4)?;
-                self.writer.write_u32::<BigEndian>(*value)?;
+                self.writer.write_all(&value.to_be_bytes())?;
             }
             TTLValue::DateTimeExtended(value) => {
                 write_type(&mut self.writer, ItemTypeEnumeration::DateTimeExtended)?;
                 write_length(&mut self.writer, 8)?;
                 self.writer
-                    .write_i64::<BigEndian>(value.unix_timestamp_nanos() / 1000)?;
+                    .write_all(&((value.unix_timestamp_nanos() / 1000) as u64).to_be_bytes())?;
             }
         }
         Ok(())
@@ -176,21 +180,14 @@ where
         let tag = Tag::try_from(tag_value)?;
 
         // Read Type (1 byte)
-        let type_byte = self.reader.read_u8()?;
-        let item_type = match type_byte {
-            1 => ItemTypeEnumeration::Structure,
-            2 => ItemTypeEnumeration::Integer,
-            3 => ItemTypeEnumeration::LongInteger,
-            // ...add other type mappings...
-            _ => {
-                return Err(KmipError::InvalidKmipValue(format!(
-                    "Unknown type: {type_byte}"
-                )))
-            }
-        };
+        let mut type_byte = [0_u8; 1];
+        self.reader.read_exact(&mut type_byte)?;
+        let item_type = ItemTypeEnumeration::try_from(type_byte[0])?;
 
         // Read Length (4 bytes)
-        let length = self.reader.read_u32::<BigEndian>()?;
+        let mut buf4 = [0_u8; 4];
+        let length = self.reader.read_exact(&mut buf4)?;
+        let length = u32::from_be_bytes(buf4);
 
         // Read Value based on type
         let value = match item_type {
@@ -204,9 +201,71 @@ where
                 }
                 TTLValue::Structure(items)
             }
-            ItemTypeEnumeration::Integer => TTLValue::Integer(self.reader.read_i32::<BigEndian>()?),
-            // ... implement other type handlers ...
-            _ => return Err(KmipError::InvalidKmipValue("Unsupported type".to_owned())),
+            ItemTypeEnumeration::Integer => {
+                let mut buf4 = [0_u8; 4];
+                self.reader.read_exact(&mut buf4)?;
+                TTLValue::Integer(i32::from_be_bytes(buf4))
+            }
+            ItemTypeEnumeration::LongInteger => {
+                let mut buf8 = [0_u8; 8];
+                self.reader.read_exact(&mut buf8)?;
+                TTLValue::LongInteger(i64::from_be_bytes(buf8))
+            }
+            ItemTypeEnumeration::BigInteger => {
+                let mut buf = vec![0_u8; length as usize];
+                self.reader.read_exact(&mut buf)?;
+                TTLValue::BigInteger(num_bigint_dig::BigUint::from_bytes_be(&buf))
+            }
+            ItemTypeEnumeration::Enumeration => {
+                let mut buf4 = [0_u8; 4];
+                self.reader.read_exact(&mut buf4)?;
+                TTLValue::Enumeration(super::TTLVEnumeration::Integer(i32::from_be_bytes(buf4)))
+            }
+            ItemTypeEnumeration::Boolean => {
+                let mut buf8 = [0_u8; 8];
+                self.reader.read_exact(&mut buf8)?;
+                TTLValue::Boolean(buf8[7] != 0)
+            }
+            ItemTypeEnumeration::TextString => {
+                let mut buf = vec![0_u8; length as usize];
+                self.reader.read_exact(&mut buf)?;
+                TTLValue::TextString(String::from_utf8(buf)?)
+            }
+            ItemTypeEnumeration::ByteString => {
+                let mut buf = vec![0_u8; length as usize];
+                self.reader.read_exact(&mut buf)?;
+                TTLValue::ByteString(buf)
+            }
+            ItemTypeEnumeration::DateTime => {
+                let mut buf8 = [0_u8; 8];
+                self.reader.read_exact(&mut buf8)?;
+                let timestamp = i64::from_be_bytes(buf8);
+                let t = OffsetDateTime::from_unix_timestamp(timestamp)?;
+                TTLValue::DateTime(t)
+            }
+            ItemTypeEnumeration::Interval => {
+                let mut buf4 = [0_u8; 4];
+                self.reader.read_exact(&mut buf4)?;
+                TTLValue::Interval(u32::from_be_bytes(buf4))
+            }
+            ItemTypeEnumeration::DateTimeExtended => {
+                let mut buf8 = [0_u8; 8];
+                self.reader.read_exact(&mut buf8)?;
+                let micros = u64::from_be_bytes(buf8);
+                TTLValue::DateTimeExtended(
+                    chrono::DateTime::from_timestamp(
+                        (micros / 1_000_000) as i64,
+                        ((micros % 1_000_000) * 1000) as u32,
+                    )
+                    .unwrap(),
+                )
+            }
+            ItemTypeEnumeration::BitMask => {
+                let mut buf4 = [0_u8; 4];
+                self.reader.read_exact(&mut buf4)?;
+                TTLValue::BitMask(u32::from_be_bytes(buf4))
+            }
+            v => return Err(TtlvError::from(format!("Unsupported type: {v:?}"))),
         };
 
         Ok(TTLV {

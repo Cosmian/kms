@@ -48,6 +48,24 @@ impl de::Error for TtlvError {
     }
 }
 
+impl From<std::io::Error> for TtlvError {
+    fn from(err: std::io::Error) -> Self {
+        Self::new(&err.to_string())
+    }
+}
+
+impl From<&str> for TtlvError {
+    fn from(s: &str) -> Self {
+        Self { error: s.into() }
+    }
+}
+
+impl From<String> for TtlvError {
+    fn from(s: String) -> Self {
+        Self { error: s }
+    }
+}
+
 impl From<time::Error> for TtlvError {
     fn from(err: time::error::Error) -> Self {
         Self::new(&err.to_string())
@@ -60,14 +78,14 @@ impl From<KmipError> for TtlvError {
     }
 }
 
-impl From<std::io::Error> for TtlvError {
-    fn from(err: std::io::Error) -> Self {
+impl From<strum::ParseError> for TtlvError {
+    fn from(err: strum::ParseError) -> Self {
         Self::new(&err.to_string())
     }
 }
 
-impl From<strum::ParseError> for TtlvError {
-    fn from(err: strum::ParseError) -> Self {
+impl From<time::error::ComponentRange> for TtlvError {
+    fn from(err: time::error::ComponentRange) -> Self {
         Self::new(&err.to_string())
     }
 }
