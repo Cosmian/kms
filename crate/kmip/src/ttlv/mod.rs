@@ -56,6 +56,7 @@ pub mod serializer;
 
 use core::fmt;
 
+use error::TtlvError;
 use num_bigint_dig::BigUint;
 use serde::{
     de::{self, MapAccess, Visitor},
@@ -77,6 +78,7 @@ use crate::error::result::KmipResult;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone)]
 pub enum ItemTypeEnumeration {
     Structure = 0x01,
     Integer = 0x02,
@@ -89,6 +91,27 @@ pub enum ItemTypeEnumeration {
     DateTime = 0x09,
     Interval = 0x0A,
     DateTimeExtended = 0x0B,
+}
+
+impl TryFrom<u8> for ItemTypeEnumeration {
+    type Error = TtlvError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x01 => Ok(Self::Structure),
+            0x02 => Ok(Self::Integer),
+            0x03 => Ok(Self::LongInteger),
+            0x04 => Ok(Self::BigInteger),
+            0x05 => Ok(Self::Enumeration),
+            0x06 => Ok(Self::Boolean),
+            0x07 => Ok(Self::TextString),
+            0x08 => Ok(Self::ByteString),
+            0x09 => Ok(Self::DateTime),
+            0x0A => Ok(Self::Interval),
+            0x0B => Ok(Self::DateTimeExtended),
+            v => Err(TtlvError::from(format!("Invalid ItemTypeEnumeration: {v}"))),
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
