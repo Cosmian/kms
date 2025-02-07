@@ -78,23 +78,27 @@ impl CovercryptDecryption {
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
         let encrypted_block = de.finalize();
+
         let header = encrypted_header
             .decrypt(&self.cover_crypt, user_decryption_key, ad)
-            .map_err(CryptoError::Covercrypt)?
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?
             .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
-        let symmetric_key = SymmetricKey::default();
-        let aes256gcm = Aes256Gcm::new(&symmetric_key);
-        let cleartext = get_cleartext(&aes256gcm, &encrypted_block, ad)?;
+        let cleartext = <cosmian_cover_crypt::api::Covercrypt as cosmian_cover_crypt::traits::PkeAc<32, E>>::decrypt(
+            &self.cover_crypt,
+            user_decryption_key,
+            &(encrypted_header.encapsulation, encrypted_block),)
+            .map_err(|e| CryptoError::Kmip(e.to_string()))?
+            .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
             &self.user_decryption_key_uid,
-            cleartext.len(),
+            cleartext.iter().len(),
             encrypted_bytes.len(),
         );
 
-        Ok((header, cleartext.into()))
+        Ok((header, cleartext))
     }
 
     /// Decrypt multiple LEB128-serialized payloads

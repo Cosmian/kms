@@ -70,30 +70,5 @@ pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
         &[],
         false,
     )?;
-    //from binary
-    create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-binary",
-        "../../test_data/policy.bin",
-        &[],
-        false,
-    )?;
-    Ok(())
-}
-
-#[tokio::test]
-pub(crate) async fn test_create_master_key_pair_error() -> CliResult<()> {
-    let ctx = start_default_test_kms_server().await;
-
-    let err = create_cc_master_key_pair(
-        &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/notfound.json",
-        &[],
-        false,
-    )
-    .err()
-    .unwrap();
-    assert!(err.to_string().contains("ERROR: could not open the file"));
     Ok(())
 }

@@ -85,7 +85,7 @@ impl UserDecryptionKeysHandler {
     ///
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_user_decryption_key_object(
-        &self,
+        &mut self,
         access_policy_str: &str,
         attributes: Option<&Attributes>,
         msk_id: &str,
@@ -94,10 +94,9 @@ impl UserDecryptionKeysHandler {
         // Generate a fresh user decryption key
         //
         let access_policy = AccessPolicy::parse(access_policy_str)?;
-        let (mut msk, _mpk) = self.cover_crypt.setup()?;
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&mut msk, &access_policy)
+            .generate_user_secret_key(&mut self.master_private_key, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
         let user_decryption_key_bytes = uk.serialize().map_err(|e| {

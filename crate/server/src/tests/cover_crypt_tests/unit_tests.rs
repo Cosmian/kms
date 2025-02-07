@@ -1,18 +1,14 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::{EncryptionHint, MasterSecretKey, QualifiedAttribute};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        RecommendedCurve, UniqueIdentifier,
+        UniqueIdentifier,
     },
-    requests::{
-        create_ec_key_pair_request, decrypt_request, encrypt_request, get_ec_private_key_request,
-    },
+    requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::{
     build_create_covercrypt_master_keypair_request,
@@ -36,70 +32,12 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
 
-    let sk_response = kms
-        .get(
-            get_ec_private_key_request(
-                response
-                    .private_key_unique_identifier
-                    .as_str()
-                    .context("no string for the private_key_unique_identifier")?,
-            ),
-            owner,
-            None,
-        )
-        .await?;
-    let sk = &sk_response.object;
-    let binding = sk.to_string();
-    let u = binding.as_bytes();
-    let mut msk = MasterSecretKey::deserialize(u)?;
-
-    msk.access_structure.add_anarchy("Department".to_owned())?;
-    [
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-    ]
-    .into_iter()
-    .try_for_each(|(attribute, hint)| {
-        msk.access_structure.add_attribute(
-            QualifiedAttribute {
-                dimension: "Department".to_owned(),
-                name: attribute.to_owned(),
-            },
-            hint,
-            None,
-        )
-    })?;
-
-    msk.access_structure.add_hierarchy("Level".to_owned())?;
-
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Confidential".to_owned(),
-        },
-        EncryptionHint::Classic,
-        None,
-    )?;
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Top Secret".to_owned(),
-        },
-        EncryptionHint::Hybridized,
-        None,
-    )?;
     // create Key Pair
     debug!("ABE Create Master Key Pair");
-    let access_structure = msk.access_structure.serialize()?;
-
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -279,69 +217,10 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
-    let sk_response = kms
-        .get(
-            get_ec_private_key_request(
-                response
-                    .private_key_unique_identifier
-                    .as_str()
-                    .context("no string for the private_key_unique_identifier")?,
-            ),
-            owner,
-            None,
-        )
-        .await?;
-    let sk = &sk_response.object;
-    let binding = sk.to_string();
-    let u = binding.as_bytes();
-    let mut msk = MasterSecretKey::deserialize(u)?;
-
-    msk.access_structure.add_anarchy("Department".to_owned())?;
-    [
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-    ]
-    .into_iter()
-    .try_for_each(|(attribute, hint)| {
-        msk.access_structure.add_attribute(
-            QualifiedAttribute {
-                dimension: "Department".to_owned(),
-                name: attribute.to_owned(),
-            },
-            hint,
-            None,
-        )
-    })?;
-
-    msk.access_structure.add_hierarchy("Level".to_owned())?;
-
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Confidential".to_owned(),
-        },
-        EncryptionHint::Classic,
-        None,
-    )?;
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Top Secret".to_owned(),
-        },
-        EncryptionHint::Hybridized,
-        None,
-    )?;
-
     // create Key Pair
-    let access_structure = msk.access_structure.serialize()?;
-
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -559,68 +438,9 @@ async fn test_abe_json_access() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
-
-    let sk_response = kms
-        .get(
-            get_ec_private_key_request(
-                response
-                    .private_key_unique_identifier
-                    .as_str()
-                    .context("no string for the private_key_unique_identifier")?,
-            ),
-            owner,
-            None,
-        )
-        .await?;
-    let sk = &sk_response.object;
-    let binding = sk.to_string();
-    let u = binding.as_bytes();
-    let mut msk = MasterSecretKey::deserialize(u)?;
-    msk.access_structure.add_anarchy("Department".to_owned())?;
-    [
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-    ]
-    .into_iter()
-    .try_for_each(|(attribute, hint)| {
-        msk.access_structure.add_attribute(
-            QualifiedAttribute {
-                dimension: "Department".to_owned(),
-                name: attribute.to_owned(),
-            },
-            hint,
-            None,
-        )
-    })?;
-
-    msk.access_structure.add_hierarchy("Level".to_owned())?;
-
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Confidential".to_owned(),
-        },
-        EncryptionHint::Classic,
-        None,
-    )?;
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Top Secret".to_owned(),
-        },
-        EncryptionHint::Hybridized,
-        None,
-    )?;
 
     // Create CC master key pair
-    let access_structure = msk.access_structure.serialize()?;
-
-    let master_keypair =
-        build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?;
+    let master_keypair = build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -694,70 +514,10 @@ async fn test_import_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
-    let response = kms.create_key_pair(request, owner, None).await?;
-
-    let sk_response = kms
-        .get(
-            get_ec_private_key_request(
-                response
-                    .private_key_unique_identifier
-                    .as_str()
-                    .context("no string for the private_key_unique_identifier")?,
-            ),
-            owner,
-            None,
-        )
-        .await?;
-    let sk = &sk_response.object;
-    let binding = sk.to_string();
-    let u = binding.as_bytes();
-    let mut msk = MasterSecretKey::deserialize(u)?;
-
-    msk.access_structure.add_anarchy("Department".to_owned())?;
-    [
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-    ]
-    .into_iter()
-    .try_for_each(|(attribute, hint)| {
-        msk.access_structure.add_attribute(
-            QualifiedAttribute {
-                dimension: "Department".to_owned(),
-                name: attribute.to_owned(),
-            },
-            hint,
-            None,
-        )
-    })?;
-
-    msk.access_structure.add_hierarchy("Level".to_owned())?;
-
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Confidential".to_owned(),
-        },
-        EncryptionHint::Classic,
-        None,
-    )?;
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Level".to_owned(),
-            name: "Top Secret".to_owned(),
-        },
-        EncryptionHint::Hybridized,
-        None,
-    )?;
-
     // create Key Pair
-    let access_structure = msk.access_structure.serialize()?;
-
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&access_structure, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false)?,
             owner,
             None,
         )

@@ -14,10 +14,7 @@ use cosmian_kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::{
-    crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
-    error::CryptoError,
-};
+use crate::{crypto::EncryptionSystem, error::CryptoError};
 
 const SYM_KEY_LENGTH: usize = 32;
 /// Encrypt a single block of data using an hybrid encryption mode
@@ -34,13 +31,7 @@ impl CoverCryptEncryption {
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<Self, CryptoError> {
-        let (public_key_bytes, public_key_attributes) =
-            public_key.key_block()?.key_bytes_and_attributes()?;
-        policy_from_attributes(public_key_attributes.ok_or_else(|| {
-            CryptoError::Kmip(
-                "the master public key does not have attributes with the Policy".to_owned(),
-            )
-        })?)?;
+        let (public_key_bytes, _) = public_key.key_block()?.key_bytes_and_attributes()?;
 
         trace!("Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}");
 

@@ -1,5 +1,4 @@
-use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, MasterSecretKey, QualifiedAttribute};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_types::{Attributes, VendorAttribute},
@@ -12,46 +11,6 @@ pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
-
-/// Extract a `CoverCrypt` policy from attributes
-pub fn policy_from_attributes(attributes: &Attributes) -> Result<MasterSecretKey, CryptoError> {
-    attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
-        .map_or_else(
-            || {
-                Err(CryptoError::Kmip(
-                    "the attributes do not contain a CoverCrypt Policy".to_owned(),
-                ))
-            },
-            |bytes: &[u8]| {
-                MasterSecretKey::deserialize(bytes).map_err(|e| {
-                    CryptoError::Kmip(format!(
-                        "failed deserializing the CoverCrypt Policy from the attributes: {e}"
-                    ))
-                })
-            },
-        )
-}
-
-/// Convert a policy to a vendor attribute
-pub fn policy_as_vendor_attribute(access_structure: &[u8]) -> Result<VendorAttribute, CryptoError> {
-    Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
-        attribute_value: access_structure.to_owned(),
-    })
-}
-
-/// Add or replace an `CoverCrypt` policy in attributes in place
-pub fn upsert_policy_in_attributes(
-    attributes: &mut Attributes,
-    access_structure: &[u8],
-) -> Result<(), CryptoError> {
-    let va = policy_as_vendor_attribute(access_structure)?;
-    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY);
-    attributes.add_vendor_attribute(va);
-    Ok(())
-}
 
 /// Convert an access policy to a vendor attribute
 pub fn access_policy_as_vendor_attribute(

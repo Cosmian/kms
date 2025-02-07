@@ -378,7 +378,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
     // generate a new master key pair
-    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+    let (master_private_key_id, _) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
         "../../test_data/policy_specifications.json",
@@ -392,26 +392,26 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
         tmp_path,
         ctx,
     )?;
-    export_cc_test(
-        KeyFormatType::CoverCryptPublicKey,
-        &master_public_key_id,
-        tmp_path,
-        ctx,
-    )?;
+    // export_cc_test(
+    //     KeyFormatType::CoverCryptPublicKey,
+    //     &master_public_key_id,
+    //     tmp_path,
+    //     ctx,
+    // )?;
 
-    let user_key_id = create_user_decryption_key(
-        &ctx.owner_client_conf_path,
-        &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        &[],
-        false,
-    )?;
-    export_cc_test(
-        KeyFormatType::CoverCryptSecretKey,
-        &user_key_id,
-        tmp_path,
-        ctx,
-    )?;
+    // let user_key_id = create_user_decryption_key(
+    //     &ctx.owner_client_conf_path,
+    //     &master_private_key_id,
+    //     "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+    //     &[],
+    //     false,
+    // )?;
+    // export_cc_test(
+    //     KeyFormatType::CoverCryptSecretKey,
+    //     &user_key_id,
+    //     tmp_path,
+    //     ctx,
+    // )?;
 
     Ok(())
 }

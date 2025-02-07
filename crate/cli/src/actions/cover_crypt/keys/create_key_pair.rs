@@ -1,19 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_cover_crypt::MasterSecretKey;
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_kms_client::{read_bytes_from_file, KmsClient};
-use cosmian_kms_crypto::{
-    crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request, CryptoError,
-};
+use cosmian_kms_client::KmsClient;
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 
 use crate::{
     actions::console,
-    error::{
-        result::{CliResult, CliResultHelper},
-        CliError,
-    },
+    error::result::{CliResult, CliResultHelper},
 };
 
 /// Create a new master key pair for a given policy and return the key IDs.
@@ -53,7 +46,7 @@ pub struct CreateMasterKeyPairAction {
     /// The JSON policy specifications file to use to generate the keys.
     /// See the inline doc of the `create-master-key-pair` command for details.
     #[clap(long = "policy-specifications", short = 's', group = "policy")]
-    policy_specifications_file: Option<PathBuf>,
+    policy_specifications_file: PathBuf,
 
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
@@ -67,25 +60,8 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Parse the json policy file
-
-        let file = &self
-            .policy_specifications_file
-            .clone()
-            .ok_or_else(|| CliError::Default("File not found".to_string()))?;
-        let policy_buffer = read_bytes_from_file(&file)?;
-        let msk = MasterSecretKey::deserialize(&policy_buffer).map_err(|e| {
-            CryptoError::Kmip(format!(
-                "Failed deserializing the CoverCrypt Master Private Key: {e}"
-            ))
-        })?;
-        // Create the kmip query
-        let access_structure = msk.access_structure.serialize()?;
-        let create_key_pair = build_create_covercrypt_master_keypair_request(
-            &access_structure,
-            &self.tags,
-            self.sensitive,
-        )?;
+        let create_key_pair =
+            build_create_covercrypt_master_keypair_request(&self.tags, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

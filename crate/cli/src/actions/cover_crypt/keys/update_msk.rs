@@ -131,17 +131,16 @@ impl ViewAction {
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
         };
-        let binding = object.to_string();
-        let u = binding.as_bytes();
-        let msk = MasterSecretKey::deserialize(u).map_err(|e| {
+        let msk_key_block = object.key_block()?;
+        let msk_key_bytes = msk_key_block.key_bytes()?;
+        let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
             CryptoError::Kmip(format!(
                 "Failed deserializing the CoverCrypt Master Private Key: {e}"
             ))
         })?;
-
         let json = format!(
             "{:?}",
-            serde_json::from_value(msk.access_structure.serialize()?.to_vec().into())?
+            serde_json::from_value(msk.serialize()?.to_vec().into())?
         );
         console::Stdout::new(&json).write()?;
 

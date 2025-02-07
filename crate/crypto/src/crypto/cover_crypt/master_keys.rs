@@ -1,4 +1,6 @@
-use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+use cosmian_cover_crypt::{
+    api::Covercrypt, EncryptionHint, MasterPublicKey, MasterSecretKey, QualifiedAttribute,
+};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -10,7 +12,6 @@ use cosmian_kmip::kmip_2_1::{
 };
 use zeroize::Zeroizing;
 
-use super::attributes::{policy_from_attributes, upsert_policy_in_attributes};
 use crate::{crypto::KeyPair, error::CryptoError};
 
 /// Group a key UID with its KMIP Object
@@ -26,62 +27,79 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let any_attributes = common_attributes
-        .as_ref()
-        .or(private_key_attributes.as_ref())
-        .or(public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
-        })?;
-
-    // verify that we can recover the policy from the MSK
-    policy_from_attributes(any_attributes)?;
-
     // Now generate a master key using the CoverCrypt Engine
-    let (sk, pk) = cover_crypt
+    let (mut msk, _) = cover_crypt
         .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+    msk.access_structure.add_anarchy("Department".to_owned())?;
+    [
+        ("HR", EncryptionHint::Classic),
+        ("MKG", EncryptionHint::Classic),
+        ("FIN", EncryptionHint::Classic),
+    ]
+    .into_iter()
+    .try_for_each(|(attribute, hint)| {
+        msk.access_structure.add_attribute(
+            QualifiedAttribute {
+                dimension: "Department".to_owned(),
+                name: attribute.to_owned(),
+            },
+            hint,
+            None,
+        )
+    })?;
 
+    msk.access_structure
+        .add_hierarchy("Security Level".to_owned())?;
+
+    msk.access_structure.add_attribute(
+        QualifiedAttribute {
+            dimension: "Security Level".to_owned(),
+            name: "Confidential".to_owned(),
+        },
+        EncryptionHint::Classic,
+        None,
+    )?;
+    msk.access_structure.add_attribute(
+        QualifiedAttribute {
+            dimension: "Security Level".to_owned(),
+            name: "Top Secret".to_owned(),
+        },
+        EncryptionHint::Hybridized,
+        None,
+    )?;
+    let mpk = cover_crypt.update_msk(&mut msk)?;
     // Private Key generation
     // First generate fresh attributes with that policy
     let private_key_attributes = private_key_attributes
         .as_ref()
         .or(common_attributes.as_ref());
-    let sk_bytes = sk.serialize().map_err(|e| {
+    let sk_bytes = msk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master private key: {e}"
         ))
     })?;
-    let private_key = create_master_private_key_object(
-        &sk_bytes,
-        sk.serialize()?.as_ref(),
-        private_key_attributes,
-        public_key_uid,
-    )?;
+    let private_key =
+        create_master_private_key_object(&sk_bytes, private_key_attributes, public_key_uid)?;
 
     // Public Key generation
     // First generate fresh attributes with that policy
     let public_key_attributes = public_key_attributes
         .as_ref()
         .or(common_attributes.as_ref());
-    let pk_bytes = pk.serialize().map_err(|e| {
+    let pk_bytes = mpk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master public key: {e}"
         ))
     })?;
-    let public_key = create_master_public_key_object(
-        &pk_bytes,
-        sk.serialize()?.as_ref(),
-        public_key_attributes,
-        private_key_uid,
-    )?;
+    let public_key =
+        create_master_public_key_object(&pk_bytes, public_key_attributes, private_key_uid)?;
 
     Ok(KeyPair((private_key, public_key)))
 }
 
 fn create_master_private_key_object(
     key: &[u8],
-    access_structure: &[u8],
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -90,8 +108,6 @@ fn create_master_private_key_object(
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-    // add the policy to the attributes
-    upsert_policy_in_attributes(&mut attributes, access_structure)?;
     // link the private key to the public key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
@@ -121,7 +137,6 @@ fn create_master_private_key_object(
 /// see `cover_crypt_unwrap_master_public_key` for the reverse operation
 fn create_master_public_key_object(
     key: &[u8],
-    access_structure: &[u8],
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
 ) -> Result<Object, CryptoError> {
@@ -131,8 +146,6 @@ fn create_master_public_key_object(
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-    // add the policy to the attributes
-    upsert_policy_in_attributes(&mut attributes, access_structure)?;
     // link the public key to the private key
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
@@ -194,7 +207,6 @@ pub fn kmip_objects_from_covercrypt_keys(
     })?;
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
-        msk.serialize()?.as_ref(),
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,
     )?;
@@ -205,7 +217,6 @@ pub fn kmip_objects_from_covercrypt_keys(
     })?;
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
-        msk.serialize()?.as_ref(),
         Some(mpk_obj.1.attributes()?),
         &msk_obj.0,
     )?;
