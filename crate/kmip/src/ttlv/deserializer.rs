@@ -173,7 +173,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                 }
             }
             TTLValue::Integer(i) => visitor.visit_i32(*i),
-            TTLValue::BitMask(e) => visitor.visit_u32(*e),
+            // TTLValue::BitMask(e) => visitor.visit_u32(*e),
             TTLValue::LongInteger(li) => visitor.visit_i64(*li),
             TTLValue::Enumeration(e) => match e {
                 TTLVEnumeration::Integer(i) => visitor.visit_i32(*i),
@@ -318,7 +318,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                     TTLValue::Integer(v) => (*v)
                         .try_into()
                         .map_err(|_e| TtlvError::custom(format!("Invalid type for u32: {v:?}")))?,
-                    TTLValue::BitMask(v) => *v,
+                    // TTLValue::BitMask(v) => *v,
                     x => return Err(TtlvError::custom(format!("Invalid type for u32: {x:?}"))),
                 })
             }

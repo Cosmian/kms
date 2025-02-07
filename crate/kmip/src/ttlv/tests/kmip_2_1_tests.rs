@@ -163,7 +163,7 @@ fn test_des_int() {
     #[serde(rename_all = "PascalCase")]
     struct Test {
         an_int: i32,
-        another_int: u32,
+        another_int: i32,
     }
     log_init(None);
 
@@ -176,7 +176,7 @@ fn test_des_int() {
             },
             TTLV {
                 tag: "AnotherInt".to_owned(),
-                value: TTLValue::BitMask(4),
+                value: TTLValue::Integer(-44),
             },
         ]),
     };
@@ -185,7 +185,7 @@ fn test_des_int() {
     assert_eq!(
         &Test {
             an_int: 2,
-            another_int: 4
+            another_int: -44
         },
         &rec
     );
