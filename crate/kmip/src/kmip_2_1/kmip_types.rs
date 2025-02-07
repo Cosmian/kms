@@ -1618,6 +1618,7 @@ impl AttributeReference {
 #[derive(
     Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString, EnumIter, Hash,
 )]
+#[repr(u32)]
 pub enum Tag {
     ActivationDate = 0x42_0001,
     ApplicationData = 0x42_0002,

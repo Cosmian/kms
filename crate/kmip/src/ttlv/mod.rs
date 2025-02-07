@@ -78,7 +78,8 @@ use crate::error::result::KmipResult;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[repr(u8)]
 pub enum ItemTypeEnumeration {
     Structure = 0x01,
     Integer = 0x02,
@@ -179,7 +180,7 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
-    BitMask(u32),
+    // BitMask(u32),
     LongInteger(i64),
     BigInteger(BigUint),
     Enumeration(TTLVEnumeration),
@@ -209,9 +210,8 @@ impl PartialEq for TTLValue {
             (Self::TextString(l0), Self::TextString(r0)) => l0 == r0,
             (Self::ByteString(l0), Self::ByteString(r0)) => l0 == r0,
             (Self::DateTime(l0), Self::DateTime(r0)) => l0.unix_timestamp() == r0.unix_timestamp(),
-            (Self::BitMask(l0), Self::BitMask(r0)) | (Self::Interval(l0), Self::Interval(r0)) => {
-                l0 == r0
-            }
+            (Self::Interval(l0), Self::Interval(r0)) => l0 == r0,
+            // (Self::BitMask(l0), Self::BitMask(r0)) => l0 == r0,
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
                 l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
@@ -249,7 +249,6 @@ impl Serialize for TTLV {
         }
 
         match &self.value {
-            TTLValue::Structure(v) => serialize(serializer, &self.tag, "Structure", v),
             TTLValue::Integer(v) => serialize(serializer, &self.tag, "Integer", v),
             TTLValue::BitMask(v) => serialize(
                 serializer,
@@ -300,73 +299,73 @@ impl Serialize for TTLV {
     }
 }
 
-/// Used to deserialize the "Integer" type
-enum IntegerOrMask {
-    Integer(i32),
-    Mask(u32),
-}
+// /// Used to deserialize the "Integer" type
+// enum IntegerOrMask {
+//     Integer(i32),
+//     Mask(u32),
+// }
 
-impl<'de> Deserialize<'de> for IntegerOrMask {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct IntegerOrMaskVisitor;
+// impl<'de> Deserialize<'de> for IntegerOrMask {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         struct IntegerOrMaskVisitor;
 
-        impl Visitor<'_> for IntegerOrMaskVisitor {
-            type Value = IntegerOrMask;
+//         impl Visitor<'_> for IntegerOrMaskVisitor {
+//             type Value = IntegerOrMask;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct IntegerOrMask")
-            }
+//             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//                 formatter.write_str("struct IntegerOrMask")
+//             }
 
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
-                    de::Error::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
-                })?))
-            }
+//             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+//             where
+//                 E: de::Error,
+//             {
+//                 Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
+//                     de::Error::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
+//                 })?))
+//             }
 
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
-                    de::Error::custom(format!(
-                        "Unexpected value: {v}, expected a 64 bit unaigned integer"
-                    ))
-                })?))
-            }
+//             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+//             where
+//                 E: de::Error,
+//             {
+//                 Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
+//                     de::Error::custom(format!(
+//                         "Unexpected value: {v}, expected a 64 bit unaigned integer"
+//                     ))
+//                 })?))
+//             }
 
-            // v is in hexadecimal format
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if v.get(0..2).ok_or_else(|| {
-                    de::Error::custom(format!("visit_str: indexing slicing failed for 0..2: {v}"))
-                })? != "0x"
-                {
-                    return Err(de::Error::custom(format!("Invalid value for Mask: {v}")))
-                }
-                let bytes = hex::decode(v.get(2..).ok_or_else(|| {
-                    de::Error::custom(format!("visit_str: indexing slicing failed for 2..: {v}"))
-                })?)
-                .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?;
-                let m: u32 = u32::from_be_bytes(
-                    bytes
-                        .as_slice()
-                        .try_into()
-                        .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?,
-                );
-                Ok(IntegerOrMask::Mask(m))
-            }
-        }
-        deserializer.deserialize_any(IntegerOrMaskVisitor)
-    }
-}
+//             // v is in hexadecimal format
+//             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+//             where
+//                 E: de::Error,
+//             {
+//                 if v.get(0..2).ok_or_else(|| {
+//                     de::Error::custom(format!("visit_str: indexing slicing failed for 0..2: {v}"))
+//                 })? != "0x"
+//                 {
+//                     return Err(de::Error::custom(format!("Invalid value for Mask: {v}")))
+//                 }
+//                 let bytes = hex::decode(v.get(2..).ok_or_else(|| {
+//                     de::Error::custom(format!("visit_str: indexing slicing failed for 2..: {v}"))
+//                 })?)
+//                 .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?;
+//                 let m: u32 = u32::from_be_bytes(
+//                     bytes
+//                         .as_slice()
+//                         .try_into()
+//                         .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {v}")))?,
+//                 );
+//                 Ok(IntegerOrMask::Mask(m))
+//             }
+//         }
+//         deserializer.deserialize_any(IntegerOrMaskVisitor)
+//     }
+// }
 
 impl<'de> Deserialize<'de> for TTLV {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -421,13 +420,14 @@ impl<'de> Deserialize<'de> for TTLV {
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
-                                "Integer" => {
-                                    let im: IntegerOrMask = map.next_value()?;
-                                    match im {
-                                        IntegerOrMask::Integer(v) => TTLValue::Integer(v),
-                                        IntegerOrMask::Mask(m) => TTLValue::BitMask(m),
-                                    }
-                                }
+                                // "Integer" => {
+                                //     let im: IntegerOrMask = map.next_value()?;
+                                //     match im {
+                                //         IntegerOrMask::Integer(v) => TTLValue::Integer(v),
+                                //         IntegerOrMask::Mask(m) => TTLValue::BitMask(m),
+                                //     }
+                                // }
+                                "Integer" => TTLValue::Integer(map.next_value()?),
                                 "LongInteger" => {
                                     let hex: String = map.next_value()?;
                                     if hex.get(0..2).ok_or_else(|| {
