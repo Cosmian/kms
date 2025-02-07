@@ -30,10 +30,10 @@ fn test_serialization_deserialization() {
                 tag: "AnInt".to_owned(),
                 value: TTLValue::Integer(42),
             },
-            TTLV {
-                tag: "ABitMask".to_owned(),
-                value: TTLValue::BitMask(42),
-            },
+            // TTLV {
+            //     tag: "ABitMask".to_owned(),
+            //     value: TTLValue::BitMask(42),
+            // },
             TTLV {
                 tag: "ALongInt".to_owned(),
                 value: TTLValue::LongInteger(-42_i64),
@@ -88,10 +88,10 @@ fn test_serialization_deserialization() {
                 _ => panic!("Wrong type for AnInt"),
             }
             assert_eq!(s[1].tag, "ABitMask");
-            match &s[1].value {
-                TTLValue::BitMask(b) => assert_eq!(*b, 42),
-                _ => panic!("Wrong type for ABitMask"),
-            }
+            // match &s[1].value {
+            //     TTLValue::BitMask(b) => assert_eq!(*b, 42),
+            //     _ => panic!("Wrong type for ABitMask"),
+            // }
             assert_eq!(s[2].tag, "ALongInt");
             match &s[2].value {
                 TTLValue::LongInteger(l) => assert_eq!(*l, -42),

@@ -89,3 +89,9 @@ impl From<time::error::ComponentRange> for TtlvError {
         Self::new(&err.to_string())
     }
 }
+
+impl From<std::string::FromUtf8Error> for TtlvError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        Self::new(&err.to_string())
+    }
+}
