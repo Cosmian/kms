@@ -26,8 +26,6 @@ pub enum ExportKeyFormat {
     Pkcs1Der,
     Pkcs8Pem,
     Pkcs8Der,
-    SpkiPem,
-    SpkiDer,
     Base64,
     Raw,
 }
@@ -135,8 +133,8 @@ pub fn get_export_key_format_type(key_format: &ExportKeyFormat) -> (Option<KeyFo
         ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
         ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
         ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-        ExportKeyFormat::Pkcs8Pem | ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
-        ExportKeyFormat::Pkcs8Der | ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
+        ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
+        ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
     };
     (key_format_type, encode_to_pem)
 }

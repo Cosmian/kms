@@ -4,7 +4,6 @@
 
 pub use config::{GmailApiConf, KmsClientConfig, KMS_CLI_CONF_ENV};
 pub use cosmian_kmip::{self, kmip_2_1, pad_be_bytes};
-pub use encodings::objects_from_pem;
 pub use error::{result::KmsClientResult, KmsClientError};
 pub use export_utils::{batch_export_objects, export_object, ExportObjectParams};
 pub use file_utils::{
@@ -17,7 +16,6 @@ pub use kms_rest_client::KmsClient;
 
 mod batch_utils;
 mod config;
-mod encodings;
 mod error;
 mod export_utils;
 mod file_utils;

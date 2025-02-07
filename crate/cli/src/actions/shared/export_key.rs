@@ -55,7 +55,6 @@ pub struct ExportKeyAction {
     ///  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
     ///  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
     ///  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-    ///  - `spki-pem` and `spki-der` only apply to RSA and EC public keys
     ///  - `raw` returns the raw bytes of
     ///       - symmetric keys
     ///       - Covercrypt keys

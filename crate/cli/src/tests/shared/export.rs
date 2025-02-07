@@ -76,8 +76,6 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CliResult<()> {
             ExportKeyFormat::Pkcs1Der => "pkcs1-der",
             ExportKeyFormat::Pkcs8Pem => "pkcs8-pem",
             ExportKeyFormat::Pkcs8Der => "pkcs8-der",
-            ExportKeyFormat::SpkiPem => "spki-pem",
-            ExportKeyFormat::SpkiDer => "spki-der",
             ExportKeyFormat::Base64 => "base64",
             ExportKeyFormat::Raw => "raw",
         };
@@ -575,7 +573,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
             .to_str()
             .unwrap()
             .to_owned(),
-        key_format: Some(ExportKeyFormat::SpkiDer),
+        key_format: Some(ExportKeyFormat::Pkcs8Der),
         ..Default::default()
     })?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;

@@ -26,11 +26,6 @@ async fn test_import_export_encodings() -> CliResult<()> {
     )?;
     test_pems(
         ctx,
-        "../../test_data/key_encodings/ec_public_key_spki.pem",
-        ExportKeyFormat::SpkiPem,
-    )?;
-    test_pems(
-        ctx,
         "../../test_data/key_encodings/rsa_private_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
     )?;
@@ -43,11 +38,6 @@ async fn test_import_export_encodings() -> CliResult<()> {
         ctx,
         "../../test_data/key_encodings/rsa_public_key_pkcs1.pem",
         ExportKeyFormat::Pkcs1Pem,
-    )?;
-    test_pems(
-        ctx,
-        "../../test_data/key_encodings/rsa_public_key_spki.pem",
-        ExportKeyFormat::SpkiPem,
     )?;
 
     Ok(())

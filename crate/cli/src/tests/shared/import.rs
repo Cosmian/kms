@@ -63,8 +63,8 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CliResult<String> {
             ImportKeyFormat::Sec1 => "sec1",
             ImportKeyFormat::Pkcs1Priv => "pkcs1-priv",
             ImportKeyFormat::Pkcs1Pub => "pkcs1-pub",
-            ImportKeyFormat::Pkcs8 => "pkcs8",
-            ImportKeyFormat::Spki => "spki",
+            ImportKeyFormat::Pkcs8Pub => "pkcs8-pub",
+            ImportKeyFormat::Pkcs8Priv => "pkcs8-priv",
             ImportKeyFormat::Aes => "aes",
             ImportKeyFormat::Chacha20 => "chacha20",
         };

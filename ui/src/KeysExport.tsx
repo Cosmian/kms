@@ -37,6 +37,20 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
 
 type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
+const exportFileExtension = {
+    'json-ttlv': 'json',
+    'sec1-pem': 'pem',
+    'pkcs1-pem': 'pem',
+    'pkcs8-pem': 'pem',
+    'spki-pem': 'pem',
+    'sec1-der': 'der',
+    'pkcs1-der': 'der',
+    'pkcs8-der': 'der',
+    'spki-der': 'der',
+    'base64': 'b64',
+    'raw': ''
+}
+
 interface KeyExportFormProps {
     key_type: KeyType;
 }
@@ -75,8 +89,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const data = await parse_export_ttlv_response(result_str, values.keyFormat)
-                const filename = `export_${id}.${values.keyFormat}`;
-                console.log(data)
+                const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
                 let mimeType;
                     switch (values.keyFormat) {
                         case "JsonTtlv":
@@ -108,9 +121,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: 'PKCS1 PEM', value: 'pkcs1-pem' },
             { label: 'PKCS1 DER', value: 'pkcs1-der' },
             { label: 'PKCS8 PEM', value: 'pkcs8-pem' },
-            { label: 'PKCS8 DER', value: 'pkcs8-der' },
-            { label: 'SPKI PEM', value: 'spki-pem' },
-            { label: 'SPKI DER', value: 'spki-der' },
+            { label: 'PKCS8 DER', value: 'pkcs8-der' },,
             { label: 'Base64', value: 'base64' },
             { label: 'Raw', value: 'raw' },
         ];
@@ -122,8 +133,6 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: 'SEC1 DER', value: 'sec1-der' },
             { label: 'PKCS8 PEM', value: 'pkcs8-pem' },
             { label: 'PKCS8 DER', value: 'pkcs8-der' },
-            { label: 'SPKI PEM', value: 'spki-pem' },
-            { label: 'SPKI DER', value: 'spki-der' },
             { label: 'Base64', value: 'base64' },
             { label: 'Raw', value: 'raw' },
         ]

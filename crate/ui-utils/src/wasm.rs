@@ -1,7 +1,9 @@
 use std::str::FromStr;
 
+// use web_sys::console;
 use base64::Engine as _;
 use cosmian_kmip::kmip_2_1::{
+    kmip_objects::Object,
     kmip_operations::{
         Certify, CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
         DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
@@ -29,6 +31,7 @@ use crate::{
         der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
+    import_utils::{prepate_key_import_elements, ImportKeyFormat, KeyUsage},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -322,7 +325,8 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
     let response: ExportResponse = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
     let data = match key_format {
         ExportKeyFormat::JsonTtlv => {
-            let kmip_object = response.object;
+            // console::log_1(&JsValue::from_str(&serde_json::to_string(&response.object).unwrap()));
+            let kmip_object = Object::post_fix(response.object_type, response.object);
             let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
             ttlv.tag = tag_from_object(&kmip_object);
             let bytes = serde_json::to_vec::<TTLV>(&ttlv)
@@ -429,235 +433,53 @@ pub fn parse_get_attributes_ttlv_response(response: &str) -> Result<JsValue, JsV
 }
 
 // Import request
-/// Read a key from a PEM file
-// fn read_key_from_pem(bytes: &[u8]) -> CliResult<Object> {
-//     let mut objects = objects_from_pem(bytes)?;
-//     let object = objects
-//         .pop()
-//         .ok_or_else(|| CliError::Default("The PEM file does not contain any object".to_owned()))?;
-//     match object.object_type() {
-//         ObjectType::PrivateKey | ObjectType::PublicKey => {
-//             if !objects.is_empty() {
-//                 println!(
-//                     "WARNING: the PEM file contains multiple objects. Only the private key will \
-//                      be imported. A corresponding public key will be generated automatically."
-//                 );
-//             }
-//             Ok(object)
-//         }
-//         ObjectType::Certificate => Err(CliError::Default(
-//             "For certificates, use the `ckms certificate` sub-command".to_owned(),
-//         )),
-//         _ => Err(CliError::Default(format!(
-//             "The PEM file contains an object of type {:?} which is not supported",
-//             object.object_type()
-//         ))),
-//     }
-// }
-
-// pub(crate) fn build_private_key_from_der_bytes(
-//     key_format_type: KeyFormatType,
-//     bytes: Zeroizing<Vec<u8>>,
-// ) -> Object {
-//     Object::PrivateKey {
-//         key_block: KeyBlock {
-//             key_format_type,
-//             key_compression_type: None,
-//             key_value: KeyValue {
-//                 key_material: KeyMaterial::ByteString(bytes),
-//                 attributes: Some(Attributes::default()),
-//             },
-//             // According to the KMIP spec, the cryptographic algorithm is not required
-//             // as long as it can be recovered from the Key Format Type or the Key Value.
-//             // Also it should not be specified if the cryptographic length is not specified.
-//             cryptographic_algorithm: None,
-//             // See comment above
-//             cryptographic_length: None,
-//             key_wrapping_data: None,
-//         },
-//     }
-// }
-
-// // Here the zeroizing type on public key bytes is overkill, but it aligns with
-// // other methods dealing with private components.
-// fn build_public_key_from_der_bytes(
-//     key_format_type: KeyFormatType,
-//     bytes: Zeroizing<Vec<u8>>,
-// ) -> Object {
-//     Object::PublicKey {
-//         key_block: KeyBlock {
-//             key_format_type,
-//             key_compression_type: None,
-//             key_value: KeyValue {
-//                 key_material: KeyMaterial::ByteString(bytes),
-//                 attributes: Some(Attributes::default()),
-//             },
-//             // According to the KMIP spec, the cryptographic algorithm is not required
-//             // as long as it can be recovered from the Key Format Type or the Key Value.
-//             // Also it should not be specified if the cryptographic length is not specified.
-//             cryptographic_algorithm: None,
-//             // See comment above
-//             cryptographic_length: None,
-//             key_wrapping_data: None,
-//         },
-//     }
-// }
-
-// fn build_symmetric_key_from_bytes(
-//     cryptographic_algorithm: CryptographicAlgorithm,
-//     bytes: Zeroizing<Vec<u8>>,
-// ) -> CliResult<Object> {
-//     let len = i32::try_from(bytes.len())? * 8;
-//     Ok(Object::SymmetricKey {
-//         key_block: KeyBlock {
-//             key_format_type: KeyFormatType::TransparentSymmetricKey,
-//             key_compression_type: None,
-//             key_value: KeyValue {
-//                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-//                 attributes: Some(Attributes::default()),
-//             },
-//             cryptographic_algorithm: Some(cryptographic_algorithm),
-//             cryptographic_length: Some(len),
-//             key_wrapping_data: None,
-//         },
-//     })
-// }
-
-// pub(crate) fn build_usage_mask_from_key_usage(
-//     key_usage_vec: &[KeyUsage],
-// ) -> Option<CryptographicUsageMask> {
-//     let mut flags = 0;
-//     for key_usage in key_usage_vec {
-//         flags |= match key_usage {
-//             KeyUsage::Sign => CryptographicUsageMask::Sign,
-//             KeyUsage::Verify => CryptographicUsageMask::Verify,
-//             KeyUsage::Encrypt => CryptographicUsageMask::Encrypt,
-//             KeyUsage::Decrypt => CryptographicUsageMask::Decrypt,
-//             KeyUsage::WrapKey => CryptographicUsageMask::WrapKey,
-//             KeyUsage::UnwrapKey => CryptographicUsageMask::UnwrapKey,
-//             KeyUsage::MACGenerate => CryptographicUsageMask::MACGenerate,
-//             KeyUsage::MACVerify => CryptographicUsageMask::MACVerify,
-//             KeyUsage::DeriveKey => CryptographicUsageMask::DeriveKey,
-//             KeyUsage::KeyAgreement => CryptographicUsageMask::KeyAgreement,
-//             KeyUsage::CertificateSign => CryptographicUsageMask::CertificateSign,
-//             KeyUsage::CRLSign => CryptographicUsageMask::CRLSign,
-//             KeyUsage::Authenticate => CryptographicUsageMask::Authenticate,
-//             KeyUsage::Unrestricted => CryptographicUsageMask::Unrestricted,
-//         }
-//         .bits();
-//     }
-//     CryptographicUsageMask::from_bits(flags)
-// }
-
-// /// Read an object from KMIP JSON TTLV bytes slice
-// pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClientError> {
-//     // Read the object from the file
-//     let ttlv = serde_json::from_slice::<TTLV>(bytes)
-//         .with_context(|| "failed parsing the object from the json file")?;
-//     // Deserialize the object
-//     let object: Object = from_ttlv(&ttlv)?;
-//     Ok(object)
-// }
-
-// #[wasm_bindgen]
-// pub fn import_ttlv_request(
-//     unique_identifier: Option<String>,
-//     key_file: Vec<u8>,
-//     key_format: String,
-//     public_key_id: Option<String>,
-//     private_key_id: Option<String>,
-//     certificate_id: Option<String>,
-//     unwrap: bool,
-//     replace_existing: bool,
-//     tags: Vec<String>,
-//     key_usage: Option<Vec<String>>
-// ) -> Result<JsValue, JsValue> {
-//     let cryptographic_usage_mask = key_usage
-//         .as_deref()
-//         .and_then(build_usage_mask_from_key_usage);
-//     let key_file =
-//     // read the key file
-//     let bytes = Zeroizing::from(key_file);
-//     let mut object = match &key_format {
-//         ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
-//         ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
-//         ImportKeyFormat::Sec1 => {
-//             build_private_key_from_der_bytes(KeyFormatType::ECPrivateKey, bytes)
-//         }
-//         ImportKeyFormat::Pkcs1Priv => {
-//             build_private_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-//         }
-//         ImportKeyFormat::Pkcs1Pub => {
-//             build_public_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
-//         }
-//         ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-//         ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-//         ImportKeyFormat::Aes => {
-//             build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)?
-//         }
-//         ImportKeyFormat::Chacha20 => {
-//             build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
-//         }
-//     };
-//     // Assign CryptographicUsageMask from command line arguments.
-//     object
-//         .attributes_mut()?
-//         .set_cryptographic_usage_mask(cryptographic_usage_mask);
-
-//     let object_type = object.object_type();
-
-//     // Generate the import attributes if links are specified.
-//     let mut import_attributes = object
-//         .attributes()
-//         .unwrap_or(&Attributes {
-//             cryptographic_usage_mask,
-//             ..Default::default()
-//         })
-//         .clone();
-
-//     if let Some(issuer_certificate_id) = &certificate_id {
-//         //let attributes = import_attributes.get_or_insert(Attributes::default());
-//         import_attributes.set_link(
-//             LinkType::CertificateLink,
-//             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
-//         );
-//     };
-//     if let Some(private_key_id) = &private_key_id {
-//         //let attributes = import_attributes.get_or_insert(Attributes::default());
-//         import_attributes.set_link(
-//             LinkType::PrivateKeyLink,
-//             LinkedObjectIdentifier::TextString(private_key_id.clone()),
-//         );
-//     };
-//     if let Some(public_key_id) = &public_key_id {
-//         import_attributes.set_link(
-//             LinkType::PublicKeyLink,
-//             LinkedObjectIdentifier::TextString(public_key_id.clone()),
-//         );
-//     };
-
-//     if unwrap {
-//         if let Some(data) = &authenticated_additional_data {
-//             // If authenticated_additional_data are provided, must be added on key attributes for unwrapping
-//             let aad = data.as_bytes();
-//             object.attributes_mut()?.add_aad(aad);
-//         }
-//     }
-
-//     let request = import_object_request(
-//         unique_identifier,
-//         object,
-//         Some(import_attributes),
-//         unwrap,
-//         replace_existing,
-//         tags,
-//     );
-//     to_ttlv(&request)
-//         .map_err(|e| JsValue::from(e.to_string()))
-//         .and_then(|objects| {
-//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-//         })
-// }
+#[wasm_bindgen]
+pub fn import_ttlv_request(
+    unique_identifier: Option<String>,
+    key_file: String,
+    key_format: String,
+    public_key_id: Option<String>,
+    private_key_id: Option<String>,
+    certificate_id: Option<String>,
+    unwrap: bool,
+    replace_existing: bool,
+    tags: Vec<String>,
+    key_usage: Option<Vec<String>>,
+    authenticated_additional_data: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let key_usage = key_usage.map(|vec| {
+        vec.into_iter()
+            .filter_map(|s| s.parse::<KeyUsage>().ok()) // Parse and filter out errors
+            .collect()
+    });
+    let key_format =
+        ImportKeyFormat::from_str(&key_format).map_err(|e| JsValue::from(e.to_string()))?;
+    let bytes = key_file.as_bytes().to_vec();
+    let (object, import_attributes) = prepate_key_import_elements(
+        &key_usage,
+        &key_format,
+        bytes,
+        &certificate_id,
+        &private_key_id,
+        &public_key_id,
+        unwrap,
+        &authenticated_additional_data,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = import_object_request(
+        unique_identifier,
+        object,
+        Some(import_attributes),
+        unwrap,
+        replace_existing,
+        tags,
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
 
 #[wasm_bindgen]
 pub fn parse_import_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
