@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use time::OffsetDateTime;
 
-use super::{error::TtlvError, ItemTypeEnumeration, TTLValue, TTLV};
+use super::{error::TtlvError, kmip_big_int::KmipBigInt, ItemTypeEnumeration, TTLValue, TTLV};
 
 /// This trait is used to define the KMIP 1.4 and KMIP 2.1 tags that can be used in TTLV serialization
 pub trait KmipTag: TryFrom<u32> + Into<u32> + TryFrom<String> + std::string::ToString {}
@@ -209,7 +209,8 @@ where
             ItemTypeEnumeration::BigInteger => {
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
-                TTLValue::BigInteger(num_bigint_dig::BigUint::from_bytes_be(&buf))
+
+                TTLValue::BigInteger(KmipBigInt::from_bytes_be(&buf))
             }
             ItemTypeEnumeration::Enumeration => {
                 let mut buf4 = [0_u8; 4];
@@ -285,6 +286,7 @@ fn item_size(ttlv: &TTLV) -> Result<usize, TtlvError> {
 
     Ok(size)
 }
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 #[allow(clippy::panic)]
@@ -292,7 +294,7 @@ mod tests {
 
     use std::io::Cursor;
 
-    use num_bigint_dig::BigUint;
+    use num_bigint_dig::BigInt;
     use strum::Display;
 
     use super::*;
@@ -355,7 +357,7 @@ mod tests {
             // Test big integer
             TTLV {
                 tag: "Test1".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(123_456_789_u64)),
+                value: TTLValue::BigInteger(BigInt::from(123_456_789_u64).into()),
             },
             // Test boolean
             TTLV {
