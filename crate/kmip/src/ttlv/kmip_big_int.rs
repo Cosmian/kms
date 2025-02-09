@@ -85,6 +85,17 @@ impl KmipBigInt {
     pub fn from_bytes_be(bytes: &[u8]) -> Self {
         Self(num_bigint_dig::BigInt::from_signed_bytes_be(bytes))
     }
+
+    /// Returns the sign of the big integer.
+    /// -1 if the number is negative, 0 if it is zero, and 1 if it is positive.
+    #[must_use]
+    pub fn sign(&self) -> i8 {
+        match self.0.sign() {
+            num_bigint_dig::Sign::Minus => -1,
+            num_bigint_dig::Sign::NoSign => 0,
+            num_bigint_dig::Sign::Plus => 1,
+        }
+    }
 }
 
 #[cfg(test)]

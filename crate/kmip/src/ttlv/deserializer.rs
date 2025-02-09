@@ -51,7 +51,7 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
+use super::{error::TtlvError, kmip_big_int::KmipBigInt, TTLVEnumeration, TTLValue, TTLV};
 use crate::{
     // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
     kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
@@ -95,6 +95,7 @@ where
         }
     }
 
+    trace!("from_ttlv: {s:?}");
     // Deserialize the value
     // and postfix the value if it is a root object
     let mut deserializer = TtlvDeserializer::from_ttlv(s);
@@ -123,14 +124,15 @@ enum Deserializing {
     StructureTag,
     StructureValue,
     ByteString,
+    BigIntSign,
     BigInt,
 }
 
 #[derive(Debug)]
-enum Inputs<'de> {
+enum Input<'de> {
     Structure(Vec<&'de TTLV>),
     Bytes(&'de [u8]),
-    BigInt(Vec<u8>),
+    BigInt(KmipBigInt),
 }
 
 /// Deserializer for TTLV structures.
@@ -176,7 +178,7 @@ pub struct TtlvDeserializer<'de> {
     /// 1 is the first element
     /// 2 is the second element
     /// etc.
-    inputs: Inputs<'de>,
+    input: Input<'de>,
 }
 
 impl<'de> TtlvDeserializer<'de> {
@@ -190,7 +192,7 @@ impl<'de> TtlvDeserializer<'de> {
     pub fn from_ttlv(root: &'de TTLV) -> Self {
         TtlvDeserializer {
             deserializing: Deserializing::StructureValue,
-            inputs: Inputs::Structure(vec![root]),
+            input: Input::Structure(vec![root]),
             index: 1,
         }
     }
@@ -201,8 +203,8 @@ impl<'de> TtlvDeserializer<'de> {
     /// # Errors
     /// An error is returned if the current input is not a TTLV structure
     fn get_structure(&self) -> Result<&[&'de TTLV]> {
-        match &self.inputs {
-            Inputs::Structure(children) => Ok(children),
+        match &self.input {
+            Input::Structure(children) => Ok(children),
             _ => Err(TtlvError::custom(format!(
                 "Unable to get TTLV Structure children. Currently deserializing {:#?}",
                 &self.deserializing
@@ -216,8 +218,8 @@ impl<'de> TtlvDeserializer<'de> {
     /// # Errors
     /// An error is returned if the current input is not a byte array
     fn get_bytes(&self) -> Result<&'de [u8]> {
-        match &self.inputs {
-            Inputs::Bytes(bytes) => Ok(*bytes),
+        match &self.input {
+            Input::Bytes(bytes) => Ok(*bytes),
             _ => Err(TtlvError::custom(format!(
                 "Unable to get ByteString bytes. Currently deserializing {:#?}",
                 &self.deserializing
@@ -225,20 +227,20 @@ impl<'de> TtlvDeserializer<'de> {
         }
     }
 
-    /// Get the current `BigInt` array being deserialized.
-    /// # Returns
-    /// The current `BigInt` array being deserialized
-    /// # Errors
-    /// An error is returned if the current input is not a `BigInt` array
-    fn get_bigint(&'de self) -> Result<&'de [u8]> {
-        match &self.inputs {
-            Inputs::BigInt(bytes) => Ok(bytes),
-            _ => Err(TtlvError::custom(format!(
-                "Unable to get BigInt array. Currently deserializing {:#?}",
-                &self.deserializing
-            ))),
-        }
-    }
+    // /// Get the current `BigInt` array being deserialized.
+    // /// # Returns
+    // /// The current `BigInt` array being deserialized
+    // /// # Errors
+    // /// An error is returned if the current input is not a `BigInt` array
+    // fn get_bigint(&'de self) -> Result<&'de KmipBigInt> {
+    //     match &self.inputs {
+    //         Inputs::BigInt(bi) => Ok(bi),
+    //         _ => Err(TtlvError::custom(format!(
+    //             "Unable to get the KmipBigInt. Currently deserializing {:#?}",
+    //             &self.deserializing
+    //         ))),
+    //     }
+    // }
 }
 
 impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
@@ -252,18 +254,13 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        trace!(
-            "deserialize_any  {:?}:  {:?} -> {:?}",
-            self.deserializing,
-            self.index,
-            self.inputs
-        );
+        trace!("deserialize_any: state  {self:?}");
         if self.deserializing == Deserializing::ByteString {
             return visitor.visit_u8(self.get_bytes()?[self.index - 1])
         }
-        if self.deserializing == Deserializing::BigInt {
-            return visitor.visit_u8(self.get_bigint()?[self.index - 1])
-        }
+        // if self.deserializing == Deserializing::BigInt {
+        //     return visitor.visit_u8(self.get_bigint()?[self.index - 1])
+        // }
         if self.deserializing == Deserializing::StructureTag {
             return visitor.visit_borrowed_str(&self.get_structure()?[self.index - 1].tag)
         }
@@ -277,7 +274,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                 trace!("deserialize_any self {self:?}");
                 let ttlv_de = TtlvDeserializer {
                     deserializing: Deserializing::StructureValue,
-                    inputs: Inputs::Structure(elements.iter().collect::<Vec<&TTLV>>()), // can probably do better
+                    input: Input::Structure(elements.iter().collect::<Vec<&TTLV>>()), // can probably do better
                     // start at 0 because the Visit Map is going to increment first
                     index: 0,
                 };
@@ -297,13 +294,13 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             },
             TTLValue::ByteString(b) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::ByteString,
-                inputs: Inputs::Bytes(b),
+                input: Input::Bytes(b),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
             TTLValue::BigInteger(e) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::BigInt,
-                inputs: Inputs::BigInt(e.to_bytes_be()),
+                input: Input::BigInt(e.clone()),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
@@ -328,6 +325,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_bool: state:  {:?}", self);
         // this can only happen for `Deserializing::Value`
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_bool(match child {
@@ -337,13 +335,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     }
 
     // #[instrument(skip(self, _visitor))]
-    fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(TtlvError::custom(
-            "Unable to deserialize an i8 value. Not supported in KMIP:".to_owned(),
-        ))
+        trace!("deserialize_i8: state: {:?}", self);
+        // When deserializing to a BigInt, the deserializer will try to pull the signed as an i8
+        let sign = match &self.input {
+            Input::BigInt(bi) => Ok(bi.sign()),
+            _ => Err(TtlvError::custom(format!(
+                "Unable to get BigInt array. Currently deserializing {:#?}",
+                &self.deserializing
+            ))),
+        }?;
+        visitor.visit_i8(sign)
     }
 
     // #[instrument(skip(self, _visitor))]
@@ -351,6 +356,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_i16 state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize an i16 value. Not supported in KMIP:".to_owned(),
         ))
@@ -361,6 +367,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_i32: state:  {:?}", self);
         // this can only happen for `Deserializing::Value`
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_i32(match child {
@@ -374,6 +381,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_i64: state:  {:?}", self);
         // this can only happen for `Deserializing::Value`
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_i64(match child {
@@ -387,11 +395,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_u8: state:  {:?}", self);
         match &self.deserializing {
-            Deserializing::BigInt => {
-                let u = &self.get_bigint()?[self.index - 1];
-                visitor.visit_u8(*u)
-            }
+            // Deserializing::BigInt => {
+            //     let u = &self.get_bigint()?[self.index - 1];
+            //     visitor.visit_u8(*u)
+            // }
             Deserializing::ByteString => {
                 let u = &self.get_bytes()?[self.index - 1];
                 visitor.visit_u8(*u)
@@ -409,6 +418,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "deserialize_u8. Unexpected Structure Tag",
             )),
+            x => Err(TtlvError::custom(format!(
+                "deserialize_u8. Unexpected {x:?}"
+            ))),
         }
     }
 
@@ -417,6 +429,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_u16: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize a u16 value. Not supported in KMIP:".to_owned(),
         ))
@@ -427,6 +440,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_u32: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureValue => {
                 let child = &self.get_structure()?[self.index - 1].value;
@@ -448,6 +462,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_u64: state:  {:?}", self);
         // this can only happen for `Deserializing::Value`
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_u64(match child {
@@ -463,6 +478,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_f32: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize a f32 value. Not supported in KMIP:".to_owned(),
         ))
@@ -473,6 +489,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_f64: state:  {:?}", self);
         // this can only happen for `Deserializing::Value`
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_f64(match child {
@@ -486,6 +503,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_char: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize a char value. Not supported in KMIP:".to_owned(),
         ))
@@ -498,6 +516,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_str: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureTag => {
                 let tag = &self.get_structure()?[self.index - 1].tag;
@@ -529,6 +548,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_string: state:  {:?}", self);
         self.deserialize_str(visitor)
     }
 
@@ -537,6 +557,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_bytes: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize a byte array (not in a ByteString). Not supported in KMIP:"
                 .to_owned(),
@@ -548,6 +569,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_bytes_buff: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize a byte array (not in a ByteString). Not supported in KMIP:"
                 .to_owned(),
@@ -559,6 +581,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_option: state:  {:?}", self);
         // No none in KMIP
         visitor.visit_some(self)
     }
@@ -569,6 +592,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_unit: state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize unit. Not supported in KMIP:".to_owned(),
         ))
@@ -580,6 +604,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_unit_struct state:  {:?}", self);
         Err(TtlvError::custom(
             "Unable to deserialize unit struct. Not supported in KMIP:".to_owned(),
         ))
@@ -593,6 +618,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_new_type_struct: state:  {:?}", self);
         visitor.visit_newtype_struct(self)
     }
 
@@ -604,6 +630,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_seq: state:  {:?}", self);
         match self.deserializing {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "deserialize_seq. A seq should not be deserialized when deserializing a tag"
@@ -611,13 +638,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             )),
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
+                trace!("deserialize_seq value {value:?}");
                 match value {
                     TTLValue::ByteString(array) =>
                     // go down one level by deserializing the inner structure
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::ByteString,
-                            inputs: Inputs::Bytes(array),
+                            input: Input::Bytes(array),
                             // start at 0 because the Visit Map is going to increment first
                             index: 0,
                         })
@@ -627,7 +655,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::BigInt,
-                            inputs: Inputs::BigInt(big_int.to_bytes_be()),
+                            input: Input::BigInt(big_int.clone()),
                             index: 0,
                         })
                     }
@@ -635,7 +663,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                         // go down one level by deserializing the inner structure
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::StructureValue,
-                            inputs: Inputs::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
+                            input: Input::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
                             // start at 0 because the Visit Map is going to increment first
                             index: 0,
                         })
@@ -649,7 +677,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                 // already at the ByteString level, visit it
                 visitor.visit_seq(self)
             }
-            Deserializing::BigInt => {
+            Deserializing::BigInt | Deserializing::BigIntSign => {
                 // already at the BigInt level, visit it
                 visitor.visit_seq(self)
             }
@@ -658,10 +686,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
 
     // Tuples look just like sequences
     // #[instrument(skip(self, visitor))]
-    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_tuple, len: {len}, state:  {:?}", self);
         self.deserialize_seq(visitor)
     }
 
@@ -676,6 +705,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_tuple_struct: state:  {:?}", self);
         self.deserialize_seq(visitor)
     }
 
@@ -684,6 +714,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_map: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
@@ -692,7 +723,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                         // go down one level by deserializing the inner structure
                         visitor.visit_map(TtlvDeserializer {
                             deserializing: Deserializing::StructureValue,
-                            inputs: Inputs::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
+                            input: Input::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
                             // start at 0 because the Visit Map is going to increment first
                             index: 0,
                         })
@@ -708,8 +739,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
         }
     }
 
-    // Structs look just like maps in KMIP.
-    //
+    /// Deserializing a struct.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the target struct
+    /// * `fields` - The fields of the target struct
+    /// * `visitor` - The visitor
+    /// # Returns
+    /// The result of the visitor
+    ///
     // Notice the `fields` parameter - a "struct" in the Serde data model means
     // that the `Deserialize` implementation is required to know what the fields
     // are before even looking at the input data. Any key-value pairing in which
@@ -717,13 +755,42 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     // #[instrument(skip(self, visitor))]
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
+        trace!(
+            "deserialize_struct: name {name}, fields: {fields:?} : state:  {:?}",
+            self
+        );
+        // the `input` should be a structure
+        let ttlv_struct = self.get_structure()?[self.index - 1];
+        // its tag shoud match the name of the struct
+        if ttlv_struct.tag != name {
+            return Err(TtlvError::custom(format!(
+                "deserialize_struct. Tag {} does not match struct name {}",
+                ttlv_struct.tag, name
+            )));
+        }
+        // the value of the struct should be a structure wian array of TTLV children
+        // let value = &ttlv_struct.value;
+        // match value {
+        //     TTLValue::Structure(array) => {
+        //         // go down one level by deserializing the inner structure
+        //         visitor.visit_map(TtlvDeserializer {
+        //             deserializing: Deserializing::StructureValue,
+        //             input: Input::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
+        //             // start at 0 because the Visit Map is going to increment first
+        //             index: 0,
+        //         })
+        //     }
+        //     x => Err(TtlvError::custom(format!(
+        //         "deserialize_struct. Invalid type for value: {x:?}"
+        //     ))),
+        // }
         self.deserialize_map(visitor)
     }
 
@@ -737,6 +804,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_enum: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "deserialize_enum. An enum should not be deserialized when deserializing a tag"
@@ -773,6 +841,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_identifier: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureTag => {
                 //go ahead deserialize the tag
@@ -813,6 +882,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        trace!("deserialize_ignored_any: state:  {:?}", self);
         self.deserialize_any(visitor)
     }
 }
@@ -829,6 +899,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
     where
         K: DeserializeSeed<'de>,
     {
+        trace!("next_key_seed: state:  {:?}", self);
         match &self.deserializing {
             Deserializing::StructureTag => Err(TtlvError::custom(
                 "next_key_seed. An next key seed should not be deserialized when deserializing a \
@@ -933,21 +1004,22 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer<'de> {
                 seed.deserialize(self).map(Some)
             }
             Deserializing::BigInt => {
-                // Check if there are no more elements.
-                self.index += 1;
-                let children = self.get_bigint()?;
-                if self.index > children.len() {
-                    return Ok(None)
-                }
-                // tell the deserializer that it is going to deserialize the bytes
-                self.deserializing = Deserializing::BigInt;
+                // trace!("next_element_seed BigInt: state:  {:?}", self);
+                // // Check if there are no more elements.
+                // self.index += 1;
+                // let children = self.get_bigint()?;
+                // if self.index > children.len() {
+                //     return Ok(None)
+                // }
+                // tell the deserializer that it is going to satrt by deserializing the Big Int sign
+                self.deserializing = Deserializing::BigIntSign;
 
                 // go ahead deserialize it (index was advanced by a call to next_key_seed) ).
                 // This will trigger a call to the corresponding `deserialize_xxx()`
                 // method on the injected Deserializer (`self` in this case)
                 seed.deserialize(self).map(Some)
             }
-            x @ Deserializing::StructureTag => Err(TtlvError::custom(format!(
+            x => Err(TtlvError::custom(format!(
                 "next_element_seed. A next element seed should not be deserialized when \
                  deserializing a {x:?}"
             ))),
