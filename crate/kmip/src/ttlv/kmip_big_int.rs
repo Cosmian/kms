@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 /// A wrapper struct for `num_bigint_dig::BigInt` that provides KMIP-specific encoding and decoding.
 ///
 /// This type represents a Big Integer as defined in the KMIP (Key Management Interoperability Protocol)
@@ -98,6 +100,36 @@ impl KmipBigInt {
     }
 }
 
+impl Serialize for KmipBigInt {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let s = "0x".to_owned() + &hex::encode_upper(self.to_bytes_be());
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for KmipBigInt {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if !s.starts_with("0x") {
+            return Err(serde::de::Error::custom(
+                "Invalid KMIP Big Integer string: it must start with '0x'",
+            ));
+        }
+        // take the string from the 3rd character to the end of the string
+        let hex_str = s.get(2..).ok_or_else(|| {
+            serde::de::Error::custom("Invalid KMIP Big Integer string: unexpected end of string")
+        })?;
+        let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
+        Ok(Self::from_bytes_be(&bytes))
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 #[allow(clippy::panic)]
@@ -169,6 +201,28 @@ mod tests {
             assert_eq!(bytes.len() % 8, 0);
             let big_int2 = KmipBigInt::from_bytes_be(&bytes);
             assert_eq!(big_int, big_int2);
+        }
+    }
+
+    #[test]
+    fn test_serde() {
+        let tests = [
+            (
+                KmipBigInt::from(BigInt::from(-1_234_567_890_i128)),
+                "0xFFFFFFFFB669FD2E",
+            ),
+            (
+                KmipBigInt::from(BigInt::from(1_234_567_890_i128)),
+                "0x00000000499602D2",
+            ),
+        ];
+
+        for (big_int, expected) in &tests {
+            let serialized = serde_json::to_string(&big_int).unwrap();
+            assert_eq!(serialized, format!("\"{expected}\""));
+
+            let deserialized: KmipBigInt = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(deserialized, *big_int);
         }
     }
 }
