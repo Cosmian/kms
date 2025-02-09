@@ -7,12 +7,18 @@ use time::format_description::well_known::Iso8601;
 use super::ttlv_struct::{TTLVEnumeration, TTLV};
 use crate::ttlv::ttlv_struct::TTLValue;
 
+/// Serialize TTLV structure to the Serde Data Model
+///
+/// Serialization if performed by calling methods on the Serializer object.
+/// In this particular case, we are serializing a TTLV structure to a Serde Data Model
+/// structure.
 impl Serialize for TTLV {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        fn _serialize<S, T>(
+        /// Serialize a TTLV structure to a Serde Data Model Structure
+        fn _serialize_struct<S, T>(
             serializer: S,
             tag: &str,
             typ: &str,
@@ -30,9 +36,9 @@ impl Serialize for TTLV {
         }
 
         match &self.value {
-            TTLValue::Structure(v) => _serialize(serializer, &self.tag, "Structure", v),
-            TTLValue::Integer(v) => _serialize(serializer, &self.tag, "Integer", v),
-            TTLValue::LongInteger(v) => _serialize(
+            TTLValue::Structure(v) => _serialize_struct(serializer, &self.tag, "Structure", v),
+            TTLValue::Integer(v) => _serialize_struct(serializer, &self.tag, "Integer", v),
+            TTLValue::LongInteger(v) => _serialize_struct(
                 serializer,
                 &self.tag,
                 "LongInteger",
@@ -42,20 +48,20 @@ impl Serialize for TTLV {
                 //TODO Note that Big Integers must be sign extended to
                 //TODO  contain a multiple of 8 bytes, and as per LongInteger, JS numbers only
                 // support a limited range of values.
-                _serialize(
+                _serialize_struct(
                     serializer,
                     &self.tag,
                     "BigInteger",
-                    &("0x".to_owned() + &hex::encode_upper(v.to_bytes_be())),
+                    v, //&("0x".to_owned() + &hex::encode_upper(v.to_bytes_be())),
                 )
             }
-            TTLValue::Enumeration(v) => _serialize(serializer, &self.tag, "Enumeration", v),
-            TTLValue::Boolean(v) => _serialize(serializer, &self.tag, "Boolean", v),
-            TTLValue::TextString(v) => _serialize(serializer, &self.tag, "TextString", v),
+            TTLValue::Enumeration(v) => _serialize_struct(serializer, &self.tag, "Enumeration", v),
+            TTLValue::Boolean(v) => _serialize_struct(serializer, &self.tag, "Boolean", v),
+            TTLValue::TextString(v) => _serialize_struct(serializer, &self.tag, "TextString", v),
             TTLValue::ByteString(v) => {
-                _serialize(serializer, &self.tag, "ByteString", &hex::encode_upper(v))
+                _serialize_struct(serializer, &self.tag, "ByteString", &hex::encode_upper(v))
             }
-            TTLValue::DateTime(v) => _serialize(
+            TTLValue::DateTime(v) => _serialize_struct(
                 serializer,
                 &self.tag,
                 "DateTime",
@@ -63,8 +69,8 @@ impl Serialize for TTLV {
                     ser::Error::custom(format!("Cannot format DateTime {v} into ISO8601: {err}"))
                 })?,
             ),
-            TTLValue::Interval(v) => _serialize(serializer, &self.tag, "Interval", v),
-            TTLValue::DateTimeExtended(v) => _serialize(
+            TTLValue::Interval(v) => _serialize_struct(serializer, &self.tag, "Interval", v),
+            TTLValue::DateTimeExtended(v) => _serialize_struct(
                 serializer,
                 &self.tag,
                 "DateTimeExtended",
