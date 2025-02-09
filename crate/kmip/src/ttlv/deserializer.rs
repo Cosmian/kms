@@ -1,3 +1,48 @@
+//! TTLV Deserialization implementation for KMIP structures.
+//!
+//! This module implements the Serde `Deserializer` trait for TTLV (Tag, Type, Length, Value) format
+//! used in KMIP protocol. It allows converting TTLV structures into Rust data types.
+//!
+//! # Structure
+//!
+//! The main components are:
+//!
+//! - `TtlvDeserializer`: Core deserializer that implements the Serde `Deserializer` trait
+//! - `Deserializing`: Enum tracking the current deserialization state (tag vs value)
+//! - `Inputs`: Enum holding the different types of input being deserialized
+//! - Various trait implementations for handling different data types and structures
+//!
+//! # Features
+//!
+//! - Supports deserialization of KMIP primitive types (Integer, `LongInteger``ByteString`ng, etc.)
+//! - Handles KMIP structures and sequences
+//! - Processes enumerations with both integer and string representations
+//! - Manages complex nested structures through recursive deserialization
+//!
+//! # Limitations
+//!
+//! Some Rust types are not supported as they don't map to KMIP types:
+//!
+//! - i8, i16, u16
+//! - f32
+//! - char
+//! - Raw byte arrays (must use `ByteString`)
+//! - Unit types
+//!
+//! # Example
+//!
+//! ```rust
+//! use serde::Deserialize;
+//!
+//! #[derive(Deserialize)]
+//! struct KmipStructure {
+//!     field1: i32,
+//!     field2: String,
+//! }
+//!
+//! let ttlv = // ... TTLV structure ...
+//! let result: KmipStructure = from_ttlv(&ttlv)?;
+//! ```
 #![allow(clippy::indexing_slicing)]
 use serde::{
     de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
@@ -6,81 +51,13 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use super::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV};
+use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
 use crate::{
     // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
     kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
-
-/// The current input being deserialized
-#[derive(Debug, PartialEq)]
-enum Deserializing {
-    StructureTag,
-    StructureValue,
-    ByteString,
-    BigInt,
-}
-
-#[derive(Debug)]
-enum Inputs<'de> {
-    Structure(Vec<&'de TTLV>),
-    Bytes(&'de [u8]),
-    BigInt(Vec<u32>),
-}
-
-#[derive(Debug)]
-pub struct TtlvDeserializer<'de> {
-    /// whether a tag or a value is being deserialized with this serializer
-    deserializing: Deserializing,
-    /// the index+1 of the TTLV being processed
-    /// 0 is reserved so that visitors can increase then process
-    index: usize,
-    /// the inputs being deserialized, index gives the current input
-    inputs: Inputs<'de>,
-}
-
-impl<'de> TtlvDeserializer<'de> {
-    #[must_use]
-    pub fn from_ttlv(root: &'de TTLV) -> Self {
-        TtlvDeserializer {
-            deserializing: Deserializing::StructureValue,
-            inputs: Inputs::Structure(vec![root]),
-            index: 1,
-        }
-    }
-
-    fn get_structure(&self) -> Result<&[&'de TTLV]> {
-        match &self.inputs {
-            Inputs::Structure(children) => Ok(children),
-            _ => Err(TtlvError::custom(format!(
-                "Unable to get TTLV Structure children. Currently deserializing {:#?}",
-                &self.deserializing
-            ))),
-        }
-    }
-
-    fn get_bytes(&self) -> Result<&'de [u8]> {
-        match &self.inputs {
-            Inputs::Bytes(bytes) => Ok(*bytes),
-            _ => Err(TtlvError::custom(format!(
-                "Unable to get ByteString bytes. Currently deserializing {:#?}",
-                &self.deserializing
-            ))),
-        }
-    }
-
-    fn get_bigint(&self) -> Result<&[u32]> {
-        match &self.inputs {
-            Inputs::BigInt(array) => Ok(array),
-            _ => Err(TtlvError::custom(format!(
-                "Unable to get BigInt array. Currently deserializing {:#?}",
-                &self.deserializing
-            ))),
-        }
-    }
-}
 
 /// Parse a KMIP structure from its TTLV value.
 ///
@@ -118,10 +95,150 @@ where
         }
     }
 
+    // Deserialize the value
+    // and postfix the value if it is a root object
     let mut deserializer = TtlvDeserializer::from_ttlv(s);
     let value = T::deserialize(&mut deserializer)?;
 
     value.post_fix(s.tag.as_str())
+}
+
+/// Represents the current state of the TTLV deserialization process.
+///
+/// This enum tracks what type of TTLV element is currently being deserialized,
+/// which helps coordinate the deserialization flow between structure tags,
+/// values, and special types like `ByteString` an`BigInt`nt.
+///
+/// # Variants
+///
+/// * `StructureTag` - Currently deserializing a TTLV tag name
+/// * `StructureValue` - Currently deserializing a TTLV value
+/// * `ByteString` - Currently deserializing bytes from a `ByteString` value
+/// * `BigInt` - Currently deserializing bytes from a `BigInteger` value
+///
+/// The enum is used internally by the deserializer to maintain state and determine
+/// appropriate deserialization behavior for different TTLV elements.
+#[derive(Debug, PartialEq)]
+enum Deserializing {
+    StructureTag,
+    StructureValue,
+    ByteString,
+    BigInt,
+}
+
+#[derive(Debug)]
+enum Inputs<'de> {
+    Structure(Vec<&'de TTLV>),
+    Bytes(&'de [u8]),
+    BigInt(Vec<u8>),
+}
+
+/// Deserializer for TTLV structures.
+/// This struct implements the Serde `Deserializer` trait for TTLV structures,
+/// allowing them to be deserialized into Rust data types.
+/// The deserializer tracks the current state of the deserialization process,
+/// including the type of element being deserialized (tag vs value),
+/// the current index, and the input data being deserialized.
+/// The deserializer is used to convert TTLV structures into Rust data types.
+/// # Fields
+/// * `deserializing` - The current state of the deserializer (tag vs value, `ByteString`, `BigInt`)
+/// * `index` - The current index (1 is the first element, 2 is the second element, etc.)
+/// * `inputs` - The input data being deserialized (sequence of TTLV elements, byte array, or `BigInt` array)
+///
+/// The deserializer is used to access the current element being deserialized
+/// and provide the next element to the visitors.
+/// The inputs are updated by the visitors and used to access the current element in the inputs.
+#[derive(Debug)]
+pub struct TtlvDeserializer<'de> {
+    /// the current state of the deserializer
+    /// (tag vs value, `ByteString`, `BigInt`)
+    /// used to determine the appropriate deserialization behavior
+    deserializing: Deserializing,
+
+    /// the current index
+    /// 1 is the first element
+    /// 2 is the second element
+    /// etc.
+    /// This is used to keep track of the current element being deserialized
+    /// in a sequence or structure
+    /// It is incremented by the visitors
+    /// and used to access the current element in the inputs
+    /// 0 is reserved so that visitors can increase then process
+    index: usize,
+
+    /// the input data being deserialized
+    /// can be a sequence of TTLV elements, a byte array, or a `BigInt` array
+    /// used to access the current element being deserialized
+    /// and to provide the next element to the visitors
+    /// The inputs are updated by the visitors
+    /// and used to access the current element in the inputs
+    /// 0 is reserved so that visitors can increase then process
+    /// 1 is the first element
+    /// 2 is the second element
+    /// etc.
+    inputs: Inputs<'de>,
+}
+
+impl<'de> TtlvDeserializer<'de> {
+    /// Create a new TTLV deserializer from a TTLV structure.
+    /// The deserializer will start deserializing the root structure.
+    /// # Parameters
+    /// - `root` - the root TTLV structure to deserialize
+    /// # Returns
+    /// A new TTLV deserializer
+    #[must_use]
+    pub fn from_ttlv(root: &'de TTLV) -> Self {
+        TtlvDeserializer {
+            deserializing: Deserializing::StructureValue,
+            inputs: Inputs::Structure(vec![root]),
+            index: 1,
+        }
+    }
+
+    /// Get the current TTLV structure being deserialized.
+    /// # Returns
+    /// The current TTLV structure being deserialized
+    /// # Errors
+    /// An error is returned if the current input is not a TTLV structure
+    fn get_structure(&self) -> Result<&[&'de TTLV]> {
+        match &self.inputs {
+            Inputs::Structure(children) => Ok(children),
+            _ => Err(TtlvError::custom(format!(
+                "Unable to get TTLV Structure children. Currently deserializing {:#?}",
+                &self.deserializing
+            ))),
+        }
+    }
+
+    /// Get the current byte array being deserialized.
+    /// # Returns
+    /// The current byte array being deserialized
+    /// # Errors
+    /// An error is returned if the current input is not a byte array
+    fn get_bytes(&self) -> Result<&'de [u8]> {
+        match &self.inputs {
+            Inputs::Bytes(bytes) => Ok(*bytes),
+            _ => Err(TtlvError::custom(format!(
+                "Unable to get ByteString bytes. Currently deserializing {:#?}",
+                &self.deserializing
+            ))),
+        }
+    }
+
+    /// Get the current `BigInt` array being deserialized.
+    /// # Returns
+    /// The current `BigInt` array being deserialized
+    /// # Errors
+    /// An error is returned if the current input is not a `BigInt` array
+    fn get_bigint(&'de self) -> Result<&'de [u8]> {
+        match &self.inputs {
+            Inputs::BigInt(bytes) => Ok(bytes),
+            _ => Err(TtlvError::custom(format!(
+                "Unable to get BigInt array. Currently deserializing {:#?}",
+                &self.deserializing
+            ))),
+        }
+    }
 }
 
 impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
@@ -145,7 +262,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             return visitor.visit_u8(self.get_bytes()?[self.index - 1])
         }
         if self.deserializing == Deserializing::BigInt {
-            return visitor.visit_u32(self.get_bigint()?[self.index - 1])
+            return visitor.visit_u8(self.get_bigint()?[self.index - 1])
         }
         if self.deserializing == Deserializing::StructureTag {
             return visitor.visit_borrowed_str(&self.get_structure()?[self.index - 1].tag)
@@ -173,7 +290,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                 }
             }
             TTLValue::Integer(i) => visitor.visit_i32(*i),
-            // TTLValue::BitMask(e) => visitor.visit_u32(*e),
             TTLValue::LongInteger(li) => visitor.visit_i64(*li),
             TTLValue::Enumeration(e) => match e {
                 TTLVEnumeration::Integer(i) => visitor.visit_i32(*i),
@@ -187,7 +303,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             }),
             TTLValue::BigInteger(e) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::BigInt,
-                inputs: Inputs::BigInt(to_u32_digits(e)?),
+                inputs: Inputs::BigInt(e.to_bytes_be()),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
@@ -272,6 +388,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         match &self.deserializing {
+            Deserializing::BigInt => {
+                let u = &self.get_bigint()?[self.index - 1];
+                visitor.visit_u8(*u)
+            }
             Deserializing::ByteString => {
                 let u = &self.get_bytes()?[self.index - 1];
                 visitor.visit_u8(*u)
@@ -286,9 +406,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                     ))),
                 }
             }
-            x => Err(TtlvError::custom(format!(
-                "deserialize_u8. Unexpected {x:?}"
-            ))),
+            Deserializing::StructureTag => Err(TtlvError::custom(
+                "deserialize_u8. Unexpected Structure Tag",
+            )),
         }
     }
 
@@ -308,17 +428,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
         V: Visitor<'de>,
     {
         match &self.deserializing {
-            Deserializing::BigInt => {
-                let u = &self.get_bigint()?[self.index - 1];
-                visitor.visit_u32(*u)
-            }
             Deserializing::StructureValue => {
                 let child = &self.get_structure()?[self.index - 1].value;
                 visitor.visit_u32(match child {
                     TTLValue::Integer(v) => (*v)
                         .try_into()
                         .map_err(|_e| TtlvError::custom(format!("Invalid type for u32: {v:?}")))?,
-                    // TTLValue::BitMask(v) => *v,
                     x => return Err(TtlvError::custom(format!("Invalid type for u32: {x:?}"))),
                 })
             }
@@ -512,7 +627,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::BigInt,
-                            inputs: Inputs::BigInt(to_u32_digits(big_int)?),
+                            inputs: Inputs::BigInt(big_int.to_bytes_be()),
                             index: 0,
                         })
                     }

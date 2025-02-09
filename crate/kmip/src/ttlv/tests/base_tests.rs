@@ -1,7 +1,8 @@
 use cosmian_logger::log_init;
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use tracing::info;
 
 use crate::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV};
 
@@ -30,17 +31,15 @@ fn test_serialization_deserialization() {
                 tag: "AnInt".to_owned(),
                 value: TTLValue::Integer(42),
             },
-            // TTLV {
-            //     tag: "ABitMask".to_owned(),
-            //     value: TTLValue::BitMask(42),
-            // },
             TTLV {
                 tag: "ALongInt".to_owned(),
                 value: TTLValue::LongInteger(-42_i64),
             },
             TTLV {
                 tag: "ABigInteger".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(2_487_678_887_987_987_798_676_u128)),
+                value: TTLValue::BigInteger(
+                    BigInt::from(2_487_678_887_987_987_798_676_u128).into(),
+                ),
             },
             TTLV {
                 tag: "AnEnumeration_1".to_owned(),
@@ -81,66 +80,61 @@ fn test_serialization_deserialization() {
 
     match rec.value {
         TTLValue::Structure(s) => {
-            assert_eq!(s.len(), 12);
+            assert_eq!(s.len(), 11);
             assert_eq!(s[0].tag, "AnInt");
             match &s[0].value {
                 TTLValue::Integer(i) => assert_eq!(*i, 42),
                 _ => panic!("Wrong type for AnInt"),
             }
-            assert_eq!(s[1].tag, "ABitMask");
-            // match &s[1].value {
-            //     TTLValue::BitMask(b) => assert_eq!(*b, 42),
-            //     _ => panic!("Wrong type for ABitMask"),
-            // }
-            assert_eq!(s[2].tag, "ALongInt");
-            match &s[2].value {
+            assert_eq!(s[1].tag, "ALongInt");
+            match &s[1].value {
                 TTLValue::LongInteger(l) => assert_eq!(*l, -42),
                 _ => panic!("Wrong type for ALongInt"),
             }
-            assert_eq!(s[3].tag, "ABigInteger");
-            match &s[3].value {
+            assert_eq!(s[2].tag, "ABigInteger");
+            match &s[2].value {
                 TTLValue::BigInteger(b) => {
-                    assert_eq!(*b, BigUint::from(2_487_678_887_987_987_798_676_u128));
+                    assert_eq!(*b, BigInt::from(2_487_678_887_987_987_798_676_u128).into());
                 }
                 _ => panic!("Wrong type for ABigInteger"),
             }
-            assert_eq!(s[4].tag, "AnEnumeration_1");
-            match &s[4].value {
+            assert_eq!(s[3].tag, "AnEnumeration_1");
+            match &s[3].value {
                 TTLValue::Enumeration(TTLVEnumeration::Integer(i)) => assert_eq!(*i, 54),
                 _ => panic!("Wrong type for AnEnumeration_1"),
             }
-            assert_eq!(s[5].tag, "AnEnumeration_2");
-            match &s[5].value {
+            assert_eq!(s[4].tag, "AnEnumeration_2");
+            match &s[4].value {
                 TTLValue::Enumeration(TTLVEnumeration::Name(n)) => assert_eq!(n, "blah"),
                 _ => panic!("Wrong type for AnEnumeration_2"),
             }
-            assert_eq!(s[6].tag, "ABoolean");
-            match &s[6].value {
+            assert_eq!(s[5].tag, "ABoolean");
+            match &s[5].value {
                 TTLValue::Boolean(b) => assert!(b),
                 _ => panic!("Wrong type for ABoolean"),
             }
-            assert_eq!(s[7].tag, "ATextString");
-            match &s[7].value {
+            assert_eq!(s[6].tag, "ATextString");
+            match &s[6].value {
                 TTLValue::TextString(t) => assert_eq!(t, "blah"),
                 _ => panic!("Wrong type for ATextString"),
             }
-            assert_eq!(s[8].tag, "AnByteString");
-            match &s[8].value {
+            assert_eq!(s[7].tag, "AnByteString");
+            match &s[7].value {
                 TTLValue::ByteString(b) => assert_eq!(b, b"hello"),
                 _ => panic!("Wrong type for AnByteString"),
             }
-            assert_eq!(s[9].tag, "ADateTime");
-            match &s[9].value {
+            assert_eq!(s[8].tag, "ADateTime");
+            match &s[8].value {
                 TTLValue::DateTime(d) => assert_eq!(*d, now),
                 _ => panic!("Wrong type for ADateTime"),
             }
-            assert_eq!(s[10].tag, "AnInterval");
-            match &s[10].value {
+            assert_eq!(s[9].tag, "AnInterval");
+            match &s[9].value {
                 TTLValue::Interval(i) => assert_eq!(*i, 27),
                 _ => panic!("Wrong type for AnInterval"),
             }
-            assert_eq!(s[11].tag, "ADateTimeExtended");
-            match &s[11].value {
+            assert_eq!(s[10].tag, "ADateTimeExtended");
+            match &s[10].value {
                 TTLValue::DateTimeExtended(d) => assert_eq!(*d, now),
                 _ => panic!("Wrong type for ADateTimeExtended"),
             }
@@ -192,21 +186,35 @@ fn test_ser_big_int() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
-        big_int: BigUint,
+        big_int: BigInt,
     }
-    log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("trace,hyper=info,reqwest=info"));
 
-    let test = Test {
-        big_int: BigUint::from(0x1111_1111_1222_2222_u128),
-    };
-    let ttlv = to_ttlv(&test).unwrap();
-    let value = serde_json::to_value(&ttlv).unwrap();
-    assert!(value.is_object());
-    assert_eq!(value["tag"], "Test");
-    assert_eq!(value["value"][0]["tag"], "BigInt");
-    assert_eq!(value["value"][0]["type"], "BigInteger");
-    assert_eq!(value["value"][0]["value"], "0x1111111112222222");
-    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
-    let rec: Test = from_ttlv(&re_ttlv).unwrap();
-    assert_eq!(test.big_int, rec.big_int);
+    let tests = [
+        (
+            Test {
+                big_int: BigInt::from(-1_234_567_890_i128),
+            },
+            "0xFFFFFFFFB669FD2E",
+        ),
+        (
+            Test {
+                big_int: BigInt::from(0x0000_1111_1222_2222_u128),
+            },
+            "0x0000_1111_1222_2222_u128",
+        ),
+    ];
+    for (test, s) in tests {
+        let ttlv = to_ttlv(&test).unwrap();
+        let value = serde_json::to_value(&ttlv).unwrap();
+        info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+        assert!(value.is_object());
+        assert_eq!(value["tag"], "Test");
+        assert_eq!(value["value"][0]["tag"], "BigInt");
+        assert_eq!(value["value"][0]["type"], "BigInteger");
+        assert_eq!(value["value"][0]["value"], s);
+        let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+        let rec: Test = from_ttlv(&re_ttlv).unwrap();
+        assert_eq!(test.big_int, rec.big_int);
+    }
 }
