@@ -766,31 +766,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             "deserialize_struct: name {name}, fields: {fields:?} : state:  {:?}",
             self
         );
-        // the `input` should be a structure
-        let ttlv_struct = self.get_structure()?[self.index - 1];
-        // its tag shoud match the name of the struct
-        if ttlv_struct.tag != name {
-            return Err(TtlvError::custom(format!(
-                "deserialize_struct. Tag {} does not match struct name {}",
-                ttlv_struct.tag, name
-            )));
-        }
-        // the value of the struct should be a structure wian array of TTLV children
-        // let value = &ttlv_struct.value;
-        // match value {
-        //     TTLValue::Structure(array) => {
-        //         // go down one level by deserializing the inner structure
-        //         visitor.visit_map(TtlvDeserializer {
-        //             deserializing: Deserializing::StructureValue,
-        //             input: Input::Structure(array.iter().collect::<Vec<&TTLV>>()), // can probably do better
-        //             // start at 0 because the Visit Map is going to increment first
-        //             index: 0,
-        //         })
-        //     }
-        //     x => Err(TtlvError::custom(format!(
-        //         "deserialize_struct. Invalid type for value: {x:?}"
-        //     ))),
-        // }
         self.deserialize_map(visitor)
     }
 
@@ -813,7 +788,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
                 trace!(
-                    "\ndeserialize_enum {}: {:?}, \n[{}]: {:#?}\n",
+                    "\ndeserialize_enum - name: {}, variante: {:?}, \nindex: [{}]: (value) {:#?}\n",
                     name,
                     variants,
                     &self.index - 1,
