@@ -51,21 +51,20 @@
 //! are handled in big-endian format as required by the protocol.
 pub mod deserializer;
 pub mod error;
+pub mod kmip_big_int;
 pub mod serde_ttlv;
 pub mod serializer;
 
 use core::fmt;
 
 use error::TtlvError;
-use num_bigint_dig::BigUint;
+use kmip_big_int::KmipBigInt;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct, Serializer},
     Deserialize, Serialize,
 };
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
-
-use crate::error::result::KmipResult;
 
 #[allow(
     clippy::cast_possible_truncation,
@@ -78,8 +77,6 @@ use crate::error::result::KmipResult;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
 pub enum ItemTypeEnumeration {
     Structure = 0x01,
     Integer = 0x02,
@@ -110,7 +107,7 @@ impl TryFrom<u8> for ItemTypeEnumeration {
             0x09 => Ok(Self::DateTime),
             0x0A => Ok(Self::Interval),
             0x0B => Ok(Self::DateTimeExtended),
-            v => Err(TtlvError::from(format!("Invalid ItemTypeEnumeration: {v}"))),
+            _ => Err(TtlvError::from(format!("Invalid type byte: {value}"))),
         }
     }
 }
@@ -180,9 +177,8 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
-    // BitMask(u32),
     LongInteger(i64),
-    BigInteger(BigUint),
+    BigInteger(KmipBigInt),
     Enumeration(TTLVEnumeration),
     Boolean(bool),
     TextString(String),
@@ -211,7 +207,6 @@ impl PartialEq for TTLValue {
             (Self::ByteString(l0), Self::ByteString(r0)) => l0 == r0,
             (Self::DateTime(l0), Self::DateTime(r0)) => l0.unix_timestamp() == r0.unix_timestamp(),
             (Self::Interval(l0), Self::Interval(r0)) => l0 == r0,
-            // (Self::BitMask(l0), Self::BitMask(r0)) => l0 == r0,
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
                 l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
@@ -251,12 +246,6 @@ impl Serialize for TTLV {
         match &self.value {
             TTLValue::Structure(v) => _serialize(serializer, &self.tag, "Structure", v),
             TTLValue::Integer(v) => _serialize(serializer, &self.tag, "Integer", v),
-            // TTLValue::BitMask(v) => _serialize(
-            //     serializer,
-            //     &self.tag,
-            //     "Integer",
-            //     &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
-            // ),
             TTLValue::LongInteger(v) => _serialize(
                 serializer,
                 &self.tag,
@@ -421,13 +410,6 @@ impl<'de> Deserialize<'de> for TTLV {
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
-                                // "Integer" => {
-                                //     let im: IntegerOrMask = map.next_value()?;
-                                //     match im {
-                                //         IntegerOrMask::Integer(v) => TTLValue::Integer(v),
-                                //         IntegerOrMask::Mask(m) => TTLValue::BitMask(m),
-                                //     }
-                                // }
                                 "Integer" => TTLValue::Integer(map.next_value()?),
                                 "LongInteger" => {
                                     let hex: String = map.next_value()?;
@@ -489,16 +471,8 @@ impl<'de> Deserialize<'de> for TTLV {
                                     .map_err(|_e| {
                                         de::Error::custom(format!("Invalid value for Mask: {hex}"))
                                     })?;
-                                    // build the `BigUint` using the `Vec<u32>` representation.
-                                    let v = BigUint::from_slice(
-                                        &to_u32_digits(&BigUint::from_bytes_be(bytes.as_slice()))
-                                            .map_err(|e| {
-                                            de::Error::custom(format!(
-                                                "Invalid value for BigInteger: {}. Error: {}",
-                                                &hex, e
-                                            ))
-                                        })?,
-                                    );
+                                    // build the `KmipBigInt` using the bytes representation.
+                                    let v = KmipBigInt::from_bytes_be(bytes.as_slice());
                                     TTLValue::BigInteger(v)
                                 }
                                 "Enumeration" => {
@@ -621,37 +595,4 @@ where
             })?
         }
     })
-}
-
-/// Convert a `BigUint` into a `Vec<u32>`.
-///
-/// Get the `Vec<u8>` representation from the `BigUint`,
-/// and chunk it 4-by-4 bytes to create the multiple
-/// `u32` bytes needed for `Vec<u32>` representation.
-///
-/// This conversion is done manually, as `num-bigint-dig`
-/// doesn't provide such conversion.
-pub fn to_u32_digits(big_int: &BigUint) -> KmipResult<Vec<u32>> {
-    // Since the KMS works with big-endian representation of byte arrays, casting
-    // a group of 4 bytes in big-endian u32 representation needs revert iter so
-    // that if you have a chunk [0, 12, 143, 239] you will do
-    // B = 239 + 143*2^8 + 12*2^16 + 0*2^24 which is the correct way to do. On
-    // top of that, if the number of bytes in `big_int` is not a multiple of 4,
-    // it will behave as if there were leading null bytes which is technically
-    // the case.
-    // In this case, using this to convert a BigUint to a Vec<u32> will not lose
-    // leading null bytes information which might be the case when an EC private
-    // key is legally generated with leading null bytes.
-    let mut bytes_be = big_int.to_bytes_be();
-    bytes_be.reverse();
-
-    let mut result = Vec::new();
-    for group_of_4_bytes in bytes_be.chunks(4) {
-        let mut acc = 0;
-        for (k, elt) in group_of_4_bytes.iter().enumerate() {
-            acc += u32::from(*elt) * 2_u32.pow(u32::try_from(k)? * 8);
-        }
-        result.push(acc);
-    }
-    Ok(result)
 }

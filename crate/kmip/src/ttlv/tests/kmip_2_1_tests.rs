@@ -1,5 +1,5 @@
 use cosmian_logger::log_init;
-use num_bigint_dig::BigUint;
+use num_bigint_dig::{BigInt, BigUint};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::trace;
 use zeroize::Zeroizing;
@@ -277,19 +277,19 @@ fn test_key_material_big_int_deserialization() {
             },
             TTLV {
                 tag: "P".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(u32::MAX)),
+                value: TTLValue::BigInteger(BigInt::from(u32::MAX).into()),
             },
             TTLV {
                 tag: "Q".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(1_u32)),
+                value: TTLValue::BigInteger(BigInt::from(1_u32).into()),
             },
             TTLV {
                 tag: "G".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(2_u32)),
+                value: TTLValue::BigInteger(BigInt::from(2_u32).into()),
             },
             TTLV {
                 tag: "X".to_owned(),
-                value: TTLValue::BigInteger(BigUint::from(u128::MAX)),
+                value: TTLValue::BigInteger(BigInt::from(u128::MAX).into()),
             },
         ]),
     };

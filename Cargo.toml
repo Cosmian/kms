@@ -77,6 +77,7 @@ log = { version = "0.4.25", default-features = false }
 lru = "0.12.5"
 num_cpus = "1.16"
 num-format = "0.4"
+num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10.70", default-features = false }
 pem = "3.0"

@@ -42,4 +42,6 @@ zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
 ignored = ["rust-ini", "sha3"]
 
 [dev-dependencies]
+hex = { workspace = true, features = ["std"] }
+num-traits = { workspace = true }
 rand = { workspace = true }
