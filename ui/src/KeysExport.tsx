@@ -80,12 +80,12 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
         setIsLoading(true);
         setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        if (id == undefined) {
-            setRes("Missing key identifier.")
-            throw Error("Missing key identifier")
-        }
-        const request = export_ttlv_request(id , values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
         try {
+            if (id == undefined) {
+                setRes("Missing key identifier.")
+                throw Error("Missing key identifier")
+            }
+            const request = export_ttlv_request(id , values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const data = await parse_export_ttlv_response(result_str, values.keyFormat)
@@ -105,8 +105,8 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                 setRes("File has been exported")
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error exporting key: ${e}`)
+            console.error("Error exporting key:", e);
         } finally {
             setIsLoading(false);
         }
@@ -121,7 +121,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
             { label: 'PKCS1 PEM', value: 'pkcs1-pem' },
             { label: 'PKCS1 DER', value: 'pkcs1-der' },
             { label: 'PKCS8 PEM', value: 'pkcs8-pem' },
-            { label: 'PKCS8 DER', value: 'pkcs8-der' },,
+            { label: 'PKCS8 DER', value: 'pkcs8-der' },
             { label: 'Base64', value: 'base64' },
             { label: 'Raw', value: 'raw' },
         ];
