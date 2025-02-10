@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-// use web_sys::console;
 use base64::Engine as _;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
@@ -32,7 +31,7 @@ use crate::{
         der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
-    import_utils::{prepate_key_import_elements, ImportKeyFormat, KeyUsage},
+    import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -327,7 +326,6 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
     let response: ExportResponse = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
     let data = match key_format {
         ExportKeyFormat::JsonTtlv => {
-            // console::log_1(&JsValue::from_str(&serde_json::to_string(&response.object).unwrap()));
             let kmip_object = Object::post_fix(response.object_type, response.object);
             let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
             ttlv.tag = tag_from_object(&kmip_object);
@@ -448,7 +446,7 @@ pub fn parse_get_attributes_ttlv_response(response: &str) -> Result<JsValue, JsV
 #[wasm_bindgen]
 pub fn import_ttlv_request(
     unique_identifier: Option<String>,
-    key_file: &str,
+    key_bytes: Vec<u8>,
     key_format: &str,
     public_key_id: Option<String>,
     private_key_id: Option<String>,
@@ -466,11 +464,11 @@ pub fn import_ttlv_request(
     });
     let key_format =
         ImportKeyFormat::from_str(key_format).map_err(|e| JsValue::from(e.to_string()))?;
-    let bytes = key_file.as_bytes().to_vec();
-    let (object, import_attributes) = prepate_key_import_elements(
+
+    let (object, import_attributes) = prepare_key_import_elements(
         &key_usage,
         &key_format,
-        bytes,
+        key_bytes,
         &certificate_id,
         &private_key_id,
         &public_key_id,

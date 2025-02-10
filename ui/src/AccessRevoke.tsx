@@ -1,10 +1,12 @@
-import React from 'react';
-import { Form, Input, Select, Button } from 'antd';
+import { Button, Form, Input, Select } from 'antd'
+import React, { useState } from 'react'
+import { postNoTTLVRequest } from './utils'
+
 
 interface AccessRevokeFormData {
-    user: string;
-    objectUid: string;
-    operations: Array<
+    user_id: string;
+    unique_identifier: string;
+    operation_types: Array<
         | 'create'
         | 'get'
         | 'encrypt'
@@ -31,15 +33,27 @@ const KMIP_OPERATIONS = [
 
 const AccessRevokeForm: React.FC = () => {
     const [form] = Form.useForm<AccessRevokeFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: AccessRevokeFormData) => {
+    const onFinish = async (values: AccessRevokeFormData) => {
         console.log('Revoke access values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        try {
+            const response = await postNoTTLVRequest("/access/revoke", values);
+            setRes(response.success)
+        } catch (e) {
+            setRes(`Error revoking access: ${e}`)
+            console.error("Error revoking access:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Revoke access rights</h1>
+            <h1 className="text-2xl font-bold  mb-6">Revoke access rights</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Revoke access rights from a user for specific KMIP operations on an object.</p>
@@ -53,7 +67,7 @@ const AccessRevokeForm: React.FC = () => {
                 className="space-y-6"
             >
                 <Form.Item
-                    name="user"
+                    name="user_id"
                     label="User Identifier"
                     rules={[{ required: true, message: 'Please enter the user identifier' }]}
                     help="The user to revoke access from"
@@ -62,7 +76,7 @@ const AccessRevokeForm: React.FC = () => {
                 </Form.Item>
 
                 <Form.Item
-                    name="objectUid"
+                    name="unique_identifier"
                     label="Object UID"
                     rules={[{ required: true, message: 'Please enter the object UID' }]}
                     help="The unique identifier of the object stored in the KMS"
@@ -71,7 +85,7 @@ const AccessRevokeForm: React.FC = () => {
                 </Form.Item>
 
                 <Form.Item
-                    name="operations"
+                    name="operation_types"
                     label="KMIP Operations"
                     rules={[{ required: true, message: 'Please select at least one operation' }]}
                     help="Select one or more operations to revoke access from"
@@ -88,12 +102,14 @@ const AccessRevokeForm: React.FC = () => {
                         type="primary"
                         danger
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                     >
                         Revoke Access
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

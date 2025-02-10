@@ -1,10 +1,12 @@
-import React from 'react';
-import { Form, Input, Select, Button } from 'antd';
+import { Button, Form, Input, Select } from 'antd'
+import React, { useState } from 'react'
+import { postNoTTLVRequest } from './utils'
+
 
 interface AccessGrantFormData {
-    user: string;
-    objectUid: string;
-    operations: Array<
+    user_id: string;
+    unique_identifier: string;
+    operation_types: Array<
         | 'create'
         | 'get'
         | 'encrypt'
@@ -31,15 +33,27 @@ const KMIP_OPERATIONS = [
 
 const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: AccessGrantFormData) => {
+    const onFinish = async (values: AccessGrantFormData) => {
         console.log('Grant access values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        try {
+            const response = await postNoTTLVRequest("/access/grant", values);
+            setRes(response.success)
+        } catch (e) {
+            setRes(`Error granting access: ${e}`)
+            console.error("Error granting access:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Grant access rights</h1>
+            <h1 className="text-2xl font-bold mb-6">Grant access rights</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Grant access rights to another user for specific KMIP operations on an object.</p>
@@ -53,7 +67,7 @@ const AccessGrantForm: React.FC = () => {
                 className="space-y-6"
             >
                 <Form.Item
-                    name="user"
+                    name="user_id"
                     label="User Identifier"
                     rules={[{ required: true, message: 'Please enter the user identifier' }]}
                     help="The user to grant access to"
@@ -62,7 +76,7 @@ const AccessGrantForm: React.FC = () => {
                 </Form.Item>
 
                 <Form.Item
-                    name="objectUid"
+                    name="unique_identifier"
                     label="Object UID"
                     rules={[{ required: true, message: 'Please enter the object UID' }]}
                     help="The unique identifier of the object stored in the KMS"
@@ -71,7 +85,7 @@ const AccessGrantForm: React.FC = () => {
                 </Form.Item>
 
                 <Form.Item
-                    name="operations"
+                    name="operation_types"
                     label="KMIP Operations"
                     rules={[{ required: true, message: 'Please select at least one operation' }]}
                     help="Select one or more operations to grant access to"
@@ -87,12 +101,14 @@ const AccessGrantForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        loading={isLoading}
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        Grant Access
+                        Grand Access
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

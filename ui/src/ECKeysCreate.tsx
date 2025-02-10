@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
@@ -26,16 +25,16 @@ const ECKeyCreateForm: React.FC = () => {
         console.log('Create EC key pair values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
         try {
+            const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error creating EC keys: ${e}`)
+            console.error("Error creating EC keys:", e);
         } finally {
             setIsLoading(false);
         }
@@ -43,7 +42,7 @@ const ECKeyCreateForm: React.FC = () => {
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create an EC key pair</h1>
+            <h1 className="text-2xl font-bold  mb-6">Create an EC key pair</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Create a new Elliptic Curve key pair:</p>
@@ -121,15 +120,10 @@ const ECKeyCreateForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        loading={isLoading}
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Create a EC Key pair'
-                        )}
+                        Create EC Keypair
                     </Button>
                 </Form.Item>
             </Form>

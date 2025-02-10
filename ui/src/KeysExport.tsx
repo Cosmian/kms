@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { export_ttlv_request, parse_export_ttlv_response } from "./wasm/pkg"
@@ -92,10 +91,10 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
                 let mimeType;
                     switch (values.keyFormat) {
-                        case "JsonTtlv":
+                        case "json-ttlv":
                             mimeType = "application/json";
                             break;
-                        case "Base64":
+                        case "base64":
                             mimeType = "text/plain";
                             break;
                         default:
@@ -153,7 +152,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Export {key_type_string} key</h1>
+            <h1 className="text-2xl font-bold  mb-6">Export {key_type_string} key</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Export {key_type_string} key from the KMS. The key can be identified using either its ID or associated tags.</p>
@@ -255,15 +254,10 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                     <Button
                         type="primary"
                         htmlType="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        loading={isLoading}
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Export key'
-                        )}
+                        Export Key
                     </Button>
                 </Form.Item>
             </Form>

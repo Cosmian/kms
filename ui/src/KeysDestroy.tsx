@@ -1,5 +1,5 @@
-import { LoadingOutlined, WarningFilled } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import { WarningFilled } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg"
@@ -30,21 +30,21 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
         setIsLoading(true);
         setRes(undefined);
         console.log('Destroy key values:', values);
-        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined; // TODO: check tags handling for revokation
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         if (id == undefined) {
             setRes("Missing key identifier.")
             throw Error("Missing key identifier")
         }
-        const request = destroy_ttlv_request(id, values.remove);
         try {
+            const request = destroy_ttlv_request(id, values.remove);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: DestroyKeyResponse = await parse_destroy_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been destroyed.`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error destroyin key: ${e}`)
+            console.error("Error destroyin key:", e);
         } finally {
             setIsLoading(false);
         }
@@ -65,7 +65,7 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Destroy {key_type_string} key</h1>
+                <h1 className="text-2xl font-bold ">Destroy {key_type_string} key</h1>
             </div>
 
             <div className="mb-8 space-y-2">
@@ -136,17 +136,12 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                     <Button
                             type="primary"
                             htmlType="submit"
+                            loading={isLoading}
                             danger
                             disabled={isLoading}
                             className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                         >
-                            {isLoading ? (
-                                <Spin
-                                    indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                                />
-                            ) : (
-                                'Destroy Key'
-                            )}
+                            Destroy Key
                         </Button>
                     </Form.Item>
                 </div>

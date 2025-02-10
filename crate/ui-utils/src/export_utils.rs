@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
@@ -16,7 +17,7 @@ use zeroize::Zeroizing;
 
 use crate::error::UtilsError;
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumString)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ExportKeyFormat {
     JsonTtlv,

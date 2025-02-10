@@ -1,5 +1,5 @@
-import { LoadingOutlined, UploadOutlined } from "@ant-design/icons"
-import { Button, Checkbox, Form, Input, Select, Spin, Upload } from 'antd'
+import { UploadOutlined } from "@ant-design/icons"
+import { Button, Checkbox, Form, Input, Select, Upload } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
@@ -16,7 +16,7 @@ type KeyUsage =
     | 'wrap' | 'unwrap';
 
 interface ImportKeyFormData {
-    keyFile: string;
+    keyFile: Uint8Array;
     keyId?: string;
     keyFormat: ImportKeyFormat;
     publicKeyId?: string;
@@ -37,6 +37,10 @@ interface KeyImportFormProps {
     key_type: KeyType;
 }
 
+type KeyImportResponse = {
+    UniqueIdentifier: string
+}
+
 const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) => {
     const [form] = Form.useForm<ImportKeyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
@@ -50,9 +54,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId, values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage, values.authenticatedAdditionalData);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
-                const result = await parse_import_ttlv_response(result_str)
-                console.log(result)
-                setRes("File has been imported")
+                const result: KeyImportResponse = await parse_import_ttlv_response(result_str)
+                setRes(`File has been imported - imported object id: ${result.UniqueIdentifier}`)
             }
         } catch (e) {
             setRes(`Error importing key: ${e}`)
@@ -128,7 +131,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Import {key_type_string} key</h1>
+            <h1 className="text-2xl font-bold  mb-6">Import {key_type_string} key</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Import {key_type_string} key in the KMS.</p>
@@ -157,9 +160,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                         beforeUpload={(file) => {
                             const reader = new FileReader();
                             reader.onload = (e) => {
-                                form.setFieldsValue({ keyFile: e.target?.result });
+                                const arrayBuffer = e.target?.result;
+                                if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                    const bytes = new Uint8Array(arrayBuffer);
+                                    form.setFieldsValue({ keyFile: bytes })
+                                }
                             };
-                            reader.readAsText(file);
+                            reader.readAsArrayBuffer(file);
                             return false;
                         }}
                         maxCount={1}
@@ -267,15 +274,10 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                     <Button
                         type="primary"
                         htmlType="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        loading={isLoading}
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Import key'
-                        )}
+                        Import Key
                     </Button>
                 </Form.Item>
             </Form>
