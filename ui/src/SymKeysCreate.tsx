@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, InputNumber, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
@@ -156,15 +155,10 @@ const SymKeyCreateForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Create symmetric key'
-                        )}
+                        Create Symmetric Key
                     </Button>
                 </Form.Item>
                 {res && <div>{res}</div>}

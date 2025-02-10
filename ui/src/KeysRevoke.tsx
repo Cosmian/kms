@@ -1,5 +1,5 @@
-import { LoadingOutlined, WarningFilled } from '@ant-design/icons'
-import { Button, Form, Input, Select, Spin } from 'antd'
+import { WarningFilled } from '@ant-design/icons'
+import { Button, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { parse_revoke_ttlv_response, revoke_key_ttlv_request } from "./wasm/pkg"
@@ -133,16 +133,11 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         danger
                         className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Revoke key'
-                        )}
+                        Revoke Key
                     </Button>
                 </Form.Item>
             </Form>

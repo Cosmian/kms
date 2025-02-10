@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, InputNumber, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
@@ -115,15 +114,10 @@ const RsaKeyCreateForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Create a RSA Key pair'
-                        )}
+                        Create RSA Keypair
                     </Button>
                 </Form.Item>
             </Form>

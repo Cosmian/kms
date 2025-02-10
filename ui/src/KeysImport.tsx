@@ -1,5 +1,5 @@
-import { LoadingOutlined, UploadOutlined } from "@ant-design/icons"
-import { Button, Checkbox, Form, Input, Select, Spin, Upload } from 'antd'
+import { UploadOutlined } from "@ant-design/icons"
+import { Button, Checkbox, Form, Input, Select, Upload } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
@@ -270,15 +270,10 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Import key'
-                        )}
+                        Import Key
                     </Button>
                 </Form.Item>
             </Form>

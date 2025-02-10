@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
@@ -121,15 +120,10 @@ const ECKeyCreateForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Create a EC Key pair'
-                        )}
+                        Create EC Keypair
                     </Button>
                 </Form.Item>
             </Form>

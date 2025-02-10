@@ -1,5 +1,5 @@
-import { LoadingOutlined, WarningFilled } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select, Spin } from 'antd'
+import { WarningFilled } from '@ant-design/icons'
+import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg"
@@ -136,17 +136,12 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                     <Button
                             type="primary"
                             htmlType="submit"
+                            loading={isLoading}
                             danger
                             disabled={isLoading}
                             className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
                         >
-                            {isLoading ? (
-                                <Spin
-                                    indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                                />
-                            ) : (
-                                'Destroy Key'
-                            )}
+                            Destroy Key
                         </Button>
                     </Form.Item>
                 </div>
