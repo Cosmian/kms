@@ -73,12 +73,12 @@ const AccessObtainedList: React.FC = () => {
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Access rights obtained</h1>
+                <h1 className="text-2xl font-bold ">Access rights obtained</h1>
                 <Button
                     type="primary"
                     onClick={fetchAccessRights}
                     loading={isLoading}
-                    className="bg-blue-600 hover:bg-blue-700 border-0"
+                    className="bg-primary hover:bg-blue-700 border-0"
                 >
                     Refresh
                 </Button>
@@ -93,7 +93,7 @@ const AccessObtainedList: React.FC = () => {
                 rowKey="objectUid"
                 loading={isLoading}
                 pagination={{ pageSize: 10 }}
-                className="border rounded-lg"
+                className="border rounded"
             />
             {res && <div>{res}</div>}
         </div >

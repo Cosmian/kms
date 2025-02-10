@@ -1,9 +1,9 @@
-import React from 'react';
+import React from 'react'
 
 const Header: React.FC = () => (
-    <div className="flex items-center shadow-md h-full px-4">
-        <img src="/Cosmian-Logo.svg" alt="Cosmian Logo" className="h-8 mr-4" />
-        <h1 style={{ color: '#9CA3AF' }} className="text-xl font-bold">KMS</h1>
+    <div className="flex items-center h-full w-full">
+        <img src="/Cosmian-Logo.svg" alt="Cosmian Logo" className="h-7 mr-4" />
+        <h1 className="text-xl font-bold pl-10">Key Management System</h1>
     </div>
 );
 

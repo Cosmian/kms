@@ -65,7 +65,7 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Destroy {key_type_string} key</h1>
+                <h1 className="text-2xl font-bold ">Destroy {key_type_string} key</h1>
             </div>
 
             <div className="mb-8 space-y-2">

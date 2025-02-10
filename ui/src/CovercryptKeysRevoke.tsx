@@ -1,6 +1,6 @@
-import React from 'react';
-import { Form, Input, Select, Button } from 'antd';
-import { WarningFilled } from '@ant-design/icons';
+import { WarningFilled } from '@ant-design/icons'
+import { Button, Form, Input, Select } from 'antd'
+import React from 'react'
 
 interface CovercryptRevokeFormData {
     keyId?: string;
@@ -20,7 +20,7 @@ const CovercryptRevokeForm: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-500" />
-                <h1 className="text-2xl font-bold text-gray-900">Revoke a Covercrypt key</h1>
+                <h1 className="text-2xl font-bold ">Revoke a Covercrypt key</h1>
             </div>
 
             <div className="mb-8 space-y-2">

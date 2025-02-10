@@ -131,7 +131,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Import {key_type_string} key</h1>
+            <h1 className="text-2xl font-bold  mb-6">Import {key_type_string} key</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Import {key_type_string} key in the KMS.</p>
@@ -271,7 +271,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                         type="primary"
                         htmlType="submit"
                         loading={isLoading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
                         Import Key
                     </Button>
