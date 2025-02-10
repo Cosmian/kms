@@ -1,4 +1,5 @@
 pub mod deserializer;
+pub mod deserializer_old;
 pub mod error;
 mod kmip_big_int;
 pub mod serde_ttlv;
