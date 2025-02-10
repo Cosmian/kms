@@ -27,6 +27,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
+    error::UtilsError,
     export_utils::{
         der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
@@ -281,16 +282,17 @@ pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 }
 
 // Export request
+#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn export_ttlv_request(
-    unique_identifier: String,
+    unique_identifier: &str,
     unwrap: bool,
-    key_format: String,
+    key_format: &str,
     wrap_key_id: Option<String>,
     wrapping_algorithm: Option<String>,
     authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let key_format = ExportKeyFormat::from_str(&key_format)
+    let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
         WrappingAlgorithm::from_str(&s)
@@ -301,7 +303,7 @@ pub fn export_ttlv_request(
         prepare_key_export_elements(&key_format, &wrapping_algorithm)
             .map_err(|e| JsValue::from_str(&format!("Error preparing export elements: {e}")))?;
     let request = export_request(
-        &unique_identifier,
+        unique_identifier,
         unwrap,
         wrap_key_id.as_deref(),
         key_format_type,
@@ -319,7 +321,7 @@ pub fn export_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<JsValue, JsValue> {
     // let response = parse_ttlv_response::<ExportResponse>(response)?;
-    let key_format = ExportKeyFormat::from_str(&key_format)
+    let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid export key format type: {e}")))?;
     let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
     let response: ExportResponse = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
@@ -360,7 +362,15 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
                 let (key_format_type, encode_to_pem) = get_export_key_format_type(&key_format);
 
                 if encode_to_pem {
-                    bytes = der_to_pem(bytes.as_slice(), key_format_type.unwrap(), object_type)
+                    let format_type = key_format_type
+                        .ok_or_else(|| {
+                            UtilsError::Default(
+                                "Server Error: the Key Format Type should be known at this stage"
+                                    .to_owned(),
+                            )
+                        })
+                        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                    bytes = der_to_pem(bytes.as_slice(), format_type, object_type)
                         .map_err(|e| JsValue::from_str(&format!("{e}")))?;
                 }
                 bytes
@@ -433,11 +443,13 @@ pub fn parse_get_attributes_ttlv_response(response: &str) -> Result<JsValue, JsV
 }
 
 // Import request
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn import_ttlv_request(
     unique_identifier: Option<String>,
-    key_file: String,
-    key_format: String,
+    key_file: &str,
+    key_format: &str,
     public_key_id: Option<String>,
     private_key_id: Option<String>,
     certificate_id: Option<String>,
@@ -453,7 +465,7 @@ pub fn import_ttlv_request(
             .collect()
     });
     let key_format =
-        ImportKeyFormat::from_str(&key_format).map_err(|e| JsValue::from(e.to_string()))?;
+        ImportKeyFormat::from_str(key_format).map_err(|e| JsValue::from(e.to_string()))?;
     let bytes = key_file.as_bytes().to_vec();
     let (object, import_attributes) = prepate_key_import_elements(
         &key_usage,

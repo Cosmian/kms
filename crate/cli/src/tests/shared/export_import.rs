@@ -1,11 +1,10 @@
+use cosmian_kms_client::reexport::cosmian_kms_ui_utils::export_utils::WrappingAlgorithm;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use tracing::{debug, trace};
 
 use crate::{
-    actions::{
-        shared::export_key::WrappingAlgorithm, symmetric::keys::create_key::CreateKeyAction,
-    },
+    actions::symmetric::keys::create_key::CreateKeyAction,
     error::result::CliResult,
     tests::{
         shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},

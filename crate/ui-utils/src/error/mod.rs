@@ -54,10 +54,10 @@ impl From<TryFromIntError> for UtilsError {
 impl From<KmipError> for UtilsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
-            KmipError::KmipNotSupported(r, s) => Self::KmipError(r, s),
-            KmipError::Kmip(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s)
+            | KmipError::InvalidKmipObject(r, s)
+            | KmipError::KmipNotSupported(r, s)
+            | KmipError::Kmip(r, s) => Self::KmipError(r, s),
             KmipError::NotSupported(s)
             | KmipError::Default(s)
             | KmipError::InvalidSize(s)
@@ -69,7 +69,7 @@ impl From<KmipError> for UtilsError {
             KmipError::TryFromSliceError(e) => Self::Default(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Default(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
-                Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+                Self::KmipError(ErrorReason::Codec_Error, e)
             }
             KmipError::DeserializationSize(expected, actual) => Self::KmipError(
                 ErrorReason::Codec_Error,

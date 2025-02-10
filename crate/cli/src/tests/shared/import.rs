@@ -2,7 +2,9 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
+    read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_ui_utils::import_utils::{ImportKeyFormat, KeyUsage},
     KMS_CLI_CONF_ENV,
 };
 #[cfg(not(feature = "fips"))]
@@ -15,7 +17,6 @@ use crate::tests::{
     symmetric::create_key::create_symmetric_key,
 };
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, utils::KeyUsage},
     error::{result::CliResult, CliError},
     tests::{
         shared::{export::export_key, ExportKeyParams},

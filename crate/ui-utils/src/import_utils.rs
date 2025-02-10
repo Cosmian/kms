@@ -58,7 +58,7 @@ impl From<KeyUsage> for String {
             KeyUsage::Authenticate => "authenticate",
             KeyUsage::Unrestricted => "unrestricted",
         }
-        .to_string()
+        .to_owned()
     }
 }
 
@@ -71,7 +71,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, UtilsError> {
     match object.object_type() {
         ObjectType::PrivateKey | ObjectType::PublicKey => {
             if !objects.is_empty() {
-                println!(
+                tracing::info!(
                     "WARNING: the PEM file contains multiple objects. Only the private key will \
                      be imported. A corresponding public key will be generated automatically."
                 );
@@ -88,6 +88,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, UtilsError> {
     }
 }
 
+#[must_use]
 pub fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
@@ -156,6 +157,7 @@ fn build_symmetric_key_from_bytes(
     })
 }
 
+#[must_use]
 pub fn build_usage_mask_from_key_usage(
     key_usage_vec: &[KeyUsage],
 ) -> Option<CryptographicUsageMask> {
@@ -266,7 +268,7 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, UtilsError> {
                 return Err(UtilsError::NotSupported(
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
                      EC private keys only"
-                        .to_string(),
+                        .to_owned(),
                 ))
             }
             "CERTIFICATE" => objects.push(Object::Certificate {
@@ -318,6 +320,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepate_key_import_elements(
     key_usage: &Option<Vec<KeyUsage>>,
     key_format: &ImportKeyFormat,

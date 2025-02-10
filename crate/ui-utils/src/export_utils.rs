@@ -75,7 +75,7 @@ pub fn tag_from_object(object: &Object) -> String {
         Object::OpaqueObject { .. } => "OpaqueObject",
         Object::PrivateKey { .. } => "PrivateKey",
     }
-    .to_string()
+    .to_owned()
 }
 
 /// Converts DER bytes to PEM bytes for keys
@@ -125,7 +125,10 @@ pub fn der_to_pem(
     ))
 }
 
-pub fn get_export_key_format_type(key_format: &ExportKeyFormat) -> (Option<KeyFormatType>, bool) {
+#[must_use]
+pub const fn get_export_key_format_type(
+    key_format: &ExportKeyFormat,
+) -> (Option<KeyFormatType>, bool) {
     let (key_format_type, encode_to_pem) = match key_format {
         // For Raw: use the default format then do the local extraction of the bytes
         ExportKeyFormat::JsonTtlv | ExportKeyFormat::Raw | ExportKeyFormat::Base64 => (None, false),
@@ -195,6 +198,7 @@ pub fn prepare_key_export_elements(
     ))
 }
 
+#[must_use]
 pub fn export_request(
     object_id_or_tags: &str,
     unwrap: bool,
@@ -205,7 +209,7 @@ pub fn export_request(
     authenticated_encryption_additional_data: Option<String>,
 ) -> Export {
     Export::new(
-        UniqueIdentifier::TextString(object_id_or_tags.to_string()),
+        UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
         unwrap,
         wrapping_key_id.map(|wrapping_key_id| {
             key_wrapping_specification(
@@ -219,6 +223,7 @@ pub fn export_request(
     )
 }
 
+#[must_use]
 pub fn get_request(
     object_id_or_tags: &str,
     unwrap: bool,
@@ -229,7 +234,7 @@ pub fn get_request(
     authenticated_encryption_additional_data: Option<String>,
 ) -> Get {
     Get::new(
-        UniqueIdentifier::TextString(object_id_or_tags.to_string()),
+        UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
         unwrap,
         wrapping_key_id.map(|wrapping_key_id| {
             key_wrapping_specification(
@@ -253,7 +258,7 @@ fn key_wrapping_specification(
     KeyWrappingSpecification {
         wrapping_method: WrappingMethod::Encrypt,
         encryption_key_information: Some(EncryptionKeyInformation {
-            unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_string()),
+            unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_owned()),
             cryptographic_parameters,
         }),
         attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),

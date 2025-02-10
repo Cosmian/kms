@@ -1,10 +1,14 @@
 use std::path::PathBuf;
 
-use cosmian_kms_client::read_bytes_from_file;
+use cosmian_kms_client::{
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::{
+        export_utils::ExportKeyFormat, import_utils::ImportKeyFormat,
+    },
+};
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 
 use crate::{
-    actions::shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     error::result::CliResult,
     tests::shared::{export_key, import_key, ExportKeyParams, ImportKeyParams},
 };
