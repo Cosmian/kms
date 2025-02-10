@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 use serde::{
     de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
-    Deserialize,
+    Deserialize, Deserializer,
 };
 use tracing::trace;
 
-use super::{error::TtlvError, TTLV};
+use super::{error::TtlvError, KmipBigInt, TTLV};
 use crate::{
     // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
     kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
@@ -63,8 +63,13 @@ where
 
 #[derive(Debug)]
 pub struct TtlvDeserializer {
+    /// The current TTLV being deserialized
     current: TTLV,
+    /// The index of the current child being deserialized; ignored when processing a value
     child_index: usize,
+    /// When processing a value which appears as a sequence, the index of the current element
+    /// A `BigInt` for instance is the sequence of a sign and `BigUint` (see the `BigInt` struct)
+    element_index: usize,
 }
 
 impl TtlvDeserializer {
@@ -73,7 +78,43 @@ impl TtlvDeserializer {
         Self {
             current: root,
             child_index: 0,
+            element_index: 0,
         }
+    }
+
+    /// Creates a deserializer for the next child TTLV and deserializes it using the provided seed.
+    /// Used for struct and map deserialization, where each child represents a field.
+    /// Returns None when there are no more children to process.
+    ///
+    /// The function maintains an internal index to track the current child position.
+    ///
+    /// # Type Parameters
+    /// * `K` - The type of seed that will be used to deserialize the child
+    ///
+    /// # Returns
+    /// * `Ok(Some(Value))` - Successfully deserialized child value
+    /// * `Ok(None)` - No more children to process
+    /// * `Err` - Deserialization error
+    fn get_child_deserializer<'de, K>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<<K as DeserializeSeed<'de>>::Value>>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        let TTLValue::Structure(child_array) = &self.current.value else {
+            return Ok(None)
+        };
+        if self.child_index >= child_array.len() {
+            self.child_index = 0;
+            return Ok(None);
+        }
+        let child = child_array
+            .get(self.child_index)
+            .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
+        let mut deserializer = Self::from_ttlv(child.clone());
+        let v = seed.deserialize(&mut deserializer).map(Some)?;
+        Ok(v)
     }
 }
 
@@ -102,75 +143,156 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // #[instrument(skip(self, _visitor))]
-    fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_i8: state: {:?}", self.current);
-        unimplemented!("deserialize_i8");
+        match &self.current.value {
+            TTLValue::BigInteger(bi) => {
+                // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the sign
+                visitor.visit_i8(bi.sign())
+            }
+            TTLValue::Integer(i) => {
+                // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
+                // by converting the integer to i8
+                let value: i8 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_i8(value)
+            }
+            _ => Err(TtlvError::from("Expected BigInt or Integer value in TTLV")),
+        }
     }
 
     // #[instrument(skip(self, _visitor))]
-    fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_i16 state:  {:?}", self.current);
-        unimplemented!("deserialize_i16");
+        if let TTLValue::Integer(i) = &self.current.value {
+            let value: i16 = (*i)
+                .try_into()
+                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+            visitor.visit_i16(value)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_i32<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_i32: state:  {:?}", self.current);
-        unimplemented!("deserialize_i32");
+        if let TTLValue::Integer(i) = &self.current.value {
+            visitor.visit_i32(*i)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_i64<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_i64: state:  {:?}", self.current);
-        unimplemented!("deserialize_i64");
+        if let TTLValue::LongInteger(i) = &self.current.value {
+            visitor.visit_i64(*i)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_u8: state:  {:?}", self.current);
-        unimplemented!("deserialize_u8");
+        if let TTLValue::Integer(i) = &self.current.value {
+            if *i < 0 {
+                return Err(TtlvError::from("Cannot convert negative integer to u8"));
+            }
+            let value: u8 = (*i)
+                .try_into()
+                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+            visitor.visit_u8(value)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, _visitor))]
-    fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_u16: state:  {:?}", self.current);
-        unimplemented!("deserialize_u16");
+        if let TTLValue::Integer(i) = &self.current.value {
+            if *i < 0 {
+                return Err(TtlvError::from("Cannot convert negative integer to u16"));
+            }
+            let value: u16 = (*i)
+                .try_into()
+                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+            visitor.visit_u16(value)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_u32: state:  {:?}", self.current);
-        unimplemented!("deserialize_u32");
+        match &self.current.value {
+            TTLValue::BigInteger(bi) => {
+                // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
+                // by converting the BigInt to u32
+                bi.to_u32_digits()?
+                    .get(self.child_index)
+                    .ok_or_else(|| TtlvError::from("BigInt conversion error"))
+                    .and_then(|v| {
+                        self.child_index += 1;
+                        visitor.visit_u32(*v)
+                    })
+            }
+            TTLValue::Integer(i) => {
+                if *i < 0 {
+                    return Err(TtlvError::from("Cannot convert negative integer to u32"));
+                }
+                let value: u32 = u32::try_from(*i)
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_u32(value)
+            }
+            _ => Err(TtlvError::from(
+                "Expected Integer ro BigInteger value in TTLV",
+            )),
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_u64: state:  {:?}", self.current);
-        unimplemented!("deserialize_u64");
+        if let TTLValue::LongInteger(i) = &self.current.value {
+            if *i < 0 {
+                return Err(TtlvError::from("Cannot convert negative integer to u64"));
+            }
+            let value: u64 = (*i)
+                .try_into()
+                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+            visitor.visit_u64(value)
+        } else {
+            Err(TtlvError::from("Expected Integer value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, _visitor))]
@@ -179,7 +301,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_f32: state:  {:?}", self.current);
-        unimplemented!("deserialize_f32");
+        // there is no support for f32 in KMIP
+        Err(TtlvError::from("f32 is not supported in KMIP"))
     }
 
     // #[instrument(skip(self, visitor))]
@@ -188,7 +311,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_f64: state:  {:?}", self.current);
-        unimplemented!("deserialize_f64");
+        // there is no support for f64 in KMIP
+        Err(TtlvError::from("f64 is not supported in KMIP"))
     }
 
     // #[instrument(skip(self, _visitor))]
@@ -283,22 +407,22 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // passing the visitor an "Access" object that gives it the ability to
     // iterate through the data contained in the sequence.
     // #[instrument(skip(self, visitor))]
-    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_seq: state:  {:?}", self.current);
-        unimplemented!("deserialize_seq");
+        visitor.visit_seq(self)
     }
 
     // Tuples look just like sequences
     // #[instrument(skip(self, visitor))]
-    fn deserialize_tuple<V>(self, len: usize, _visitor: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_tuple, len: {len}, state:  {:?}", self.current);
-        unimplemented!("deserialize_tuple");
+        self.deserialize_seq(visitor)
     }
 
     // Tuple structs look just like sequences
@@ -381,13 +505,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // An identifier in Serde is the type that identifies a field of a struct or
     // the variant of an enum. In TTLV, struct fields and enum variants are
     // represented as strings
+    //
+    // This method is typically called after a next_key_seed method call on a
+    // MapAccess implementation, in order to deserialize the key of the field
+    // for instance ÀnInt`` in
+    // ```
+    // TTLV { tag: "AnInt", value: Integer(1) }
+    // ```
     // #[instrument(skip(self, visitor))]
-    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_identifier: state:  {:?}", self.current);
-        unimplemented!("deserialize_identifier");
+        visitor.visit_str(&self.current.tag)
     }
 
     // Like `deserialize_any` but indicates to the `Deserializer` that it makes
@@ -413,7 +544,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
 
 // MapAccess is called when deserializing a struct because deserialize_struct called visit_map
 // The current input is the top structure holding an array of TTLVs which are the fields of the struct/map.
-//
 // The calls to `next_value` are driven by the visitor
 // and it is up to this Access to synchronize and advance its counter
 // over the struct fields (`self.index`) in this case
@@ -425,30 +555,33 @@ impl<'de> MapAccess<'de> for TtlvDeserializer {
     where
         K: DeserializeSeed<'de>,
     {
-        trace!("next_key_seed: state:  {:?}", self.current);
-        // recover the next child
-        let TTLValue::Structure(child_array) = &self.current.value else {
-            return Ok(None)
-        };
-        if self.child_index >= child_array.len() {
-            self.child_index = 0;
-            return Ok(None);
-        }
-        let child = child_array
-            .get(self.child_index)
-            .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
-        let mut deserializer = Self::from_ttlv(child.clone());
-        let v = seed.deserialize(&mut deserializer).map(Some)?;
+        trace!("map access: next_key_seed: state:  {:?}", self.current);
+        // get the child deserializer for a child at the current index
+        let v = self.get_child_deserializer(seed)?;
         Ok(v)
     }
 
     // #[instrument(skip(self, seed))]
-    fn next_value_seed<V>(&mut self, _seed: V) -> Result<V::Value>
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
     where
         V: DeserializeSeed<'de>,
     {
         trace!("next_value_seed: state:  {:?}", self.current);
-        unimplemented!("next_value_seed");
+        // get the child deserializer for a child at the current index
+        let v = self.get_child_deserializer(seed)?.ok_or_else(|| {
+            TtlvError::from("Invalid KMIP structure: there is a key but no value ")
+        })?;
+        // increment the child index; we are done with this child once the value is processed
+        self.child_index += 1;
+        Ok(v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        let TTLValue::Structure(child_array) = &self.current.value else {
+            return Some(0_usize)
+        };
+        Some(child_array.len())
     }
 }
 
@@ -458,12 +591,16 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
     type Error = TtlvError;
 
     // #[instrument(skip(self, seed))]
-    fn next_element_seed<T>(&mut self, _seed: T) -> Result<Option<T::Value>>
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
     {
-        trace!("next_element_seed: state:  {:?}", self.current);
-        unimplemented!("next_element_seed");
+        trace!("seq_access: next_element_seed: state:  {:?}", self.current);
+
+        // we are deserilizing a TTLV value that looks like a sequence such as a BigInt
+        // A BigInt is a sequence of a sign and a BigUint (see the BigInt struct)
+        // The deserilizer will call for an i8 then a BigUint
+        seed.deserialize(self).map(Some)
     }
 }
 
@@ -540,5 +677,311 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     {
         trace!("struct_variant: state:  {:?}", self.de.current);
         unimplemented!("struct_variant");
+    }
+}
+
+struct KmipBigIntDeserializer {
+    sign: i8,
+    u32_be: Vec<u32>,
+}
+
+impl KmipBigIntDeserializer {
+    fn instantiate(kmip_big_int: &KmipBigInt) -> Result<Self> {
+        Ok(Self {
+            sign: kmip_big_int.sign(),
+            u32_be: kmip_big_int.to_u32_digits()?,
+        })
+    }
+}
+
+impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
+    type Error = TtlvError;
+
+    fn deserialize_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_bool<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_i8(self.sign)
+    }
+
+    fn deserialize_i16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_i32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_i64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_u8<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_u16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        let next = self.u32_be.pop();
+        next.map_or_else(
+            || Err(TtlvError::from("No more elements in BigInt")),
+            |v| visitor.visit_u32(v),
+        )
+    }
+
+    fn deserialize_u64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_f32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_f64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_char<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_str<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_string<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_bytes<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_byte_buf<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_option<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_unit<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        name: &'static str,
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        name: &'static str,
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_tuple<V>(
+        self,
+        len: usize,
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        name: &'static str,
+        len: usize,
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_map<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        _visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_identifier<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
+    }
+
+    fn deserialize_ignored_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        Err(TtlvError::from(
+            "Unsupported deserialization for KmipBigInt",
+        ))
     }
 }
