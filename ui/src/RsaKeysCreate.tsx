@@ -25,17 +25,16 @@ const RsaKeyCreateForm: React.FC = () => {
         console.log('Create key values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
         try {
+            const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
-                console.log(result)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error creating keypair: ${e}`)
+            console.error("Error creating keypair:", e);
         } finally {
             setIsLoading(false);
         }

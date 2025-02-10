@@ -27,7 +27,6 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
 
-
     const onFinish = async (values: RevokeKeyFormData) => {
         console.log('Revoke key values:', values);
         setIsLoading(true);
@@ -37,16 +36,16 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
             setRes("Missing key identifier.")
             throw Error("Missing key identifier")
         }
-        const request = revoke_key_ttlv_request(id , values.revocationReason);
         try {
+            const request = revoke_key_ttlv_request(id , values.revocationReason);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: RevokeKeyResponse = await parse_revoke_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been revoked.`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error revoking key: ${e}`)
+            console.error("Error revoking key:", e);
         } finally {
             setIsLoading(false);
         }

@@ -29,16 +29,16 @@ const SymKeyCreateForm: React.FC = () => {
         console.log('Create symmetric key values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
         try {
+            const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: CreateResponse = await parse_create_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been created.`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error creating key: ${e}`)
+            console.error("Error creating key:", e);
         } finally {
             setIsLoading(false);
         }

@@ -30,21 +30,21 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
         setIsLoading(true);
         setRes(undefined);
         console.log('Destroy key values:', values);
-        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined; // TODO: check tags handling for revokation
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         if (id == undefined) {
             setRes("Missing key identifier.")
             throw Error("Missing key identifier")
         }
-        const request = destroy_ttlv_request(id, values.remove);
         try {
+            const request = destroy_ttlv_request(id, values.remove);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: DestroyKeyResponse = await parse_destroy_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been destroyed.`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error destroyin key: ${e}`)
+            console.error("Error destroyin key:", e);
         } finally {
             setIsLoading(false);
         }

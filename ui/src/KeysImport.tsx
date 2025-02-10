@@ -37,6 +37,10 @@ interface KeyImportFormProps {
     key_type: KeyType;
 }
 
+type KeyImportResponse = {
+    UniqueIdentifier: string
+}
+
 const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) => {
     const [form] = Form.useForm<ImportKeyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
@@ -50,9 +54,8 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
             const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId, values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage, values.authenticatedAdditionalData);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
-                const result = await parse_import_ttlv_response(result_str)
-                console.log(result)
-                setRes("File has been imported")
+                const result: KeyImportResponse = await parse_import_ttlv_response(result_str)
+                setRes(`File has been imported - imported object id: ${result.UniqueIdentifier}`)
             }
         } catch (e) {
             setRes(`Error importing key: ${e}`)

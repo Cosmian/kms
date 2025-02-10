@@ -26,16 +26,16 @@ const ECKeyCreateForm: React.FC = () => {
         console.log('Create EC key pair values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
         try {
+            const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error creating EC keys: ${e}`)
+            console.error("Error creating EC keys:", e);
         } finally {
             setIsLoading(false);
         }
