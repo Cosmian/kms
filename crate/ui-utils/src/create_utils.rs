@@ -1,12 +1,13 @@
 use std::fmt::Display;
 
 use base64::{engine::general_purpose, Engine as _};
+use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, RecommendedCurve};
 use strum::EnumString;
 
 use crate::error::UtilsError;
 
-#[derive(Debug, Clone, Copy, EnumString)]
+#[derive(Debug, Clone, Copy, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Curve {
     #[cfg(not(feature = "fips"))]
@@ -55,7 +56,7 @@ impl From<Curve> for RecommendedCurve {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, EnumString)]
+#[derive(Debug, Clone, Copy, Default, EnumString, ValueEnum)]
 pub enum SymmetricAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20,

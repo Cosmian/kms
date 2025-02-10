@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     kmip_2_1::requests::import_object_request,
     read_bytes_from_file,
     reexport::cosmian_kms_ui_utils::import_utils::{
-        prepate_key_import_elements, ImportKeyFormat, KeyUsage,
+        prepare_key_import_elements, ImportKeyFormat, KeyUsage,
     },
     KmsClient,
 };
@@ -110,7 +110,7 @@ impl ImportKeyAction {
     /// [`CliError`]: ../error/result/enum.CliError.html
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         let key_bytes = read_bytes_from_file(&self.key_file)?;
-        let (object, import_attributes) = prepate_key_import_elements(
+        let (object, import_attributes) = prepare_key_import_elements(
             &self.key_usage,
             &self.key_format,
             key_bytes,

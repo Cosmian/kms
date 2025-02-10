@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_types::{
@@ -8,7 +9,7 @@ use cosmian_kmip::kmip_2_1::{
 use serde::Deserialize;
 use strum::{EnumIter, EnumString};
 
-#[derive(Debug, Clone, EnumString)]
+#[derive(Debug, Clone, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ImportKeyFormat {
     JsonTtlv,
@@ -22,7 +23,7 @@ pub enum ImportKeyFormat {
     Chacha20,
 }
 
-#[derive(Deserialize, Debug, Clone, EnumIter, PartialEq, Eq, EnumString)]
+#[derive(Deserialize, Debug, Clone, EnumIter, PartialEq, Eq, EnumString, ValueEnum)]
 pub enum KeyUsage {
     Sign,
     Verify,
@@ -321,7 +322,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn prepate_key_import_elements(
+pub fn prepare_key_import_elements(
     key_usage: &Option<Vec<KeyUsage>>,
     key_format: &ImportKeyFormat,
     key_bytes: Vec<u8>,

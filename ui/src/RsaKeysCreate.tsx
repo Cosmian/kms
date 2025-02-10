@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, InputNumber, Select, Spin } from 'antd'
+import { Button, Checkbox, Form, Input, InputNumber, Select } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
@@ -25,17 +24,16 @@ const RsaKeyCreateForm: React.FC = () => {
         console.log('Create key values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
         try {
+            const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
-                console.log(result)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
             }
         } catch (e) {
-            setRes(`${e}`)
-            console.error(e);
+            setRes(`Error creating keypair: ${e}`)
+            console.error("Error creating keypair:", e);
         } finally {
             setIsLoading(false);
         }
@@ -43,7 +41,7 @@ const RsaKeyCreateForm: React.FC = () => {
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Create an RSA key pair</h1>
+            <h1 className="text-2xl font-bold  mb-6">Create an RSA key pair</h1>
 
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>Create a new RSA key pair:</p>
@@ -116,15 +114,10 @@ const RsaKeyCreateForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
+                        loading={isLoading}
+                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isLoading ? (
-                            <Spin
-                                indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                            />
-                        ) : (
-                            'Create a RSA Key pair'
-                        )}
+                        Create RSA Keypair
                     </Button>
                 </Form.Item>
             </Form>

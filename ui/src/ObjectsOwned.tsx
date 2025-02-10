@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button } from 'antd';
+import { Button, Table } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { getNoTTLVRequest } from './utils'
 
 interface OwnedObject {
     uid: string;
@@ -9,40 +10,46 @@ interface OwnedObject {
 }
 
 const ObjectsOwnedList: React.FC = () => {
-    const [loading, setLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [objects, setObjects] = useState<OwnedObject[]>([]);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
     const columns = [
         {
             title: 'Object UID',
-            dataIndex: 'uid',
-            key: 'uid',
+            dataIndex: 'object_id',
+            key: 'object_id',
         },
         {
             title: 'Type',
-            dataIndex: 'type',
-            key: 'type',
+            key: 'attributes.ObjectType',
+            render: (_, record) => record.attributes?.ObjectType || 'N/A'
+
         },
         {
             title: 'State',
             dataIndex: 'state',
             key: 'state',
-        },
-        {
-            title: 'Created',
-            dataIndex: 'createdAt',
-            key: 'createdAt',
-        },
+        }
     ];
 
     const fetchOwnedObjects = async () => {
-        setLoading(true);
+        setIsLoading(true);
+        setRes(undefined);
+        setObjects([])
         try {
-            // Handle API call to fetch owned objects
-            // const response = await api.listOwnedObjects();
-            // setObjects(response.objects);
+            const response = await getNoTTLVRequest("/access/owned");
+            if (response.length) {
+                setObjects(response);
+            } else {
+                setRes("Empty result");
+            }
+
+        } catch (e) {
+            setRes(`Error listing objects: ${e}`)
+            console.error("Error listing objects:", e);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
@@ -53,12 +60,12 @@ const ObjectsOwnedList: React.FC = () => {
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Objects owned</h1>
+                <h1 className="text-2xl font-bold ">Objects owned</h1>
                 <Button
                     type="primary"
                     onClick={fetchOwnedObjects}
-                    loading={loading}
-                    className="bg-blue-600 hover:bg-blue-700 border-0"
+                    loading={isLoading}
+                    className="bg-black-500 hover:bg-blue-700 border-0"
                 >
                     Refresh
                 </Button>
@@ -72,11 +79,13 @@ const ObjectsOwnedList: React.FC = () => {
             <Table
                 dataSource={objects}
                 columns={columns}
-                rowKey="uid"
-                loading={loading}
+                rowKey="object_id"
+                loading={isLoading}
                 pagination={{ pageSize: 10 }}
-                className="border rounded-lg"
+                className="border rounded"
             />
+            {res && <div>{res}</div>}
+
         </div>
     );
 };

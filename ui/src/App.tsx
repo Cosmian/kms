@@ -1,3 +1,4 @@
+import { ConfigProvider } from 'antd'
 import { useEffect } from "react"
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import AccessGrantForm from './AccessGrant'
@@ -27,6 +28,7 @@ import init from "./wasm/pkg"
 
 
 
+
 function App() {
   useEffect(() => {
     async function loadWasm() {
@@ -37,7 +39,20 @@ function App() {
 }, []);
 
   return (
-    <>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#e34319',
+          colorText: '#292f52',
+        },
+        components: {
+          Layout: {
+            headerBg: '#ffffff',
+            siderBg: '#f4f4f5',
+          }
+        }
+      }}
+    >
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<MainLayout />}>
@@ -77,7 +92,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-    </>
+      </ConfigProvider>
   )
 }
 

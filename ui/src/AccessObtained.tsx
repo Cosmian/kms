@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button, Tag } from 'antd';
+import { Button, Table, Tag } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { getNoTTLVRequest } from './utils'
 
 interface AccessRight {
     objectUid: string;
@@ -9,9 +10,12 @@ interface AccessRight {
 }
 
 const AccessObtainedList: React.FC = () => {
-    const [loading, setLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
+
+    // TODO Update fields name from server response - when auth is OK
     const columns = [
         {
             title: 'Object UID',
@@ -46,13 +50,23 @@ const AccessObtainedList: React.FC = () => {
     ];
 
     const fetchAccessRights = async () => {
-        setLoading(true);
+        setIsLoading(true);
+        setRes(undefined);
+        setAccessRights([])
         try {
-            // Handle API call to fetch access rights
-            // const response = await api.listAccessRightsObtained();
-            // setAccessRights(response.rights);
+            const response = await getNoTTLVRequest("/access/obtained");
+            console.log(response)
+            if (response.length) {
+                setAccessRights(response);
+            } else {
+                setRes("Empty result");
+            }
+
+        } catch (e) {
+            setRes(`Error listing objects: ${e}`)
+            console.error("Error listing objects:", e);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
@@ -63,12 +77,12 @@ const AccessObtainedList: React.FC = () => {
     return (
         <div className="bg-white rounded-lg shadow-md p-6 m-4">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Access rights obtained</h1>
+                <h1 className="text-2xl font-bold ">Access rights obtained</h1>
                 <Button
                     type="primary"
                     onClick={fetchAccessRights}
-                    loading={loading}
-                    className="bg-blue-600 hover:bg-blue-700 border-0"
+                    loading={isLoading}
+                    className="bg-primary hover:bg-blue-700 border-0"
                 >
                     Refresh
                 </Button>
@@ -77,15 +91,15 @@ const AccessObtainedList: React.FC = () => {
             <div className="mb-8 text-gray-600 space-y-2">
                 <p>List of objects you have been granted access to, along with their current state, owner, and the operations you can perform.</p>
             </div >
-
             <Table
                 dataSource={accessRights}
                 columns={columns}
                 rowKey="objectUid"
-                loading={loading}
+                loading={isLoading}
                 pagination={{ pageSize: 10 }}
-                className="border rounded-lg"
+                className="border rounded"
             />
+            {res && <div>{res}</div>}
         </div >
     );
 };
