@@ -95,3 +95,9 @@ impl From<std::string::FromUtf8Error> for TtlvError {
         Self::new(&err.to_string())
     }
 }
+
+impl From<std::num::TryFromIntError> for TtlvError {
+    fn from(err: std::num::TryFromIntError) -> Self {
+        Self::new(&err.to_string())
+    }
+}

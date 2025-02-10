@@ -165,22 +165,22 @@ impl ser::Serializer for &mut TTLVSerializer {
         })?)
     }
 
-    // Serialize a 32-bit floating point number as a TTLV Integer
-    // TTLV has no support for floating point numbers, so we round the value
-    // to the nearest integer
+    // TTLV has no support for floating point numbers
     #[instrument(skip(self))]
     #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
     fn serialize_f32(self, v: f32) -> Result<Self::Ok> {
-        self.serialize_i32(v.round() as i32)
+        Err(TtlvError::custom(
+            "'value f32' is unsupported in TTLV".to_owned(),
+        ))
     }
 
-    // Serialize a 64-bit floating point number as a TTLV Long Integer
-    // TTLV has no support for floating point numbers, so we round the value
-    // to the nearest integer
+    // TTLV has no support for floating point numbers
     #[instrument(skip(self))]
     #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
     fn serialize_f64(self, v: f64) -> Result<Self::Ok> {
-        self.serialize_i64(v.round() as i64)
+        Err(TtlvError::custom(
+            "'value f64' is unsupported in TTLV".to_owned(),
+        ))
     }
 
     // Serialize a char as a single-character string. Other formats may
