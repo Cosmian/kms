@@ -7,40 +7,62 @@ use crate::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, ttlv_struct::TTL
 
 #[test]
 fn test_ser_int() {
-    #[derive(Serialize)]
+    #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
         an_int: u32,
     }
-    log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("trace,hyper=info,reqwest=info"));
 
-    let test = Test {
-        an_int: 1,
-        // seq: vec!["a", "b"],
-    };
+    let test = Test { an_int: 1 };
+
+    //Serializer
     let ttlv = to_ttlv(&test).unwrap();
     let expected =
         r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnInt", value: Integer(1) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
+
+    //Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    //Deserialize
+    let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    info!("*** Running Deserializer: {:?}", re_ttlv);
+    //Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test.an_int, rec.an_int);
 }
 
 #[test]
 fn test_ser_array() {
-    #[derive(Serialize)]
+    #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
-        seq: Vec<&'static str>,
+        seq: Vec<String>,
     }
     log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
-        seq: vec!["a", "b"],
+        seq: vec!["a".to_owned(), "b".to_owned()],
     };
+
+    // Serializer
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
+
+    //Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    //Deserialize
+    let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    //Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test.seq, rec.seq);
 }
 
 #[test]
@@ -79,7 +101,7 @@ fn test_ser_big_int() {
         assert_eq!(ttlv, re_ttlv);
 
         // Deserializer
-        let rec: Test = from_ttlv(&re_ttlv).unwrap();
+        let rec: Test = from_ttlv(re_ttlv).unwrap();
         assert_eq!(test.big_int, rec.big_int);
     }
 }
@@ -114,7 +136,7 @@ fn test_enumeration() {
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
     // Deserializer
-    let rec: Test = from_ttlv(&re_ttlv).unwrap();
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.enumeration, rec.enumeration);
 
     let test = Test {
@@ -132,7 +154,7 @@ fn test_enumeration() {
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
     // Deserializer
-    let rec: Test = from_ttlv(&re_ttlv).unwrap();
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.enumeration, rec.enumeration);
 }
 
@@ -179,6 +201,6 @@ fn test_nested_structures() {
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
     // Deserializer
-    let rec: Root = from_ttlv(&re_ttlv).unwrap();
+    let rec: Root = from_ttlv(re_ttlv).unwrap();
     assert_eq!(root, rec);
 }

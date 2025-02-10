@@ -181,7 +181,7 @@ fn test_des_int() {
         ]),
     };
 
-    let rec: Test = from_ttlv(&ttlv).unwrap();
+    let rec: Test = from_ttlv(ttlv).unwrap();
     assert_eq!(
         &Test {
             an_int: 2,
@@ -217,7 +217,7 @@ fn test_des_array() {
         }]),
     };
 
-    let rec: Test = from_ttlv(&ttlv).unwrap();
+    let rec: Test = from_ttlv(ttlv).unwrap();
     assert_eq!(&Test { ints: vec![2, 4] }, &rec);
 }
 
@@ -238,7 +238,7 @@ fn test_des_enum() {
         }]),
     };
 
-    let rec: Test = from_ttlv(&ttlv).unwrap();
+    let rec: Test = from_ttlv(ttlv).unwrap();
     assert_eq!(
         &Test {
             crypto_algo: CryptographicAlgorithm::AES
@@ -260,7 +260,7 @@ fn test_key_material_vec_deserialization() {
             value: TTLValue::ByteString(bytes.to_vec()),
         }]),
     };
-    let km_: KeyMaterial = from_ttlv(&ttlv).unwrap();
+    let km_: KeyMaterial = from_ttlv(ttlv).unwrap();
     let km = KeyMaterial::TransparentSymmetricKey { key: bytes };
     assert!(km == km_);
 }
@@ -302,7 +302,7 @@ fn test_key_material_big_int_deserialization() {
     };
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
-    let km_: KeyMaterial = from_ttlv(&ttlv_).unwrap();
+    let km_: KeyMaterial = from_ttlv(ttlv_).unwrap();
     assert!(km == km_);
 }
 
@@ -332,7 +332,7 @@ fn test_des_aes_key() {
     assert!(aes_key(key_bytes) == Object::post_fix(ObjectType::SymmetricKey, o));
 
     let ttlv = aes_key_ttlv(key_bytes);
-    let rec: Object = from_ttlv(&ttlv).unwrap();
+    let rec: Object = from_ttlv(ttlv).unwrap();
     assert!(aes_key(key_bytes) == rec);
 }
 
@@ -346,7 +346,7 @@ fn test_aes_key_block() {
     assert!(aes_key_block(key_bytes) == kv);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
-    let rec: KeyBlock = from_ttlv(&ttlv).unwrap();
+    let rec: KeyBlock = from_ttlv(ttlv).unwrap();
     assert!(aes_key_block(key_bytes) == rec);
 }
 
@@ -360,7 +360,7 @@ fn test_aes_key_value() {
     assert!(aes_key_value(key_bytes) == kv);
 
     let ttlv = aes_key_value_ttlv(key_bytes);
-    let rec: KeyValue = from_ttlv(&ttlv).unwrap();
+    let rec: KeyValue = from_ttlv(ttlv).unwrap();
     assert!(aes_key_value(key_bytes) == rec);
 }
 
@@ -369,7 +369,7 @@ fn test_aes_key_material() {
     log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
-    let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
+    let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
     assert!(aes_key_material(key_bytes) == rec);
 }
 
@@ -398,7 +398,7 @@ fn test_some_attributes() {
     let json = serde_json::to_value(&ttlv).unwrap();
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
-    let rec: Wrapper = from_ttlv(&ttlv_).unwrap();
+    let rec: Wrapper = from_ttlv(ttlv_).unwrap();
     assert_eq!(value, rec);
 }
 
@@ -466,7 +466,7 @@ fn test_java_import_request() {
 }
 "#;
     let ttlv: TTLV = serde_json::from_str(ir_java).unwrap();
-    let _import_request: Import = from_ttlv(&ttlv).unwrap();
+    let _import_request: Import = from_ttlv(ttlv).unwrap();
 }
 
 #[test]
@@ -476,7 +476,7 @@ fn test_java_import_response() {
         unique_identifier: UniqueIdentifier::TextString("blah".to_owned()),
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
-    let ir_ = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+    let ir_ = from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
     assert_eq!(ir, ir_);
 }
 
@@ -492,7 +492,7 @@ fn test_byte_string_key_material() {
         }),
     };
     let ttlv = to_ttlv(&key_value).unwrap();
-    let key_value_: KeyValue = from_ttlv(&ttlv).unwrap();
+    let key_value_: KeyValue = from_ttlv(ttlv).unwrap();
     assert!(key_value == key_value_);
 }
 
@@ -502,7 +502,7 @@ fn test_aes_key_full() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
-    let aes_key_: Object = from_ttlv(&ttlv).unwrap();
+    let aes_key_: Object = from_ttlv(ttlv).unwrap();
     assert!(aes_key == Object::post_fix(ObjectType::SymmetricKey, aes_key_));
 }
 
@@ -511,7 +511,7 @@ pub(crate) fn test_attributes_with_links() {
     log_init(None);
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let _attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let _attributes: Attributes = from_ttlv(ttlv).unwrap();
 }
 
 #[test]
@@ -522,7 +522,7 @@ pub(crate) fn test_import_correct_object() {
     // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialization of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let import: Import = from_ttlv(&ttlv).unwrap();
+    let import: Import = from_ttlv(ttlv).unwrap();
 
     assert_eq!(ObjectType::PublicKey, import.object_type);
     assert_eq!(ObjectType::PublicKey, import.object.object_type());
@@ -554,7 +554,7 @@ pub(crate) fn test_create() {
         protection_storage_masks: None,
     };
     let ttlv = to_ttlv(&create).unwrap();
-    let create_: Create = from_ttlv(&ttlv).unwrap();
+    let create_: Create = from_ttlv(ttlv).unwrap();
     assert_eq!(ObjectType::SymmetricKey, create_.object_type);
     assert_eq!(
         CryptographicAlgorithm::AES,
@@ -596,7 +596,7 @@ fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: &T) -> Result<
     let json = serde_json::to_string_pretty(&object_ttlv)?;
     // deserialize
     let ttlv: TTLV = serde_json::from_str(&json)?;
-    let t: T = from_ttlv(&ttlv)?;
+    let t: T = from_ttlv(ttlv)?;
     Ok(t)
 }
 
@@ -668,7 +668,7 @@ pub(crate) fn test_message_request() {
         }],
     };
     let ttlv = to_ttlv(&req).unwrap();
-    let req_: Message = from_ttlv(&ttlv).unwrap();
+    let req_: Message = from_ttlv(ttlv).unwrap();
     assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
     let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
         panic!(
@@ -742,7 +742,7 @@ pub(crate) fn test_message_response() {
         ],
     };
     let ttlv = to_ttlv(&res).unwrap();
-    let res_: MessageResponse = from_ttlv(&ttlv).unwrap();
+    let res_: MessageResponse = from_ttlv(ttlv).unwrap();
     assert_eq!(res_.items.len(), 2);
     assert_eq!(res_.items[0].operation, Some(OperationEnumeration::Locate));
     assert_eq!(
@@ -1037,8 +1037,8 @@ fn test_deserialization_set_attribute() -> KmipResult<()> {
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(set_attribute_request)?;
-    let _set_attribute_request: SetAttribute = from_ttlv(&ttlv)?;
-    trace!("ttlv: {:?}", ttlv);
+    trace!("ttlv: {:?}", &ttlv);
+    let _set_attribute_request: SetAttribute = from_ttlv(ttlv)?;
 
     Ok(())
 }
@@ -1073,7 +1073,7 @@ fn test_deserialization_attribute() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(attribute_str)?;
     trace!("ttlv: {:?}", ttlv);
 
-    let attribute: Attribute = from_ttlv(&ttlv)?;
+    let attribute: Attribute = from_ttlv(ttlv)?;
     trace!("attribute: {:?}", attribute);
 
     Ok(())
@@ -1103,7 +1103,7 @@ fn test_deserialization_link() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(link_str)?;
     trace!("ttlv: {:?}", ttlv);
 
-    let link: Link = from_ttlv(&ttlv)?;
+    let link: Link = from_ttlv(ttlv)?;
     trace!("attribute: {:?}", link);
 
     Ok(())
@@ -1135,7 +1135,7 @@ fn test_serialization_set_attribute() -> KmipResult<()> {
     let set_attribute = to_ttlv(&set_attribute_request)?;
     trace!("set_attribute: {:#?}", set_attribute);
 
-    let set_attribute_deserialized: SetAttribute = from_ttlv(&set_attribute)?;
+    let set_attribute_deserialized: SetAttribute = from_ttlv(set_attribute)?;
     trace!("set_attribute_deserialized: {}", set_attribute_deserialized);
 
     Ok(())
@@ -1152,7 +1152,7 @@ fn test_serialization_link() -> KmipResult<()> {
     let link = to_ttlv(&link_request)?;
     trace!("link: {:#?}", link);
 
-    let link_deserialized: Vec<Link> = from_ttlv(&link)?;
+    let link_deserialized: Vec<Link> = from_ttlv(link)?;
     trace!("set_attribute_deserialized: {:?}", link_deserialized);
 
     Ok(())
