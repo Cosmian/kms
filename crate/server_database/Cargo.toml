@@ -41,7 +41,7 @@ sqlx = { version = "0.8.2", default-features = false, features = [
   "sqlite",
 ] }
 thiserror = { workspace = true }
-tiny-keccak = "2.0.2"
+tiny-keccak = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }

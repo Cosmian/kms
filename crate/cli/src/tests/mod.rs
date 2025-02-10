@@ -7,6 +7,7 @@ mod cover_crypt;
 mod elliptic_curve;
 mod google_cmd;
 mod hsm;
+mod mac;
 mod new_database;
 mod rsa;
 mod shared;

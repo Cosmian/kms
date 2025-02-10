@@ -37,7 +37,7 @@ impl SymmetricCommands {
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
-        };
+        }
         Ok(())
     }
 }

@@ -3,17 +3,81 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
+    kmip_operations::{Decrypt, ErrorReason, Locate, Mac, Operation},
     kmip_types::{
-        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-        UniqueIdentifier,
+        CryptographicAlgorithm, CryptographicParameters, OperationEnumeration, ProtocolVersion,
+        RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
     },
-    requests::create_ec_key_pair_request,
+    requests::{create_ec_key_pair_request, symmetric_key_create_request},
 };
 
 use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
 };
+
+#[tokio::test]
+async fn test_kmip_mac_messages() -> KResult<()> {
+    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
+
+    let clap_config = https_clap_config();
+
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+
+    let symmetric_key_request = symmetric_key_create_request(
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+
+    let unique_identifier = Some(
+        kms.create(symmetric_key_request, owner, None)
+            .await?
+            .unique_identifier,
+    );
+    let mac_request = Mac {
+        unique_identifier,
+        cryptographic_parameters: CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::SHA3256),
+            ..Default::default()
+        },
+        data: Some([1, 2, 3, 4].to_vec()),
+        ..Default::default()
+    };
+
+    // prepare and send the single message
+    let items = vec![
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
+    ];
+    let message_request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            // wrong number of items but it is only checked
+            // when TTLV-serialization is done
+            batch_count: 1,
+            ..Default::default()
+        },
+        items,
+    };
+
+    let response = kms.message(message_request, owner, None).await?;
+    assert_eq!(response.header.batch_count, 6);
+    assert_eq!(response.items.len(), 6);
+
+    Ok(())
+}
 
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {

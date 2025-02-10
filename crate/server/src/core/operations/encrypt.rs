@@ -308,7 +308,7 @@ pub(crate) fn encrypt_bulk(
             "Encrypt bulk: encryption with keys of type: {} is not supported",
             other.object_type()
         ))),
-    };
+    }
 
     debug!(
         "encrypt_bulk: <== encrypted {} ciphertexts",

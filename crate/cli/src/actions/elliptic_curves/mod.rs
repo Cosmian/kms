@@ -41,7 +41,7 @@ impl EllipticCurveCommands {
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             #[cfg(not(feature = "fips"))]
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
-        };
+        }
         Ok(())
     }
 }

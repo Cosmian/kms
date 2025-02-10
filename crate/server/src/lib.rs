@@ -59,7 +59,6 @@ pub mod config;
 pub mod core;
 
 pub mod error;
-// pub mod hsm;
 pub mod middlewares;
 pub mod result;
 pub mod routes;

@@ -198,7 +198,7 @@ pub(crate) async fn export_get(
                 owm.object().object_type()
             )
         }
-    };
+    }
 
     Ok(ExportResponse {
         object_type: owm.object().object_type(),

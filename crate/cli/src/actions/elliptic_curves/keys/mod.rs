@@ -36,7 +36,7 @@ impl KeysCommands {
             Self::Unwrap(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,
             Self::Destroy(action) => action.run(kms_rest_client).await?,
-        };
+        }
 
         Ok(())
     }

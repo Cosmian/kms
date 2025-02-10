@@ -62,7 +62,6 @@ impl EncryptionOracle for HsmEncryptionOracle {
         self.hsm
             .encrypt(slot_id, &key_id, cryptographic_algorithm, data)
             .await
-            .map_err(Into::into)
     }
 
     async fn decrypt(
@@ -102,7 +101,6 @@ impl EncryptionOracle for HsmEncryptionOracle {
         self.hsm
             .decrypt(slot_id, &key_id, cryptographic_algorithm, data)
             .await
-            .map_err(Into::into)
     }
 
     async fn get_key_type(&self, key_id: &str) -> InterfaceResult<Option<KeyType>> {

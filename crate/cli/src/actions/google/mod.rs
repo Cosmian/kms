@@ -33,7 +33,7 @@ impl GoogleCommands {
         match self {
             Self::KeyPairs(command) => command.process(kms_rest_client).await?,
             Self::Identities(command) => command.process(&kms_rest_client.config).await?,
-        };
+        }
         Ok(())
     }
 }

@@ -1,11 +1,10 @@
-mod revoke;
-
 mod create;
 mod create_key_pair;
 mod decrypt;
 mod encrypt;
 mod get;
 mod import;
+mod revoke;
 mod validate;
 
 pub use create::{create_symmetric_key_kmip_object, symmetric_key_create_request};

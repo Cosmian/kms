@@ -325,7 +325,7 @@ impl DecryptAction {
             } else {
                 // put everything in the read buffer
                 read_buffer = available_bytes;
-            };
+            }
         }
         // recover the tag from the read_buffer
         if read_buffer.len() < tag_size {

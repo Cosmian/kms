@@ -137,7 +137,7 @@ pub fn update_key_block_with_wrapped_key(
         EncodingOption::NoEncoding => {
             object_key_block.key_value.key_material = KeyMaterial::ByteString(wrapped_key.into());
         }
-    };
+    }
     object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
 }
 

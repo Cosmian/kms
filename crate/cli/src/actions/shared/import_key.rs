@@ -178,20 +178,20 @@ impl ImportKeyAction {
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
-        };
+        }
         if let Some(private_key_id) = &self.private_key_id {
             //let attributes = import_attributes.get_or_insert(Attributes::default());
             import_attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),
             );
-        };
+        }
         if let Some(public_key_id) = &self.public_key_id {
             import_attributes.set_link(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(public_key_id.clone()),
             );
-        };
+        }
 
         if self.unwrap {
             if let Some(data) = &self.authenticated_additional_data {
