@@ -54,26 +54,30 @@ fn test_ser_int() {
 fn test_ser_big_int() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
+    #[derive(PartialEq, Eq, Debug)]
     struct Test {
-        big_int: BigInt,
+        big_int_neg: BigInt,
+        big_int_pos: BigInt,
     }
     log_init(Some("trace,hyper=info,reqwest=info"));
 
     let tests = [
         (
             Test {
-                big_int: BigInt::from(-1_234_567_890_i128),
+                big_int_neg: BigInt::from(-1_234_567_890_i128),
+                big_int_pos: BigInt::from(0x0000_1111_1222_2222_u128),
             },
-            "0xFFFFFFFFB669FD2E",
+            ["0xFFFFFFFFB669FD2E", "0x0000111112222222"],
         ),
         (
             Test {
-                big_int: BigInt::from(0x0000_1111_1222_2222_u128),
+                big_int_neg: BigInt::from(-1_234_567_i64),
+                big_int_pos: BigInt::from(1_234_567_i64),
             },
-            "0x0000111112222222",
+            ["0xFFFFFFFFFFED2979", "0x000000000012D687"],
         ),
     ];
-    for (test, s) in tests {
+    for (test, [s1, s2]) in tests {
         // serializer
         let ttlv = to_ttlv(&test).unwrap();
 
@@ -81,9 +85,12 @@ fn test_ser_big_int() {
         let value = serde_json::to_value(&ttlv).unwrap();
         assert!(value.is_object());
         assert_eq!(value["tag"], "Test");
-        assert_eq!(value["value"][0]["tag"], "BigInt");
+        assert_eq!(value["value"][0]["tag"], "BigIntNeg");
         assert_eq!(value["value"][0]["type"], "BigInteger");
-        assert_eq!(value["value"][0]["value"], s);
+        assert_eq!(value["value"][0]["value"], s1);
+        assert_eq!(value["value"][1]["tag"], "BigIntPos");
+        assert_eq!(value["value"][1]["type"], "BigInteger");
+        assert_eq!(value["value"][1]["value"], s2);
 
         // deserialize
         let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
@@ -92,7 +99,7 @@ fn test_ser_big_int() {
         // Deserializer
         info!("*** Running Deserializer: {:?}", re_ttlv);
         let rec: Test = from_ttlv(re_ttlv).unwrap();
-        assert_eq!(test.big_int, rec.big_int);
+        assert_eq!(test, rec);
     }
 }
 
