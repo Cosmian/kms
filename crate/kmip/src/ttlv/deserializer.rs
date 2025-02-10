@@ -1,15 +1,15 @@
 #![allow(dead_code)]
 use serde::{
-    de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
-    Deserialize, Deserializer,
+    de::{self, DeserializeSeed, EnumAccess, MapAccess, VariantAccess, Visitor},
+    Deserialize,
 };
 use tracing::trace;
 
-use super::{error::TtlvError, KmipBigInt, TTLV};
+use super::{error::TtlvError, TTLV};
 use crate::{
     // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
     kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
-    ttlv::TTLValue,
+    ttlv::{kmip_big_int_deserializer::KmipBigIntDeserializer, TTLValue},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -412,7 +412,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_seq: state:  {:?}", self.current);
-        visitor.visit_seq(self)
+        match self.current.value.clone() {
+            TTLValue::BigInteger(bi) => {
+                // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
+                // by converting the BigInt to u32
+                let seq_access = KmipBigIntDeserializer::instantiate(&bi)?;
+                visitor.visit_seq(seq_access)
+            }
+            _ => Err(TtlvError::from("Expected BigInteger value in TTLV")),
+        }
     }
 
     // Tuples look just like sequences
@@ -585,25 +593,6 @@ impl<'de> MapAccess<'de> for TtlvDeserializer {
     }
 }
 
-// `SeqAccess` is provided to the `Visitor` to give it the ability to iterate
-// through elements of the sequence.
-impl<'de> SeqAccess<'de> for TtlvDeserializer {
-    type Error = TtlvError;
-
-    // #[instrument(skip(self, seed))]
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        trace!("seq_access: next_element_seed: state:  {:?}", self.current);
-
-        // we are deserilizing a TTLV value that looks like a sequence such as a BigInt
-        // A BigInt is a sequence of a sign and a BigUint (see the BigInt struct)
-        // The deserilizer will call for an i8 then a BigUint
-        seed.deserialize(self).map(Some)
-    }
-}
-
 struct EnumWalker<'a> {
     de: &'a mut TtlvDeserializer,
 }
@@ -677,311 +666,5 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
     {
         trace!("struct_variant: state:  {:?}", self.de.current);
         unimplemented!("struct_variant");
-    }
-}
-
-struct KmipBigIntDeserializer {
-    sign: i8,
-    u32_be: Vec<u32>,
-}
-
-impl KmipBigIntDeserializer {
-    fn instantiate(kmip_big_int: &KmipBigInt) -> Result<Self> {
-        Ok(Self {
-            sign: kmip_big_int.sign(),
-            u32_be: kmip_big_int.to_u32_digits()?,
-        })
-    }
-}
-
-impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
-    type Error = TtlvError;
-
-    fn deserialize_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_bool<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        visitor.visit_i8(self.sign)
-    }
-
-    fn deserialize_i16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_i32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_i64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_u8<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_u16<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_u32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        let next = self.u32_be.pop();
-        next.map_or_else(
-            || Err(TtlvError::from("No more elements in BigInt")),
-            |v| visitor.visit_u32(v),
-        )
-    }
-
-    fn deserialize_u64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_f32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_f64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_char<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_str<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_string<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_bytes<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_byte_buf<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_option<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_unit<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_unit_struct<V>(
-        self,
-        name: &'static str,
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_newtype_struct<V>(
-        self,
-        name: &'static str,
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_tuple<V>(
-        self,
-        len: usize,
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_tuple_struct<V>(
-        self,
-        name: &'static str,
-        len: usize,
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_map<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_struct<V>(
-        self,
-        name: &'static str,
-        fields: &'static [&'static str],
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_enum<V>(
-        self,
-        name: &'static str,
-        variants: &'static [&'static str],
-        _visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_identifier<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
-    }
-
-    fn deserialize_ignored_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(TtlvError::from(
-            "Unsupported deserialization for KmipBigInt",
-        ))
     }
 }
