@@ -2,6 +2,7 @@ pub mod deserializer;
 pub mod deserializer_old;
 pub mod error;
 mod kmip_big_int;
+mod kmip_big_int_deserializer;
 pub mod serde_ttlv;
 pub mod serializer;
 mod ttlv_struct;
