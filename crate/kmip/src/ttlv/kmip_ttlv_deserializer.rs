@@ -3,7 +3,7 @@ use serde::{
     de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
 };
-use tracing::trace;
+use tracing::{instrument, trace};
 
 use super::{error::TtlvError, TTLV};
 use crate::{
@@ -67,6 +67,8 @@ pub struct TtlvDeserializer {
     current: TTLV,
     /// The index of the current child of a structure being deserialized
     /// Arrays in TTLV are represented as structures with children holding the array values
+    /// The child index is also used in Enums deserialization to differentiate between the tag and the variant
+    /// when deserializing an identifier (0; tag, 1; variant)
     child_index: usize,
 }
 
@@ -121,16 +123,75 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // Look at the input data to decide what Serde data model type to
     // deserialize as. Not all data formats are able to support this operation.
     // Formats that support `deserialize_any` are known as self-describing.
-    // #[instrument(skip(self, visitor))]
-    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
+    // This is called when deserializng the value in an unttaged enum, for instance.
+
+    #[instrument(skip(self, visitor))]
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_any: state  {:?}", self.current);
-        unimplemented!("deserialize_any");
+        match &self.current.value {
+            TTLValue::BigInteger(bi) => {
+                // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
+                // by converting the BigInt to u32
+                let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
+                visitor.visit_seq(seq_access)
+            }
+            TTLValue::Structure(_child_array) => {
+                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
+                // by iterating over the children which hold the values of the sequence/array
+                visitor.visit_seq(self)
+            }
+            TTLValue::Integer(i) => {
+                // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
+                // by converting the integer to i32
+                visitor.visit_i32(*i)
+            }
+            TTLValue::LongInteger(i) => {
+                // if the TTLV value is a LongInteger, the deserializer is attempting to deserialize the value
+                // by converting the integer to i64
+                visitor.visit_i64(*i)
+            }
+            TTLValue::TextString(s) => {
+                // if the TTLV value is a TextString, the deserializer is attempting to deserialize the value
+                visitor.visit_str(s)
+            }
+            TTLValue::Boolean(b) => {
+                // if the TTLV value is a Boolean, the deserializer is attempting to deserialize the value
+                visitor.visit_bool(*b)
+            }
+            TTLValue::ByteString(b) => {
+                // if the TTLV value is a ByteString, the deserializer is attempting to deserialize the value
+                visitor.visit_bytes(b)
+            }
+            TTLValue::DateTime(dt) => {
+                // if the TTLV value is a DateTime, the deserializer is attempting to deserialize the value
+                visitor.visit_i64(dt.unix_timestamp())
+            }
+            TTLValue::Interval(i) => {
+                // if the TTLV value is an Interval, the deserializer is attempting to deserialize the value
+                visitor.visit_u32(*i)
+            }
+            TTLValue::DateTimeExtended(dt) => {
+                // if the TTLV value is a DateTimeExtended, the deserializer is attempting to deserialize the value
+                visitor.visit_i128(dt.unix_timestamp_nanos() / 1000)
+            }
+            TTLValue::Enumeration(e) => {
+                // if the TTLV value is an Enumeration, the deserializer is attempting to deserialize the tag
+                // by converting the Enumeration to a string
+                if self.child_index == 0 {
+                    visitor.visit_str(&self.current.tag)
+                } else if e.name.is_empty() {
+                    visitor.visit_u32(e.index)
+                } else {
+                    visitor.visit_str(&e.name)
+                }
+            }
+        }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_bool<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -139,7 +200,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_bool");
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -161,7 +222,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -177,7 +238,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -190,7 +251,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -203,7 +264,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -222,7 +283,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -241,7 +302,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -273,7 +334,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -292,7 +353,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -302,7 +363,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         Err(TtlvError::from("f32 is not supported in KMIP"))
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -312,7 +373,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         Err(TtlvError::from("f64 is not supported in KMIP"))
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -323,7 +384,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
 
     // Refer to the "Understanding deserializer lifetimes" page for information
     // about the three deserialization flavors of strings in Serde.
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -336,7 +397,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -345,7 +406,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         self.deserialize_str(visitor)
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -354,7 +415,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_bytes");
     }
 
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -363,7 +424,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_byte_buf");
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -373,7 +434,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // In Serde, unit means an anonymous value containing no data.
-    // #[instrument(skip(self, _visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -383,31 +444,37 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // Unit struct means a named value containing no data.
-    // #[instrument(skip(self, _visitor))]
-    fn deserialize_unit_struct<V>(self, _name: &'static str, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, _visitor))]
+    fn deserialize_unit_struct<V>(self, name: &'static str, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_unit_struct state:  {:?}", self.current);
+        trace!(
+            "deserialize_unit_struct with name: {name}, state:  {:?}",
+            self.current
+        );
         unimplemented!("deserialize_unit_struct");
     }
 
     // As is done here, serializers are encouraged to treat newtype structs as
     // insignificant wrappers around the data they contain. That means not
     // parsing anything other than the contained value.
-    // #[instrument(skip(self, visitor))]
-    fn deserialize_newtype_struct<V>(self, _name: &'static str, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, _visitor))]
+    fn deserialize_newtype_struct<V>(self, name: &'static str, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_new_type_struct: state:  {:?}", self.current);
+        trace!(
+            "deserialize_new_type_struct with name: {name}, state:  {:?}",
+            self.current
+        );
         unimplemented!("deserialize_newtype_struct");
     }
 
     // Deserialization of compound types like sequences and maps happens by
     // passing the visitor an "Access" object that gives it the ability to
     // iterate through the data contained in the sequence.
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -430,7 +497,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // Tuples look just like sequences
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -440,7 +507,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // Tuple structs look just like sequences
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_tuple_struct<V>(
         self,
         name: &'static str,
@@ -457,7 +524,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_tuple_struct");
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, _visitor))]
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -479,7 +546,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // that the `Deserialize` implementation is required to know what the fields
     // are before even looking at the input data. Any key-value pairing in which
     // the fields cannot be known ahead of time is probably a map.
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_struct<V>(
         self,
         name: &'static str,
@@ -499,7 +566,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         visitor.visit_map(self)
     }
 
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_enum<V>(
         self,
         name: &'static str,
@@ -526,19 +593,26 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // ```
     // TTLV { tag: "AnInt", value: Integer(1) }
     // ```
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_identifier: state:  {:?}", self.current);
-        // if the current item is an enumeration, this is called to deserialize the variant
+
         match &self.current.value {
             TTLValue::Enumeration(e) => {
-                if e.name.is_empty() {
+                //if the current item is an enumeration,
+                // and the child index is 0 => deserialize the tag
+                // else deserialize the variant
+                if self.child_index == 0 {
+                    trace!("deserialize_identifier of enum: tag: {}", self.current.tag);
+                    visitor.visit_str(&self.current.tag)
+                } else if e.name.is_empty() {
+                    trace!("deserialize_identifier of enum: index: {}", e.index);
                     visitor.visit_u32(e.index)
                 } else {
-                    trace!("variant name: {}", e.name);
+                    trace!("deserialize_identifier of enum: name: {}", e.name);
                     visitor.visit_str(&e.name)
                 }
             }
@@ -558,23 +632,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // Some formats are not able to implement this at all. Formats that can
     // implement `deserialize_any` and `deserialize_ignored_any` are known as
     // self-describing.
-    // #[instrument(skip(self, visitor))]
+    #[instrument(skip(self, visitor))]
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!(
-            "deserialize_ignored_any: state:  {:?}. Returning true since it is ignored",
-            self.current
-        );
-        visitor.visit_bool(true)
+        trace!("deserialize_ignored_any: state:  {:?}", self.current);
+        self.deserialize_any(visitor)
     }
 }
 
 impl<'de> SeqAccess<'de> for TtlvDeserializer {
     type Error = TtlvError;
 
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, seed))]
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
@@ -605,7 +676,7 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
 impl<'de> MapAccess<'de> for TtlvDeserializer {
     type Error = TtlvError;
 
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, seed))]
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
     where
         K: DeserializeSeed<'de>,
@@ -616,7 +687,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer {
         Ok(v)
     }
 
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, seed))]
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
     where
         V: DeserializeSeed<'de>,
@@ -659,13 +730,17 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
     type Error = TtlvError;
     type Variant = Self;
 
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, seed))]
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
     {
         trace!("variant_seed: state:  {:?}", self.de.current);
+        // by serttting the child index to 1, we are telling the deserializer
+        // to deserialize the variant name and not the tag of the TTLV holding the variant
+        self.de.child_index = 1;
         let val = seed.deserialize(&mut *self.de)?;
+        self.de.child_index = 0;
         Ok((val, self))
     }
 }
@@ -677,14 +752,17 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
 
     // If the `Visitor` expected this variant to be a unit variant, the input
     // should have been the plain string case handled in `deserialize_enum`.
-    // #[instrument(skip(self))]
+    #[instrument(skip(self))]
     fn unit_variant(self) -> Result<()> {
         trace!("unit_variant: state:  {:?}", self.de.current);
-        unimplemented!("unit_variant");
+        let TTLValue::Enumeration(_e) = &self.de.current.value else {
+            return Err(TtlvError::from("Expected Enumeration value in TTLV"))
+        };
+        Ok(())
     }
 
     /// `variant` is called to identify which variant to deserialize.
-    // #[instrument(skip(self, seed))]
+    #[instrument(skip(self, _seed))]
     fn newtype_variant_seed<T>(self, _seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
@@ -695,23 +773,26 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
 
     // Tuple variants are not in KMIP but, if any,
     // deserialize as a sequence of data here.
-    // #[instrument(skip(self, visitor))]
-    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, _visitor))]
+    fn tuple_variant<V>(self, len: usize, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("tuple_variant: state:  {:?}", self.de.current);
+        trace!("tuple_variant of len: {len}, state:  {:?}", self.de.current);
         unimplemented!("tuple_variant");
     }
 
     // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }` so
     // deserialize the inner map here.
-    // #[instrument(skip(self, visitor))]
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, _visitor))]
+    fn struct_variant<V>(self, fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("struct_variant: state:  {:?}", self.de.current);
+        trace!(
+            "struct_variant with fields: {fields:?}: state:  {:?}",
+            self.de.current
+        );
         unimplemented!("struct_variant");
     }
 }
