@@ -7,8 +7,8 @@ use tempfile::TempDir;
 
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
-    cosmian_kms_client::reexport::cosmian_kms_ui_utils::import_utils::KeyUsage,
     error::{result::CliResult, CliError},
+    reexport::cosmian_kms_client::reexport::cosmian_kms_ui_utils::import_utils::KeyUsage,
     tests::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},

@@ -16,7 +16,7 @@ const AccessListForm: React.FC = () => {
     const [form] = Form.useForm<AccessListFormData>();
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [res, setRes] = useState(undefined);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
     const onFinish = async (values: AccessListFormData) => {
         console.log('List access values:', values);
@@ -25,7 +25,11 @@ const AccessListForm: React.FC = () => {
         setAccessRights([])
         try {
             const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`);
-            response.length ? setAccessRights(response) : setRes("Empty result")
+            if (response.length) {
+                setAccessRights(response);
+            } else {
+                setRes("Empty result");
+            }
 
         } catch (e) {
             setRes(`Error listing access right: ${e}`)

@@ -12,7 +12,7 @@ interface AccessRight {
 const AccessObtainedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
-    const [res, setRes] = useState(undefined);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
 
     // TODO Update fields name from server response - when auth is OK
@@ -56,7 +56,11 @@ const AccessObtainedList: React.FC = () => {
         try {
             const response = await getNoTTLVRequest("/access/obtained");
             console.log(response)
-            response.length ? setAccessRights(response) : setRes("Empty result")
+            if (response.length) {
+                setAccessRights(response);
+            } else {
+                setRes("Empty result");
+            }
 
         } catch (e) {
             setRes(`Error listing objects: ${e}`)

@@ -16,7 +16,7 @@ type KeyUsage =
     | 'wrap' | 'unwrap';
 
 interface ImportKeyFormData {
-    keyFile: string;
+    keyFile: Uint8Array;
     keyId?: string;
     keyFormat: ImportKeyFormat;
     publicKeyId?: string;
@@ -160,9 +160,11 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                         beforeUpload={(file) => {
                             const reader = new FileReader();
                             reader.onload = (e) => {
-                                const arrayBuffer = e.target.result;
-                                const bytes = new Uint8Array(arrayBuffer);
-                                form.setFieldsValue({ keyFile: bytes })
+                                const arrayBuffer = e.target?.result;
+                                if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                    const bytes = new Uint8Array(arrayBuffer);
+                                    form.setFieldsValue({ keyFile: bytes })
+                                }
                             };
                             reader.readAsArrayBuffer(file);
                             return false;

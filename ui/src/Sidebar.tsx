@@ -1,7 +1,6 @@
-import { Layout, Menu } from 'antd'
+import { Layout, Menu, MenuProps } from 'antd'
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MenuItem } from './MenuItem'
 import { menuItems } from './menuItems'
 
 const { Sider } = Layout;
@@ -14,7 +13,7 @@ interface LevelKeysProps {
 const Sidebar: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
-    const [stateOpenKeys, setStateOpenKeys] = useState([]);
+    const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};
@@ -53,14 +52,6 @@ const Sidebar: React.FC = () => {
         // close
         setStateOpenKeys(openKeys);
       }
-    };
-
-    const convertMenuItems = (items: MenuItem[]): { key: string, label: string, children?: any[] }[] => {
-        return items.map(item => ({
-            key: item.key,
-            label: item.label,
-            children: item.children ? convertMenuItems(item.children) : undefined,
-        }));
     };
 
     return (

@@ -23,8 +23,8 @@ use tracing::{debug, trace};
 use super::ExportKeyParams;
 use crate::{
     actions::symmetric::keys::create_key::CreateKeyAction,
-    cosmian_kms_client::reexport::cosmian_kms_ui_utils::import_utils::KeyUsage,
     error::result::CliResult,
+    reexport::cosmian_kms_client::reexport::cosmian_kms_ui_utils::import_utils::KeyUsage,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,

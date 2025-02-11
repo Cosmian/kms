@@ -12,7 +12,7 @@ interface OwnedObject {
 const ObjectsOwnedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [objects, setObjects] = useState<OwnedObject[]>([]);
-    const [res, setRes] = useState(undefined);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
     const columns = [
         {
@@ -39,8 +39,11 @@ const ObjectsOwnedList: React.FC = () => {
         setObjects([])
         try {
             const response = await getNoTTLVRequest("/access/owned");
-            console.log(response)
-            response.length ? setObjects(response) : setRes("Empty result")
+            if (response.length) {
+                setObjects(response);
+            } else {
+                setRes("Empty result");
+            }
 
         } catch (e) {
             setRes(`Error listing objects: ${e}`)

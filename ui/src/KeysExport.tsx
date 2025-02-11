@@ -91,10 +91,10 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
                 let mimeType;
                     switch (values.keyFormat) {
-                        case "JsonTtlv":
+                        case "json-ttlv":
                             mimeType = "application/json";
                             break;
-                        case "Base64":
+                        case "base64":
                             mimeType = "text/plain";
                             break;
                         default:
