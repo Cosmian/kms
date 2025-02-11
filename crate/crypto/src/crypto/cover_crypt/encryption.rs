@@ -2,7 +2,7 @@ use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, Master
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
-    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{
@@ -70,7 +70,7 @@ impl CoverCryptEncryption {
         &self,
         encrypted_header: &[u8],
         plaintext: &[u8],
-        aead: Option<&[u8]>,
+        ad: Option<&[u8]>,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
     ) -> Result<Vec<u8>, CryptoError> {
         let mut de = Deserializer::new(plaintext);
@@ -91,7 +91,7 @@ impl CoverCryptEncryption {
         // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            let mut encrypted_block = self.encrypt(chunk_data, ad, symmetric_key)?;
             let mut chunk = encrypted_header.to_vec();
             chunk.append(&mut encrypted_block);
             ser.write_vec(&chunk)?;
@@ -107,17 +107,15 @@ impl CoverCryptEncryption {
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
     ) -> Result<Vec<u8>, CryptoError> {
         // Encrypt the data
-        let aes256gcm = Aes256Gcm::new(symmetric_key);
-        let nonce = Nonce::new(&mut *self.cover_crypt.rng());
-        let encrypted_block = aes256gcm.encrypt(&nonce, plaintext, ad)?;
+        let nonce = Nonce::<12>::new(&mut *self.cover_crypt.rng());
+        let ciphertext = Aes256Gcm::new(symmetric_key).encrypt(&nonce, plaintext, ad)?;
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
             self.public_key_uid,
             plaintext.len(),
-            encrypted_block.len(),
+            ciphertext.len(),
         );
-
-        Ok(encrypted_block)
+        Ok([nonce.as_bytes(), &ciphertext].concat())
     }
 }
 
@@ -146,7 +144,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
 
         // Generate a symmetric key and encrypt the header
-        let (_secret, encrypted_header) = EncryptedHeader::generate(
+        let (secret, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
             &public_key,
             &encryption_policy,
@@ -155,7 +153,9 @@ impl EncryptionSystem for CoverCryptEncryption {
         )
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-        let symmetric_key = SymmetricKey::default();
+        let mut secret_bytes: [u8; SYM_KEY_LENGTH] = [0_u8; SYM_KEY_LENGTH];
+        secret.to_unprotected_bytes(&mut secret_bytes);
+        let symmetric_key = SymmetricKey::try_from_bytes(secret_bytes)?;
 
         let mut encrypted_header = encrypted_header
             .serialize()

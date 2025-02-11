@@ -193,8 +193,7 @@ pub(crate) async fn update_master_keys(
     msk_uid: String,
     mutator: impl Fn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
 ) -> KResult<((String, Object), (String, Object))> {
-    let (msk_obj, mpk_obj) =
-        get_master_keys_and_policy(server, msk_uid, owner, params.clone()).await?;
+    let (msk_obj, mpk_obj) = get_master_keys(server, msk_uid, owner, params.clone()).await?;
 
     let (mut msk, mut mpk) = covercrypt_keys_from_kmip_objects(&msk_obj.1, &mpk_obj.1)?;
     mutator(&mut msk, &mut mpk)?;
@@ -205,7 +204,7 @@ pub(crate) async fn update_master_keys(
     Ok((msk_obj, mpk_obj))
 }
 
-async fn get_master_keys_and_policy(
+async fn get_master_keys(
     kmip_server: &KMS,
     msk_uid: String,
     owner: &str,

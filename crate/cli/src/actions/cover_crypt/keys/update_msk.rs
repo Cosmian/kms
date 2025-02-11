@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use cosmian_cover_crypt::{EncryptionHint, MasterSecretKey, QualifiedAttribute};
+use cosmian_cover_crypt::{EncryptionHint, MasterPublicKey, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
     cosmian_kmip::KmipResultHelper,
@@ -111,38 +111,42 @@ pub struct ViewAction {
 }
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let key_id = self.key_id.clone();
-        let key_file = self.key_file.clone();
-        let unwrap = true;
-        let object: Object = if let Some(key_id) = key_id {
+        let object: Object = if self.key_id.is_some() {
             export_object(
                 kms_rest_client,
-                &key_id,
+                &self
+                    .key_id
+                    .clone()
+                    .ok_or_else(|| CryptoError::Default("ID".to_owned()))?,
                 ExportObjectParams {
-                    unwrap,
+                    unwrap: true,
                     ..ExportObjectParams::default()
                 },
             )
             .await?
             .1
-        } else if let Some(key_file) = key_file {
-            let ttlv: TTLV = read_from_json_file(&key_file)?;
+        } else if self.key_file.is_some() {
+            let ttlv: TTLV = read_from_json_file(
+                &self
+                    .key_file
+                    .clone()
+                    .ok_or_else(|| CryptoError::Default("FILE".to_owned()))?,
+            )?;
             from_ttlv(&ttlv)?
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
         };
-        let msk_key_block = object.key_block()?;
-        let msk_key_bytes = msk_key_block.key_bytes()?;
-        let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
-            CryptoError::Kmip(format!(
-                "Failed deserializing the CoverCrypt Master Private Key: {e}"
-            ))
+
+        let key_block = object.key_block()?;
+        let key_bytes = key_block.key_bytes()?;
+        println!("OBJ{:?}", serde_json::from_slice::<u8>(&key_bytes));
+
+        let mpk = MasterPublicKey::deserialize(&key_bytes).map_err(|e| {
+            CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
         })?;
-        let json = format!(
-            "{:?}",
-            serde_json::from_value(msk.serialize()?.to_vec().into())?
-        );
-        console::Stdout::new(&json).write()?;
+        println!("MPK{:?}", mpk);
+        let stdout: String = format!("{:?}", mpk);
+        console::Stdout::new(&stdout).write()?;
 
         Ok(())
     }

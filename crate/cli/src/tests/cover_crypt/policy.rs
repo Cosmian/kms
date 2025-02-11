@@ -34,6 +34,7 @@ async fn test_view_policy() -> CliResult<()> {
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec![
+        "keys",
         "policy",
         "view",
         "-f",
