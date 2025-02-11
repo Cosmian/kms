@@ -3,7 +3,9 @@ use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::ttlv::{deserializer::from_ttlv, kmip_to_ttlv_serializer::to_ttlv, ttlv_struct::TTLV};
+use crate::ttlv::{
+    kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, ttlv_struct::TTLV,
+};
 
 #[test]
 fn test_ser_int() {
@@ -186,6 +188,46 @@ fn test_ser_array() {
 }
 
 #[test]
+fn test_enum_unit_variant() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[repr(u32)]
+    enum Enumeration {
+        Ten = 0x0A,
+        Big = 0x1111_2222,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        an_enum: Enumeration,
+    }
+    log_init(Some("trace,hyper=info,reqwest=info"));
+
+    let test = Test {
+        an_enum: Enumeration::Ten,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
+    assert!(value.is_object());
+    assert_eq!(value["tag"], "Test");
+    assert_eq!(value["value"][0]["tag"], "AnEnum");
+    assert_eq!(value["value"][0]["type"], "Enumeration");
+    assert_eq!(value["value"][0]["value"], "Ten");
+
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test.an_enum, rec.an_enum);
+}
+
+#[test]
 fn test_enumeration() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     enum Enumeration {
@@ -196,12 +238,12 @@ fn test_enumeration() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
-        enumeration: Enumeration,
+        an_enum: Enumeration,
     }
     log_init(Some("trace,hyper=info,reqwest=info"));
 
     let test = Test {
-        enumeration: Enumeration::OneInt(42),
+        an_enum: Enumeration::OneInt(42),
     };
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
@@ -211,7 +253,7 @@ fn test_enumeration() {
     info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
     assert!(value.is_object());
     assert_eq!(value["tag"], "Test");
-    assert_eq!(value["value"][0]["tag"], "Enumeration");
+    assert_eq!(value["value"][0]["tag"], "AnEnum");
     assert_eq!(value["value"][0]["type"], "Integer");
     assert_eq!(value["value"][0]["value"], 42);
 
@@ -221,11 +263,11 @@ fn test_enumeration() {
 
     // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
-    assert_eq!(test.enumeration, rec.enumeration);
+    assert_eq!(test.an_enum, rec.an_enum);
 
     // The same test with a string
     let test = Test {
-        enumeration: Enumeration::TwoString("blah".to_owned()),
+        an_enum: Enumeration::TwoString("blah".to_owned()),
     };
 
     // Serializer
@@ -246,7 +288,7 @@ fn test_enumeration() {
 
     // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
-    assert_eq!(test.enumeration, rec.enumeration);
+    assert_eq!(test.an_enum, rec.an_enum);
 }
 
 #[test]

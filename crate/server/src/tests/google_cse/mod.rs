@@ -24,7 +24,7 @@ use cosmian_kmip::{
         requests::create_rsa_key_pair_request,
         KmipOperation,
     },
-    ttlv::{deserializer::from_ttlv, TTLV},
+    ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG;
