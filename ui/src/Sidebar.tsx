@@ -81,7 +81,7 @@ const Sidebar: React.FC = () => {
                 items={menuItems}
                 onClick={({ key }) => navigate(key)}
                 className="h-full border-r-0"
-                style={{fontWeight: '500'}}
+                style={{fontWeight: '500', overflow: 'auto'}}
             />
         </Sider>
     );

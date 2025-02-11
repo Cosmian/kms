@@ -160,9 +160,11 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                         beforeUpload={(file) => {
                             const reader = new FileReader();
                             reader.onload = (e) => {
-                                form.setFieldsValue({ keyFile: e.target?.result });
+                                const arrayBuffer = e.target.result;
+                                const bytes = new Uint8Array(arrayBuffer);
+                                form.setFieldsValue({ keyFile: bytes })
                             };
-                            reader.readAsText(file);
+                            reader.readAsArrayBuffer(file);
                             return false;
                         }}
                         maxCount={1}

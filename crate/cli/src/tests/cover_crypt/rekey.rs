@@ -6,7 +6,8 @@ use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
 
 use crate::{
-    actions::{shared::utils::KeyUsage, symmetric::keys::create_key::CreateKeyAction},
+    actions::symmetric::keys::create_key::CreateKeyAction,
+    cosmian_kms_client::reexport::cosmian_kms_ui_utils::import_utils::KeyUsage,
     error::{result::CliResult, CliError},
     tests::{
         cover_crypt::{
