@@ -289,8 +289,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
             TTLValue::Integer(i) => visitor.visit_i32(*i),
             TTLValue::LongInteger(li) => visitor.visit_i64(*li),
             TTLValue::Enumeration(e) => match e {
-                TTLVEnumeration::Integer(i) => visitor.visit_i32(*i),
-                TTLVEnumeration::Name(n) => visitor.visit_str(n),
+                TTLVEnumeration::VariantValue(i) => visitor.visit_u32(*i),
+                TTLVEnumeration::VariantName(n) => visitor.visit_str(n),
             },
             TTLValue::ByteString(b) => visitor.visit_seq(TtlvDeserializerOld {
                 deserializing: Deserializing::ByteString,
@@ -527,10 +527,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
                 match value {
                     TTLValue::TextString(v) => visitor.visit_borrowed_str(v),
                     TTLValue::Enumeration(v) => match v {
-                        TTLVEnumeration::Integer(i) => Err(TtlvError::custom(format!(
+                        TTLVEnumeration::VariantValue(i) => Err(TtlvError::custom(format!(
                             "deserialize_str. Unexpected integer in enumeration: {i:?}"
                         ))),
-                        TTLVEnumeration::Name(n) => visitor.visit_borrowed_str(n),
+                        TTLVEnumeration::VariantName(n) => visitor.visit_borrowed_str(n),
                     },
                     x => Err(TtlvError::custom(format!(
                         "deserialize_str. Invalid type for string: {x:?}"
@@ -826,8 +826,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
                 let value = &self.get_structure()?[self.index - 1].value;
                 match value {
                     TTLValue::Enumeration(v) => match v {
-                        TTLVEnumeration::Integer(_i) => self.deserialize_i32(visitor),
-                        TTLVEnumeration::Name(_n) => self.deserialize_str(visitor),
+                        TTLVEnumeration::VariantValue(_i) => self.deserialize_i32(visitor),
+                        TTLVEnumeration::VariantName(_n) => self.deserialize_str(visitor),
                     },
                     x => Err(TtlvError::custom(format!(
                         "deserialize_identifier. Invalid type for value: {x:?}"

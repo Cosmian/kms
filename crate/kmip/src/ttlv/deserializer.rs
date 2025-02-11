@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use serde::{
-    de::{self, DeserializeSeed, EnumAccess, MapAccess, VariantAccess, Visitor},
+    de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
 };
 use tracing::trace;
@@ -65,11 +65,9 @@ where
 pub struct TtlvDeserializer {
     /// The current TTLV being deserialized
     current: TTLV,
-    /// The index of the current child being deserialized; ignored when processing a value
+    /// The index of the current child of a structure being deserialized
+    /// Arrays in TTLV are represented as structures with children holding the array values
     child_index: usize,
-    /// When processing a value which appears as a sequence, the index of the current element
-    /// A `BigInt` for instance is the sequence of a sign and `BigUint` (see the `BigInt` struct)
-    element_index: usize,
 }
 
 impl TtlvDeserializer {
@@ -78,7 +76,6 @@ impl TtlvDeserializer {
         Self {
             current: root,
             child_index: 0,
-            element_index: 0,
         }
     }
 
@@ -327,21 +324,25 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // Refer to the "Understanding deserializer lifetimes" page for information
     // about the three deserialization flavors of strings in Serde.
     // #[instrument(skip(self, visitor))]
-    fn deserialize_str<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_str: state:  {:?}", self.current);
-        unimplemented!("deserialize_str");
+        if let TTLValue::TextString(s) = &self.current.value {
+            visitor.visit_str(s)
+        } else {
+            Err(TtlvError::from("Expected TextString value in TTLV"))
+        }
     }
 
     // #[instrument(skip(self, visitor))]
-    fn deserialize_string<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_string: state:  {:?}", self.current);
-        unimplemented!("deserialize_string");
+        self.deserialize_str(visitor)
     }
 
     // #[instrument(skip(self, _visitor))]
@@ -418,6 +419,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // by converting the BigInt to u32
                 let seq_access = KmipBigIntDeserializer::instantiate(&bi)?;
                 visitor.visit_seq(seq_access)
+            }
+            TTLValue::Structure(_child_array) => {
+                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
+                // by iterating over the children which hold the values of the sequence/array
+                visitor.visit_seq(self)
             }
             _ => Err(TtlvError::from("Expected BigInteger value in TTLV")),
         }
@@ -547,6 +553,32 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     {
         trace!("deserialize_ignored_any: state:  {:?}", self.current);
         unimplemented!("deserialize_ignored_any");
+    }
+}
+
+impl<'de> SeqAccess<'de> for TtlvDeserializer {
+    type Error = TtlvError;
+
+    // #[instrument(skip(self, seed))]
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        trace!("seq_access: next_element_seed: state:  {:?}", self);
+        let TTLValue::Structure(child_array) = &self.current.value else {
+            return Ok(None)
+        };
+        if self.child_index >= child_array.len() {
+            self.child_index = 0;
+            return Ok(None);
+        }
+        let child = child_array
+            .get(self.child_index)
+            .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
+        let mut deserializer = Self::from_ttlv(child.clone());
+        self.child_index += 1;
+        // go ahead, deserialize the next i8 (sign) or u32
+        seed.deserialize(&mut deserializer).map(Some)
     }
 }
 
