@@ -15,7 +15,7 @@ use cosmian_kmip::{
             SetAttributeResponse,
         },
     },
-    ttlv::{deserializer::from_ttlv, kmip_to_ttlv_serializer::to_ttlv, TTLV},
+    ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,

@@ -7,7 +7,7 @@ use cosmian_kms_client::{
             kmip_objects::Object,
             kmip_types::{Attributes, LinkType},
         },
-        ttlv::{deserializer::from_ttlv, TTLV},
+        ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
     },
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };

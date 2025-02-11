@@ -8,7 +8,7 @@ use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, P
 use cosmian_kms_client::{
     cosmian_kmip::{
         kmip_2_1::kmip_objects::Object,
-        ttlv::{deserializer::from_ttlv, TTLV},
+        ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
     },
     export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
     ExportObjectParams, KmsClient,

@@ -504,7 +504,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         self,
         name: &'static str,
         variants: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -513,7 +513,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_enum: name {name}, variants: {variants:?}, state:  {:?}",
             self
         );
-        unimplemented!("deserialize_enum");
+        visitor.visit_enum(EnumWalker::new(self))
     }
 
     // An identifier in Serde is the type that identifies a field of a struct or
@@ -532,7 +532,19 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         V: Visitor<'de>,
     {
         trace!("deserialize_identifier: state:  {:?}", self.current);
-        visitor.visit_str(&self.current.tag)
+        // if the current item is an enumeration, this is called to deserialize the variant
+        match &self.current.value {
+            TTLValue::Enumeration(e) => {
+                if e.name.is_empty() {
+                    visitor.visit_u32(e.index)
+                } else {
+                    trace!("variant name: {}", e.name);
+                    visitor.visit_str(&e.name)
+                }
+            }
+            // we want the tag
+            _ => visitor.visit_str(&self.current.tag),
+        }
     }
 
     // Like `deserialize_any` but indicates to the `Deserializer` that it makes
@@ -547,12 +559,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // implement `deserialize_any` and `deserialize_ignored_any` are known as
     // self-describing.
     // #[instrument(skip(self, visitor))]
-    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_ignored_any: state:  {:?}", self.current);
-        unimplemented!("deserialize_ignored_any");
+        trace!(
+            "deserialize_ignored_any: state:  {:?}. Returning true since it is ignored",
+            self.current
+        );
+        visitor.visit_bool(true)
     }
 }
 
@@ -630,7 +645,6 @@ struct EnumWalker<'a> {
 }
 
 impl<'a> EnumWalker<'a> {
-    // #[instrument(skip(de))]
     fn new(de: &'a mut TtlvDeserializer) -> Self {
         EnumWalker { de }
     }
@@ -646,12 +660,13 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
     type Variant = Self;
 
     // #[instrument(skip(self, seed))]
-    fn variant_seed<V>(self, _seed: V) -> Result<(V::Value, Self::Variant)>
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
     {
         trace!("variant_seed: state:  {:?}", self.de.current);
-        unimplemented!("variant_seed");
+        let val = seed.deserialize(&mut *self.de)?;
+        Ok((val, self))
     }
 }
 

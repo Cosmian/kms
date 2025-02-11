@@ -10,7 +10,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::{
     cosmian_kmip::{
         kmip_2_1::kmip_objects::Object,
-        ttlv::{deserializer::from_ttlv, kmip_to_ttlv_serializer::to_ttlv, TTLV},
+        ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLV},
     },
     error::{result::KmsClientResultHelper, KmsClientError},
 };
