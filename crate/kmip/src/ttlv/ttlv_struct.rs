@@ -14,7 +14,7 @@ pub enum TTLValue {
     Integer(i32),
     LongInteger(i64),
     BigInteger(KmipBigInt),
-    Enumeration(TTLVEnumeration),
+    Enumeration(KmipEnumerationVariant),
     Boolean(bool),
     TextString(String),
     ByteString(Vec<u8>),
@@ -50,13 +50,15 @@ impl PartialEq for TTLValue {
     }
 }
 
+/// This holds the KMIP enumeration variant value and name
+/// JSON uses the name, the byte serializer uses the value
 #[derive(Eq, PartialEq, Debug, Clone)]
-pub enum TTLVEnumeration {
-    VariantValue(u32),
-    VariantName(String),
+pub struct KmipEnumerationVariant {
+    pub index: u32,
+    pub name: String,
 }
 
-pub enum ItemTypeEnumeration {
+pub enum TtlvType {
     Structure = 0x01,
     Integer = 0x02,
     LongInteger = 0x03,
@@ -70,7 +72,7 @@ pub enum ItemTypeEnumeration {
     DateTimeExtended = 0x0B,
 }
 
-impl TryFrom<u8> for ItemTypeEnumeration {
+impl TryFrom<u8> for TtlvType {
     type Error = TtlvError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {

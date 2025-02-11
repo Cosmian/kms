@@ -5,9 +5,10 @@ use serde::{
     Deserialize,
 };
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
+use tracing::trace;
 
 use super::{kmip_big_int::KmipBigInt, TTLV};
-use crate::ttlv::{TTLVEnumeration, TTLValue};
+use crate::ttlv::{KmipEnumerationVariant, TTLValue};
 
 impl<'de> Deserialize<'de> for TTLV {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -128,7 +129,8 @@ impl<'de> Deserialize<'de> for TTLV {
                                     TTLValue::BigInteger(v)
                                 }
                                 "Enumeration" => {
-                                    let e: TTLVEnumeration = map.next_value()?;
+                                    trace!("visit_map: Enumeration");
+                                    let e: KmipEnumerationVariant = map.next_value()?;
                                     TTLValue::Enumeration(e)
                                 }
                                 "Boolean" => {
@@ -197,57 +199,6 @@ impl<'de> Deserialize<'de> for TTLV {
     }
 }
 
-impl<'de> Deserialize<'de> for TTLVEnumeration {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct TTLVEnumerationVisitor;
-
-        impl Visitor<'_> for TTLVEnumerationVisitor {
-            type Value = TTLVEnumeration;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct TTLVEnumeration")
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(TTLVEnumeration::VariantValue(v.try_into().map_err(
-                    |_e| {
-                        de::Error::custom(format!(
-                            "Unexpected value: {v}, expected a 32 bit integer"
-                        ))
-                    },
-                )?))
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(TTLVEnumeration::VariantValue(v.try_into().map_err(
-                    |_e| {
-                        de::Error::custom(format!(
-                            "Unexpected value: {v}, expected a 32 bit integer"
-                        ))
-                    },
-                )?))
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(TTLVEnumeration::VariantName(v.to_owned()))
-            }
-        }
-        deserializer.deserialize_any(TTLVEnumerationVisitor)
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 enum HexTimeUnit {
     Seconds,
@@ -298,4 +249,104 @@ where
             })?
         }
     })
+}
+
+impl<'de> Deserialize<'de> for KmipEnumerationVariant {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct KmipEnumVisitor;
+
+        impl<'de> Visitor<'de> for KmipEnumVisitor {
+            type Value = KmipEnumerationVariant;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct TTLV")
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_str(v.as_str())
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                trace!("visit_str: {}", v);
+                if v.starts_with("0x") {
+                    let hex_string = v.get(2..).ok_or_else(|| {
+                        de::Error::custom("Invalid hex string for enumeration value: {v}")
+                    })?;
+                    let bytes = hex::decode(hex_string).map_err(|e| {
+                        de::Error::custom(format!(
+                            "Invalid hex string for enumeration value: {v}. Error: {e}"
+                        ))
+                    })?;
+                    let index = u32::from_be_bytes(bytes.try_into().map_err(|e| {
+                        de::Error::custom(format!(
+                            "Invalid byte length for enumeration value: {v}. Error: {e:?}"
+                        ))
+                    })?);
+                    Ok(KmipEnumerationVariant {
+                        index,
+                        name: String::new(),
+                    })
+                } else {
+                    Ok(KmipEnumerationVariant {
+                        index: 0,
+                        name: v.to_owned(),
+                    })
+                }
+            }
+
+            // all signed integers are converted to i64 by default
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                trace!("visit_i64: {}", v);
+                Ok(KmipEnumerationVariant {
+                    index: u32::try_from(v).map_err(|e| {
+                        de::Error::custom(format!(
+                            "Invalid i64 value for enumeration index: {v}. Error: {e:?}"
+                        ))
+                    })?,
+                    name: String::new(),
+                })
+            }
+
+            // all unsigned integers are converted to u64 by default
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                trace!("visit_u64: {}", v);
+                Ok(KmipEnumerationVariant {
+                    index: u32::try_from(v).map_err(|e| {
+                        de::Error::custom(format!(
+                            "Invalid u64 value for enumeration index: {v}. Error: {e:?}"
+                        ))
+                    })?,
+                    name: String::new(),
+                })
+            }
+
+            // all floating point numbers are converted to f64 by default
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                trace!("visit_f64: {}", v);
+                Err(de::Error::custom(format!(
+                    "Invalid f64 value for enumeration index: {v}"
+                )))
+            }
+        }
+
+        deserializer.deserialize_any(KmipEnumVisitor)
+    }
 }

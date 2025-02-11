@@ -4,7 +4,7 @@ use serde::{
 };
 use time::format_description::well_known::Iso8601;
 
-use super::ttlv_struct::{TTLVEnumeration, TTLV};
+use super::{ttlv_struct::TTLV, KmipEnumerationVariant};
 use crate::ttlv::ttlv_struct::TTLValue;
 
 /// Serialize TTLV structure to the Serde Data Model
@@ -81,14 +81,17 @@ impl Serialize for TTLV {
     }
 }
 
-impl Serialize for TTLVEnumeration {
+impl Serialize for KmipEnumerationVariant {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        match &self {
-            Self::VariantValue(i) => serializer.serialize_u32(*i),
-            Self::VariantName(s) => serializer.serialize_str(s),
+        if self.name.is_empty() {
+            let bytes = self.index.to_be_bytes().to_vec();
+            let hex_string = "0x".to_owned() + &hex::encode_upper(&bytes);
+            serializer.serialize_str(&hex_string)
+        } else {
+            serializer.serialize_str(&self.name)
         }
     }
 }

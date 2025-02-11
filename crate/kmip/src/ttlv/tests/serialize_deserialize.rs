@@ -1,27 +1,36 @@
-use std::u32;
-
+use cosmian_logger::log_init;
 use num_bigint_dig::BigInt;
 use time::OffsetDateTime;
 
-use crate::ttlv::ttlv_struct::{TTLVEnumeration, TTLValue, TTLV};
+use crate::ttlv::ttlv_struct::{KmipEnumerationVariant, TTLValue, TTLV};
 
 #[test]
 fn test_enumeration() {
-    let es = TTLVEnumeration::VariantName("blah".to_owned());
+    let es = KmipEnumerationVariant {
+        index: 1,
+        name: "blah".to_owned(),
+    };
     let s = serde_json::to_string_pretty(&es).unwrap();
     assert_eq!(es, serde_json::from_str(&s).unwrap());
 
-    let i_plus = TTLVEnumeration::VariantValue(1);
+    let i_plus = KmipEnumerationVariant {
+        index: 1,
+        name: String::new(),
+    };
     let s = serde_json::to_string_pretty(&i_plus).unwrap();
     assert_eq!(i_plus, serde_json::from_str(&s).unwrap());
 
-    let i_max = TTLVEnumeration::VariantValue(u32::MAX);
+    let i_max = KmipEnumerationVariant {
+        index: u32::MAX,
+        name: String::new(),
+    };
     let s = serde_json::to_string_pretty(&i_max).unwrap();
     assert_eq!(i_max, serde_json::from_str(&s).unwrap());
 }
 
 #[test]
 fn test_serialization_deserialization() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
         tag: "Test".to_owned(),
@@ -42,11 +51,17 @@ fn test_serialization_deserialization() {
             },
             TTLV {
                 tag: "AnEnumeration_1".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::VariantValue(54)),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    index: 54,
+                    name: String::new(),
+                }),
             },
             TTLV {
                 tag: "AnEnumeration_2".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::VariantName("blah".to_owned())),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    index: 1,
+                    name: "blah".to_owned(),
+                }),
             },
             TTLV {
                 tag: "ABoolean".to_owned(),
@@ -99,12 +114,16 @@ fn test_serialization_deserialization() {
             }
             assert_eq!(s[3].tag, "AnEnumeration_1");
             match &s[3].value {
-                TTLValue::Enumeration(TTLVEnumeration::VariantValue(i)) => assert_eq!(*i, 54),
+                TTLValue::Enumeration(en) => {
+                    assert_eq!(en.index, 54);
+                }
                 _ => panic!("Wrong type for AnEnumeration_1"),
             }
             assert_eq!(s[4].tag, "AnEnumeration_2");
             match &s[4].value {
-                TTLValue::Enumeration(TTLVEnumeration::VariantName(n)) => assert_eq!(n, "blah"),
+                TTLValue::Enumeration(en) => {
+                    assert_eq!(&en.name, "blah");
+                }
                 _ => panic!("Wrong type for AnEnumeration_2"),
             }
             assert_eq!(s[5].tag, "ABoolean");
@@ -140,4 +159,59 @@ fn test_serialization_deserialization() {
         }
         _ => panic!("Expected Structure type at top level"),
     }
+}
+
+#[test]
+fn test_enumerations_deserialize() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
+    let json_string = r#"
+    {
+        "tag": "Test",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "AnEnumeration_1",
+                "type": "Enumeration",
+                "value": "0x00000036"
+            },
+            {
+                "tag": "AnEnumeration_2",
+                "type": "Enumeration",
+                "value": "blah"
+            },
+            {
+                "tag": "AnEnumeration_2",
+                "type": "Enumeration",
+                "value": 12
+            }
+        ]
+    }
+    "#;
+    let rec: TTLV = serde_json::from_str(json_string).unwrap();
+    assert_eq!(
+        rec.value,
+        TTLValue::Structure(vec![
+            TTLV {
+                tag: "AnEnumeration_1".to_owned(),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    index: 54,
+                    name: String::new(),
+                }),
+            },
+            TTLV {
+                tag: "AnEnumeration_2".to_owned(),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    index: 0,
+                    name: "blah".to_owned(),
+                }),
+            },
+            TTLV {
+                tag: "AnEnumeration_2".to_owned(),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    index: 12,
+                    name: String::new(),
+                }),
+            },
+        ])
+    );
 }
