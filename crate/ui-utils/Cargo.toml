@@ -36,3 +36,4 @@ js-sys = "0.3.77"
 strum.workspace = true
 base64.workspace = true
 web-sys = { version = "0.3", features = ["console"] }
+clap = { workspace = true, features = ["std", "derive"] }

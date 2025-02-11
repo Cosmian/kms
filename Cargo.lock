@@ -1586,6 +1586,7 @@ name = "cosmian_kms_ui_utils"
 version = "4.21.2"
 dependencies = [
  "base64 0.21.7",
+ "clap",
  "cloudproof",
  "cosmian_config_utils",
  "cosmian_kmip",

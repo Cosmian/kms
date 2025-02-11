@@ -32,7 +32,7 @@ use crate::{
         der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
-    import_utils::{prepate_key_import_elements, ImportKeyFormat, KeyUsage},
+    import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -467,7 +467,7 @@ pub fn import_ttlv_request(
     let key_format =
         ImportKeyFormat::from_str(key_format).map_err(|e| JsValue::from(e.to_string()))?;
     let bytes = key_file.as_bytes().to_vec();
-    let (object, import_attributes) = prepate_key_import_elements(
+    let (object, import_attributes) = prepare_key_import_elements(
         &key_usage,
         &key_format,
         bytes,
