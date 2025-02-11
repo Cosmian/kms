@@ -117,7 +117,7 @@ fn test_ser_big_uint() {
             Test {
                 big_uint: BigUint::from(1_234_567_890_u128),
             },
-            "0x499602D2",
+            "0x00000000499602D2",
         ),
         (
             Test {
@@ -127,14 +127,18 @@ fn test_ser_big_uint() {
         ),
     ];
     for (test, s) in tests {
+        // Serializer
         let ttlv = to_ttlv(&test).unwrap();
+
+        // Serialize
         let value = serde_json::to_value(&ttlv).unwrap();
-        info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
         assert!(value.is_object());
         assert_eq!(value["tag"], "Test");
         assert_eq!(value["value"][0]["tag"], "BigUint");
         assert_eq!(value["value"][0]["type"], "BigInteger");
         assert_eq!(value["value"][0]["value"], s);
+
+        // Deserialize
         let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
         assert_eq!(ttlv, re_ttlv);
 
@@ -148,18 +152,25 @@ fn test_ser_big_uint() {
 fn test_ser_array() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
-    struct Test {
-        seq: Vec<String>,
+    struct Element {
+        elem: i32,
     }
-    log_init(Some("info,hyper=info,reqwest=info"));
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        string_seq: Vec<String>,
+        struct_seq: Vec<Element>,
+    }
+    log_init(Some("trace,hyper=info,reqwest=info"));
 
     let test = Test {
-        seq: vec!["a".to_owned(), "b".to_owned()],
+        string_seq: vec!["a".to_owned(), "b".to_owned()],
+        struct_seq: vec![Element { elem: 1 }, Element { elem: 2 }],
     };
 
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
+    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
@@ -171,7 +182,7 @@ fn test_ser_array() {
 
     //Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
-    assert_eq!(test.seq, rec.seq);
+    assert_eq!(test.string_seq, rec.string_seq);
 }
 
 #[test]
@@ -192,7 +203,10 @@ fn test_enumeration() {
     let test = Test {
         enumeration: Enumeration::OneInt(42),
     };
+    // Serializer
     let ttlv = to_ttlv(&test).unwrap();
+
+    // Serialize
     let value = serde_json::to_value(&ttlv).unwrap();
     info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
     assert!(value.is_object());
@@ -200,17 +214,24 @@ fn test_enumeration() {
     assert_eq!(value["value"][0]["tag"], "Enumeration");
     assert_eq!(value["value"][0]["type"], "Integer");
     assert_eq!(value["value"][0]["value"], 42);
+
     // Deserialize
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
+
     // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.enumeration, rec.enumeration);
 
+    // The same test with a string
     let test = Test {
         enumeration: Enumeration::TwoString("blah".to_owned()),
     };
+
+    // Serializer
     let ttlv = to_ttlv(&test).unwrap();
+
+    // Serialize
     let value = serde_json::to_value(&ttlv).unwrap();
     info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
     assert!(value.is_object());
@@ -218,9 +239,11 @@ fn test_enumeration() {
     assert_eq!(value["value"][0]["tag"], "Enumeration");
     assert_eq!(value["value"][0]["type"], "TextString");
     assert_eq!(value["value"][0]["value"], "blah");
+
     // Deserialize
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
+
     // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.enumeration, rec.enumeration);

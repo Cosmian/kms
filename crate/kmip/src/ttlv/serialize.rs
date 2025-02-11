@@ -87,8 +87,8 @@ impl Serialize for TTLVEnumeration {
         S: Serializer,
     {
         match &self {
-            Self::Integer(i) => serializer.serialize_i32(*i),
-            Self::Name(s) => serializer.serialize_str(s),
+            Self::VariantValue(i) => serializer.serialize_u32(*i),
+            Self::VariantName(s) => serializer.serialize_str(s),
         }
     }
 }

@@ -215,25 +215,33 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
             where
                 E: de::Error,
             {
-                Ok(TTLVEnumeration::Integer(v.try_into().map_err(|_e| {
-                    de::Error::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
-                })?))
+                Ok(TTLVEnumeration::VariantValue(v.try_into().map_err(
+                    |_e| {
+                        de::Error::custom(format!(
+                            "Unexpected value: {v}, expected a 32 bit integer"
+                        ))
+                    },
+                )?))
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(TTLVEnumeration::Integer(v.try_into().map_err(|_e| {
-                    de::Error::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
-                })?))
+                Ok(TTLVEnumeration::VariantValue(v.try_into().map_err(
+                    |_e| {
+                        de::Error::custom(format!(
+                            "Unexpected value: {v}, expected a 32 bit integer"
+                        ))
+                    },
+                )?))
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(TTLVEnumeration::Name(v.to_owned()))
+                Ok(TTLVEnumeration::VariantName(v.to_owned()))
             }
         }
         deserializer.deserialize_any(TTLVEnumerationVisitor)
