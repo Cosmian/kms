@@ -51,7 +51,7 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use super::{error::TtlvError, kmip_big_int::KmipBigInt, TTLVEnumeration, TTLValue, TTLV};
+use super::{error::TtlvError, kmip_big_int::KmipBigInt, KmipEnumerationVariant, TTLValue, TTLV};
 use crate::{
     // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
     kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
@@ -289,8 +289,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
             TTLValue::Integer(i) => visitor.visit_i32(*i),
             TTLValue::LongInteger(li) => visitor.visit_i64(*li),
             TTLValue::Enumeration(e) => match e {
-                TTLVEnumeration::VariantValue(i) => visitor.visit_u32(*i),
-                TTLVEnumeration::VariantName(n) => visitor.visit_str(n),
+                KmipEnumerationVariant::VariantValue(i) => visitor.visit_u32(*i),
+                KmipEnumerationVariant::VariantName(n) => visitor.visit_str(n),
             },
             TTLValue::ByteString(b) => visitor.visit_seq(TtlvDeserializerOld {
                 deserializing: Deserializing::ByteString,
@@ -527,10 +527,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
                 match value {
                     TTLValue::TextString(v) => visitor.visit_borrowed_str(v),
                     TTLValue::Enumeration(v) => match v {
-                        TTLVEnumeration::VariantValue(i) => Err(TtlvError::custom(format!(
+                        KmipEnumerationVariant::VariantValue(i) => Err(TtlvError::custom(format!(
                             "deserialize_str. Unexpected integer in enumeration: {i:?}"
                         ))),
-                        TTLVEnumeration::VariantName(n) => visitor.visit_borrowed_str(n),
+                        KmipEnumerationVariant::VariantName(n) => visitor.visit_borrowed_str(n),
                     },
                     x => Err(TtlvError::custom(format!(
                         "deserialize_str. Invalid type for string: {x:?}"
@@ -826,8 +826,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializerOld<'de> {
                 let value = &self.get_structure()?[self.index - 1].value;
                 match value {
                     TTLValue::Enumeration(v) => match v {
-                        TTLVEnumeration::VariantValue(_i) => self.deserialize_i32(visitor),
-                        TTLVEnumeration::VariantName(_n) => self.deserialize_str(visitor),
+                        KmipEnumerationVariant::VariantValue(_i) => self.deserialize_i32(visitor),
+                        KmipEnumerationVariant::VariantName(_n) => self.deserialize_str(visitor),
                     },
                     x => Err(TtlvError::custom(format!(
                         "deserialize_identifier. Invalid type for value: {x:?}"
