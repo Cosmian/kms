@@ -343,7 +343,8 @@ impl ser::Serializer for &mut TTLVSerializer {
         variant: &'static str,
     ) -> Result<Self::Ok> {
         trace!("serialize_unit_variant, name: {name}::{variant}; variant_index: {variant_index}");
-        self.current.value = TTLValue::Enumeration(TTLVEnumeration::Name(variant.to_owned()));
+        self.current.value =
+            TTLValue::Enumeration(TTLVEnumeration::VariantName(variant.to_owned()));
         Ok(())
     }
 

@@ -1,3 +1,5 @@
+use std::u32;
+
 use num_bigint_dig::BigInt;
 use time::OffsetDateTime;
 
@@ -5,17 +7,17 @@ use crate::ttlv::ttlv_struct::{TTLVEnumeration, TTLValue, TTLV};
 
 #[test]
 fn test_enumeration() {
-    let es = TTLVEnumeration::Name("blah".to_owned());
+    let es = TTLVEnumeration::VariantName("blah".to_owned());
     let s = serde_json::to_string_pretty(&es).unwrap();
     assert_eq!(es, serde_json::from_str(&s).unwrap());
 
-    let i_plus = TTLVEnumeration::Integer(1);
+    let i_plus = TTLVEnumeration::VariantValue(1);
     let s = serde_json::to_string_pretty(&i_plus).unwrap();
     assert_eq!(i_plus, serde_json::from_str(&s).unwrap());
 
-    let i_minus = TTLVEnumeration::Integer(-1);
-    let s = serde_json::to_string_pretty(&i_minus).unwrap();
-    assert_eq!(i_minus, serde_json::from_str(&s).unwrap());
+    let i_max = TTLVEnumeration::VariantValue(u32::MAX);
+    let s = serde_json::to_string_pretty(&i_max).unwrap();
+    assert_eq!(i_max, serde_json::from_str(&s).unwrap());
 }
 
 #[test]
@@ -40,11 +42,11 @@ fn test_serialization_deserialization() {
             },
             TTLV {
                 tag: "AnEnumeration_1".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Integer(54)),
+                value: TTLValue::Enumeration(TTLVEnumeration::VariantValue(54)),
             },
             TTLV {
                 tag: "AnEnumeration_2".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("blah".to_owned())),
+                value: TTLValue::Enumeration(TTLVEnumeration::VariantName("blah".to_owned())),
             },
             TTLV {
                 tag: "ABoolean".to_owned(),
@@ -97,12 +99,12 @@ fn test_serialization_deserialization() {
             }
             assert_eq!(s[3].tag, "AnEnumeration_1");
             match &s[3].value {
-                TTLValue::Enumeration(TTLVEnumeration::Integer(i)) => assert_eq!(*i, 54),
+                TTLValue::Enumeration(TTLVEnumeration::VariantValue(i)) => assert_eq!(*i, 54),
                 _ => panic!("Wrong type for AnEnumeration_1"),
             }
             assert_eq!(s[4].tag, "AnEnumeration_2");
             match &s[4].value {
-                TTLValue::Enumeration(TTLVEnumeration::Name(n)) => assert_eq!(n, "blah"),
+                TTLValue::Enumeration(TTLVEnumeration::VariantName(n)) => assert_eq!(n, "blah"),
                 _ => panic!("Wrong type for AnEnumeration_2"),
             }
             assert_eq!(s[5].tag, "ABoolean");

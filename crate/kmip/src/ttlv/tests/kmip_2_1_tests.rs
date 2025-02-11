@@ -86,7 +86,7 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                 value: TTLValue::Structure(vec![
                     TTLV {
                         tag: "CryptographicAlgorithm".to_owned(),
-                        value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
+                        value: TTLValue::Enumeration(TTLVEnumeration::VariantName("AES".to_owned())),
                     },
                     TTLV {
                         tag: "CryptographicLength".to_owned(),
@@ -98,13 +98,13 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "KeyFormatType".to_owned(),
-                        value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                        value: TTLValue::Enumeration(TTLVEnumeration::VariantName(
                             "TransparentSymmetricKey".to_owned(),
                         )),
                     },
                     TTLV {
                         tag: "ObjectType".to_owned(),
-                        value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                        value: TTLValue::Enumeration(TTLVEnumeration::VariantName(
                             "SymmetricKey".to_owned(),
                         )),
                     },
@@ -124,14 +124,14 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
         value: TTLValue::Structure(vec![
             TTLV {
                 tag: "KeyFormatType".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                value: TTLValue::Enumeration(TTLVEnumeration::VariantName(
                     "TransparentSymmetricKey".to_owned(),
                 )),
             },
             aes_key_value_ttlv(key_value),
             TTLV {
                 tag: "CryptographicAlgorithm".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
+                value: TTLValue::Enumeration(TTLVEnumeration::VariantName("AES".to_owned())),
             },
             TTLV {
                 tag: "CryptographicLength".to_owned(),
@@ -234,7 +234,7 @@ fn test_des_enum() {
         tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
             tag: "CryptoAlgo".to_owned(),
-            value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_owned())),
+            value: TTLValue::Enumeration(TTLVEnumeration::VariantName("AES".to_owned())),
         }]),
     };
 
@@ -273,7 +273,7 @@ fn test_key_material_big_int_deserialization() {
         value: TTLValue::Structure(vec![
             TTLV {
                 tag: "KeyTypeSer".to_owned(),
-                value: TTLValue::Enumeration(TTLVEnumeration::Name("DH".to_owned())),
+                value: TTLValue::Enumeration(TTLVEnumeration::VariantName("DH".to_owned())),
             },
             TTLV {
                 tag: "P".to_owned(),

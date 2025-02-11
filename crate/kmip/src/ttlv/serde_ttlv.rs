@@ -88,10 +88,10 @@ where
                 write_type(&mut self.writer, ItemTypeEnumeration::Enumeration)?;
                 write_length(&mut self.writer, 4)?;
                 match value {
-                    super::TTLVEnumeration::Integer(i) => {
+                    super::TTLVEnumeration::VariantValue(i) => {
                         self.writer.write_all(&i.to_be_bytes())?;
                     }
-                    super::TTLVEnumeration::Name(_) => {
+                    super::TTLVEnumeration::VariantName(_) => {
                         return Err(TtlvError::from(
                             "Enumeration names not supported in TTLV format",
                         ))
@@ -215,7 +215,9 @@ where
             ItemTypeEnumeration::Enumeration => {
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
-                TTLValue::Enumeration(super::TTLVEnumeration::Integer(i32::from_be_bytes(buf4)))
+                TTLValue::Enumeration(super::TTLVEnumeration::VariantValue(u32::from_be_bytes(
+                    buf4,
+                )))
             }
             ItemTypeEnumeration::Boolean => {
                 let mut buf8 = [0_u8; 8];

@@ -52,8 +52,8 @@ impl PartialEq for TTLValue {
 
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum TTLVEnumeration {
-    Integer(i32),
-    Name(String),
+    VariantValue(u32),
+    VariantName(String),
 }
 
 pub enum ItemTypeEnumeration {

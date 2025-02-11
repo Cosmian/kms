@@ -1,4 +1,32 @@
-#![allow(dead_code)]
+//! A deserializer implementation for KMIP `BigInt` values.
+//!
+//! This module provides functionality to deserialize KMIP `BigInt` values into Rust types,
+//! primarily focusing on `BigInt` values that are represented as a sequence of big-endian u32 values.
+//! The deserializer supports converting The KMIP `BigInt` into its constituent parts:
+//! - A sign value (i8)
+//! - A sequence of big-endian u32 values
+//!
+//! # Implementation Details
+//!
+//! The deserializer primarily supports:
+//! - Deserializing the sign as an `i8`
+//! - Deserializing individual `u32` values from the big-endian representation
+//! - Sequence deserialization for handling the full number
+//! - Tuple deserialization for composite number representation
+//!
+//! Most other deserialization types (like bool, string, map, etc.) are intentionally
+//! unsupported and will return an error.
+//!
+//! # Example Usage
+//! ```ignore
+//! let kmip_big_int = KmipBigInt::new();  // Your BigInt value
+//! let deserializer = KmipBigIntDeserializer::instantiate(&kmip_big_int)?;
+//! let value = MyType::deserialize(deserializer)?;
+//! ```
+//!
+//! The deserializer maintains internal state using a `VecDeque<u32>` to process
+//! the big-endian u32 digits and tracks the sign of the number.
+
 use std::collections::VecDeque;
 
 use serde::de::{self, DeserializeSeed, SeqAccess, Visitor};
@@ -8,6 +36,15 @@ use super::{error::TtlvError, KmipBigInt};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
+/// A deserializer for KMIP `BigInt` values that implements Serde's Deserializer trait.
+///
+/// # Fields
+///
+/// * `sign` - The sign of the `BigInt` value (-1, 0, or 1)
+/// * `u32_be` - A double-ended queue containing the big-endian u32 digits of the number
+///
+/// This struct provides methods to deserialize a KMIP `BigInt` into its component parts,
+/// primarily focusing on extracting the sign and sequence of u32 values.
 #[derive(Debug)]
 pub struct KmipBigIntDeserializer {
     sign: i8,
@@ -315,6 +352,9 @@ impl<'de> de::Deserializer<'de> for &mut KmipBigIntDeserializer {
 
 // `SeqAccess` is provided to the `Visitor` to give it the ability to iterate
 // through elements of the sequence.
+// From the BigInt Deserilialize point of view, the KMIP BigInt is a sequence of
+// - a sign encoded as an i8
+// - a sequence of u32 in big endian order representing the absolute value of the BigInt
 impl<'de> SeqAccess<'de> for KmipBigIntDeserializer {
     type Error = TtlvError;
 
@@ -325,8 +365,8 @@ impl<'de> SeqAccess<'de> for KmipBigIntDeserializer {
     {
         trace!("seq_access: next_element_seed: state:  {:?}", self);
         // this is called when deserializing the Biguint part of the BigInt
-        // which is built from a sequence of u32
-        // make sure we are not out of bounds
+        // which is built from a sequence of u32. The deserializer will
+        // empty the u32 sequence. We return None to signal the end of the sequence
         if self.u32_be.is_empty() {
             return Ok(None);
         }
