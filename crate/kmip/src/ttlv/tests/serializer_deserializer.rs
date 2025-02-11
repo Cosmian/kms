@@ -3,7 +3,7 @@ use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, ttlv_struct::TTLV};
+use crate::ttlv::{deserializer::from_ttlv, kmip_to_ttlv_serializer::to_ttlv, ttlv_struct::TTLV};
 
 #[test]
 fn test_ser_int() {

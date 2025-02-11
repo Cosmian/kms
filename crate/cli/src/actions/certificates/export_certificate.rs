@@ -4,7 +4,7 @@ use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     export_object,
     kmip_2_1::{kmip_objects::Object, kmip_types::KeyFormatType},
-    ttlv::serializer::to_ttlv,
+    ttlv::kmip_to_ttlv_serializer::to_ttlv,
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
 };

@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 use super::{error::TtlvError, TTLValue, TTLV};
 use crate::{
     kmip_2_1::kmip_objects::{Object, ObjectType},
-    ttlv::TTLVEnumeration,
+    ttlv::KmipEnumerationVariant,
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -343,8 +343,10 @@ impl ser::Serializer for &mut TTLVSerializer {
         variant: &'static str,
     ) -> Result<Self::Ok> {
         trace!("serialize_unit_variant, name: {name}::{variant}; variant_index: {variant_index}");
-        self.current.value =
-            TTLValue::Enumeration(TTLVEnumeration::VariantName(variant.to_owned()));
+        self.current.value = TTLValue::Enumeration(KmipEnumerationVariant {
+            index: variant_index,
+            name: variant.into(),
+        });
         Ok(())
     }
 
