@@ -26,7 +26,7 @@ use crate::{
         },
     },
     ttlv::{
-        deserializer::from_ttlv, kmip_to_ttlv_serializer::to_ttlv, KmipEnumerationVariant,
+        kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, KmipEnumerationVariant,
         TTLValue, TTLV,
     },
     SafeBigUint,
@@ -89,9 +89,10 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                 value: TTLValue::Structure(vec![
                     TTLV {
                         tag: "CryptographicAlgorithm".to_owned(),
-                        value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName(
-                            "AES".to_owned(),
-                        )),
+                        value: TTLValue::Enumeration(KmipEnumerationVariant {
+                            name: "AES".to_owned(),
+                            index: 0,
+                        }),
                     },
                     TTLV {
                         tag: "CryptographicLength".to_owned(),
@@ -103,15 +104,17 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "KeyFormatType".to_owned(),
-                        value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName(
-                            "TransparentSymmetricKey".to_owned(),
-                        )),
+                        value: TTLValue::Enumeration(KmipEnumerationVariant {
+                            name: "TransparentSymmetricKey".to_owned(),
+                            index: 0,
+                        }),
                     },
                     TTLV {
                         tag: "ObjectType".to_owned(),
-                        value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName(
-                            "SymmetricKey".to_owned(),
-                        )),
+                        value: TTLValue::Enumeration(KmipEnumerationVariant {
+                            name: "SymmetricKey".to_owned(),
+                            index: 0,
+                        }),
                     },
                     TTLV {
                         tag: "Sensitive".to_owned(),
@@ -129,14 +132,18 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
         value: TTLValue::Structure(vec![
             TTLV {
                 tag: "KeyFormatType".to_owned(),
-                value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName(
-                    "TransparentSymmetricKey".to_owned(),
-                )),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    name: "TransparentSymmetricKey".to_owned(),
+                    index: 0,
+                }),
             },
             aes_key_value_ttlv(key_value),
             TTLV {
                 tag: "CryptographicAlgorithm".to_owned(),
-                value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName("AES".to_owned())),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    name: "AES".to_owned(),
+                    index: 0,
+                }),
             },
             TTLV {
                 tag: "CryptographicLength".to_owned(),
@@ -155,7 +162,7 @@ fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
 
 #[test]
 fn test_ser_aes_key() {
-    log_init(None);
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -239,7 +246,10 @@ fn test_des_enum() {
         tag: "Test".to_owned(),
         value: TTLValue::Structure(vec![TTLV {
             tag: "CryptoAlgo".to_owned(),
-            value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName("AES".to_owned())),
+            value: TTLValue::Enumeration(KmipEnumerationVariant {
+                name: "AES".to_owned(),
+                index: 0,
+            }),
         }]),
     };
 
@@ -278,7 +288,10 @@ fn test_key_material_big_int_deserialization() {
         value: TTLValue::Structure(vec![
             TTLV {
                 tag: "KeyTypeSer".to_owned(),
-                value: TTLValue::Enumeration(KmipEnumerationVariant::VariantName("DH".to_owned())),
+                value: TTLValue::Enumeration(KmipEnumerationVariant {
+                    name: "DH".to_owned(),
+                    index: 0,
+                }),
             },
             TTLV {
                 tag: "P".to_owned(),

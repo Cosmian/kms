@@ -335,6 +335,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     }
 
     // For example the `E::A` and `E::B` in `enum E { A, B }`
+    // This is where all the KMIP types are serialized
     #[instrument(skip(self))]
     fn serialize_unit_variant(
         self,

@@ -5,6 +5,7 @@ use tracing::info;
 
 use crate::ttlv::{
     kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, ttlv_struct::TTLV,
+    KmipEnumerationVariant, TTLValue,
 };
 
 #[test]
@@ -203,6 +204,7 @@ fn test_enum_unit_variant() {
     }
     log_init(Some("trace,hyper=info,reqwest=info"));
 
+    // Try with Ten
     let test = Test {
         an_enum: Enumeration::Ten,
     };
@@ -225,11 +227,26 @@ fn test_enum_unit_variant() {
     // Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test.an_enum, rec.an_enum);
+
+    // Try with direct deserialization
+    let ttlv = TTLV {
+        tag: "Test".to_owned(),
+        value: TTLValue::Structure(vec![TTLV {
+            tag: "AnEnum".to_owned(),
+            value: TTLValue::Enumeration(KmipEnumerationVariant {
+                index: 0x0A,
+                name: "Ten".to_owned(),
+            }),
+        }]),
+    };
+    let rec: Test = from_ttlv(ttlv).unwrap();
+    assert_eq!(test.an_enum, rec.an_enum);
 }
 
 #[test]
-fn test_enumeration() {
+fn test_enumeration_untagged() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(untagged)]
     enum Enumeration {
         OneInt(u32),
         TwoString(String),
@@ -278,7 +295,7 @@ fn test_enumeration() {
     info!("VALUE: {}", serde_json::to_string_pretty(&value).unwrap());
     assert!(value.is_object());
     assert_eq!(value["tag"], "Test");
-    assert_eq!(value["value"][0]["tag"], "Enumeration");
+    assert_eq!(value["value"][0]["tag"], "AnEnum");
     assert_eq!(value["value"][0]["type"], "TextString");
     assert_eq!(value["value"][0]["value"], "blah");
 
@@ -294,6 +311,7 @@ fn test_enumeration() {
 #[test]
 fn test_nested_structures() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(untagged)]
     enum Enumeration {
         OneInt(u32),
         TwoString(String),
