@@ -87,7 +87,7 @@ impl Serialize for KmipEnumerationVariant {
         S: Serializer,
     {
         if self.name.is_empty() {
-            let bytes = self.index.to_be_bytes().to_vec();
+            let bytes = self.value.to_be_bytes().to_vec();
             let hex_string = "0x".to_owned() + &hex::encode_upper(&bytes);
             serializer.serialize_str(&hex_string)
         } else {

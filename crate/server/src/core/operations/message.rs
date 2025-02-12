@@ -41,7 +41,7 @@ pub(crate) async fn message(
         let ttlv = to_ttlv(&operation)?;
 
         let (result_status, result_reason, result_message, response_payload) =
-            match dispatch(kms, &ttlv, owner, params.clone()).await {
+            match dispatch(kms, ttlv, owner, params.clone()).await {
                 Ok(operation) => (
                     ResultStatusEnumeration::Success,
                     None,

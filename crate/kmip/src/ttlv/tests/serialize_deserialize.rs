@@ -7,21 +7,21 @@ use crate::ttlv::ttlv_struct::{KmipEnumerationVariant, TTLValue, TTLV};
 #[test]
 fn test_enumeration() {
     let es = KmipEnumerationVariant {
-        index: 1,
+        value: 1,
         name: "blah".to_owned(),
     };
     let s = serde_json::to_string_pretty(&es).unwrap();
     assert_eq!(es, serde_json::from_str(&s).unwrap());
 
     let i_plus = KmipEnumerationVariant {
-        index: 1,
+        value: 1,
         name: String::new(),
     };
     let s = serde_json::to_string_pretty(&i_plus).unwrap();
     assert_eq!(i_plus, serde_json::from_str(&s).unwrap());
 
     let i_max = KmipEnumerationVariant {
-        index: u32::MAX,
+        value: u32::MAX,
         name: String::new(),
     };
     let s = serde_json::to_string_pretty(&i_max).unwrap();
@@ -52,14 +52,14 @@ fn test_serialization_deserialization() {
             TTLV {
                 tag: "AnEnumeration_1".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    index: 54,
+                    value: 54,
                     name: String::new(),
                 }),
             },
             TTLV {
                 tag: "AnEnumeration_2".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    index: 1,
+                    value: 1,
                     name: "blah".to_owned(),
                 }),
             },
@@ -115,7 +115,7 @@ fn test_serialization_deserialization() {
             assert_eq!(s[3].tag, "AnEnumeration_1");
             match &s[3].value {
                 TTLValue::Enumeration(en) => {
-                    assert_eq!(en.index, 54);
+                    assert_eq!(en.value, 54);
                 }
                 _ => panic!("Wrong type for AnEnumeration_1"),
             }
@@ -194,21 +194,21 @@ fn test_enumerations_deserialize() {
             TTLV {
                 tag: "AnEnumeration_1".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    index: 54,
+                    value: 54,
                     name: String::new(),
                 }),
             },
             TTLV {
                 tag: "AnEnumeration_2".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    index: 0,
+                    value: 0,
                     name: "blah".to_owned(),
                 }),
             },
             TTLV {
                 tag: "AnEnumeration_2".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    index: 12,
+                    value: 12,
                     name: String::new(),
                 }),
             },

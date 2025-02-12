@@ -33,7 +33,8 @@ pub(crate) async fn kmip_2_1(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv = handle_ttlv(&kms, &ttlv, &user, database_params).await?;
+    #[allow(clippy::large_futures)]
+    let ttlv = handle_ttlv(&kms, ttlv, &user, database_params).await?;
     Ok(Json(ttlv))
 }
 
@@ -46,7 +47,7 @@ pub(crate) async fn kmip_2_1(
 /// multiple KMIP `Operation`s serialized in a single KMIP `Message`
 async fn handle_ttlv(
     kms: &KMS,
-    ttlv: &TTLV,
+    ttlv: TTLV,
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {

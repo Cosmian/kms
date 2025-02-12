@@ -88,6 +88,11 @@ impl ser::Serializer for &mut TTLVSerializer {
     type SerializeTupleStruct = Self;
     type SerializeTupleVariant = Self;
 
+    #[inline]
+    fn is_human_readable(&self) -> bool {
+        true
+    }
+
     // Here we go with the simple methods. The following 12 methods receive one
     // of the primitive types of the data model and map it to JSON by appending
     // into the output string.
@@ -345,7 +350,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     ) -> Result<Self::Ok> {
         trace!("serialize_unit_variant, name: {name}::{variant}; variant_index: {variant_index}");
         self.current.value = TTLValue::Enumeration(KmipEnumerationVariant {
-            index: variant_index,
+            value: variant_index,
             name: variant.into(),
         });
         Ok(())
