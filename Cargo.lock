@@ -1362,6 +1362,7 @@ dependencies = [
  "bitflags 2.8.0",
  "cosmian_logger",
  "hex",
+ "kmip-derive",
  "leb128",
  "num-bigint-dig",
  "num-traits",
@@ -2877,6 +2878,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
 dependencies = [
  "cpufeatures",
+]
+
+[[package]]
+name = "kmip-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

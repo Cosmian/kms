@@ -15,7 +15,7 @@ use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(
     kms: &KMS,
-    ttlv: &TTLV,
+    ttlv: TTLV,
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Operation> {

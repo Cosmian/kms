@@ -82,7 +82,7 @@ where
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
                 TTLValue::Enumeration(super::KmipEnumerationVariant {
-                    index: u32::from_be_bytes(buf4),
+                    value: u32::from_be_bytes(buf4),
                     name: String::new(),
                 })
             }

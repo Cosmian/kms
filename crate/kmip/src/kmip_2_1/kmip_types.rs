@@ -8,6 +8,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use kmip_derive::KmipEnumSerialize;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
@@ -34,35 +35,45 @@ pub const VENDOR_ATTR_AAD: &str = "aad";
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
 /// The PKCS7 format is a Cosmian extension from KMIP.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
+#[repr(u32)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
     PKCS7 = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
     PEM = 0x03,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
+#[repr(u32)]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::enum_clike_unportable_variant)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
+#[repr(u32)]
 pub enum SecretDataType {
     Password = 0x01,
     Seed = 0x02,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
     PolynomialSharingGf216 = 0x0000_0002,
@@ -100,8 +111,19 @@ pub enum SplitKeyMethod {
 ///  - `TransparentSymmetricKey` for symmetric keys
 ///  - Raw for opaque objects and Secret Data
 ///
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[repr(u32)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumIter,
+    Display,
+    strum::IntoStaticStr,
+)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -144,8 +166,19 @@ pub enum KeyFormatType {
 }
 
 #[allow(non_camel_case_types)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
+#[repr(u32)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Eq,
+    PartialEq,
+    EnumIter,
+    strum::IntoStaticStr,
+)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
@@ -240,8 +273,10 @@ impl Default for CryptographicDomainParameters {
 }
 
 #[allow(non_camel_case_types)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[repr(u32)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
+)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -330,7 +365,9 @@ impl Default for RecommendedCurve {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
@@ -545,7 +582,9 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectGroupMember {
     Group_Member_Fresh = 0x0000_0001,
@@ -629,7 +668,18 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, Display, PartialEq, EnumIter)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    Display,
+    PartialEq,
+    EnumIter,
+    strum::IntoStaticStr,
+)]
 pub enum LinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
@@ -681,7 +731,18 @@ pub enum LinkType {
 /// operation is repeated for each of them. If an operation appears
 /// multiple times in a request, it is the most recent that is referred to.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, Hash)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Display,
+    Hash,
+    strum::IntoStaticStr,
+)]
 pub enum UniqueIdentifierEnumeration {
     IDPlaceholder = 0x0000_0001,
     Certify = 0x0000_0002,
@@ -737,7 +798,9 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
+)]
 pub enum RevocationReasonEnumeration {
     Unspecified = 0x0000_0001,
     KeyCompromise = 0x0000_0002,
@@ -1586,7 +1649,18 @@ impl AttributeReference {
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_variant_names)]
 #[derive(
-    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumString, EnumIter, Hash,
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Display,
+    EnumString,
+    EnumIter,
+    Hash,
+    strum::IntoStaticStr,
 )]
 #[repr(u32)]
 pub enum Tag {
@@ -1933,7 +2007,9 @@ pub enum Tag {
 
 /// Indicates the method used to wrap the Key Value.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum WrappingMethod {
     Encrypt = 0x0000_0001,
     MACSign = 0x0000_0002,
@@ -1948,7 +2024,18 @@ impl Default for WrappingMethod {
 }
 
 #[allow(non_camel_case_types, clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter, Display)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumIter,
+    Display,
+    strum::IntoStaticStr,
+)]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
     ECB = 0x0000_0002,
@@ -1974,7 +2061,9 @@ pub enum BlockCipherMode {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum PaddingMethod {
     None = 0x0000_0001,
     OAEP = 0x0000_0002,
@@ -1989,7 +2078,9 @@ pub enum PaddingMethod {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
@@ -2011,7 +2102,9 @@ pub enum HashingAlgorithm {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum KeyRoleType {
     BDK = 0x0000_0001,
     CVK = 0x0000_0002,
@@ -2040,7 +2133,9 @@ pub enum KeyRoleType {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x0000_0001,
     MD5WithRSAEncryption = 0x0000_0002,
@@ -2064,7 +2159,9 @@ pub enum DigitalSignatureAlgorithm {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum MaskGenerator {
     MFG1 = 0x0000_0001,
 }
@@ -2168,7 +2265,9 @@ pub struct MacSignatureKeyInformation {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum EncodingOption {
     /// the wrapped-encoded value of the Byte String Key Material field in
     /// the Key Value structure
@@ -2178,7 +2277,9 @@ pub enum EncodingOption {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
+)]
 pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
@@ -2837,7 +2938,9 @@ pub struct MessageExtension {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
+)]
 pub enum OperationEnumeration {
     Create = 0x0000_0001,
     CreateKeyPair = 0x0000_0002,
@@ -2901,7 +3004,9 @@ pub enum OperationEnumeration {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
+)]
 pub enum ResultStatusEnumeration {
     Success = 0x0000_0000,
     OperationFailed = 0x0000_0001,
@@ -2912,7 +3017,9 @@ pub enum ResultStatusEnumeration {
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(
+    KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
+)]
 pub enum ValidityIndicator {
     Valid = 0x0000_0000,
     Invalid = 0x0000_0001,

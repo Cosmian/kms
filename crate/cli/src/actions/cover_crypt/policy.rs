@@ -163,7 +163,7 @@ async fn recover_policy(
         .1
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
-        from_ttlv(&ttlv)?
+        from_ttlv(ttlv)?
     } else {
         cli_bail!("either a key ID or a key TTLV file must be supplied");
     };

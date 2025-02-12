@@ -418,9 +418,9 @@ impl KeyWrappingSpecification {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
 /// Private fields are represented using a Zeroizing object: either array of
 /// bytes, or `SafeBigUint` type.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyMaterial {
     ByteString(Zeroizing<Vec<u8>>),
     TransparentDHPrivateKey {

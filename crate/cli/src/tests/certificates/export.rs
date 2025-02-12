@@ -116,7 +116,7 @@ async fn test_import_export_p12_25519() {
         parsed_p12.cert.as_ref().unwrap().to_der().unwrap()
     );
     let cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
-    let cert_attributes: Attributes = from_ttlv(&cert_attributes_ttlv).unwrap();
+    let cert_attributes: Attributes = from_ttlv(cert_attributes_ttlv).unwrap();
     let issuer_id = cert_attributes.get_link(LinkType::CertificateLink).unwrap();
 
     // export the chain - there should be only one certificate in the chain
@@ -151,7 +151,7 @@ async fn test_import_export_p12_25519() {
     // this test  is deactivated because another test imports this certificate with the same id
     // and a link to its issuer which may make this test fail. This test passes when run alone.
     let issuer_cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
-    let issuer_cert_attributes: Attributes = from_ttlv(&issuer_cert_attributes_ttlv).unwrap();
+    let issuer_cert_attributes: Attributes = from_ttlv(issuer_cert_attributes_ttlv).unwrap();
     assert!(
         issuer_cert_attributes
             .get_link(LinkType::CertificateLink)

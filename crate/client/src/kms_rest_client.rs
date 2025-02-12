@@ -617,7 +617,7 @@ impl KmsClient {
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
+            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
         }
 
         // process error

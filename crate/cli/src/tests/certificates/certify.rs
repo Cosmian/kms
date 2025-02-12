@@ -211,7 +211,7 @@ fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attri
             .to_string()
     );
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("new_cert.attributes.json")).unwrap();
-    let cert_attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
     (cert, cert_attributes, cert_x509_der)
 }
 
@@ -241,7 +241,7 @@ fn check_certificate_chain(
     .unwrap();
     // check that the attributes contain a certificate link to the private key
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("signer_cert.attributes.json")).unwrap();
-    let signer_attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let signer_attributes: Attributes = from_ttlv(ttlv).unwrap();
     let private_key_link = signer_attributes
         .get_link(LinkType::PrivateKeyLink)
         .unwrap();

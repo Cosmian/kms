@@ -85,7 +85,7 @@ where
             TTLValue::Enumeration(en) => {
                 write_type(&mut self.writer, TtlvType::Enumeration)?;
                 write_length(&mut self.writer, 4)?;
-                self.writer.write_all(&en.index.to_be_bytes())?;
+                self.writer.write_all(&en.value.to_be_bytes())?;
             }
             TTLValue::Boolean(value) => {
                 write_type(&mut self.writer, TtlvType::Boolean)?;

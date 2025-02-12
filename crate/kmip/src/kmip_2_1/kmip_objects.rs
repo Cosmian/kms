@@ -4,6 +4,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
+use kmip_derive::KmipEnumSerialize;
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
@@ -336,9 +337,19 @@ impl TryInto<Vec<u8>> for Object {
 
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
-#[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumIter)]
+#[derive(
+    KmipEnumSerialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumIter,
+    strum::IntoStaticStr,
+)]
 #[serde(rename_all = "PascalCase")]
+#[repr(u32)]
 pub enum ObjectType {
     Certificate = 0x0000_0001,
     SymmetricKey = 0x0000_0002,

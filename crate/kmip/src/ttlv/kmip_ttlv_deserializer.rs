@@ -183,7 +183,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 if self.child_index == 0 {
                     visitor.visit_str(&self.current.tag)
                 } else if e.name.is_empty() {
-                    visitor.visit_u32(e.index)
+                    visitor.visit_u32(e.value)
                 } else {
                     visitor.visit_str(&e.name)
                 }
@@ -269,17 +269,36 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_u8: state:  {:?}", self.current);
-        if let TTLValue::Integer(i) = &self.current.value {
-            if *i < 0 {
-                return Err(TtlvError::from("Cannot convert negative integer to u8"));
+        trace!(
+            "deserialize_u8: state: {:?}, index: {}",
+            self.current,
+            self.child_index
+        );
+        match &self.current.value {
+            TTLValue::ByteString(bs) => bs
+                .get(self.child_index)
+                .ok_or_else(|| {
+                    TtlvError::from(format!(
+                        "Index out of bounds when accessing byte array: {}",
+                        self.child_index
+                    ))
+                })
+                .and_then(|v| {
+                    self.child_index += 1;
+                    visitor.visit_u8(*v)
+                }),
+            TTLValue::Integer(i) => {
+                if *i < 0 {
+                    return Err(TtlvError::from("Cannot convert negative integer to u8"));
+                }
+                let value: u8 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
+                visitor.visit_u8(value)
             }
-            let value: u8 = (*i)
-                .try_into()
-                .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
-            visitor.visit_u8(value)
-        } else {
-            Err(TtlvError::from("Expected Integer value in TTLV"))
+            _ => Err(TtlvError::from(
+                "Expected ByteString or Integer value in TTLV",
+            )),
         }
     }
 
@@ -487,12 +506,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 let seq_access = KmipBigIntDeserializer::instantiate(&bi)?;
                 visitor.visit_seq(seq_access)
             }
-            TTLValue::Structure(_child_array) => {
+            TTLValue::Structure(_) | TTLValue::ByteString(_) => {
                 // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
                 // by iterating over the children which hold the values of the sequence/array
+                // Reset the child index to 0 to start from the beginning
+                self.child_index = 0;
                 visitor.visit_seq(self)
             }
-            _ => Err(TtlvError::from("Expected BigInteger value in TTLV")),
+            x => Err(TtlvError::from(format!("unexpected {x:?} value in TTLV"))),
         }
     }
 
@@ -609,8 +630,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     trace!("deserialize_identifier of enum: tag: {}", self.current.tag);
                     visitor.visit_str(&self.current.tag)
                 } else if e.name.is_empty() {
-                    trace!("deserialize_identifier of enum: index: {}", e.index);
-                    visitor.visit_u32(e.index)
+                    trace!("deserialize_identifier of enum: index: {}", e.value);
+                    visitor.visit_u32(e.value)
                 } else {
                     trace!("deserialize_identifier of enum: name: {}", e.name);
                     visitor.visit_str(&e.name)
@@ -650,21 +671,38 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
     where
         T: DeserializeSeed<'de>,
     {
-        trace!("seq_access: next_element_seed: state:  {:?}", self);
-        let TTLValue::Structure(child_array) = &self.current.value else {
-            return Ok(None)
-        };
-        if self.child_index >= child_array.len() {
-            self.child_index = 0;
-            return Ok(None);
+        trace!(
+            "seq_access: next_element_seed: index: {}, current:  {:?}",
+            self.child_index,
+            self.current
+        );
+
+        match &self.current.value {
+            TTLValue::Structure(child_array) => {
+                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
+                // by iterating over the children which hold the values of the sequence/array
+                if self.child_index >= child_array.len() {
+                    self.child_index = 0;
+                    return Ok(None);
+                }
+                let child = child_array.get(self.child_index).ok_or_else(|| {
+                    TtlvError::from("Index out of bounds when accessing child array")
+                })?;
+                let mut deserializer = Self::from_ttlv(child.clone());
+                self.child_index += 1;
+                seed.deserialize(&mut deserializer).map(Some)
+            }
+            TTLValue::ByteString(byte_array) => {
+                if self.child_index >= byte_array.len() {
+                    self.child_index = 0;
+                    return Ok(None);
+                }
+                seed.deserialize(self).map(Some)
+            }
+            _ => Err(TtlvError::from(
+                "Expected BigInt, Structure or ByteString value in TTLV",
+            )),
         }
-        let child = child_array
-            .get(self.child_index)
-            .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
-        let mut deserializer = Self::from_ttlv(child.clone());
-        self.child_index += 1;
-        // go ahead, deserialize the next i8 (sign) or u32
-        seed.deserialize(&mut deserializer).map(Some)
     }
 }
 
