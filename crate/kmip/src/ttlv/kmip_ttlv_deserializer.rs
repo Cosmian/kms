@@ -470,7 +470,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     {
         trace!(
             "deserialize_unit_struct with name: {name}, state:  {:?}",
-            self.current
+            self
         );
         unimplemented!("deserialize_unit_struct");
     }
@@ -478,8 +478,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // As is done here, serializers are encouraged to treat newtype structs as
     // insignificant wrappers around the data they contain. That means not
     // parsing anything other than the contained value.
-    #[instrument(skip(self, _visitor))]
-    fn deserialize_newtype_struct<V>(self, name: &'static str, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, visitor))]
+    fn deserialize_newtype_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -487,7 +487,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_new_type_struct with name: {name}, state:  {:?}",
             self.current
         );
-        unimplemented!("deserialize_newtype_struct");
+        visitor.visit_newtype_struct(self)
     }
 
     // Deserialization of compound types like sequences and maps happens by
