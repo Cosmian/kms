@@ -28,7 +28,7 @@ use crate::{
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
 /// Section 3 of KMIP Reference 2.1
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
@@ -208,7 +208,7 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {

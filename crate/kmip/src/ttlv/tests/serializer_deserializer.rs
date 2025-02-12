@@ -312,6 +312,103 @@ fn test_enumeration_untagged() {
 }
 
 #[test]
+fn test_enumeration_untagged_variant_struct() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct Int {
+        int_value: u32,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    struct TwoStrings {
+        string_a: String,
+        string_b: String,
+    }
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(untagged)]
+    enum Enumeration {
+        OneInt(Int),
+        TwoInt(Int),
+        TwoStrings(TwoStrings),
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        an_enum: Enumeration,
+    }
+    log_init(Some("info"));
+
+    let test = Test {
+        an_enum: Enumeration::OneInt(Int { int_value: 42 }),
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Structure([TTLV { tag: "IntValue", value: Integer(42) }]) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+
+    // The same test with a string
+    let test = Test {
+        an_enum: Enumeration::TwoStrings(TwoStrings {
+            string_a: "blah_a".to_owned(),
+            string_b: "blah_b".to_owned(),
+        }),
+    };
+
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Structure([TTLV { tag: "string_a", value: TextString("blah_a") }, TTLV { tag: "string_b", value: TextString("blah_b") }]) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+
+    //This should fail because on untagged enum, the deserializer finds the first variant that
+    // can hold the structure and uses it.
+    let test = Test {
+        an_enum: Enumeration::TwoInt(Int { int_value: 42 }),
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Structure([TTLV { tag: "IntValue", value: Integer(42) }]) }]) }"#
+    );
+
+    // Serialize
+    let value = serde_json::to_value(&ttlv).unwrap();
+    // Deserialize
+    let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    // Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    // rec should have deserialized as OneInt instead of TwoInt
+    assert_ne!(test, rec);
+}
+
+#[test]
 fn test_nested_structures() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     #[serde(untagged)]
