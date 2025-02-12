@@ -405,7 +405,7 @@ fn test_some_attributes() {
             whatever: i32,
         },
     }
-    log_init(None);
+    log_init(Some("trace,hyper=info,reqwest=info"));
 
     let value = Wrapper::Attr {
         attributes: Some(Box::new(Attributes {
