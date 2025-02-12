@@ -191,13 +191,17 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
     }
 
-    #[instrument(skip(self, _visitor))]
-    fn deserialize_bool<V>(self, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, visitor))]
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_bool: state:  {:?}", self.current);
-        unimplemented!("deserialize_bool");
+        let value = match &self.current.value {
+            TTLValue::Boolean(b) => *b,
+            _ => return Err(TtlvError::from("Expected Boolean value in TTLV")),
+        };
+        visitor.visit_bool(value)
     }
 
     #[instrument(skip(self, visitor))]
@@ -443,13 +447,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_byte_buf");
     }
 
-    #[instrument(skip(self, _visitor))]
-    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value>
+    #[instrument(skip(self, visitor))]
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_option: state:  {:?}", self.current);
-        unimplemented!("deserialize_option");
+        // No none in KMIP
+        visitor.visit_some(self)
     }
 
     // In Serde, unit means an anonymous value containing no data.
