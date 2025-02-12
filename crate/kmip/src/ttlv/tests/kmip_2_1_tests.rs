@@ -283,7 +283,7 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    log_init(None);
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let ttlv = TTLV {
         tag: "KeyMaterial".to_owned(),
         value: TTLValue::Structure(vec![
@@ -340,8 +340,31 @@ fn test_big_int_deserialization() {
 }
 
 #[test]
-fn test_des_aes_key() {
+fn test_aes_key_material() {
     log_init(None);
+    let key_bytes: &[u8] = b"this_is_a_test";
+    let ttlv = aes_key_material_ttlv(key_bytes);
+    let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
+    assert!(aes_key_material(key_bytes) == rec);
+}
+
+#[test]
+fn test_aes_key_block() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
+    let key_bytes: &[u8] = b"this_is_a_test";
+    //
+    let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
+    let kv: KeyBlock = serde_json::from_value(json).unwrap();
+    assert!(aes_key_block(key_bytes) == kv);
+    //
+    let ttlv = aes_key_block_ttlv(key_bytes);
+    let rec: KeyBlock = from_ttlv(ttlv).unwrap();
+    assert!(aes_key_block(key_bytes) == rec);
+}
+
+#[test]
+fn test_des_aes_key() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
@@ -356,20 +379,6 @@ fn test_des_aes_key() {
 }
 
 #[test]
-fn test_aes_key_block() {
-    log_init(None);
-    let key_bytes: &[u8] = b"this_is_a_test";
-    //
-    let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
-    let kv: KeyBlock = serde_json::from_value(json).unwrap();
-    assert!(aes_key_block(key_bytes) == kv);
-    //
-    let ttlv = aes_key_block_ttlv(key_bytes);
-    let rec: KeyBlock = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_block(key_bytes) == rec);
-}
-
-#[test]
 fn test_aes_key_value() {
     log_init(None);
     let key_bytes: &[u8] = b"this_is_a_test";
@@ -381,15 +390,6 @@ fn test_aes_key_value() {
     let ttlv = aes_key_value_ttlv(key_bytes);
     let rec: KeyValue = from_ttlv(ttlv).unwrap();
     assert!(aes_key_value(key_bytes) == rec);
-}
-
-#[test]
-fn test_aes_key_material() {
-    log_init(None);
-    let key_bytes: &[u8] = b"this_is_a_test";
-    let ttlv = aes_key_material_ttlv(key_bytes);
-    let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_material(key_bytes) == rec);
 }
 
 #[test]
