@@ -292,12 +292,12 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
                         ))
                     })?);
                     Ok(KmipEnumerationVariant {
-                        index,
+                        value: index,
                         name: String::new(),
                     })
                 } else {
                     Ok(KmipEnumerationVariant {
-                        index: 0,
+                        value: 0,
                         name: v.to_owned(),
                     })
                 }
@@ -310,7 +310,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
             {
                 trace!("visit_i64: {}", v);
                 Ok(KmipEnumerationVariant {
-                    index: u32::try_from(v).map_err(|e| {
+                    value: u32::try_from(v).map_err(|e| {
                         de::Error::custom(format!(
                             "Invalid i64 value for enumeration index: {v}. Error: {e:?}"
                         ))
@@ -326,7 +326,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
             {
                 trace!("visit_u64: {}", v);
                 Ok(KmipEnumerationVariant {
-                    index: u32::try_from(v).map_err(|e| {
+                    value: u32::try_from(v).map_err(|e| {
                         de::Error::custom(format!(
                             "Invalid u64 value for enumeration index: {v}. Error: {e:?}"
                         ))

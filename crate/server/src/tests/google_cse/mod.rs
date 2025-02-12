@@ -85,7 +85,7 @@ pub(crate) fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> 
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file".to_owned())?;
     // Deserialize the object
-    let object: Object = from_ttlv(&ttlv)?;
+    let object: Object = from_ttlv(ttlv)?;
     Ok(object)
 }
 

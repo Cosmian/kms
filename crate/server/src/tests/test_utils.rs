@@ -125,7 +125,7 @@ where
     }
     let body = read_body(res).await;
     let json: TTLV = serde_json::from_slice(&body)?;
-    let result: R = from_ttlv(&json)?;
+    let result: R = from_ttlv(json)?;
     Ok(result)
 }
 

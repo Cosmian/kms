@@ -1,4 +1,5 @@
 use cosmian_logger::log_init;
+use kmip_derive::KmipEnumSerialize;
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -190,7 +191,9 @@ fn test_ser_array() {
 
 #[test]
 fn test_enum_unit_variant() {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[derive(
+        Deserialize, PartialEq, Eq, Debug, KmipEnumSerialize, Copy, Clone, strum::IntoStaticStr,
+    )]
     #[repr(u32)]
     enum Enumeration {
         Ten = 0x0A,
@@ -234,7 +237,7 @@ fn test_enum_unit_variant() {
         value: TTLValue::Structure(vec![TTLV {
             tag: "AnEnum".to_owned(),
             value: TTLValue::Enumeration(KmipEnumerationVariant {
-                index: 0x0A,
+                value: 0x0A,
                 name: "Ten".to_owned(),
             }),
         }]),
@@ -354,4 +357,45 @@ fn test_nested_structures() {
     // Deserializer
     let rec: Root = from_ttlv(re_ttlv).unwrap();
     assert_eq!(root, rec);
+}
+
+#[derive(
+    Deserialize, PartialEq, Eq, Debug, KmipEnumSerialize, Copy, Clone, strum::IntoStaticStr,
+)]
+#[repr(u32)]
+enum MyEnum {
+    Ten = 0x0A,
+    Big = 0x1111_2222,
+}
+
+#[test]
+fn test_enum_unit_variant_with_value() {
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct Test {
+        an_enum: MyEnum,
+    }
+    log_init(Some("trace,hyper=info,reqwest=info"));
+
+    // Try with Ten
+    let test = Test {
+        an_enum: MyEnum::Ten,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { index: 10, name: "Ten" }) }]) }"#
+    );
+
+    // Try with Big
+    let test = Test {
+        an_enum: MyEnum::Big,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&test).unwrap();
+    assert_eq!(
+        format!("{ttlv:?}"),
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnEnum", value: Enumeration(KmipEnumerationVariant { index: 286335522, name: "Big" }) }]) }"#
+    );
 }

@@ -1,7 +1,7 @@
 use cosmian_logger::log_init;
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::trace;
+use tracing::{info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -91,7 +91,7 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                         tag: "CryptographicAlgorithm".to_owned(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             name: "AES".to_owned(),
-                            index: 0,
+                            value: 0,
                         }),
                     },
                     TTLV {
@@ -106,14 +106,14 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                         tag: "KeyFormatType".to_owned(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             name: "TransparentSymmetricKey".to_owned(),
-                            index: 0,
+                            value: 0,
                         }),
                     },
                     TTLV {
                         tag: "ObjectType".to_owned(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             name: "SymmetricKey".to_owned(),
-                            index: 0,
+                            value: 0,
                         }),
                     },
                     TTLV {
@@ -134,7 +134,7 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
                 tag: "KeyFormatType".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     name: "TransparentSymmetricKey".to_owned(),
-                    index: 0,
+                    value: 0,
                 }),
             },
             aes_key_value_ttlv(key_value),
@@ -142,7 +142,7 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
                 tag: "CryptographicAlgorithm".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     name: "AES".to_owned(),
-                    index: 0,
+                    value: 0,
                 }),
             },
             TTLV {
@@ -248,7 +248,7 @@ fn test_des_enum() {
             tag: "CryptoAlgo".to_owned(),
             value: TTLValue::Enumeration(KmipEnumerationVariant {
                 name: "AES".to_owned(),
-                index: 0,
+                value: 0,
             }),
         }]),
     };
@@ -264,7 +264,7 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    log_init(None);
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ]);
@@ -276,6 +276,7 @@ fn test_key_material_vec_deserialization() {
         }]),
     };
     let km_: KeyMaterial = from_ttlv(ttlv).unwrap();
+    info!("{:?}", km_);
     let km = KeyMaterial::TransparentSymmetricKey { key: bytes };
     assert!(km == km_);
 }
@@ -290,7 +291,7 @@ fn test_key_material_big_int_deserialization() {
                 tag: "KeyTypeSer".to_owned(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     name: "DH".to_owned(),
-                    index: 0,
+                    value: 0,
                 }),
             },
             TTLV {

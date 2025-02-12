@@ -33,6 +33,7 @@
     "postgres",
     "postgresql",
     "recv",
+    "repr",
     "Seedable",
     "sqlcipher",
     "sqlite",
@@ -48,6 +49,8 @@
     "uuid",
     "Uuid",
     "zeroizable",
+    "zeroize",
+    "Zeroizing",
     "zerorize"
   ],
   "[md]": {

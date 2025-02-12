@@ -52,11 +52,30 @@ impl PartialEq for TTLValue {
 
 /// This holds the KMIP enumeration variant value and name
 /// JSON uses the name, the byte serializer uses the value
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct KmipEnumerationVariant {
-    pub index: u32,
+    pub value: u32,
     pub name: String,
 }
+
+/// Two KMIP enumeration variants are equal if their names are equal
+/// or if their values are equal
+///
+/// # Explanation
+/// When serializing a TTLV from a KMIP Object which has an enumeration using
+/// the `KmipEnumerationSerialize` derivation, both the name and the value
+/// are serialized and will be present in the TTLV Output
+/// However, JSON serialization of the TTLV will only serialize the name, and not the value.
+/// Therefore, when deserializing from JSON, the value will be missing.
+impl PartialEq for KmipEnumerationVariant {
+    fn eq(&self, other: &Self) -> bool {
+        if self.name.is_empty() || other.name.is_empty() {
+            return self.value == other.value;
+        }
+        self.name == other.name
+    }
+}
+impl Eq for KmipEnumerationVariant {}
 
 pub enum TtlvType {
     Structure = 0x01,
