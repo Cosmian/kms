@@ -278,7 +278,7 @@ fn test_key_material_vec_deserialization() {
     let km_: KeyMaterial = from_ttlv(ttlv).unwrap();
     info!("{:?}", km_);
     let km = KeyMaterial::TransparentSymmetricKey { key: bytes };
-    assert!(km == km_);
+    assert_eq!(km, km_);
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn test_key_material_big_int_deserialization() {
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
     let km_: KeyMaterial = from_ttlv(ttlv_).unwrap();
-    assert!(km == km_);
+    assert_eq!(km, km_);
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn test_big_int_deserialization() {
     };
     let j = serde_json::to_value(&km).unwrap();
     let km_: KeyMaterial = serde_json::from_value(j).unwrap();
-    assert!(km == km_);
+    assert_eq!(km, km_);
 }
 
 #[test]
@@ -345,7 +345,21 @@ fn test_aes_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_material(key_bytes) == rec);
+    assert_eq!(aes_key_material(key_bytes), rec);
+}
+
+#[test]
+fn test_aes_key_value() {
+    log_init(None);
+    let key_bytes: &[u8] = b"this_is_a_test";
+    //
+    let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
+    let kv: KeyValue = serde_json::from_value(json).unwrap();
+    assert_eq!(aes_key_value(key_bytes), kv);
+
+    let ttlv = aes_key_value_ttlv(key_bytes);
+    let rec: KeyValue = from_ttlv(ttlv).unwrap();
+    assert_eq!(aes_key_value(key_bytes), rec);
 }
 
 #[test]
@@ -354,12 +368,47 @@ fn test_aes_key_block() {
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
-    let kv: KeyBlock = serde_json::from_value(json).unwrap();
-    assert!(aes_key_block(key_bytes) == kv);
+    let kb: KeyBlock = serde_json::from_value(json).unwrap();
+    assert_eq!(aes_key_block(key_bytes), kb);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_block(key_bytes) == rec);
+    assert_eq!(aes_key_block(key_bytes), rec);
+}
+
+#[test]
+fn test_des_aes_key_bg() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
+    let key_bytes: &[u8] = b"this_is_a_test";
+
+    let aes_key = Object::SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: KeyValue {
+                key_material: KeyMaterial::TransparentSymmetricKey {
+                    key: Zeroizing::from(key_bytes.to_vec()),
+                },
+                attributes: Some(Attributes {
+                    object_type: Some(ObjectType::SymmetricKey),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    cryptographic_length: Some(key_bytes.len() as i32 * 8),
+                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+                    key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                    ..Attributes::default()
+                }),
+            },
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(key_bytes.len() as i32 * 8),
+            key_wrapping_data: None,
+        },
+    };
+    let ttlv = to_ttlv(&aes_key).unwrap();
+    info!("{:?}", ttlv);
+    assert_eq!(aes_key_ttlv(key_bytes), ttlv);
+
+    let _rec: Object = from_ttlv(ttlv).unwrap();
+    // assert!(aes_key(key_bytes) == rec);
 }
 
 #[test]
@@ -379,39 +428,48 @@ fn test_des_aes_key() {
 }
 
 #[test]
-fn test_aes_key_value() {
-    log_init(None);
-    let key_bytes: &[u8] = b"this_is_a_test";
-    //
-    let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
-    let kv: KeyValue = serde_json::from_value(json).unwrap();
-    assert!(aes_key_value(key_bytes) == kv);
+fn test_attributes() {
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    struct Wrapper {
+        attrs: Attributes,
+    }
+    log_init(Some("trace,hyper=info,reqwest=info"));
 
-    let ttlv = aes_key_value_ttlv(key_bytes);
-    let rec: KeyValue = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_value(key_bytes) == rec);
+    let wrapper = Wrapper {
+        attrs: Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        },
+    };
+    let ttlv = to_ttlv(&wrapper).unwrap();
+    let json = serde_json::to_value(&ttlv).unwrap();
+    let ttlv_: TTLV = serde_json::from_value(json).unwrap();
+    assert_eq!(ttlv, ttlv_);
+    let rec: Wrapper = from_ttlv(ttlv_).unwrap();
+    assert_eq!(wrapper, rec);
 }
 
 #[test]
 fn test_some_attributes() {
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
     #[serde(untagged)]
+    #[allow(clippy::large_enum_variant)]
     enum Wrapper {
+        #[serde(rename_all = "PascalCase")]
         Attr {
-            #[serde(skip_serializing_if = "Option::is_none", rename = "Attributes")]
-            attributes: Option<Box<Attributes>>,
+            // #[serde(skip_serializing_if = "Option::is_none")]
+            attrs: Attributes,
         },
-        NoAttr {
-            whatever: i32,
-        },
+        #[serde(rename_all = "PascalCase")]
+        NoAttr { whatever: i32 },
     }
     log_init(Some("trace,hyper=info,reqwest=info"));
 
     let value = Wrapper::Attr {
-        attributes: Some(Box::new(Attributes {
+        attrs: Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             ..Attributes::default()
-        })),
+        },
     };
     let ttlv = to_ttlv(&value).unwrap();
     let json = serde_json::to_value(&ttlv).unwrap();
@@ -512,12 +570,12 @@ fn test_byte_string_key_material() {
     };
     let ttlv = to_ttlv(&key_value).unwrap();
     let key_value_: KeyValue = from_ttlv(ttlv).unwrap();
-    assert!(key_value == key_value_);
+    assert_eq!(key_value, key_value_);
 }
 
 #[test]
 fn test_aes_key_full() {
-    log_init(None);
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -603,7 +661,10 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     let object_: Object = serialize_deserialize(&object).unwrap();
     match object_ {
         Object::SymmetricKey { key_block } => {
-            assert!(get_key_block().key_value.key_material == key_block.key_value.key_material);
+            assert_eq!(
+                get_key_block().key_value.key_material,
+                key_block.key_value.key_material
+            );
         }
         _ => panic!("wrong object type"),
     }

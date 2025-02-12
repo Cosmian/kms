@@ -115,7 +115,7 @@ fn build_mask_from_curve(
         (false, RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448) => {
             FIPS_PUBLIC_ECC_MASK_SIGN
         }
-        (_, other) => kmip_bail!(
+        (_, other) => kmip_2_1_bail!(
             "Building mask from unsupported curve in FIPS mode: curve {}",
             other
         ),

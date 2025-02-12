@@ -61,15 +61,31 @@ where
     value.post_fix(&tag)
 }
 
+// WHen deserializing a map, the deserializer needs to know if it is deserializing the key or the value
+// This is handled in MapAccess::next_key_seed and MapAccess::next_value_seed
+#[derive(Debug, PartialEq, Eq)]
+enum MapAccessState {
+    // Not in a Map Axxess
+    None,
+    Key,
+    Value,
+}
+
 #[derive(Debug)]
 pub struct TtlvDeserializer {
     /// The current TTLV being deserialized
     current: TTLV,
-    /// The index of the current child of a structure being deserialized
+    /// The current child index in a structure being deserialized.
     /// Arrays in TTLV are represented as structures with children holding the array values
     /// The child index is also used in Enums deserialization to differentiate between the tag and the variant
     /// when deserializing an identifier (0; tag, 1; variant)
     child_index: usize,
+    /// The state of the deserializer when deserializing a map.
+    /// The deserializer needs to know if it is deserializing the key or the value.
+    /// This is handled in `MapAccess::next_key_seed` and `MapAccess::next_value_seed`.
+    /// The deserializer starts with the key state
+    /// When the key is deserialized, the state is changed to Value
+    map_state: MapAccessState,
 }
 
 impl TtlvDeserializer {
@@ -78,6 +94,7 @@ impl TtlvDeserializer {
         Self {
             current: root,
             child_index: 0,
+            map_state: MapAccessState::None,
         }
     }
 
@@ -97,6 +114,7 @@ impl TtlvDeserializer {
     fn get_child_deserializer<'de, K>(
         &mut self,
         seed: K,
+        map_state: MapAccessState,
     ) -> Result<Option<<K as DeserializeSeed<'de>>::Value>>
     where
         K: DeserializeSeed<'de>,
@@ -111,7 +129,11 @@ impl TtlvDeserializer {
         let child = child_array
             .get(self.child_index)
             .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
-        let mut deserializer = Self::from_ttlv(child.clone());
+        let mut deserializer = Self {
+            current: child.clone(),
+            child_index: 0,
+            map_state,
+        };
         let v = seed.deserialize(&mut deserializer).map(Some)?;
         Ok(v)
     }
@@ -123,25 +145,56 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     // Look at the input data to decide what Serde data model type to
     // deserialize as. Not all data formats are able to support this operation.
     // Formats that support `deserialize_any` are known as self-describing.
-    // This is called when deserializng the value in an unttaged enum, for instance.
-
+    //
+    // When the deserializer is deserializing an untagged enum, almost all calls to deserialize
+    // the child keys and values are done in the `deserialize_any` method.
     #[instrument(skip(self, visitor))]
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_any: state  {:?}", self.current);
+        trace!(
+            "deserialize_any: map access state: {:?}, index: {}, current: {:?}",
+            self.map_state,
+            self.child_index,
+            self.current
+        );
+        if self.map_state == MapAccessState::Key {
+            // if the deserializer is deserializing the key of a map, the tag is the key
+            trace!(
+                "deserialize_any: map access state: key, tag: {}",
+                self.current.tag
+            );
+            return visitor.visit_str(&self.current.tag);
+        }
+
+        // if self.map_state == MapAccessState::None
+        //     && matches!(self.current.value, TTLValue::Structure(_))
+        // {
+        //     self.current = TTLV {
+        //         tag: "ROOT".to_owned(),
+        //         value: TTLValue::Structure(vec![self.current.clone()]),
+        //     };
+        //     return visitor.visit_map(self);
+        // }
+
+        // we are not in a map accessing a seed key but either:
+        // - deserializing a value in a map
+        // - or not in a map at all, and we are also interested in the value
+
         match &self.current.value {
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
+                trace!("deserialize_any value of BigInt: {:?}", bi);
                 let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
                 visitor.visit_seq(seq_access)
             }
-            TTLValue::Structure(_child_array) => {
+            TTLValue::Structure(child_array) => {
+                trace!("deserialize_any value of Structure: {:?}", child_array);
                 // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
                 // by iterating over the children which hold the values of the sequence/array
-                visitor.visit_seq(self)
+                visitor.visit_map(self)
             }
             TTLValue::Integer(i) => {
                 // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
@@ -178,13 +231,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 visitor.visit_i128(dt.unix_timestamp_nanos() / 1000)
             }
             TTLValue::Enumeration(e) => {
-                // if the TTLV value is an Enumeration, the deserializer is attempting to deserialize the tag
-                // by converting the Enumeration to a string
-                if self.child_index == 0 {
-                    visitor.visit_str(&self.current.tag)
-                } else if e.name.is_empty() {
+                // Choose the variant name over the value if it is available
+                if e.name.is_empty() {
+                    trace!("deserialize_any of enum variant: value: {}", e.value);
                     visitor.visit_u32(e.value)
                 } else {
+                    trace!("deserialize_any of enum variant: name: {}", e.name);
                     visitor.visit_str(&e.name)
                 }
             }
@@ -724,9 +776,13 @@ impl<'de> MapAccess<'de> for TtlvDeserializer {
     where
         K: DeserializeSeed<'de>,
     {
-        trace!("map access: next_key_seed: state:  {:?}", self.current);
+        trace!(
+            "map access: next_key_seed: index: {}, current: {:?}",
+            self.child_index,
+            self.current
+        );
         // get the child deserializer for a child at the current index
-        let v = self.get_child_deserializer(seed)?;
+        let v = self.get_child_deserializer(seed, MapAccessState::Key)?;
         Ok(v)
     }
 
@@ -737,9 +793,11 @@ impl<'de> MapAccess<'de> for TtlvDeserializer {
     {
         trace!("next_value_seed: state:  {:?}", self.current);
         // get the child deserializer for a child at the current index
-        let v = self.get_child_deserializer(seed)?.ok_or_else(|| {
-            TtlvError::from("Invalid KMIP structure: there is a key but no value ")
-        })?;
+        let v = self
+            .get_child_deserializer(seed, MapAccessState::Value)?
+            .ok_or_else(|| {
+                TtlvError::from("Invalid KMIP structure: there is a key but no value ")
+            })?;
         // increment the child index; we are done with this child once the value is processed
         self.child_index += 1;
         Ok(v)
@@ -779,7 +837,7 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
         V: DeserializeSeed<'de>,
     {
         trace!("variant_seed: state:  {:?}", self.de.current);
-        // by serttting the child index to 1, we are telling the deserializer
+        // by setting the child index to 1, we are telling the deserializer
         // to deserialize the variant name and not the tag of the TTLV holding the variant
         self.de.child_index = 1;
         let val = seed.deserialize(&mut *self.de)?;
