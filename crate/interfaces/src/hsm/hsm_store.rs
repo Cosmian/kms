@@ -10,7 +10,7 @@ use cosmian_kmip::{
     SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, SymmetricKey},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
             StateEnumeration,
@@ -331,7 +331,7 @@ fn to_object_with_metadata(
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey { key: bytes.clone() };
-            let object = Object::SymmetricKey {
+            let object = Object::SymmetricKey(SymmetricKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentSymmetricKey,
                     key_compression_type: None,
@@ -347,7 +347,7 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,

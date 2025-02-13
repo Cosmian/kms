@@ -751,7 +751,32 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     visitor.visit_str(&e.name)
                 }
             }
-            // we want the tag
+            TTLValue::Structure(_) => {
+                trace!(
+                    "deserialize_identifier of structure: tag: {}",
+                    self.current.tag
+                );
+                // if the current item is a structure, it may be a KMIP Object
+                // KMIP objects are always present in KMIP structures with "Object" as the property name.
+                // So the deserializer is expecting "Object" as the identifier, not the tag/Object Name
+                if [
+                    "Certificate",
+                    "CertificateRequest",
+                    "OpaqueObject",
+                    "PGPKey",
+                    "SecretData",
+                    "SplitKey",
+                    "PrivateKey",
+                    "PublicKey",
+                    "SymmetricKey",
+                ]
+                .contains(&self.current.tag.as_str())
+                {
+                    return visitor.visit_str("Object");
+                }
+                visitor.visit_str(&self.current.tag)
+            }
+            // all other cases, we want the tag
             _ => visitor.visit_str(&self.current.tag),
         }
     }
@@ -914,12 +939,6 @@ impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
         }
         // we want to recover the tag of the TTLV and pass it back to the visitor
         self.de.map_state = MapAccessState::Key;
-        // let mut deserializer = TtlvDeserializer {
-        //     current: self.de.current.clone(),
-        //     child_index: 0,
-        //     // let us recover the Key == TTVLV Tag
-        //     map_state: MapAccessState::Key,
-        // };
         seed.deserialize(&mut *self.de).map(Some)
     }
 

@@ -4,7 +4,7 @@ use crate::{
     KmipError,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, SymmetricKey},
         kmip_operations::Create,
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
@@ -43,7 +43,7 @@ pub fn create_symmetric_key_kmip_object(
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
     // The key created here has a format of TransparentSymmetricKey
     // This is no a problem since when it is exported, it is by default converted to a Raw key
-    Ok(Object::SymmetricKey {
+    Ok(Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
@@ -57,7 +57,7 @@ pub fn create_symmetric_key_kmip_object(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Build a `Create` request for a symmetric key

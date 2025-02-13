@@ -3,7 +3,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{
         KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
     },
-    kmip_objects::Object,
+    kmip_objects::{Object, SymmetricKey},
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
         KeyFormatType, PaddingMethod, WrappingMethod,
@@ -199,7 +199,7 @@ pub(crate) fn wrap(
         | Object::SplitKey { key_block, .. }
         | Object::PrivateKey { key_block }
         | Object::PublicKey { key_block }
-        | Object::SymmetricKey { key_block } => {
+        | Object::SymmetricKey(SymmetricKey { key_block }) => {
             trace!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {

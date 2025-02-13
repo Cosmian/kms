@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, SymmetricKey},
     kmip_operations::{Get, Import},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
@@ -209,7 +209,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let key_material = KeyMaterial::ByteString(Zeroizing::from(wrapped_symmetric_key.to_vec()));
 
-    let symmetric_key = Object::SymmetricKey {
+    let symmetric_key = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
@@ -225,7 +225,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
                 ..KeyWrappingData::default()
             }),
         },
-    };
+    });
 
     let uid = Uuid::new_v4().to_string();
 
