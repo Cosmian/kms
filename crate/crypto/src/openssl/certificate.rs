@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object::{self, Certificate},
+    kmip_objects::{Certificate, Object},
     kmip_types::{CertificateAttributes, CertificateType},
 };
 use openssl::{
@@ -15,17 +15,17 @@ use crate::error::{result::CryptoResultHelper, CryptoError};
 /// Generate a KMIP certificate from an OpenSSL certificate
 pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<Object, CryptoError> {
     let der_bytes = certificate.to_der()?;
-    Ok(Certificate {
+    Ok(Object::Certificate(Certificate {
         certificate_type: CertificateType::X509,
         certificate_value: der_bytes,
-    })
+    }))
 }
 
 pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, CryptoError> {
     match certificate {
-        Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => X509::from_der(certificate_value)
+        }) => X509::from_der(certificate_value)
             .map_err(|e| CryptoError::Kmip(format!("failed to parse certificate: {e}"))),
         _ => Err(CryptoError::Kmip("expected a certificate".to_owned())),
     }

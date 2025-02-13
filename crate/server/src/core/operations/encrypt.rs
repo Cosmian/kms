@@ -4,7 +4,7 @@ use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::{
     kmip_2_1::{
         extra::BulkData,
-        kmip_objects::Object,
+        kmip_objects::{Certificate, Object},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
@@ -235,9 +235,9 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
     match owm.object() {
         Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
         Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
-        Object::Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => encrypt_with_certificate(request, owm.id(), certificate_value),
+        }) => encrypt_with_certificate(request, owm.id(), certificate_value),
         other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
@@ -295,9 +295,9 @@ pub(crate) fn encrypt_bulk(
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
-        Object::Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => {
+        }) => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
                 let response = encrypt_with_certificate(&request, owm.id(), certificate_value)?;

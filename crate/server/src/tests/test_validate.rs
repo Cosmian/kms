@@ -3,7 +3,7 @@
 use std::{fs, path, sync::Arc};
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType,
+    kmip_objects::{Certificate, Object, ObjectType},
     kmip_operations::{Import, Validate},
     kmip_types::{Attributes, CertificateType, UniqueIdentifier, ValidityIndicator},
 };
@@ -133,10 +133,10 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
+        object: Object::Certificate(Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: root_cert.clone(),
-        },
+        }),
     };
     let res_root = kms.import(root_request, owner, None).await?;
     // intermediate
@@ -149,10 +149,10 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
+        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: intermediate_cert.clone(),
-        },
+        }),
     };
     let res_intermediate = kms.import(intermediate_request, owner, None).await?;
     // leaf1
@@ -165,10 +165,10 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate {
+        object: Object::Certificate(Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: leaf1_cert.clone(),
-        },
+        }),
     };
     let res_leaf1 = kms.import(leaf1_request, owner, None).await?;
     // Only the root, it is valid by default

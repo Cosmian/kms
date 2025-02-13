@@ -5,7 +5,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
+    kmip_objects::{Certificate, Object},
     kmip_operations::{Validate, ValidateResponse},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
     KmipOperation,
@@ -649,10 +649,10 @@ async fn certificate_by_uid(
     )
     .await?;
 
-    if let Object::Certificate {
+    if let Object::Certificate(Certificate {
         certificate_type: _,
         certificate_value,
-    } = uid_owm.object()
+    }) = uid_owm.object()
     {
         Ok(certificate_value.clone())
     } else {

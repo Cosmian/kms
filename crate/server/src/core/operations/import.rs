@@ -3,10 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::{
-        Object::{self, Certificate},
-        ObjectType,
-    },
+    kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
     kmip_operations::{Import, ImportResponse},
     kmip_types::{
         Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType,
@@ -146,9 +143,9 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // The specification says that this should be DER bytes
     let certificate_der_bytes = match request.object {
-        Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => Ok(certificate_value),
+        }) => Ok(certificate_value),
         o => Err(KmsError::Certificate(format!(
             "invalid object type {:?} on import",
             o.object_type()
@@ -439,7 +436,7 @@ fn process_pkcs12(
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover the PKCS#12 bytes from the object
     let pkcs12_bytes = match object {
-        Object::PrivateKey { key_block } => key_block.key_bytes()?,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.key_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
 

@@ -162,7 +162,7 @@ fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
 
 #[test]
 fn test_ser_aes_key() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -264,7 +264,7 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ]);
@@ -283,7 +283,7 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let ttlv = TTLV {
         tag: "KeyMaterial".to_owned(),
         value: TTLValue::Structure(vec![
@@ -364,7 +364,7 @@ fn test_aes_key_value() {
 
 #[test]
 fn test_aes_key_block() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
@@ -378,7 +378,7 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_des_aes_key() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let key = aes_key(key_bytes);
@@ -401,7 +401,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_import_symmetric_key() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
     let import = Import {
@@ -428,7 +428,7 @@ fn test_import_symmetric_key() {
 
 #[test]
 fn test_import_private_key() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
@@ -478,7 +478,7 @@ fn test_attributes() {
     struct Wrapper {
         attrs: Attributes,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let wrapper = Wrapper {
         attrs: Attributes {
@@ -508,7 +508,7 @@ fn test_some_attributes() {
         #[serde(rename_all = "PascalCase")]
         NoAttr { whatever: i32 },
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let value = Wrapper::Attr {
         attrs: Attributes {
@@ -620,7 +620,7 @@ fn test_byte_string_key_material() {
 
 #[test]
 fn test_aes_key_full() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();

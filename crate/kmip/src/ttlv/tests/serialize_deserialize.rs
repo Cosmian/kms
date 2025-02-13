@@ -30,7 +30,7 @@ fn test_enumeration() {
 
 #[test]
 fn test_serialization_deserialization() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
         tag: "Test".to_owned(),
@@ -163,7 +163,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_enumerations_deserialize() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
     let json_string = r#"
     {
         "tag": "Test",

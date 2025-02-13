@@ -3,7 +3,9 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{
         KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
     },
-    kmip_objects::{Object, SymmetricKey},
+    kmip_objects::{
+        Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
+    },
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
         KeyFormatType, PaddingMethod, WrappingMethod,
@@ -182,9 +184,9 @@ pub(crate) fn wrap(
 ) -> Result<Vec<u8>, CryptoError> {
     trace!("wrap: with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
-        Object::Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => {
+        }) => {
             let cert = X509::from_der(certificate_value)
                 .map_err(|e| CryptoError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
             let public_key = cert.public_key().map_err(|e| {
@@ -194,11 +196,11 @@ pub(crate) fn wrap(
             })?;
             wrap_with_public_key(&public_key, key_wrapping_data, key_to_wrap)
         }
-        Object::PGPKey { key_block, .. }
-        | Object::SecretData { key_block, .. }
-        | Object::SplitKey { key_block, .. }
-        | Object::PrivateKey { key_block }
-        | Object::PublicKey { key_block }
+        Object::PGPKey(PGPKey { key_block, .. })
+        | Object::SecretData(SecretData { key_block, .. })
+        | Object::SplitKey(SplitKey { key_block, .. })
+        | Object::PrivateKey(PrivateKey { key_block })
+        | Object::PublicKey(PublicKey { key_block })
         | Object::SymmetricKey(SymmetricKey { key_block }) => {
             trace!("wrap: key_block: {}", key_block);
             // wrap the wrapping key if necessary

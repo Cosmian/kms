@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PublicKey},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
         KeyFormatType, RecommendedCurve,
@@ -55,7 +55,7 @@ use crate::{
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, CryptoError> {
     trace!("kmip_public_key_to_openssl: {}", public_key);
     let key_block = match public_key {
-        Object::PublicKey { key_block } => key_block,
+        Object::PublicKey(PublicKey { key_block }) => key_block,
         x => crypto_bail!("Invalid Object: {}. KMIP Public Key expected", x),
     };
     // Convert the key to the default storage format: SPKI DER (RFC 5480)
@@ -450,7 +450,7 @@ pub fn openssl_public_key_to_kmip(
         }
     };
 
-    Ok(Object::PublicKey { key_block })
+    Ok(Object::PublicKey(PublicKey { key_block }))
 }
 
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
@@ -464,7 +464,7 @@ mod tests {
     use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
+        kmip_objects::{Object, PublicKey},
         kmip_types::{KeyFormatType, RecommendedCurve},
     };
     use openssl::{
@@ -491,7 +491,7 @@ mod tests {
         // SPKI (== KMIP PKCS#8)
         let object = openssl_public_key_to_kmip(public_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
@@ -555,7 +555,7 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentRSAPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
@@ -612,7 +612,7 @@ mod tests {
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentECPublicKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PublicKey { key_block } = object else {
+        let Object::PublicKey(PublicKey { key_block }) = object else {
             panic!("Invalid key block")
         };
 

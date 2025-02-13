@@ -162,7 +162,7 @@ pub struct SymmetricKey {
 /// appears after despite the presence of `secret_data_type`
 #[derive(Serialize, Clone, Eq, PartialEq, Debug, VariantNames)]
 #[serde(rename_all = "PascalCase")]
-#[serde(untagged)]
+// #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
     /// It is a DER-encoded X.509 public key certificate.

@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         KmipOperation,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
             Attributes, CertificateType, CryptographicAlgorithm, CryptographicUsageMask,
@@ -801,7 +801,7 @@ async fn build_pkcs12_for_private_key(
         .context("export: unable to build the PKCS12")?;
 
     // add the certificate to the private key
-    private_key_owm.set_object(Object::PrivateKey {
+    private_key_owm.set_object(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
@@ -814,7 +814,7 @@ async fn build_pkcs12_for_private_key(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    });
+    }));
     Ok(())
 }
 
@@ -894,10 +894,10 @@ async fn post_process_pkcs7(
         )?;
 
         // Modify initial owm
-        cert_owm.set_object(Object::Certificate {
+        cert_owm.set_object(Object::Certificate(Certificate {
             certificate_type: CertificateType::PKCS7,
             certificate_value: pkcs7.to_der()?,
-        });
+        }));
     }
 
     Ok(cert_owm)
