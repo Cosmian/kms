@@ -12,7 +12,7 @@ use crate::{
             Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
             MessageResponseHeader,
         },
-        kmip_objects::{Object, ObjectType, SymmetricKey},
+        kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
             LocateResponse, Operation, SetAttribute,
@@ -400,13 +400,59 @@ fn test_des_aes_key() {
 }
 
 #[test]
-fn test_import() {
+fn test_import_symmetric_key() {
     log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
     let import = Import {
         unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),
         object_type: ObjectType::Certificate,
+        replace_existing: None,
+        key_wrap_type: None,
+        attributes: key.attributes().unwrap().to_owned(),
+        object: key,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&import).unwrap();
+    info!("{:?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Import = from_ttlv(ttlv).unwrap();
+    assert_eq!(import, rec);
+}
+
+#[test]
+fn test_import_private_key() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
+    let key_bytes: &[u8] = b"this_is_a_test";
+    let key = Object::PublicKey(PublicKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: KeyValue {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
+                attributes: Some(Attributes {
+                    object_type: Some(ObjectType::PublicKey),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_length: Some(256),
+                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+                    key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                    ..Attributes::default()
+                }),
+            },
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            key_wrapping_data: None,
+        },
+    });
+    let import = Import {
+        unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),
+        object_type: ObjectType::PrivateKey,
         replace_existing: None,
         key_wrap_type: None,
         attributes: key.attributes().unwrap().to_owned(),
@@ -579,7 +625,7 @@ fn test_aes_key_full() {
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
     let aes_key_: Object = from_ttlv(ttlv).unwrap();
-    assert!(aes_key == Object::post_fix(ObjectType::SymmetricKey, aes_key_));
+    assert_eq!(aes_key, aes_key_);
 }
 
 #[test]
@@ -594,8 +640,8 @@ pub(crate) fn test_attributes_with_links() {
 pub(crate) fn test_import_correct_object() {
     log_init(None);
 
-    // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
-    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialization of TTLV.
+    // This file cannot be used to do crypto stuff,
+    // it's just for testing the serialization/deserialization of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let import: Import = from_ttlv(ttlv).unwrap();
