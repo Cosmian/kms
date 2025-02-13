@@ -192,9 +192,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             }
             TTLValue::Structure(child_array) => {
                 trace!("deserialize_any value of Structure: {:?}", child_array);
-                // if the TTLV value is a Structure, the deserializer is attempting to deserialize the children
-                // by iterating over the children which hold the values of the sequence/array
-                visitor.visit_map(self)
+                // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
+                // which will iterate over the children of the structure as it were a map of properties to values
+                visitor.visit_map(StructureWalker::new(self))
             }
             TTLValue::Integer(i) => {
                 // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
@@ -611,13 +611,61 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         unimplemented!("deserialize_tuple_struct");
     }
 
-    #[instrument(skip(self, _visitor))]
-    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
+    /// There is no such thing as the concept of a Map in KMIP.
+    /// KMIP structures are actually deserialized as `maps`, but
+    /// the deserializer will call `deserialize_struct` to allow the deserializer,
+    /// and the visitor will iterate over the children of the structure
+    /// using logic in the `StructureWalker`.
+    ///
+    /// This method is actually called by the custom `Deserialize` implementations
+    /// of untagged enums in KMIP, such as `Object`. The reason here is that the TTLV
+    /// actually contains the name of the enum Variant, and recovering as a map key and passing
+    /// it to the `Deserialize` `Visitor` implementation helps its to determine what variant
+    /// it should use.
+    ///
+    /// For example, given this untagged enum:
+    /// ```Rust
+    /// #[serde(untagged)]
+    /// pub enum Object {
+    ///     /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
+    ///     PrivateKey {
+    ///         #[serde(rename = "KeyBlock")]
+    ///         key_block: KeyBlock,
+    ///     },
+    ///     /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
+    ///     /// This is only a public key, not a certificate.
+    ///     PublicKey {
+    ///         #[serde(rename = "KeyBlock")]
+    ///         key_block: KeyBlock,
+    ///     },
+    ///     /// A Managed Cryptographic Object that is a symmetric key.
+    ///     SymmetricKey {
+    ///         #[serde(rename = "KeyBlock")]
+    ///         key_block: KeyBlock,
+    ///     },
+    /// ```
+    ///
+    /// The TTLV for a SymmetricKey object would look like this:
+    /// ```Rust
+    /// TTLV {
+    ///    tag: "SymmetricKey",
+    ///    value: Structure([
+    ///      TTLV {
+    ///        tag: "KeyBlock",
+    ///       value: Structure([...])
+    ///     }
+    ///  ])
+    /// }
+    /// ```
+    /// Recovering the tag "SymmetricKey" and passing it to the visitor helps the visitor to determine
+    /// that it should use the `Object::SymmetricKey` variant, since all variants have the same structure.
+    #[instrument(skip(self, visitor))]
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_map: state:  {:?}", self.current);
-        unimplemented!("deserialize_map");
+        visitor.visit_map(UntaggedEnumWalker::new(self))
     }
 
     /// Deserializing a struct.
@@ -650,7 +698,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // we are going to iterate over the children of the current TTLV by calling visit_map
         // set the child index to 0
         self.child_index = 0;
-        visitor.visit_map(self)
+        visitor.visit_map(StructureWalker::new(self))
     }
 
     #[instrument(skip(self, visitor))]
@@ -772,49 +820,126 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
     }
 }
 
+/// The `StructureWalker` is used to deserialize a struct as map of property -> values
+/// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
+struct StructureWalker<'a> {
+    de: &'a mut TtlvDeserializer,
+}
+
+impl<'a> StructureWalker<'a> {
+    fn new(de: &'a mut TtlvDeserializer) -> Self {
+        StructureWalker { de }
+    }
+}
+
 // MapAccess is called when deserializing a struct because deserialize_struct called visit_map
 // The current input is the top structure holding an array of TTLVs which are the fields of the struct/map.
 // The calls to `next_value` are driven by the visitor
 // and it is up to this Access to synchronize and advance its counter
 // over the struct fields (`self.index`) in this case
-impl<'de> MapAccess<'de> for TtlvDeserializer {
+impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
     type Error = TtlvError;
 
-    #[instrument(skip(self, seed))]
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
     where
         K: DeserializeSeed<'de>,
     {
         trace!(
             "map access: next_key_seed: index: {}, current: {:?}",
-            self.child_index,
-            self.current
+            self.de.child_index,
+            self.de.current
         );
         // get the child deserializer for a child at the current index
-        let v = self.get_child_deserializer(seed, MapAccessState::Key)?;
+        let v = self.de.get_child_deserializer(seed, MapAccessState::Key)?;
         Ok(v)
     }
 
-    #[instrument(skip(self, seed))]
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: DeserializeSeed<'de>,
     {
-        trace!("next_value_seed: state:  {:?}", self.current);
+        trace!("next_value_seed: state:  {:?}", self.de.current);
         // get the child deserializer for a child at the current index
         let v = self
+            .de
             .get_child_deserializer(seed, MapAccessState::Value)?
             .ok_or_else(|| {
                 TtlvError::from("Invalid KMIP structure: there is a key but no value ")
             })?;
         // increment the child index; we are done with this child once the value is processed
-        self.child_index += 1;
+        self.de.child_index += 1;
         Ok(v)
     }
 
     #[inline]
     fn size_hint(&self) -> Option<usize> {
-        let TTLValue::Structure(child_array) = &self.current.value else {
+        let TTLValue::Structure(child_array) = &self.de.current.value else {
+            return Some(0_usize)
+        };
+        Some(child_array.len())
+    }
+}
+
+/// The `UntaggedEnumWalker` is used to deserialize a struct as map of property -> values
+/// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
+struct UntaggedEnumWalker<'a> {
+    de: &'a mut TtlvDeserializer,
+    completed: bool,
+}
+
+impl<'a> UntaggedEnumWalker<'a> {
+    fn new(de: &'a mut TtlvDeserializer) -> Self {
+        UntaggedEnumWalker {
+            de,
+            completed: false,
+        }
+    }
+}
+
+impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
+    type Error = TtlvError;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        trace!(
+            "Untagged Enum map: next_key_seed: completed?: {}, index: {}, current: {:?}",
+            self.completed,
+            self.de.child_index,
+            self.de.current
+        );
+        if self.completed {
+            return Ok(None);
+        }
+        // we want to recover the tag of the TTLV and pass it back to the visitor
+        self.de.map_state = MapAccessState::Key;
+        // let mut deserializer = TtlvDeserializer {
+        //     current: self.de.current.clone(),
+        //     child_index: 0,
+        //     // let us recover the Key == TTVLV Tag
+        //     map_state: MapAccessState::Key,
+        // };
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        trace!(
+            "Untagged Enum map: next_value_seed: current:  {:?}",
+            self.de.current
+        );
+        self.de.map_state = MapAccessState::Value;
+        let res = seed.deserialize(&mut *self.de)?;
+        self.completed = true;
+        Ok(res)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        let TTLValue::Structure(child_array) = &self.de.current.value else {
             return Some(0_usize)
         };
         Some(child_array.len())
