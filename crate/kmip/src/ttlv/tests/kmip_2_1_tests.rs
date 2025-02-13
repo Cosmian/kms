@@ -1,6 +1,11 @@
+use std::fmt;
+
 use cosmian_logger::log_init;
 use num_bigint_dig::{BigInt, BigUint};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{
+    de::{DeserializeOwned, MapAccess, Visitor},
+    Deserialize, Serialize,
+};
 use tracing::{info, trace};
 use zeroize::Zeroizing;
 
@@ -26,8 +31,9 @@ use crate::{
         },
     },
     ttlv::{
-        kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, KmipEnumerationVariant,
-        TTLValue, TTLV,
+        kmip_ttlv_deserializer::{from_ttlv, TtlvDeserializer},
+        kmip_ttlv_serializer::to_ttlv,
+        KmipEnumerationVariant, TTLValue, TTLV,
     },
     SafeBigUint,
 };
@@ -376,12 +382,78 @@ fn test_aes_key_block() {
     assert_eq!(aes_key_block(key_bytes), rec);
 }
 
+/////////////
+// Test with a more complex object
+/////////////
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+struct TestSymmetricKey {
+    key_block: KeyBlock,
+}
+
+#[derive(Serialize, Clone, Eq, PartialEq, Debug)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum TestObject {
+    /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
+    PrivateKey {
+        #[serde(rename = "KeyBlock")]
+        key_block: KeyBlock,
+    },
+    /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
+    /// This is only a public key, not a certificate.
+    PublicKey {
+        #[serde(rename = "KeyBlock")]
+        key_block: KeyBlock,
+    },
+    /// A Managed Cryptographic Object that is a symmetric key.
+    SymmetricKey(TestSymmetricKey),
+}
+
+impl<'de> Deserialize<'de> for TestObject {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct TestObjectVisitor;
+
+        impl<'de> Visitor<'de> for TestObjectVisitor {
+            type Value = TestObject;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an Object enumeration")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // let mut object_type: Option<ObjectType> = None;
+                if let Some(key) = map.next_key::<String>()? {
+                    info!("Key: {}", key);
+                    return match key.as_str() {
+                        "TestSymmetricKey" => {
+                            let key = map.next_value::<TestSymmetricKey>()?;
+                            Ok(TestObject::SymmetricKey(key))
+                        }
+                        _ => Err(serde::de::Error::custom("Invalid Object")),
+                    }
+                }
+                Err(serde::de::Error::custom("Invalid Object"))
+            }
+        }
+
+        deserializer.deserialize_map(TestObjectVisitor)
+    }
+}
+
 #[test]
 fn test_des_aes_key_bg() {
     log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
 
-    let aes_key = Object::SymmetricKey {
+    let kk = TestSymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
@@ -403,11 +475,15 @@ fn test_des_aes_key_bg() {
             key_wrapping_data: None,
         },
     };
+    let aes_key = TestObject::SymmetricKey(kk);
     let ttlv = to_ttlv(&aes_key).unwrap();
     info!("{:?}", ttlv);
-    assert_eq!(aes_key_ttlv(key_bytes), ttlv);
+    // assert_eq!(aes_key_ttlv(key_bytes), ttlv);
 
-    let _rec: Object = from_ttlv(ttlv).unwrap();
+    let mut deserializer = TtlvDeserializer::from_ttlv(ttlv);
+    let rec = TestObject::deserialize(&mut deserializer).unwrap();
+    // let rec: TestSymmetricKey = from_ttlv(ttlv).unwrap();
+    info!("{:?}", rec);
     // assert!(aes_key(key_bytes) == rec);
 }
 

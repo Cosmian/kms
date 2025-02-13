@@ -161,7 +161,7 @@ impl<'de> Deserialize<'de> for Object {
                 // let mut object_type: Option<ObjectType> = None;
                 while let Some(key) = map.next_key::<String>()? {
                     info!("Key: {}", key);
-                    let _unused = map.next_value::<KeyBlock>()?;
+                    let _unused = map.next_value::<Object>()?;
                 }
                 Err(serde::de::Error::custom("Invalid Object"))
             }
@@ -172,7 +172,7 @@ impl<'de> Deserialize<'de> for Object {
 }
 
 impl Display for Object {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Certificate {
                 certificate_type,
@@ -438,7 +438,7 @@ impl From<ObjectType> for String {
 }
 
 impl Display for ObjectType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: String = (*self).into();
         write!(f, "{s}")
     }
