@@ -1,11 +1,6 @@
-use std::fmt;
-
 use cosmian_logger::log_init;
 use num_bigint_dig::{BigInt, BigUint};
-use serde::{
-    de::{DeserializeOwned, MapAccess, Visitor},
-    Deserialize, Serialize,
-};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{info, trace};
 use zeroize::Zeroizing;
 
@@ -17,7 +12,7 @@ use crate::{
             Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
             MessageResponseHeader,
         },
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
             LocateResponse, Operation, SetAttribute,
@@ -31,9 +26,8 @@ use crate::{
         },
     },
     ttlv::{
-        kmip_ttlv_deserializer::{from_ttlv, TtlvDeserializer},
-        kmip_ttlv_serializer::to_ttlv,
-        KmipEnumerationVariant, TTLValue, TTLV,
+        kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, KmipEnumerationVariant,
+        TTLValue, TTLV,
     },
     SafeBigUint,
 };
@@ -70,9 +64,9 @@ fn aes_key_block(key_value: &[u8]) -> KeyBlock {
 }
 
 fn aes_key(key_value: &[u8]) -> Object {
-    Object::SymmetricKey {
+    Object::SymmetricKey(SymmetricKey {
         key_block: aes_key_block(key_value),
-    }
+    })
 }
 
 fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
@@ -382,125 +376,54 @@ fn test_aes_key_block() {
     assert_eq!(aes_key_block(key_bytes), rec);
 }
 
-/////////////
-// Test with a more complex object
-/////////////
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-struct TestSymmetricKey {
-    key_block: KeyBlock,
-}
-
-#[derive(Serialize, Clone, Eq, PartialEq, Debug)]
-#[serde(untagged)]
-#[allow(dead_code)]
-enum TestObject {
-    /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
-    PrivateKey {
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
-    /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
-    /// This is only a public key, not a certificate.
-    PublicKey {
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
-    /// A Managed Cryptographic Object that is a symmetric key.
-    SymmetricKey(TestSymmetricKey),
-}
-
-impl<'de> Deserialize<'de> for TestObject {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct TestObjectVisitor;
-
-        impl<'de> Visitor<'de> for TestObjectVisitor {
-            type Value = TestObject;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("an Object enumeration")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                // let mut object_type: Option<ObjectType> = None;
-                if let Some(key) = map.next_key::<String>()? {
-                    info!("Key: {}", key);
-                    return match key.as_str() {
-                        "TestSymmetricKey" => {
-                            let key = map.next_value::<TestSymmetricKey>()?;
-                            Ok(TestObject::SymmetricKey(key))
-                        }
-                        _ => Err(serde::de::Error::custom("Invalid Object")),
-                    }
-                }
-                Err(serde::de::Error::custom("Invalid Object"))
-            }
-        }
-
-        deserializer.deserialize_map(TestObjectVisitor)
-    }
-}
-
-#[test]
-fn test_des_aes_key_bg() {
-    log_init(Some("trace,hyper=info,reqwest=info"));
-    let key_bytes: &[u8] = b"this_is_a_test";
-
-    let kk = TestSymmetricKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentSymmetricKey,
-            key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::from(key_bytes.to_vec()),
-                },
-                attributes: Some(Attributes {
-                    object_type: Some(ObjectType::SymmetricKey),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    cryptographic_length: Some(key_bytes.len() as i32 * 8),
-                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
-                    key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-                    ..Attributes::default()
-                }),
-            },
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(key_bytes.len() as i32 * 8),
-            key_wrapping_data: None,
-        },
-    };
-    let aes_key = TestObject::SymmetricKey(kk);
-    let ttlv = to_ttlv(&aes_key).unwrap();
-    info!("{:?}", ttlv);
-    // assert_eq!(aes_key_ttlv(key_bytes), ttlv);
-
-    let mut deserializer = TtlvDeserializer::from_ttlv(ttlv);
-    let rec = TestObject::deserialize(&mut deserializer).unwrap();
-    // let rec: TestSymmetricKey = from_ttlv(ttlv).unwrap();
-    info!("{:?}", rec);
-    // assert!(aes_key(key_bytes) == rec);
-}
-
 #[test]
 fn test_des_aes_key() {
     log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
 
-    let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
-    let o: Object = serde_json::from_value(json).unwrap();
-    // Deserialization cannot make the difference
-    // between a `SymmetricKey` or a `PrivateKey`
-    assert!(aes_key(key_bytes) == Object::post_fix(ObjectType::SymmetricKey, o));
+    let key = aes_key(key_bytes);
 
-    let ttlv = aes_key_ttlv(key_bytes);
+    // Serializer
+    let ttlv = to_ttlv(&key).unwrap();
+    info!("{:?}", ttlv);
+    assert_eq!(aes_key_ttlv(key_bytes), ttlv);
+
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+
+    // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert!(aes_key(key_bytes) == rec);
+    assert_eq!(aes_key(key_bytes), rec);
+}
+
+#[test]
+fn test_import() {
+    log_init(Some("trace,hyper=info,reqwest=info"));
+    let key_bytes: &[u8] = b"this_is_a_test";
+    let key = aes_key(key_bytes);
+    let import = Import {
+        unique_identifier: UniqueIdentifier::TextString("unique_identifier".to_owned()),
+        object_type: ObjectType::Certificate,
+        replace_existing: None,
+        key_wrap_type: None,
+        attributes: key.attributes().unwrap().to_owned(),
+        object: key,
+    };
+    // Serializer
+    let ttlv = to_ttlv(&import).unwrap();
+    info!("{:?}", ttlv);
+    // Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+    info!("{}", json);
+    // Deserialize
+    let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, ttlv_from_json);
+    // Deserializer
+    let rec: Import = from_ttlv(ttlv).unwrap();
+    assert_eq!(import, rec);
 }
 
 #[test]
@@ -588,7 +511,7 @@ fn test_java_import_request() {
       "value" : "OpaqueObject"
     } ]
   }, {
-    "tag" : "Object",
+    "tag" : "SymmetricKey",
     "value" : [ {
       "tag" : "KeyBlock",
       "value" : [ {
@@ -696,7 +619,7 @@ pub(crate) fn test_create() {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
-            link_type: crate::kmip_2_1::kmip_types::LinkType::ParentLink,
+            link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_owned()),
         }]),
         ..Attributes::default()
@@ -731,12 +654,12 @@ fn test_issue_deserialize_object_with_empty_attributes() {
 
     // this should work too but does not deserialize
     // because of the empty Attributes in the KeyValue
-    let object = Object::SymmetricKey {
+    let object = Object::SymmetricKey(SymmetricKey {
         key_block: get_key_block(),
-    };
+    });
     let object_: Object = serialize_deserialize(&object).unwrap();
     match object_ {
-        Object::SymmetricKey { key_block } => {
+        Object::SymmetricKey(SymmetricKey { key_block }) => {
             assert_eq!(
                 get_key_block().key_value.key_material,
                 key_block.key_value.key_material

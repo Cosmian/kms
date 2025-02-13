@@ -11,9 +11,7 @@ use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use strum::{EnumIter, VariantNames};
-// use strum_macros::VariantNames;
-use tracing::info;
+use strum::EnumIter;
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
@@ -26,6 +24,12 @@ use crate::{
         },
     },
 };
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SymmetricKey {
+    pub key_block: KeyBlock,
+}
 
 /// Object Types
 /// Section 2 of KMIP Reference 2.1
@@ -44,7 +48,7 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Clone, Eq, PartialEq, VariantNames)]
+#[derive(Serialize, Clone, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
@@ -134,10 +138,7 @@ pub enum Object {
         key_block: KeyBlock,
     },
     /// A Managed Cryptographic Object that is a symmetric key.
-    SymmetricKey {
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
+    SymmetricKey(SymmetricKey),
 }
 
 impl<'de> Deserialize<'de> for Object {
@@ -159,9 +160,14 @@ impl<'de> Deserialize<'de> for Object {
                 A: MapAccess<'de>,
             {
                 // let mut object_type: Option<ObjectType> = None;
-                while let Some(key) = map.next_key::<String>()? {
-                    info!("Key: {}", key);
-                    let _unused = map.next_value::<Object>()?;
+                if let Some(key) = map.next_key::<String>()? {
+                    return match key.as_str() {
+                        "SymmetricKey" => {
+                            let key = map.next_value::<SymmetricKey>()?;
+                            Ok(Object::SymmetricKey(key))
+                        }
+                        x => Err(serde::de::Error::custom(format!("Invalid Object: {x}"))),
+                    }
                 }
                 Err(serde::de::Error::custom("Invalid Object"))
             }
@@ -228,7 +234,7 @@ impl Display for Object {
             ),
             Self::PrivateKey { key_block } => write!(f, "PrivateKey(key_block: {key_block})"),
             Self::PublicKey { key_block } => write!(f, "PublicKey(key_block: {key_block})"),
-            Self::SymmetricKey { key_block } => {
+            Self::SymmetricKey(SymmetricKey { key_block }) => {
                 write!(f, "SymmetricKey(key_block: {key_block})")
             }
         }
@@ -259,7 +265,7 @@ impl Object {
             | Self::PrivateKey { key_block }
             | Self::SecretData { key_block, .. }
             | Self::PGPKey { key_block, .. }
-            | Self::SymmetricKey { key_block }
+            | Self::SymmetricKey(SymmetricKey { key_block })
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
@@ -300,7 +306,7 @@ impl Object {
             | Self::PrivateKey { key_block }
             | Self::SecretData { key_block, .. }
             | Self::PGPKey { key_block, .. }
-            | Self::SymmetricKey { key_block }
+            | Self::SymmetricKey(SymmetricKey { key_block })
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
@@ -318,18 +324,18 @@ impl Object {
         match object_type {
             ObjectType::SymmetricKey => match object {
                 Self::PrivateKey { key_block } | Self::PublicKey { key_block } => {
-                    Self::SymmetricKey { key_block }
+                    Self::SymmetricKey(SymmetricKey { key_block })
                 }
                 _ => object,
             },
             ObjectType::PublicKey => match object {
-                Self::SymmetricKey { key_block } | Self::PrivateKey { key_block } => {
+                Self::SymmetricKey(SymmetricKey { key_block }) | Self::PrivateKey { key_block } => {
                     Self::PublicKey { key_block }
                 }
                 _ => object,
             },
             ObjectType::PrivateKey => match object {
-                Self::SymmetricKey { key_block } | Self::PublicKey { key_block } => {
+                Self::SymmetricKey(SymmetricKey { key_block }) | Self::PublicKey { key_block } => {
                     Self::PrivateKey { key_block }
                 }
                 _ => object,

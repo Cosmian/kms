@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
-    kmip_objects::Object,
+    kmip_objects::{Object, SymmetricKey},
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
         AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
@@ -110,7 +110,7 @@ pub(crate) async fn get_attributes(
                 default_attributes
             }
         }
-        Object::SymmetricKey { key_block } => {
+        Object::SymmetricKey(SymmetricKey { key_block }) => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
             attributes.link.clone_from(&owm.attributes().link);
