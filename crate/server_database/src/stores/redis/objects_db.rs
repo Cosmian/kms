@@ -208,8 +208,7 @@ impl ObjectsDB {
         if ciphertext.is_empty() {
             return Ok(None)
         }
-        let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-        dbo.object = Object::post_fix(dbo.object_type, dbo.object);
+        let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         Ok(Some(dbo))
     }
 
@@ -233,8 +232,7 @@ impl ObjectsDB {
             if ciphertext.is_empty() {
                 continue
             }
-            let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-            dbo.object = Object::post_fix(dbo.object_type, dbo.object);
+            let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
             results.insert(uid.to_string(), dbo);
         }
         Ok(results)

@@ -3,7 +3,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PublicKey},
     kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
@@ -65,7 +65,7 @@ async fn decrypt_data_test() -> KResult<()> {
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: Attributes::default(),
-        object: Object::PublicKey {
+        object: Object::PublicKey(PublicKey {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
                 key_compression_type: None,
@@ -77,7 +77,7 @@ async fn decrypt_data_test() -> KResult<()> {
                 cryptographic_length: None,
                 key_wrapping_data: None,
             },
-        },
+        }),
     };
     let import_response: ImportResponse = test_utils::post(&app, &import_key).await?;
     let key_id = import_response.unique_identifier;

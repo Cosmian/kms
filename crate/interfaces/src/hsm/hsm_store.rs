@@ -10,7 +10,7 @@ use cosmian_kmip::{
     SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType, SymmetricKey},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
             StateEnumeration,
@@ -399,7 +399,7 @@ fn to_object_with_metadata(
                     km.coefficient.as_slice(),
                 ))),
             };
-            let object = Object::PrivateKey {
+            let object = Object::PrivateKey(PrivateKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPrivateKey,
                     key_compression_type: None,
@@ -415,7 +415,7 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,
@@ -451,7 +451,7 @@ fn to_object_with_metadata(
                 modulus: Box::new(BigUint::from_bytes_be(km.modulus.as_slice())),
                 public_exponent: Box::new(BigUint::from_bytes_be(km.public_exponent.as_slice())),
             };
-            let object = Object::PublicKey {
+            let object = Object::PublicKey(PublicKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPublicKey,
                     key_compression_type: None,
@@ -467,7 +467,7 @@ fn to_object_with_metadata(
                     ),
                     key_wrapping_data: None,
                 },
-            };
+            });
             Ok(ObjectWithMetadata::new(
                 uid.to_owned(),
                 object,

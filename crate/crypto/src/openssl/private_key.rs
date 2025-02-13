@@ -2,7 +2,7 @@ use cosmian_kmip::{
     SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
             CryptographicUsageMask, KeyFormatType, RecommendedCurve,
@@ -50,7 +50,7 @@ use crate::{
 ///
 pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>, CryptoError> {
     let key_block = match private_key {
-        Object::PrivateKey { key_block } => key_block,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block,
         x => crypto_bail!("Invalid Object: {}. KMIP Private Key expected", x),
     };
     let pk: PKey<Private> = match key_block.key_format_type {
@@ -461,7 +461,7 @@ pub fn openssl_private_key_to_kmip(
             f
         ),
     };
-    Ok(Object::PrivateKey { key_block })
+    Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
 #[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
@@ -475,7 +475,7 @@ mod tests {
     use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
+        kmip_objects::{Object, PrivateKey},
         kmip_types::{KeyFormatType, RecommendedCurve},
     };
     use openssl::{
@@ -505,7 +505,7 @@ mod tests {
         // PKCS#X
         let object = openssl_private_key_to_kmip(private_key, kft, mask).unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
@@ -563,7 +563,7 @@ mod tests {
         let object =
             openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey, mask).unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
@@ -608,7 +608,7 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {
@@ -681,7 +681,7 @@ mod tests {
             openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey, mask)
                 .unwrap();
         let object_ = object.clone();
-        let Object::PrivateKey { key_block } = object else {
+        let Object::PrivateKey(PrivateKey { key_block }) = object else {
             panic!("Invalid key block")
         };
         let KeyBlock {

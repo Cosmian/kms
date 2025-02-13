@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
@@ -61,7 +61,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(sk_uid, "ec_sk_uid".to_owned());
     let sk = &sk_response.object;
     let sk_key_block = match sk {
-        Object::PrivateKey { key_block } => key_block.clone(),
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.clone(),
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Private Key".to_owned(),
@@ -115,7 +115,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .await?;
     let pk = &pk_response.object;
     let pk_key_block = match &pk {
-        Object::PublicKey { key_block } => key_block.clone(),
+        Object::PublicKey(PublicKey { key_block }) => key_block.clone(),
         _ => {
             return Err(KmsError::ServerError(
                 "Expected a KMIP Public Key".to_owned(),

@@ -63,7 +63,7 @@ fn my_sql_row_to_owm(row: &MySqlRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
     let db_object: DBObject = serde_json::from_value(row.get::<Value, _>(1))
         .context("failed deserializing the object")?;
-    let object = Object::post_fix(db_object.object_type, db_object.object);
+    let object = db_object.object;
     let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
         .context("failed deserializing the Attributes")?;
     let owner = row.get::<String, _>(3);
@@ -1036,7 +1036,7 @@ pub(crate) async fn migrate_from_4_12_0_to_4_13_0(executor: &Pool<MySql>) -> DbR
         let uid = row.get::<String, _>(0);
         let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
             .context("migrate: failed deserializing the object")?;
-        let object = Object::post_fix(db_object.object_type, db_object.object);
+        let object = db_object.object;
         trace!(
             "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
             object.object_type(),

@@ -7,7 +7,7 @@ use cosmian_kmip::{
     SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
             CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
@@ -136,7 +136,7 @@ pub fn to_ec_public_key(
     );
 
     let q_length = Some(i32::try_from(pkey_bits_number)?);
-    Ok(Object::PublicKey {
+    Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPublicKey,
@@ -173,7 +173,7 @@ pub fn to_ec_public_key(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Convert to an Elliptic Curve KMIP Private Key.
@@ -202,7 +202,7 @@ pub fn to_ec_private_key(
     );
 
     let q_length = Some(i32::try_from(pkey_bits_number)?);
-    Ok(Object::PrivateKey {
+    Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
@@ -240,7 +240,7 @@ pub fn to_ec_private_key(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.

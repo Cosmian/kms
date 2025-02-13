@@ -3,7 +3,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier,
@@ -84,11 +84,8 @@ pub fn create_msk_object(
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(mpk_uid.to_owned()),
     }]);
-    attributes.sensitive = sensitive;
-
-    let cryptographic_length = Some(i32::try_from(msk_bytes.len())? * 8);
-
-    Ok(Object::PrivateKey {
+    let cryptographic_length = Some(i32::try_from(key.len())? * 8);
+    Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -100,7 +97,7 @@ pub fn create_msk_object(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Create a Master Public Key Object from the passed key bytes,
@@ -123,7 +120,7 @@ fn create_mpk_object(
         linked_object_identifier: LinkedObjectIdentifier::TextString(msk_uid),
     }]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
-    Ok(Object::PublicKey {
+    Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
@@ -135,7 +132,7 @@ fn create_mpk_object(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 pub fn cc_master_keypair_from_kmip_objects(
