@@ -3,12 +3,12 @@ use serde::{
     de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
 };
+use strum::VariantNames;
 use tracing::{instrument, trace};
 
 use super::{error::TtlvError, TTLV};
 use crate::{
-    // kmip_1_4::kmip_objects::{Object as Object14, ObjectType as ObjectType14},
-    kmip_2_1::kmip_objects::{Object as Object21, ObjectType as ObjectType21},
+    kmip_2_1,
     ttlv::{kmip_big_int_deserializer::KmipBigIntDeserializer, TTLValue},
 };
 
@@ -25,40 +25,9 @@ pub fn from_ttlv<'a, T>(s: TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    // postfix the TTLV if it is a root object
-    trait PostFix
-    where
-        Self: Sized,
-    {
-        fn post_fix(self, tag: &str) -> Result<Self>;
-    }
-    impl<T> PostFix for T {
-        default fn post_fix(self, _tag: &str) -> Result<Self> {
-            Ok(self)
-        }
-    }
-    // impl PostFix for Object14 {
-    //     fn post_fix(self, tag: &str) -> Result<Self> {
-    //         let object_type = ObjectType14::try_from(tag)?;
-    //         Ok(Self::post_fix(object_type, self))
-    //     }
-    // }
-    impl PostFix for Object21 {
-        fn post_fix(self, tag: &str) -> Result<Self> {
-            let object_type = ObjectType21::try_from(tag)?;
-            Ok(Self::post_fix(object_type, self))
-        }
-    }
-
     trace!("from_ttlv: {s:?}");
-    // Recover the tag for postfixing
-    let tag = s.tag.clone();
-    // Deserialize the value
-    // and postfix the value if it is a root object
     let mut deserializer = TtlvDeserializer::from_ttlv(s);
-    let value = T::deserialize(&mut deserializer)?;
-
-    value.post_fix(&tag)
+    T::deserialize(&mut deserializer)
 }
 
 // WHen deserializing a map, the deserializer needs to know if it is deserializing the key or the value
@@ -759,19 +728,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // if the current item is a structure, it may be a KMIP Object
                 // KMIP objects are always present in KMIP structures with "Object" as the property name.
                 // So the deserializer is expecting "Object" as the identifier, not the tag/Object Name
-                if [
-                    "Certificate",
-                    "CertificateRequest",
-                    "OpaqueObject",
-                    "PGPKey",
-                    "SecretData",
-                    "SplitKey",
-                    "PrivateKey",
-                    "PublicKey",
-                    "SymmetricKey",
-                ]
-                .contains(&self.current.tag.as_str())
-                {
+                if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&self.current.tag.as_str()) {
                     return visitor.visit_str("Object");
                 }
                 visitor.visit_str(&self.current.tag)
