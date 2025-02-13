@@ -5,7 +5,7 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 use cosmian_kmip::{
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
             KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
@@ -83,7 +83,7 @@ pub fn to_rsa_public_key(
         pkey_bits_number
     );
 
-    let output = Object::PublicKey {
+    let output = Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPublicKey,
@@ -117,7 +117,7 @@ pub fn to_rsa_public_key(
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
-    };
+    });
     trace!("to_rsa_public_key: output object: {output}");
     Ok(output)
 }
@@ -139,7 +139,7 @@ pub fn to_rsa_private_key(
         pkey_bits_number
     );
 
-    Ok(Object::PrivateKey {
+    Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
@@ -194,7 +194,7 @@ pub fn to_rsa_private_key(
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 pub fn create_rsa_key_pair(

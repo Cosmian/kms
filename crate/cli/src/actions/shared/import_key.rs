@@ -10,7 +10,7 @@ use cosmian_kms_client::{
         },
     },
     import_object,
-    kmip_2_1::kmip_objects::SymmetricKey,
+    kmip_2_1::kmip_objects::{PrivateKey, PublicKey, SymmetricKey},
     objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes, KmsClient,
 };
 use zeroize::Zeroizing;
@@ -259,7 +259,7 @@ pub(crate) fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
-    Object::PrivateKey {
+    Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
@@ -275,7 +275,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 // Here the zeroizing type on public key bytes is overkill, but it aligns with
@@ -284,7 +284,7 @@ fn build_public_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
-    Object::PublicKey {
+    Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
@@ -300,7 +300,7 @@ fn build_public_key_from_der_bytes(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 fn build_symmetric_key_from_bytes(

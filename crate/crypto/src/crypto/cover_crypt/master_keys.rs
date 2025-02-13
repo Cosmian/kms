@@ -4,7 +4,7 @@ use cloudproof::reexport::{
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier,
@@ -107,7 +107,7 @@ fn create_master_private_key_object(
         ),
     }]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
-    Ok(Object::PrivateKey {
+    Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -119,7 +119,7 @@ fn create_master_private_key_object(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 /// Create a Master Public Key Object from the passed key bytes,
@@ -148,7 +148,7 @@ fn create_master_public_key_object(
         ),
     }]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
-    Ok(Object::PublicKey {
+    Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
@@ -160,7 +160,7 @@ fn create_master_public_key_object(
             cryptographic_length,
             key_wrapping_data: None,
         },
-    })
+    }))
 }
 
 pub fn covercrypt_keys_from_kmip_objects(

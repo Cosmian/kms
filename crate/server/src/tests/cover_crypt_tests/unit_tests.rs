@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
@@ -85,7 +85,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // check sk
     let object = &gr_sk.object;
     let recovered_kms_sk_key_block = match object {
-        Object::PrivateKey { key_block } => key_block,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block,
         _other => {
             kms_bail!("The object at uid: {sk_uid} is not a CC Master secret key");
         }
@@ -109,7 +109,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // check pk
     let pk = &gr_pk.object;
     let recovered_kms_pk_key_block = match pk {
-        Object::PublicKey { key_block } => key_block,
+        Object::PublicKey(PublicKey { key_block }) => key_block,
         _other => {
             kms_bail!("The object at uid: {pk_uid} is not a CC Master secret key");
         }
@@ -181,7 +181,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             .context("No uid in response")?
     );
     let _recovered_kms_uk_key_block = match object {
-        Object::PrivateKey { key_block } => key_block,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block,
         _other => {
             kms_bail!("The object at uid: {usk_uid} is not a CC user decryption key");
         }
@@ -215,7 +215,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             .context("No uid in response")?
     );
     let recovered_kms_uk_key_block = match object {
-        Object::PrivateKey { key_block } => key_block,
+        Object::PrivateKey(PrivateKey { key_block }) => key_block,
         _other => {
             kms_bail!("The object at uid: {usk_uid} is not a CC user decryption key");
         }

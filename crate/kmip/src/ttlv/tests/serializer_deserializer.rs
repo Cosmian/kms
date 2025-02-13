@@ -23,7 +23,7 @@ fn test_ser_int() {
         uint64: u64,
         int64: i64,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         uint32: 1,
@@ -63,7 +63,7 @@ fn test_ser_big_int() {
         big_int_neg: BigInt,
         big_int_pos: BigInt,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let tests = [
         (
@@ -114,7 +114,7 @@ fn test_ser_big_uint() {
     struct Test {
         big_uint: BigUint,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let tests = [
         (
@@ -165,7 +165,7 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -205,7 +205,7 @@ fn test_enum_unit_variant() {
     struct Test {
         an_enum: Enumeration,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     // Try with Ten
     let test = Test {
@@ -260,7 +260,7 @@ fn test_enumeration_untagged() {
     struct Test {
         an_enum: Enumeration,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let test = Test {
         an_enum: Enumeration::OneInt(42),
@@ -429,7 +429,7 @@ fn test_nested_structures() {
     struct Root {
         the_child: Child,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     let child = Child {
         enumeration: Enumeration::OneInt(42),
@@ -472,7 +472,7 @@ fn test_enum_unit_variant_with_value() {
     struct Test {
         an_enum: MyEnum,
     }
-    log_init(Some("trace,hyper=info,reqwest=info"));
+    log_init(Some("info,hyper=info,reqwest=info"));
 
     // Try with Ten
     let test = Test {

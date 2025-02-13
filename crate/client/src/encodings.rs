@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Certificate, Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{Attributes, CertificateType, KeyFormatType},
 };
 use pem::{EncodeConfig, LineEnding};
@@ -49,27 +49,27 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, KmsClientError> {
             |kft: KeyFormatType| key_block(kft, pem.contents().to_vec());
 
         match pem.tag() {
-            "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
+            "RSA PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::PKCS1),
-            }),
+            })),
             "RSA PUBLIC KEY" => objects.insert(
                 0,
-                Object::PublicKey {
+                Object::PublicKey(PublicKey {
                     key_block: key_block_with_format_type(KeyFormatType::PKCS1),
-                },
+                }),
             ),
-            "PRIVATE KEY" => objects.push(Object::PrivateKey {
+            "PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::PKCS8),
-            }),
+            })),
             "PUBLIC KEY" => objects.insert(
                 0,
-                Object::PublicKey {
+                Object::PublicKey(PublicKey {
                     key_block: key_block_with_format_type(KeyFormatType::PKCS8),
-                },
+                }),
             ),
-            "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
+            "EC PRIVATE KEY" => objects.push(Object::PrivateKey(PrivateKey {
                 key_block: key_block_with_format_type(KeyFormatType::ECPrivateKey),
-            }),
+            })),
             "EC PUBLIC KEY" => {
                 return Err(KmsClientError::NotSupported(
                     "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
@@ -77,10 +77,10 @@ pub fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, KmsClientError> {
                         .to_string(),
                 ))
             }
-            "CERTIFICATE" => objects.push(Object::Certificate {
+            "CERTIFICATE" => objects.push(Object::Certificate(Certificate {
                 certificate_type: CertificateType::X509,
                 certificate_value: pem.into_contents(),
-            }),
+            })),
             "X509 CRL" => {
                 return Err(KmsClientError::NotSupported(
                     "X509 CRL not supported on this server".to_owned(),

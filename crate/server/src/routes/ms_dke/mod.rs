@@ -10,7 +10,7 @@ use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyMaterial,
-    kmip_objects::Object,
+    kmip_objects::{Object, PublicKey},
     kmip_operations::{Decrypt, Get},
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
@@ -134,7 +134,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
     };
     let resp = kms.get(op, &user, database_params).await?;
     match resp.object {
-        Object::PublicKey { key_block, .. } => match key_block.key_value.key_material {
+        Object::PublicKey(PublicKey { key_block, .. }) => match key_block.key_value.key_material {
             KeyMaterial::TransparentRSAPublicKey {
                 modulus,
                 public_exponent,

@@ -1,7 +1,7 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
@@ -123,7 +123,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
             None
         },
         attributes: attributes.clone(),
-        object: Object::PrivateKey {
+        object: Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -142,7 +142,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
                     None
                 },
             },
-        },
+        }),
     })
 }
 
@@ -198,7 +198,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
             None
         },
         attributes: attributes.clone(),
-        object: Object::PrivateKey {
+        object: Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -217,7 +217,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                     None
                 },
             },
-        },
+        }),
     })
 }
 
@@ -254,7 +254,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         replace_existing: Some(replace_existing),
         key_wrap_type: None,
         attributes: attributes.clone(),
-        object: Object::PublicKey {
+        object: Object::PublicKey(PublicKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptPublicKey,
@@ -266,7 +266,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 cryptographic_length,
                 key_wrapping_data: None,
             },
-        },
+        }),
     })
 }
 

@@ -3,7 +3,7 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{
     kmip_2_1::{
-        kmip_objects::Object,
+        kmip_objects::{Certificate, Object},
         kmip_types::{Attributes, KeyFormatType, LinkType},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
@@ -104,10 +104,10 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let Object::Certificate {
+    let Object::Certificate(Certificate {
         certificate_value: cert_x509_der,
         ..
-    } = &cert
+    }) = &cert
     else {
         panic!("wrong object type")
     };
@@ -130,10 +130,10 @@ async fn test_import_export_p12_25519() {
     )
     .unwrap();
     let issuer_cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
-    let Object::Certificate {
+    let Object::Certificate(Certificate {
         certificate_value: issuer_cert_x509_der,
         ..
-    } = &issuer_cert
+    }) = &issuer_cert
     else {
         panic!("wrong object type")
     };
@@ -392,6 +392,7 @@ pub(crate) fn export_certificate(
             CertificateExportFormat::Pem => "pem",
             CertificateExportFormat::Pkcs12 => "pkcs12",
             CertificateExportFormat::Pkcs7 => "pkcs7",
+            _ => "json-ttlv",
         };
         args.push(arg_value.to_owned());
     }

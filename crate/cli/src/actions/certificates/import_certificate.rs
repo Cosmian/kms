@@ -9,7 +9,9 @@ use cosmian_kms_client::{
             Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    import_object, read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
+    import_object,
+    kmip_2_1::kmip_objects,
+    read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
 };
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
@@ -174,10 +176,10 @@ impl ImportCertificateAction {
                 let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
                     CliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
                 })?;
-                let object = Object::Certificate {
+                let object = Object::Certificate(kmip_objects::Certificate {
                     certificate_type: CertificateType::X509,
                     certificate_value: certificate.to_der()?,
-                };
+                });
                 let certificate_id = self
                     .import_chain(
                         kms_rest_client,
@@ -198,10 +200,10 @@ impl ImportCertificateAction {
                 let certificate = Certificate::from_der(&der_value).map_err(|e| {
                     CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
                 })?;
-                let object = Object::Certificate {
+                let object = Object::Certificate(kmip_objects::Certificate {
                     certificate_type: CertificateType::X509,
                     certificate_value: certificate.to_der()?,
-                };
+                });
                 let certificate_id = self
                     .import_chain(
                         kms_rest_client,
@@ -374,10 +376,10 @@ fn build_chain_from_stack(pem_chain: &[u8]) -> CliResult<Vec<Object>> {
         let certificate = Certificate::from_der(pem_data.contents()).map_err(|e| {
             CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
         })?;
-        let object = Object::Certificate {
+        let object = Object::Certificate(kmip_objects::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: certificate.to_der()?,
-        };
+        });
         objects.push(object);
     }
     Ok(objects)

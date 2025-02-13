@@ -6,7 +6,7 @@ use cloudproof::reexport::cover_crypt::{
     abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
 };
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
     kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
@@ -216,7 +216,7 @@ async fn get_master_keys_and_policy(
     let policy = policy_from_attributes(private_key_attributes)?;
 
     // Recover the Master Public Key
-    let Object::PrivateKey { key_block } = &msk else {
+    let Object::PrivateKey(PrivateKey { key_block }) = &msk else {
         return Err(KmsError::Kmip21Error(
             ErrorReason::Invalid_Object_Type,
             "KmsError::KmipErrorIP Private Key".to_owned(),

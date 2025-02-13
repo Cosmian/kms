@@ -4,7 +4,7 @@ use cosmian_kms_client::{
     export_object,
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
             Attributes, BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
@@ -216,9 +216,9 @@ impl CreateKeyPairsAction {
         )
         .await?;
 
-        if let Object::Certificate {
+        if let Object::Certificate(Certificate {
             certificate_value, ..
-        } = &pkcs7_object
+        }) = &pkcs7_object
         {
             trace!(
                 "pkcs7_object: {:?}",
@@ -235,9 +235,9 @@ impl CreateKeyPairsAction {
         } else {
             let email = &self.user_id;
             println!("[{email}] - Pushing new keypair to Gmail API");
-            if let Object::Certificate {
+            if let Object::Certificate(Certificate {
                 certificate_value, ..
-            } = pkcs7_object
+            }) = pkcs7_object
             {
                 tracing::info!("Processing {email:?}.");
                 Self::post_keypair(

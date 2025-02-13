@@ -7,7 +7,7 @@ use cloudproof::reexport::{
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, PrivateKey},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier,
@@ -29,7 +29,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
     user_decryption_key: &Object,
 ) -> Result<(Zeroizing<Vec<u8>>, Attributes), CryptoError> {
     let key_block = match &user_decryption_key {
-        Object::PrivateKey { key_block } => key_block.clone(),
+        Object::PrivateKey(PrivateKey { key_block }) => key_block.clone(),
         _ => return Err(CryptoError::Kmip("Expected a KMIP Private Key".to_owned())),
     };
     if key_block.key_format_type != KeyFormatType::CoverCryptSecretKey {
@@ -123,7 +123,7 @@ impl UserDecryptionKeysHandler {
             ),
         }]);
         let cryptographic_length = Some(i32::try_from(user_decryption_key_len)? * 8);
-        Ok(Object::PrivateKey {
+        Ok(Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -135,7 +135,7 @@ impl UserDecryptionKeysHandler {
                 cryptographic_length,
                 key_wrapping_data: None,
             },
-        })
+        }))
     }
 
     /// Refresh the user decryption key according to the (new) policy of the master key
@@ -166,7 +166,7 @@ impl UserDecryptionKeysHandler {
             CryptoError::Kmip(format!("cover crypt: failed serializing the user key: {e}"))
         })?;
         let cryptographic_length = Some(i32::try_from(user_decryption_key_bytes.len())? * 8);
-        Ok(Object::PrivateKey {
+        Ok(Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
@@ -178,6 +178,6 @@ impl UserDecryptionKeysHandler {
                 cryptographic_length,
                 key_wrapping_data: None,
             },
-        })
+        }))
     }
 }

@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::Object,
+    kmip_objects::{Object, PrivateKey},
     kmip_types::{CryptographicAlgorithm, KeyFormatType},
     requests::create_symmetric_key_kmip_object,
 };
@@ -90,7 +90,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
     let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
     let p12_bytes = include_bytes!("../../../../test_data/pkcs11/certificate.p12");
 
-    let p12_sk = Object::PrivateKey {
+    let p12_sk = Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
@@ -106,7 +106,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    };
+    });
 
     let p12_id = import_object(
         &kms_rest_client,

@@ -14,7 +14,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Certify, Get, Import, ImportResponse},
         kmip_types::{
             Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
@@ -274,7 +274,7 @@ pub(crate) fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
     bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
-    Object::PrivateKey {
+    Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
@@ -290,7 +290,7 @@ pub(crate) fn build_private_key_from_der_bytes(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 #[tokio::test]
@@ -433,9 +433,9 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
         )
         .await?;
 
-    if let Object::Certificate {
+    if let Object::Certificate(Certificate {
         certificate_value, ..
-    } = &pkcs7.object
+    }) = &pkcs7.object
     {
         trace!(
             "pkcs7_format: {:?}",

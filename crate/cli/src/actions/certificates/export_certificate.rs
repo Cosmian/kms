@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     export_object,
-    kmip_2_1::{kmip_objects::Object, kmip_types::KeyFormatType},
+    kmip_2_1::{
+        kmip_objects::{Certificate, Object, PrivateKey},
+        kmip_types::KeyFormatType,
+    },
     ttlv::kmip_ttlv_serializer::to_ttlv,
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
@@ -125,9 +128,9 @@ impl ExportCertificateAction {
         .await?;
 
         match &object {
-            Object::Certificate {
+            Object::Certificate(Certificate {
                 certificate_value, ..
-            } => {
+            }) => {
                 match self.output_format {
                     CertificateExportFormat::JsonTtlv => {
                         // save it to a file
@@ -156,7 +159,7 @@ impl ExportCertificateAction {
                 }
             }
             // PKCS12 is exported as a private key object
-            Object::PrivateKey { key_block } => {
+            Object::PrivateKey(PrivateKey { key_block }) => {
                 let p12_bytes = key_block.key_bytes()?.to_vec();
                 // save it to a file
                 write_bytes_to_file(&p12_bytes, &self.certificate_file)?;

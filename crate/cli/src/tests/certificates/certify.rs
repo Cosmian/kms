@@ -9,6 +9,7 @@ use cosmian_kms_client::{
         },
         ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},
     },
+    kmip_2_1::kmip_objects::Certificate,
     read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV,
 };
 use cosmian_logger::log_init;
@@ -183,9 +184,9 @@ fn fetch_certificate(ctx: &TestsContext, certificate_id: &str) -> (Object, Attri
     .unwrap();
     let cert = read_object_from_json_ttlv_file(&exported_cert_file).unwrap();
     let cert_x509_der = match &cert {
-        Object::Certificate {
+        Object::Certificate(Certificate {
             certificate_value, ..
-        } => {
+        }) => {
             // Write to disk
             // let pem_cert = openssl::x509::X509::from_der(certificate_value).unwrap();
             // let pem_cert = pem_cert.to_pem().unwrap();

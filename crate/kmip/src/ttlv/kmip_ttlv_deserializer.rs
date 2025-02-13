@@ -8,7 +8,7 @@ use tracing::{instrument, trace};
 
 use super::{error::TtlvError, TTLV};
 use crate::{
-    kmip_2_1,
+    kmip_1_4, kmip_2_1,
     ttlv::{kmip_big_int_deserializer::KmipBigIntDeserializer, TTLValue},
 };
 
@@ -729,6 +729,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // KMIP objects are always present in KMIP structures with "Object" as the property name.
                 // So the deserializer is expecting "Object" as the identifier, not the tag/Object Name
                 if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&self.current.tag.as_str()) {
+                    return visitor.visit_str("Object");
+                }
+                if kmip_1_4::kmip_objects::Object::VARIANTS.contains(&self.current.tag.as_str()) {
                     return visitor.visit_str("Object");
                 }
                 visitor.visit_str(&self.current.tag)
