@@ -173,7 +173,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     // TTLV has no support for floating point numbers
     #[instrument(skip(self))]
     #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok> {
+    fn serialize_f32(self, _v: f32) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f32' is unsupported in TTLV".to_owned(),
         ))
@@ -182,7 +182,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     // TTLV has no support for floating point numbers
     #[instrument(skip(self))]
     #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok> {
+    fn serialize_f64(self, _v: f64) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f64' is unsupported in TTLV".to_owned(),
         ))
@@ -503,9 +503,16 @@ impl ser::Serializer for &mut TTLVSerializer {
             "serialize_struct {name} of len: {len} . Current: {:?}",
             &self.current
         );
-        // Push the struct on the parents stack, collecting the name
-        let tag = if self.current.tag.is_empty() {
-            // top level struct => get its name
+        // Push the struct on the parent's stack, collecting the name
+        // There are teo special cases:
+        // 1. If the tag is empty, it means it is the root structure, we use the name of the struct
+        // 2. If the tag is "Object", it means that we are expecting a KMIP Object, we use the name of the KMIP Object
+        let tag = if self.current.tag.is_empty() || self.current.tag == "Object" {
+            trace!(
+                "... replacing the parent tag: {} with name: {}",
+                self.current.tag,
+                name
+            );
             name.to_owned()
         } else {
             self.current.tag.clone()

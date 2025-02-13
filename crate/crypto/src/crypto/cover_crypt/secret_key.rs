@@ -6,7 +6,7 @@ use cloudproof::reexport::{
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Object, ObjectType, SymmetricKey},
     kmip_operations::GetResponse,
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, WrappingMethod,
@@ -60,7 +60,7 @@ pub fn wrapped_secret_key(
         ..KeyWrappingData::default()
     };
 
-    Ok(Object::SymmetricKey {
+    Ok(Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
@@ -69,7 +69,7 @@ pub fn wrapped_secret_key(
             cryptographic_length,
             key_wrapping_data: Some(key_wrapping_data),
         },
-    })
+    }))
 }
 
 #[derive(Serialize, Deserialize, Debug)]

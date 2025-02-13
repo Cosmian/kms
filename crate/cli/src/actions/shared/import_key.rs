@@ -9,8 +9,9 @@ use cosmian_kms_client::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
     },
-    import_object, objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    KmsClient,
+    import_object,
+    kmip_2_1::kmip_objects::SymmetricKey,
+    objects_from_pem, read_bytes_from_file, read_object_from_json_ttlv_bytes, KmsClient,
 };
 use zeroize::Zeroizing;
 
@@ -307,7 +308,7 @@ fn build_symmetric_key_from_bytes(
     bytes: Zeroizing<Vec<u8>>,
 ) -> CliResult<Object> {
     let len = i32::try_from(bytes.len())? * 8;
-    Ok(Object::SymmetricKey {
+    Ok(Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
@@ -319,5 +320,5 @@ fn build_symmetric_key_from_bytes(
             cryptographic_length: Some(len),
             key_wrapping_data: None,
         },
-    })
+    }))
 }

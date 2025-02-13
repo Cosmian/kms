@@ -14,6 +14,7 @@ use crate::{backend::CkmsBackend, error::Pkcs11Error, kms_object::get_kms_object
 
 #[tokio::test]
 async fn test_kms_client() -> Result<(), Pkcs11Error> {
+    log_init(Some("cosmian_kms=trace,cosmian_kms_client=trace"));
     let ctx = start_default_test_kms_server().await;
 
     let kms_rest_client = KmsClient::new(ctx.owner_client_conf.clone())?;
@@ -122,6 +123,7 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
 
 #[test]
 fn test_backend() -> Result<(), Pkcs11Error> {
+    log_init(Some("cosmian_kms=trace,cosmian_kmip=trace"));
     let backend = initialize_backend()?;
 
     //TODO fix this test

@@ -325,7 +325,7 @@ impl Operation {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operations into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-#[derive(Serialize, PartialEq, Eq)]
+#[derive(Serialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     /// The Unique Identifier of the object to be imported
