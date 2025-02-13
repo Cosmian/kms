@@ -464,7 +464,16 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_str: state:  {:?}", self.current);
+        trace!(
+            "deserialize_str: map state: {:?}, index: {}, current:  {:?}",
+            self.map_state,
+            self.child_index,
+            self.current
+        );
+        if self.map_state == MapAccessState::Key {
+            // if the deserializer is deserializing the key of a map, the tag is the key
+            return visitor.visit_str(&self.current.tag);
+        }
         if let TTLValue::TextString(s) = &self.current.value {
             visitor.visit_str(s)
         } else {

@@ -1,13 +1,19 @@
 use std::{
     convert::TryFrom,
+    fmt,
     fmt::Display,
     hash::{DefaultHasher, Hash, Hasher},
 };
 
 use kmip_derive::KmipEnumSerialize;
 use num_bigint_dig::BigUint;
-use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Serialize,
+};
+use strum::{EnumIter, VariantNames};
+// use strum_macros::VariantNames;
+use tracing::info;
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
@@ -38,7 +44,7 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Clone, Eq, PartialEq, VariantNames)]
 #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
@@ -132,6 +138,37 @@ pub enum Object {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+}
+
+impl<'de> Deserialize<'de> for Object {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ObjectVisitor;
+
+        impl<'de> Visitor<'de> for ObjectVisitor {
+            type Value = Object;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an Object enumeration")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // let mut object_type: Option<ObjectType> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    info!("Key: {}", key);
+                    let _unused = map.next_value::<KeyBlock>()?;
+                }
+                Err(serde::de::Error::custom("Invalid Object"))
+            }
+        }
+
+        deserializer.deserialize_map(ObjectVisitor)
+    }
 }
 
 impl Display for Object {
@@ -400,7 +437,7 @@ impl From<ObjectType> for String {
     }
 }
 
-impl std::fmt::Display for ObjectType {
+impl Display for ObjectType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s: String = (*self).into();
         write!(f, "{s}")

@@ -24,15 +24,16 @@ hex = { workspace = true, features = ["std"] }
 kmip-derive = { path = "../kmip-derive" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
+    "std",
+    "rand",
+    "serde",
+    "zeroize",
 ] }
 pyo3 = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
