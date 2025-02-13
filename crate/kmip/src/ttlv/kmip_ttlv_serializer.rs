@@ -1,6 +1,9 @@
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{
-    ser::{self, Error, SerializeSeq},
+    ser::{
+        self, Error, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant,
+        SerializeTuple, SerializeTupleVariant,
+    },
     Serialize,
 };
 use tracing::{debug, instrument, trace};
@@ -87,11 +90,6 @@ impl ser::Serializer for &mut TTLVSerializer {
     type SerializeTuple = Self;
     type SerializeTupleStruct = Self;
     type SerializeTupleVariant = Self;
-
-    #[inline]
-    fn is_human_readable(&self) -> bool {
-        true
-    }
 
     // Here we go with the simple methods. The following 12 methods receive one
     // of the primitive types of the data model and map it to JSON by appending
@@ -542,6 +540,11 @@ impl ser::Serializer for &mut TTLVSerializer {
         );
         self.serialize_struct(name, len)
     }
+
+    #[inline]
+    fn is_human_readable(&self) -> bool {
+        true
+    }
 }
 
 // The following 7 impls deal with the serialization of compound types like
@@ -551,7 +554,7 @@ impl ser::Serializer for &mut TTLVSerializer {
 
 // This impl is SerializeSeq so these methods are called after `serialize_seq`
 // is called on the Serializer.
-impl ser::SerializeSeq for &mut TTLVSerializer {
+impl SerializeSeq for &mut TTLVSerializer {
     // Must match the `Error` type of the serializer.
     type Error = TtlvError;
     // Must match the `Ok` type of the serializer.
@@ -632,7 +635,7 @@ impl ser::SerializeSeq for &mut TTLVSerializer {
 }
 
 // Same thing as seq but for tuples.
-impl<'a> ser::SerializeTuple for &'a mut TTLVSerializer {
+impl<'a> SerializeTuple for &'a mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -669,7 +672,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut TTLVSerializer {
 
 // For example the E::T in enum E { T(u8, u8) }
 // There is no such thing as a tuple variant in TTLV
-impl ser::SerializeTupleVariant for &mut TTLVSerializer {
+impl SerializeTupleVariant for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -698,7 +701,7 @@ impl ser::SerializeTupleVariant for &mut TTLVSerializer {
 // When deserializing, the length is determined by looking at the serialized
 // data.
 // This is not supported in TTLV
-impl ser::SerializeMap for &mut TTLVSerializer {
+impl SerializeMap for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -732,7 +735,7 @@ impl ser::SerializeMap for &mut TTLVSerializer {
 }
 
 // Structs are like seqs for their elements
-impl ser::SerializeStruct for &mut TTLVSerializer {
+impl SerializeStruct for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -851,7 +854,7 @@ impl ser::SerializeStruct for &mut TTLVSerializer {
 
 // For example the `E::S` in `enum E { S { r: u8, g: u8, b: u8 } }`
 // same as Struct therefore same as seqs
-impl<'a> ser::SerializeStructVariant for &'a mut TTLVSerializer {
+impl<'a> SerializeStructVariant for &'a mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 

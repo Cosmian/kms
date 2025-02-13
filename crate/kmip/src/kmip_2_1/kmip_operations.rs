@@ -3,10 +3,7 @@ use std::{
     ops::Not,
 };
 
-use serde::{
-    Deserialize, Serialize,
-    de::{self, MapAccess, Visitor},
-};
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use zeroize::Zeroizing;
 
@@ -342,7 +339,7 @@ impl Operation {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operations into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-#[derive(Serialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     /// The Unique Identifier of the object to be imported
@@ -379,119 +376,6 @@ impl Display for Import {
             self.attributes,
             self.object
         )
-    }
-}
-
-/// Deserialization needs to be handwritten because the
-/// included `Object` may be incorrectly deserialized to a `PrivateKey`
-/// when it is a `PublicKey` (as it is "untagged" - see `postfix()`).
-/// It is a lot of code for a simple post fix but well...
-impl<'de> Deserialize<'de> for Import {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(field_identifier)] //, rename_all = "snake_case"
-        enum Field {
-            UniqueIdentifier,
-            ObjectType,
-            ReplaceExisting,
-            KeyWrapType,
-            Attributes,
-            Object,
-        }
-
-        struct ImportVisitor;
-
-        impl<'de> Visitor<'de> for ImportVisitor {
-            type Value = Import;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct Import")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut unique_identifier: Option<UniqueIdentifier> = None;
-                let mut object_type: Option<ObjectType> = None;
-                let mut replace_existing: Option<bool> = None;
-                let mut key_wrap_type: Option<KeyWrapType> = None;
-                let mut attributes: Option<Attributes> = None;
-                let mut object: Option<Object> = None;
-
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::UniqueIdentifier => {
-                            if unique_identifier.is_some() {
-                                return Err(de::Error::duplicate_field("unique_identifier"))
-                            }
-                            unique_identifier = Some(map.next_value()?);
-                        }
-                        Field::ObjectType => {
-                            if object_type.is_some() {
-                                return Err(de::Error::duplicate_field("object_type"))
-                            }
-                            object_type = Some(map.next_value()?);
-                        }
-                        Field::ReplaceExisting => {
-                            if replace_existing.is_some() {
-                                return Err(de::Error::duplicate_field("replace_existing"))
-                            }
-                            replace_existing = Some(map.next_value()?);
-                        }
-                        Field::KeyWrapType => {
-                            if key_wrap_type.is_some() {
-                                return Err(de::Error::duplicate_field("key_wrap_type"))
-                            }
-                            key_wrap_type = Some(map.next_value()?);
-                        }
-                        Field::Attributes => {
-                            if attributes.is_some() {
-                                return Err(de::Error::duplicate_field("attributes"))
-                            }
-                            attributes = Some(map.next_value()?);
-                        }
-                        Field::Object => {
-                            if object.is_some() {
-                                return Err(de::Error::duplicate_field("object"))
-                            }
-                            object = Some(map.next_value()?);
-                        }
-                    }
-                }
-                let unique_identifier = unique_identifier
-                    .ok_or_else(|| de::Error::missing_field("unique_identifier"))?;
-                let object_type =
-                    object_type.ok_or_else(|| de::Error::missing_field("object_type"))?;
-                let attributes =
-                    attributes.ok_or_else(|| de::Error::missing_field("attributes"))?;
-                let object = object.ok_or_else(|| de::Error::missing_field("object"))?;
-                // all this code .... to be able to insert that line....
-                let object = Object::post_fix(object_type, object);
-                Ok(Import {
-                    unique_identifier,
-                    object_type,
-                    replace_existing,
-                    key_wrap_type,
-                    attributes,
-                    object,
-                })
-            }
-        }
-
-        const FIELDS: &[&str] = &[
-            "unique_identifier",
-            "object_type",
-            "replace_existing",
-            "key_wrap_type",
-            "attributes",
-            "object",
-            "key_wrapping_data",
-        ];
-        deserializer.deserialize_struct("Import", FIELDS, ImportVisitor)
     }
 }
 

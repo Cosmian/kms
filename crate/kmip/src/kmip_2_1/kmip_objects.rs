@@ -11,7 +11,7 @@ use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use strum::EnumIter;
+use strum::{EnumIter, VariantNames};
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
@@ -25,11 +25,123 @@ use crate::{
     },
 };
 
+/// A Managed Cryptographic Object that is a digital certificate.
+/// It is a DER-encoded X.509 public key certificate.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Certificate {
+    pub certificate_type: CertificateType,
+    /// A Managed Cryptographic Object that is a digital certificate.
+    /// It is a DER-encoded X.509 public key certificate.
+    pub certificate_value: Vec<u8>,
+}
+
+/// A Managed Cryptographic Object containing the Certificate Request.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CertificateRequest {
+    pub certificate_request_type: CertificateRequestType,
+    pub certificate_request_value: Vec<u8>,
+}
+
+/// A Managed Object that the key management server is possibly not able to
+/// interpret. The context information for this object MAY be stored and
+/// retrieved using Custom Attributes. An Opaque Object MAY be a Managed
+/// Cryptographic Object depending on the client context of usage and as
+/// such is treated in the same manner as a Managed Cryptographic Object
+/// for handling of attributes.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct OpaqueObject {
+    pub opaque_data_type: OpaqueDataType,
+    pub opaque_data_value: Vec<u8>,
+}
+
+/// A Managed Cryptographic Object that is a text-based representation of a
+/// PGP key. The Key Block field, indicated below, will contain the
+/// ASCII-armored export of a PGP key in the format as specified in RFC
+/// 4880. It MAY contain only a public key block, or both a public and
+/// private key block. Two different versions of PGP keys, version 3 and
+/// version 4, MAY be stored in this Managed Cryptographic Object.
+/// kmip-spec-v2.1-cs01 07 May 2020 Standards Track Work Product
+/// Copyright © OASIS Open 2020. All Rights Reserved. Page 20 of 240
+/// KMIP implementers SHOULD treat the Key Block field as an opaque
+/// blob. PGP-aware KMIP clients SHOULD take on the responsibility
+/// of decomposing the Key Block into other Managed Cryptographic
+/// Objects (Public Keys, Private Keys, etc.).
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct PGPKey {
+    #[serde(rename = "PGPKeyVersion")]
+    pub pgp_key_version: u32,
+    #[serde(rename = "KeyBlock")]
+    pub key_block: KeyBlock,
+}
+
+/// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct PrivateKey {
+    pub key_block: KeyBlock,
+}
+
+/// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
+/// This is only a public key, not a certificate.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct PublicKey {
+    pub key_block: KeyBlock,
+}
+
+/// A Managed Cryptographic Object containing a shared secret value that is not
+/// a key or certificate (e.g., a password).
+/// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
+/// The Key Value MAY be wrapped.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SecretData {
+    pub secret_data_type: SecretDataType,
+    pub key_block: KeyBlock,
+}
+
+/// A Managed Cryptographic Object that is a Split Key. A split key is a
+/// secret, usually a symmetric key or a private key that has been split
+/// into a number of parts, each of which MAY then be distributed to
+/// several key holders, for additional security. The Split Key Parts
+/// field indicates the total number of parts, and the
+/// kmip-spec-v2.1-cs01 07 May 2020 Standards Track Work Product
+/// Copyright © OASIS Open 2020. All Rights Reserved. Page 21 of 240
+/// Split Key Threshold field indicates the minimum number of parts
+/// needed to reconstruct the entire key. The Key Part Identifier
+/// indicates which key part is contained in the cryptographic
+/// object, and SHALL be at least 1 and SHALL be less than or equal to Split
+/// Key Parts.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SplitKey {
+    pub split_key_parts: u32,
+    pub key_part_identifier: u32,
+    pub split_key_threshold: u32,
+    pub split_key_method: SplitKeyMethod,
+    /// REQUIRED only if Split Key Method is Polynomial Sharing Prime Field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prime_field_size: Option<BigUint>,
+    pub key_block: KeyBlock,
+}
+
+/// A Managed Cryptographic Object that is a symmetric key.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SymmetricKey {
     pub key_block: KeyBlock,
 }
+
+// WARNING: If you change anything in the Object enumeration:
+// 1. Make sure the variant name is identical to the struct name it holds
+// 2. Make sure that the Deserialize implementation is updated
+// and that the Deserializer understands your changes
+// 3. Make sure that any struct you create that holds an Object, holds it in a proprety
+// called `object`, which is serialized using Pascal Case, i.e. it becomes `Object`.
+// Check `Import` as an example
 
 /// Object Types
 /// Section 2 of KMIP Reference 2.1
@@ -48,34 +160,22 @@ pub struct SymmetricKey {
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Clone, Eq, PartialEq, Debug)]
+#[derive(Serialize, Clone, Eq, PartialEq, Debug, VariantNames)]
+#[serde(rename_all = "PascalCase")]
 #[serde(untagged)]
 pub enum Object {
     /// A Managed Cryptographic Object that is a digital certificate.
     /// It is a DER-encoded X.509 public key certificate.
-    #[serde(rename_all = "PascalCase")]
-    Certificate {
-        certificate_type: CertificateType,
-        /// A Managed Cryptographic Object that is a digital certificate.
-        /// It is a DER-encoded X.509 public key certificate.
-        certificate_value: Vec<u8>,
-    },
+    Certificate(Certificate),
     /// A Managed Cryptographic Object containing the Certificate Request.
-    #[serde(rename_all = "PascalCase")]
-    CertificateRequest {
-        certificate_request_type: CertificateRequestType,
-        certificate_request_value: Vec<u8>,
-    },
+    CertificateRequest(CertificateRequest),
     /// A Managed Object that the key management server is possibly not able to
     /// interpret. The context information for this object MAY be stored and
     /// retrieved using Custom Attributes. An Opaque Object MAY be a Managed
     /// Cryptographic Object depending on the client context of usage and as
     /// such is treated in the same manner as a Managed Cryptographic Object
     /// for handling of attributes.
-    OpaqueObject {
-        opaque_data_type: OpaqueDataType,
-        opaque_data_value: Vec<u8>,
-    },
+    OpaqueObject(OpaqueObject),
     /// A Managed Cryptographic Object that is a text-based representation of a
     /// PGP key. The Key Block field, indicated below, will contain the
     /// ASCII-armored export of a PGP key in the format as specified in RFC
@@ -88,21 +188,12 @@ pub enum Object {
     /// blob. PGP-aware KMIP clients SHOULD take on the responsibility
     /// of decomposing the Key Block into other Managed Cryptographic
     /// Objects (Public Keys, Private Keys, etc.).
-    PGPKey {
-        #[serde(rename = "PGPKeyVersion")]
-        pgp_key_version: u32,
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
+    PGPKey(PGPKey),
     /// A Managed Cryptographic Object containing a shared secret value that is not
     /// a key or certificate (e.g., a password).
     /// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
     /// The Key Value MAY be wrapped.
-    #[serde(rename_all = "PascalCase")]
-    SecretData {
-        secret_data_type: SecretDataType,
-        key_block: KeyBlock,
-    },
+    SecretData(SecretData),
     /// A Managed Cryptographic Object that is a Split Key. A split key is a
     /// secret, usually a symmetric key or a private key that has been split
     /// into a number of parts, each of which MAY then be distributed to
@@ -115,28 +206,12 @@ pub enum Object {
     /// indicates which key part is contained in the cryptographic
     /// object, and SHALL be at least 1 and SHALL be less than or equal to Split
     /// Key Parts.
-    #[serde(rename_all = "PascalCase")]
-    SplitKey {
-        split_key_parts: u32,
-        key_part_identifier: u32,
-        split_key_threshold: u32,
-        split_key_method: SplitKeyMethod,
-        /// REQUIRED only if Split Key Method is Polynomial Sharing Prime Field.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        prime_field_size: Option<BigUint>,
-        key_block: KeyBlock,
-    },
+    SplitKey(SplitKey),
     /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
-    PrivateKey {
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
+    PrivateKey(PrivateKey),
     /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
     /// This is only a public key, not a certificate.
-    PublicKey {
-        #[serde(rename = "KeyBlock")]
-        key_block: KeyBlock,
-    },
+    PublicKey(PublicKey),
     /// A Managed Cryptographic Object that is a symmetric key.
     SymmetricKey(SymmetricKey),
 }
@@ -161,13 +236,54 @@ impl<'de> Deserialize<'de> for Object {
             {
                 // let mut object_type: Option<ObjectType> = None;
                 if let Some(key) = map.next_key::<String>()? {
+                    if !Object::VARIANTS.contains(&key.as_str()) {
+                        return Err(serde::de::Error::custom(format!(
+                            "Unknown Object to deeserialze: {key}. Known Objects are: {:?}",
+                            Object::VARIANTS
+                        )));
+                    }
                     return match key.as_str() {
                         "SymmetricKey" => {
                             let key = map.next_value::<SymmetricKey>()?;
                             Ok(Object::SymmetricKey(key))
                         }
-                        x => Err(serde::de::Error::custom(format!("Invalid Object: {x}"))),
-                    }
+                        "PublicKey" => {
+                            let key = map.next_value::<PublicKey>()?;
+                            Ok(Object::PublicKey(key))
+                        }
+                        "PrivateKey" => {
+                            let key = map.next_value::<PrivateKey>()?;
+                            Ok(Object::PrivateKey(key))
+                        }
+                        "SplitKey" => {
+                            let key = map.next_value::<SplitKey>()?;
+                            Ok(Object::SplitKey(key))
+                        }
+                        "SecretData" => {
+                            let key = map.next_value::<SecretData>()?;
+                            Ok(Object::SecretData(key))
+                        }
+                        "PGPKey" => {
+                            let key = map.next_value::<PGPKey>()?;
+                            Ok(Object::PGPKey(key))
+                        }
+                        "OpaqueObject" => {
+                            let key = map.next_value::<OpaqueObject>()?;
+                            Ok(Object::OpaqueObject(key))
+                        }
+                        "CertificateRequest" => {
+                            let key = map.next_value::<CertificateRequest>()?;
+                            Ok(Object::CertificateRequest(key))
+                        }
+                        "Certificate" => {
+                            let key = map.next_value::<Certificate>()?;
+                            Ok(Object::Certificate(key))
+                        }
+                        x => Err(serde::de::Error::custom(format!(
+                            "Invalid Object: {x}. One of the following is expected: {:?}",
+                            Object::VARIANTS
+                        ))),
+                    };
                 }
                 Err(serde::de::Error::custom("Invalid Object"))
             }
@@ -180,60 +296,64 @@ impl<'de> Deserialize<'de> for Object {
 impl Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Certificate {
+            Self::Certificate(Certificate {
                 certificate_type,
                 certificate_value,
-            } => write!(
+            }) => write!(
                 f,
                 "Certificate(certificate_type: {certificate_type:?}, certificate_value: \
                  {certificate_value:?})"
             ),
-            Self::CertificateRequest {
+            Self::CertificateRequest(CertificateRequest {
                 certificate_request_type,
                 certificate_request_value,
-            } => write!(
+            }) => write!(
                 f,
                 "CertificateRequest(certificate_request_type: {certificate_request_type:?}, \
                  certificate_request_value: {certificate_request_value:?})"
             ),
-            Self::OpaqueObject {
+            Self::OpaqueObject(OpaqueObject {
                 opaque_data_type,
                 opaque_data_value,
-            } => write!(
+            }) => write!(
                 f,
                 "OpaqueObject(opaque_data_type: {opaque_data_type:?}, opaque_data_value: \
                  {opaque_data_value:?})"
             ),
-            Self::PGPKey {
+            Self::PGPKey(PGPKey {
                 pgp_key_version,
                 key_block,
-            } => write!(
+            }) => write!(
                 f,
                 "PGPKey(pgp_key_version: {pgp_key_version:?}, key_block: {key_block})"
             ),
-            Self::SecretData {
+            Self::SecretData(SecretData {
                 secret_data_type,
                 key_block,
-            } => write!(
+            }) => write!(
                 f,
                 "SecretData(secret_data_type: {secret_data_type:?}, key_block: {key_block})"
             ),
-            Self::SplitKey {
+            Self::SplitKey(SplitKey {
                 split_key_parts,
                 key_part_identifier,
                 split_key_threshold,
                 split_key_method,
                 prime_field_size,
                 key_block,
-            } => write!(
+            }) => write!(
                 f,
                 "SplitKey(split_key_parts: {split_key_parts:?}, key_part_identifier: \
                  {key_part_identifier:?}, split_key_threshold: {split_key_threshold:?}, \
                  split_key_method: {split_key_method:?}, prime_field_size: {prime_field_size:?}, \
                  key_block: {key_block})"
             ),
-            Self::PrivateKey { key_block } => write!(f, "PrivateKey(key_block: {key_block})"),
-            Self::PublicKey { key_block } => write!(f, "PublicKey(key_block: {key_block})"),
+            Self::PrivateKey(PrivateKey { key_block }) => {
+                write!(f, "PrivateKey(key_block: {key_block})")
+            }
+            Self::PublicKey(PublicKey { key_block }) => {
+                write!(f, "PublicKey(key_block: {key_block})")
+            }
             Self::SymmetricKey(SymmetricKey { key_block }) => {
                 write!(f, "SymmetricKey(key_block: {key_block})")
             }
@@ -261,12 +381,12 @@ impl Object {
     /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block(&self) -> Result<&KeyBlock, KmipError> {
         match self {
-            Self::PublicKey { key_block }
-            | Self::PrivateKey { key_block }
-            | Self::SecretData { key_block, .. }
-            | Self::PGPKey { key_block, .. }
+            Self::PublicKey(PublicKey { key_block })
+            | Self::PrivateKey(PrivateKey { key_block })
+            | Self::SecretData(SecretData { key_block, .. })
+            | Self::PGPKey(PGPKey { key_block, .. })
             | Self::SymmetricKey(SymmetricKey { key_block })
-            | Self::SplitKey { key_block, .. } => Ok(key_block),
+            | Self::SplitKey(SplitKey { key_block, .. }) => Ok(key_block),
             _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block".to_owned(),
@@ -302,12 +422,12 @@ impl Object {
     /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmipError> {
         match self {
-            Self::PublicKey { key_block }
-            | Self::PrivateKey { key_block }
-            | Self::SecretData { key_block, .. }
-            | Self::PGPKey { key_block, .. }
+            Self::PublicKey(PublicKey { key_block })
+            | Self::PrivateKey(PrivateKey { key_block })
+            | Self::SecretData(SecretData { key_block, .. })
+            | Self::PGPKey(PGPKey { key_block, .. })
             | Self::SymmetricKey(SymmetricKey { key_block })
-            | Self::SplitKey { key_block, .. } => Ok(key_block),
+            | Self::SplitKey(SplitKey { key_block, .. }) => Ok(key_block),
             _ => Err(KmipError::InvalidKmip21Object(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block (function `key_block_mut`)".to_owned(),
@@ -315,34 +435,34 @@ impl Object {
         }
     }
 
-    /// Deserialization is untagged and the `ObjectType` is not at
-    /// an adjacent level in the structure. Correction code needs to be
-    /// run post-serialization
-    /// see `Object` for details
-    #[must_use]
-    pub fn post_fix(object_type: ObjectType, object: Self) -> Self {
-        match object_type {
-            ObjectType::SymmetricKey => match object {
-                Self::PrivateKey { key_block } | Self::PublicKey { key_block } => {
-                    Self::SymmetricKey(SymmetricKey { key_block })
-                }
-                _ => object,
-            },
-            ObjectType::PublicKey => match object {
-                Self::SymmetricKey(SymmetricKey { key_block }) | Self::PrivateKey { key_block } => {
-                    Self::PublicKey { key_block }
-                }
-                _ => object,
-            },
-            ObjectType::PrivateKey => match object {
-                Self::SymmetricKey(SymmetricKey { key_block }) | Self::PublicKey { key_block } => {
-                    Self::PrivateKey { key_block }
-                }
-                _ => object,
-            },
-            _ => object,
-        }
-    }
+    // /// Deserialization is untagged and the `ObjectType` is not at
+    // /// an adjacent level in the structure. Correction code needs to be
+    // /// run post-serialization
+    // /// see `Object` for details
+    // #[must_use]
+    // pub fn post_fix(object_type: ObjectType, object: Self) -> Self {
+    //     match object_type {
+    //         ObjectType::SymmetricKey => match object {
+    //             Self::PrivateKey { key_block } | Self::PublicKey { key_block } => {
+    //                 Self::SymmetricKey(SymmetricKey { key_block })
+    //             }
+    //             _ => object,
+    //         },
+    //         ObjectType::PublicKey => match object {
+    //             Self::SymmetricKey(SymmetricKey { key_block }) | Self::PrivateKey { key_block } => {
+    //                 Self::PublicKey { key_block }
+    //             }
+    //             _ => object,
+    //         },
+    //         ObjectType::PrivateKey => match object {
+    //             Self::SymmetricKey(SymmetricKey { key_block }) | Self::PublicKey { key_block } => {
+    //                 Self::PrivateKey { key_block }
+    //             }
+    //             _ => object,
+    //         },
+    //         _ => object,
+    //     }
+    // }
 
     /// Return the key signature if this is a Key.
     /// The value is the `SipHash` of the key block key bytes.
