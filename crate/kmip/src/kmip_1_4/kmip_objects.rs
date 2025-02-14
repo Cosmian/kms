@@ -227,13 +227,9 @@ impl Object {
                 split_key_method.hash(&mut hasher);
                 key_block.hash(&mut hasher);
             }
-            Self::SymmetricKey(SymmetricKey { key_block }) => {
-                key_block.hash(&mut hasher);
-            }
-            Self::PrivateKey(PrivateKey { key_block }) => {
-                key_block.hash(&mut hasher);
-            }
-            Self::PublicKey(PublicKey { key_block }) => {
+            Self::SymmetricKey(SymmetricKey { key_block })
+            | Self::PrivateKey(PrivateKey { key_block })
+            | Self::PublicKey(PublicKey { key_block }) => {
                 key_block.hash(&mut hasher);
             }
             Self::OpaqueObject(OpaqueObject {
