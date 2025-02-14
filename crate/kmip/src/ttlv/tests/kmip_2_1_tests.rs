@@ -401,7 +401,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_import_symmetric_key() {
-    log_init(Some("info,hyper=info,reqwest=info"));
+    log_init(Some("trace,hyper=info,reqwest=info"));
     let key_bytes: &[u8] = b"this_is_a_test";
     let key = aes_key(key_bytes);
     let import = Import {

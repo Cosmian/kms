@@ -12,9 +12,9 @@ fn serde_json_db_object() {
         certificate_value: vec![1, 2, 3, 4],
     });
     let json = serde_json::to_string(&cert).unwrap();
-    println!("CERT JSON: {}", json);
+    // println!("CERT JSON: {}", json);
     let cert_: Object = serde_json::from_str(json.as_str()).unwrap();
-    println!("CERT REC: {:?}", cert_);
+    // println!("CERT REC: {:?}", cert_);
     assert_eq!(cert, cert_);
 
     let db_object = DBObject {
@@ -22,10 +22,10 @@ fn serde_json_db_object() {
         object: cert,
     };
     let json = serde_json::to_string(&db_object).unwrap();
-    println!("DBOject {}", json);
+    // println!("DBOject {}", json);
 
-    let object: Object = serde_json::from_str(&json).unwrap();
-    println!("{:?}", object);
+    let _object: Object = serde_json::from_str(&json).unwrap();
+    // println!("{:?}", object);
 
     // let value: Value = serde_json::from_str(json.as_str()).unwrap();
     // // {"object_type":"Certificate","object":{"CertificateType":"X509","CertificateValue":[1,2,3,4]}}
