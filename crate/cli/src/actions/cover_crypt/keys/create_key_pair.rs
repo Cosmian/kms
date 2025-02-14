@@ -1,8 +1,9 @@
-use std::path::PathBuf;
+use std::{fs::File, io::BufReader, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     actions::console,
@@ -57,11 +58,24 @@ pub struct CreateMasterKeyPairAction {
     #[clap(long = "sensitive", default_value = "false")]
     sensitive: bool,
 }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PolicySpecs {
+    spec: Vec<(String, Vec<String>)>
+}
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let create_key_pair =
-            build_create_covercrypt_master_keypair_request(&self.tags, self.sensitive)?;
+
+        let a = File::open(&self.policy_specifications_file)?;
+        let b = BufReader::new(a);
+        let c: PolicySpecs = serde_json::from_reader(b)?;
+
+        println!("CCCCCCCCCCCCC{:?}", c.spec);
+        let create_key_pair = build_create_covercrypt_master_keypair_request(
+            &self.tags,
+            self.sensitive,
+            c.spec,
+        )?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

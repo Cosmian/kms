@@ -26,48 +26,36 @@ pub fn create_master_keypair(
     common_attributes: &Option<Attributes>,
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
+    access_structure: Vec<(String, Vec<String>)>,
 ) -> Result<KeyPair, CryptoError> {
     // Now generate a master key using the CoverCrypt Engine
     let (mut msk, _) = cover_crypt
         .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-    msk.access_structure.add_anarchy("Department".to_owned())?;
-    [
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-    ]
-    .into_iter()
-    .try_for_each(|(attribute, hint)| {
-        msk.access_structure.add_attribute(
-            QualifiedAttribute {
-                dimension: "Department".to_owned(),
-                name: attribute.to_owned(),
-            },
-            hint,
-            None,
-        )
-    })?;
 
-    msk.access_structure
-        .add_hierarchy("Security Level".to_owned())?;
+    for (name, attributes) in access_structure {
+        if name.contains("::<") {
+            msk.access_structure.add_hierarchy(name.clone())?;
+        } else {
+            msk.access_structure.add_anarchy(name.clone())?;
+        }
 
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Security Level".to_owned(),
-            name: "Confidential".to_owned(),
-        },
-        EncryptionHint::Classic,
-        None,
-    )?;
-    msk.access_structure.add_attribute(
-        QualifiedAttribute {
-            dimension: "Security Level".to_owned(),
-            name: "Top Secret".to_owned(),
-        },
-        EncryptionHint::Hybridized,
-        None,
-    )?;
+        for attr in attributes {
+            let _unused = msk.access_structure.add_attribute(
+                QualifiedAttribute {
+                    dimension: name.clone(),
+                    name: attr.clone(),
+                },
+                if attr.contains("::+") {
+                    EncryptionHint::Hybridized
+                } else {
+                    EncryptionHint::Classic
+                },
+                None,
+            );
+        }
+    }
+
     let mpk = cover_crypt.update_msk(&mut msk)?;
     // Private Key generation
     // First generate fresh attributes with that policy

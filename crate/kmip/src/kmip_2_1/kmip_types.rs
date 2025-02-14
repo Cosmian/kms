@@ -3,10 +3,7 @@
 
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
     de::{self, MapAccess, Visitor},
@@ -1447,6 +1444,7 @@ impl<'de> Deserialize<'de> for Attribute {
             "link",
             "public_key_link",
             "vendor_attributes",
+            "access_structure",
         ];
         deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
     }

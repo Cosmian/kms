@@ -130,7 +130,7 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
-        access_structure: &MasterSecretKey,
+        access_structure: &Option<Vec<(String, Vec<String>)>>,
         sensitive: bool,
         tags: Option<Vec<String>>,
         py: Python<'p>,

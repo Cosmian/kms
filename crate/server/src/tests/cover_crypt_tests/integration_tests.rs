@@ -2,8 +2,7 @@ use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse, EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse
     },
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
@@ -30,7 +29,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let app = test_utils::test_app(None).await;
 
     // create Key Pair
-    let create_key_pair = build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false)?;
+    let create_key_pair = build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false, Vec::new())?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 

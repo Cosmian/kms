@@ -192,7 +192,7 @@ async fn test_rekey_prune() -> CliResult<()> {
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
-        "Department::MKG && Security Level::Confidential",
+        "Department::MKG && Security Level::Top Secret",
         Some(output_file_before.to_str().unwrap()),
         Some("myid"),
     )?;

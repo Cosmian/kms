@@ -161,7 +161,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             .serialize()
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-        let encrypted_data = if let Some(CryptographicParameters {
+            let encrypted_data = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
             ..
         }) = request.cryptographic_parameters

@@ -51,15 +51,11 @@ impl CovercryptDecryption {
         let mut de = Deserializer::new(encrypted_bytes);
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
-        println!(
-            "{:?}",
-            encrypted_header.decrypt(&self.cover_crypt, user_decryption_key, ad)?
-        );
 
         let header = encrypted_header
             .decrypt(&self.cover_crypt, user_decryption_key, ad)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?
-            .ok_or_else(|| CryptoError::Default("unable to recover NO BULK header".to_owned()))?;
+            .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
         let cleartext = header.serialize()?;
 
@@ -139,7 +135,7 @@ impl CovercryptDecryption {
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, ad)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?
-                .ok_or_else(|| CryptoError::Default("unable to recover BULK header".to_owned()))?;
+                .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
             let cleartext = header.serialize()?;
 

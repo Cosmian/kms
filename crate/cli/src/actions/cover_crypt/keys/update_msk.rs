@@ -21,6 +21,7 @@ use cosmian_kms_crypto::{
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
+
 /// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
@@ -39,50 +40,10 @@ impl PolicyCommands {
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
             Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
-        };
+        }
 
         Ok(())
     }
-}
-
-/// Create a policy binary file from policy specifications
-///
-/// The policy specifications must be passed as a JSON in a file, for example:
-/// ```json
-///     {
-///        "Security Level::<": [
-///            "Protected",
-///            "Confidential",
-///            "Top Secret::+"
-///        ],
-///        "Department": [
-///            "R&D",
-///            "HR",
-///            "MKG",
-///            "FIN"
-///        ]
-///    }
-/// ```
-/// These specifications create a policy where:
-///  - the policy is defined with 2 policy axes: `Security Level` and `Department`
-///  - the `Security Level` axis is hierarchical as indicated by the `::<` suffix,
-///  - the `Security Level` axis has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
-///  - the `Department` axis has 4 possible values: `R&D`, `HR`, `MKG`, and `FIN`,
-///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
-///  - all other partitions will use classic cryptography.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub(crate) struct CreateAction {
-    /// The policy specifications filename. The policy is expressed as a JSON object
-    /// describing the Policy axes. See the documentation for
-    /// details.
-    #[clap(
-        required = false,
-        long = "specifications",
-        short = 's',
-        default_value = "policy_specifications.json"
-    )]
-    policy_specifications_file: PathBuf,
 }
 
 /// View the policy of an existing public or private master key.
@@ -139,12 +100,10 @@ impl ViewAction {
 
         let key_block = object.key_block()?;
         let key_bytes = key_block.key_bytes()?;
-        println!("OBJ{:?}", serde_json::from_slice::<u8>(&key_bytes));
 
         let mpk = MasterPublicKey::deserialize(&key_bytes).map_err(|e| {
             CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
         })?;
-        println!("MPK{:?}", mpk);
         let stdout: String = format!("{:?}", mpk);
         console::Stdout::new(&stdout).write()?;
 
@@ -305,7 +264,7 @@ impl DisableAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        // Create the kmip query
+       // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from((
@@ -363,7 +322,7 @@ impl RemoveAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        // Create the kmip query
+     // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::new("dimension", "name")]),

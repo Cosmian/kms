@@ -18,6 +18,7 @@ use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     sensitive: bool,
+    access_structure: Vec<(String, Vec<String>)>,
 ) -> Result<CreateKeyPair, CryptoError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -30,6 +31,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
     attributes.set_tags(tags)?;
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
+        access_structure,
         ..CreateKeyPair::default()
     })
 }
