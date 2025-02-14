@@ -6,14 +6,12 @@ use serde::{
     },
     Serialize,
 };
+use strum::VariantNames;
 use tracing::{debug, instrument, trace};
 use zeroize::Zeroizing;
 
 use super::{error::TtlvError, TTLValue, TTLV};
-use crate::{
-    kmip_2_1::kmip_objects::{Object, ObjectType},
-    ttlv::KmipEnumerationVariant,
-};
+use crate::{kmip_1_4, kmip_2_1, ttlv::KmipEnumerationVariant};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -40,31 +38,31 @@ pub fn to_ttlv<T>(value: &T) -> Result<TTLV>
 where
     T: Serialize,
 {
-    // postfix the TTLV if it is a root object
-    trait Detect {
-        fn detect(&self) -> Option<ObjectType>;
-    }
-    impl<T> Detect for T {
-        default fn detect(&self) -> Option<ObjectType> {
-            None
-        }
-    }
-    impl Detect for Object {
-        fn detect(&self) -> Option<ObjectType> {
-            Some(self.object_type())
-        }
-    }
+    // // postfix the TTLV if it is a root object
+    // trait Detect {
+    //     fn detect(&self) -> Option<ObjectType>;
+    // }
+    // impl<T> Detect for T {
+    //     default fn detect(&self) -> Option<ObjectType> {
+    //         None
+    //     }
+    // }
+    // impl Detect for Object {
+    //     fn detect(&self) -> Option<ObjectType> {
+    //         Some(self.object_type())
+    //     }
+    // }
 
     let mut serializer = TTLVSerializer {
         parents: vec![],
         current: TTLV::default(),
     };
     value.serialize(&mut serializer)?;
-    let mut ttlv = serializer.current;
+    let ttlv = serializer.current;
 
-    if let Some(object_type) = value.detect() {
-        ttlv.tag = object_type.to_string();
-    };
+    // if let Some(object_type) = value.detect() {
+    //     ttlv.tag = object_type.to_string();
+    // };
 
     Ok(ttlv)
 }
@@ -169,8 +167,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     }
 
     // TTLV has no support for floating point numbers
-    #[instrument(skip(self))]
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    #[instrument(skip(self, _v))]
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f32' is unsupported in TTLV".to_owned(),
@@ -178,8 +175,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     }
 
     // TTLV has no support for floating point numbers
-    #[instrument(skip(self))]
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    #[instrument(skip(self, _v))]
     fn serialize_f64(self, _v: f64) -> Result<Self::Ok> {
         Err(TtlvError::custom(
             "'value f64' is unsupported in TTLV".to_owned(),
@@ -457,7 +453,7 @@ impl ser::Serializer for &mut TTLVSerializer {
         self.serialize_seq(Some(len))
     }
 
-    // For example the E::T in enum E { T(u8, u8) }.
+    // For example, the E::T in enum E { T(u8, u8) }.
     #[instrument(skip(self))]
     fn serialize_tuple_variant(
         self,
@@ -477,7 +473,7 @@ impl ser::Serializer for &mut TTLVSerializer {
     }
 
     // A variably sized heterogeneous key-value pairing,
-    // for example BTreeMap<K, V>. When serializing,
+    // for example, BTreeMap<K, V>. When serializing,
     // the length may or may not be known before iterating through all the entries.
     // When deserializing, the length is determined by looking at the serialized
     // data.
@@ -504,10 +500,15 @@ impl ser::Serializer for &mut TTLVSerializer {
         // Push the struct on the parent's stack, collecting the name
         // There are teo special cases:
         // 1. If the tag is empty, it means it is the root structure, we use the name of the struct
-        // 2. If the tag is "Object", it means that we are expecting a KMIP Object, we use the name of the KMIP Object
-        let tag = if self.current.tag.is_empty() || self.current.tag == "Object" {
+        let tag = if self.current.tag.is_empty() {
+            trace!("... setting the root tag with name: {}", name);
+            name.to_owned()
+        // 2. The structure is a KMIP object, we use the name of the object as tag
+        } else if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&name)
+            || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&name)
+        {
             trace!(
-                "... replacing the parent tag: {} with name: {}",
+                "... replacing the parent tag: {} with KMIP Object name: {}",
                 self.current.tag,
                 name
             );
