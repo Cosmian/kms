@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select } from 'antd'
+import { Button, Card, Form, Input, Select, Space } from 'antd'
 import React from 'react'
 
 interface LocateFormData {
@@ -44,14 +44,13 @@ const LocateForm: React.FC = () => {
 
     const onFinish = (values: LocateFormData) => {
         console.log('Locate values:', values);
-        // Handle form submission
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold  mb-6">Locate Cryptographic Objects</h1>
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-6">Locate Cryptographic Objects</h1>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>Search for cryptographic objects in the KMS using various criteria.</p>
                 <p>Results will show one ID per line.</p>
             </div>
@@ -60,109 +59,110 @@ const LocateForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                className="space-y-6"
             >
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Basic Search Criteria</h3>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <h3 className="text-m font-bold mb-4">Basic Search Criteria</h3>
 
-                    <Form.Item
-                        name="tags"
-                        label="Tags"
-                        help="User tags or system tags to locate the object"
-                    >
-                        <Select
-                            mode="tags"
-                            placeholder="Enter tags"
-                            open={false}
-                        />
+                        <Form.Item
+                            name="tags"
+                            label="Tags"
+                            help="User tags or system tags to locate the object"
+                        >
+                            <Select
+                                mode="tags"
+                                placeholder="Enter tags"
+                                open={false}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="cryptographicAlgorithm"
+                            label="Cryptographic Algorithm"
+                            help="Algorithm used by the cryptographic object"
+                        >
+                            <Select
+                                options={CRYPTO_ALGORITHMS}
+                                allowClear
+                                placeholder="Select algorithm"
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="cryptographicLength"
+                            label="Cryptographic Length"
+                            help="Key size in bits"
+                        >
+                            <Input type="number" placeholder="Enter length in bits" />
+                        </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <h3 className="text-m font-bold mb-4">Object Type and Format</h3>
+
+                        <Form.Item
+                            name="keyFormatType"
+                            label="Key Format Type"
+                            help="Format used to store the key"
+                        >
+                            <Select
+                                options={KEY_FORMAT_TYPES}
+                                allowClear
+                                placeholder="Select key format"
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="objectType"
+                            label="Object Type"
+                            help="Type of cryptographic object"
+                        >
+                            <Select
+                                options={OBJECT_TYPES}
+                                allowClear
+                                placeholder="Select object type"
+                            />
+                        </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <h3 className="text-m font-bold mb-4">Linked Objects</h3>
+
+                        <Form.Item
+                            name="publicKeyId"
+                            label="Public Key ID"
+                            help="Find objects linked to this public key"
+                        >
+                            <Input placeholder="Enter public key ID" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="privateKeyId"
+                            label="Private Key ID"
+                            help="Find objects linked to this private key"
+                        >
+                            <Input placeholder="Enter private key ID" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="certificateId"
+                            label="Certificate ID"
+                            help="Find objects linked to this certificate"
+                        >
+                            <Input placeholder="Enter certificate ID" />
+                        </Form.Item>
+                    </Card>
+
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            className="w-full text-white font-medium"
+                        >
+                            Search Objects
+                        </Button>
                     </Form.Item>
-
-                    <Form.Item
-                        name="cryptographicAlgorithm"
-                        label="Cryptographic Algorithm"
-                        help="Algorithm used by the cryptographic object"
-                    >
-                        <Select
-                            options={CRYPTO_ALGORITHMS}
-                            allowClear
-                            placeholder="Select algorithm"
-                        />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="cryptographicLength"
-                        label="Cryptographic Length"
-                        help="Key size in bits"
-                    >
-                        <Input type="number" placeholder="Enter length in bits" />
-                    </Form.Item>
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Object Type and Format</h3>
-
-                    <Form.Item
-                        name="keyFormatType"
-                        label="Key Format Type"
-                        help="Format used to store the key"
-                    >
-                        <Select
-                            options={KEY_FORMAT_TYPES}
-                            allowClear
-                            placeholder="Select key format"
-                        />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="objectType"
-                        label="Object Type"
-                        help="Type of cryptographic object"
-                    >
-                        <Select
-                            options={OBJECT_TYPES}
-                            allowClear
-                            placeholder="Select object type"
-                        />
-                    </Form.Item>
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Linked Objects</h3>
-
-                    <Form.Item
-                        name="publicKeyId"
-                        label="Public Key ID"
-                        help="Find objects linked to this public key"
-                    >
-                        <Input placeholder="Enter public key ID" />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="privateKeyId"
-                        label="Private Key ID"
-                        help="Find objects linked to this private key"
-                    >
-                        <Input placeholder="Enter private key ID" />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="certificateId"
-                        label="Certificate ID"
-                        help="Find objects linked to this certificate"
-                    >
-                        <Input placeholder="Enter certificate ID" />
-                    </Form.Item>
-                </div>
-
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
-                    >
-                        Search Objects
-                    </Button>
-                </Form.Item>
+                </Space>
             </Form>
         </div>
     );

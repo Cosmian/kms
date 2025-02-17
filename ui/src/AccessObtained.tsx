@@ -1,4 +1,4 @@
-import { Button, Table, Tag } from 'antd'
+import { Button, Card, Space, Table, Tag } from 'antd'
 import React, { useEffect, useState } from 'react'
 import { getNoTTLVRequest } from './utils'
 
@@ -75,30 +75,34 @@ const AccessObtainedList: React.FC = () => {
     }, []);
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+        <div className="p-6">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold ">Access rights obtained</h1>
                 <Button
                     type="primary"
                     onClick={fetchAccessRights}
                     loading={isLoading}
-                    className="bg-primary hover:bg-blue-700 border-0"
+                    className="bg-primary"
                 >
                     Refresh
                 </Button>
             </div>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>List of objects you have been granted access to, along with their current state, owner, and the operations you can perform.</p>
-            </div >
-            <Table
-                dataSource={accessRights}
-                columns={columns}
-                rowKey="objectUid"
-                loading={isLoading}
-                pagination={{ pageSize: 10 }}
-                className="border rounded"
-            />
+            </div>
+            <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Card>
+                    <Table
+                        dataSource={accessRights}
+                        columns={columns}
+                        rowKey="objectUid"
+                        loading={isLoading}
+                        pagination={{ pageSize: 10 }}
+                        className="border rounded"
+                    />
+                </Card>
+            </Space>
             {res && <div>{res}</div>}
         </div >
     );

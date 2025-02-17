@@ -1,5 +1,5 @@
 import { WarningFilled } from '@ant-design/icons'
-import { Button, Form, Input, Select } from 'antd'
+import { Button, Card, Form, Input, Select, Space } from 'antd'
 import React from 'react'
 
 interface CovercryptRevokeFormData {
@@ -17,7 +17,7 @@ const CovercryptRevokeForm: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+        <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-500" />
                 <h1 className="text-2xl font-bold ">Revoke a Covercrypt key</h1>
@@ -41,53 +41,57 @@ const CovercryptRevokeForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                className="space-y-6"
             >
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Key Identification (required)</h3>
-                    <Form.Item
-                        name="keyId"
-                        label="Key ID"
-                        help="The unique identifier of the key to revoke"
-                    >
-                        <Input placeholder="Enter key ID" />
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <div className="space-y-4">
+                            <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                            <Form.Item
+                                name="keyId"
+                                label="Key ID"
+                                help="The unique identifier of the key to revoke"
+                            >
+                                <Input placeholder="Enter key ID" />
+                            </Form.Item>
+
+                            <Form.Item
+                                name="tags"
+                                label="Tags"
+                                help="Alternative to Key ID: specify tags to identify the key (must match exactly one key)"
+                            >
+                                <Select
+                                    mode="tags"
+                                    placeholder="Enter tags"
+                                    open={false}
+                                />
+                            </Form.Item>
+                        </div>
+
+                        <Form.Item
+                            name="revocationReason"
+                            label="Revocation Reason"
+                            help="Provide a reason for revoking this key"
+                            rules={[{ required: true, message: 'Please provide a revocation reason' }]}
+                        >
+                            <Input.TextArea
+                                placeholder="Enter reason for revocation"
+                                rows={3}
+                            />
+                        </Form.Item>
+                    </Card>
+
+
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            danger
+                            htmlType="submit"
+                            className="w-full text-white font-medium"
+                        >
+                            Revoke Key
+                        </Button>
                     </Form.Item>
-
-                    <Form.Item
-                        name="tags"
-                        label="Tags"
-                        help="Alternative to Key ID: specify tags to identify the key (must match exactly one key)"
-                    >
-                        <Select
-                            mode="tags"
-                            placeholder="Enter tags"
-                            open={false}
-                        />
-                    </Form.Item>
-                </div>
-
-                <Form.Item
-                    name="revocationReason"
-                    label="Revocation Reason"
-                    help="Provide a reason for revoking this key"
-                    rules={[{ required: true, message: 'Please provide a revocation reason' }]}
-                >
-                    <Input.TextArea
-                        placeholder="Enter reason for revocation"
-                        rows={3}
-                    />
-                </Form.Item>
-
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        danger
-                        htmlType="submit"
-                        className="w-full border-0 rounded-md py-2 font-medium"
-                    >
-                        Revoke Key
-                    </Button>
-                </Form.Item>
+                </Space>
             </Form>
         </div >
     );

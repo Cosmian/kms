@@ -12,7 +12,9 @@ use cosmian_kms_client::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
         requests::{create_symmetric_key_kmip_object, encrypt_request},
     },
-    read_bytes_from_file, ExportObjectParams, KmsClient,
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::symmetric_utils::DataEncryptionAlgorithm,
+    ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{encrypt, random_key, random_nonce, Mode, SymCipher},
@@ -21,10 +23,7 @@ use cosmian_kms_crypto::crypto::{
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{
-        console,
-        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
-    },
+    actions::{console, symmetric::KeyEncryptionAlgorithm},
     cli_bail,
     error::{
         result::{CliResult, CliResultHelper},

@@ -1,4 +1,4 @@
-import { Button, Table } from 'antd'
+import { Button, Card, Space, Table } from 'antd'
 import React, { useEffect, useState } from 'react'
 import { getNoTTLVRequest } from './utils'
 
@@ -58,9 +58,9 @@ const ObjectsOwnedList: React.FC = () => {
     }, []);
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+        <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold ">Objects owned</h1>
+                <h1 className="text-2xl font-bold">Objects owned</h1>
                 <Button
                     type="primary"
                     onClick={fetchOwnedObjects}
@@ -71,19 +71,22 @@ const ObjectsOwnedList: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>List of objects you own. </p>
                 <p>As an owner, you can perform any operation on these objects and grant access rights to other users.</p>
             </div>
-
-            <Table
-                dataSource={objects}
-                columns={columns}
-                rowKey="object_id"
-                loading={isLoading}
-                pagination={{ pageSize: 10 }}
-                className="border rounded"
-            />
+            <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                <Card>
+                    <Table
+                        dataSource={objects}
+                        columns={columns}
+                        rowKey="object_id"
+                        loading={isLoading}
+                        pagination={{ pageSize: 10 }}
+                        className="border rounded"
+                    />
+                </Card>
+            </Space>
             {res && <div>{res}</div>}
 
         </div>

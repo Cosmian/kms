@@ -3,14 +3,13 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{kmip_operations::Decrypt, kmip_types::UniqueIdentifier},
-    read_bytes_from_file, KmsClient,
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    KmsClient,
 };
 
 use crate::{
-    actions::{
-        console,
-        rsa::{HashFn, RsaEncryptionAlgorithm},
-    },
+    actions::console,
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };

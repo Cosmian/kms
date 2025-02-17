@@ -9,33 +9,24 @@ use cosmian_kms_client::{
     export_object,
     kmip_2_1::{
         kmip_data_structures::KeyWrappingData,
-        kmip_types::{
-            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-        },
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType},
         requests::{create_symmetric_key_kmip_object, decrypt_request},
     },
-    read_bytes_from_file, ExportObjectParams, KmsClient,
-};
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{
-    CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH,
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::symmetric_utils::{
+        parse_decrypt_elements, DataEncryptionAlgorithm,
+    },
+    ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::{
-    symmetric::symmetric_ciphers::{
-        decrypt, Mode, SymCipher, AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH,
-        AES_128_XTS_MAC_LENGTH, AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH,
-        RFC5649_16_MAC_LENGTH,
-    },
+    symmetric::symmetric_ciphers::{decrypt, Mode, SymCipher},
     wrap::unwrap_key_block,
 };
 use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{
-        console,
-        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
-    },
+    actions::{console, symmetric::KeyEncryptionAlgorithm},
     cli_bail,
     error::{
         result::{CliResult, CliResultHelper},
@@ -193,38 +184,12 @@ impl DecryptAction {
         kms_rest_client: &KmsClient,
         cryptographic_parameters: CryptographicParameters,
         key_id: &str,
-        mut ciphertext: Vec<u8>,
+        ciphertext: Vec<u8>,
         aad: Option<Vec<u8>>,
     ) -> CliResult<Zeroizing<Vec<u8>>> {
         // Extract the nonce, the encrypted data, and the tag
-        let (nonce_size, tag_size) = match &cryptographic_parameters
-            .cryptographic_algorithm
-            .unwrap_or(CryptographicAlgorithm::AES)
-        {
-            CryptographicAlgorithm::AES => match cryptographic_parameters
-                .block_cipher_mode
-                .unwrap_or(BlockCipherMode::GCM)
-            {
-                BlockCipherMode::GCM | BlockCipherMode::GCMSIV => {
-                    (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
-                }
-                BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
-                BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
-                _ => cli_bail!("Unsupported block cipher mode"),
-            },
-            #[cfg(not(feature = "fips"))]
-            CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
-                (CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH)
-            }
-            a => cli_bail!("Unsupported cryptographic algorithm: {:?}", a),
-        };
-        if nonce_size + tag_size > ciphertext.len() {
-            cli_bail!("The ciphertext is too short to contain the nonce/tweak and the tag")
-        }
-        let nonce = ciphertext.drain(..nonce_size).collect::<Vec<_>>();
-        let tag = ciphertext
-            .drain(ciphertext.len() - tag_size..)
-            .collect::<Vec<_>>();
+        let (ciphertext, nonce, tag) =
+            parse_decrypt_elements(&cryptographic_parameters, ciphertext)?;
 
         // Create the kmip query
         let decrypt_request = decrypt_request(

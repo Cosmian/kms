@@ -3,7 +3,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::{BlockCipherMode, CryptographicAlgorithm, CryptographicParameters},
     KmsClient,
 };
-use strum::EnumIter;
+use strum::{Display, EnumIter};
 
 pub use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::result::CliResult;
@@ -42,48 +42,7 @@ impl SymmetricCommands {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy, Default, EnumIter, PartialEq, Eq, strum::Display)]
-#[strum(serialize_all = "kebab-case")]
-pub enum DataEncryptionAlgorithm {
-    #[cfg(not(feature = "fips"))]
-    Chacha20Poly1305,
-    #[default]
-    AesGcm,
-    AesXts,
-    #[cfg(not(feature = "fips"))]
-    AesGcmSiv,
-}
-
-impl From<DataEncryptionAlgorithm> for CryptographicParameters {
-    fn from(value: DataEncryptionAlgorithm) -> Self {
-        match value {
-            #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::Chacha20Poly1305 => Self {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
-                ..Self::default()
-            },
-            DataEncryptionAlgorithm::AesGcm => Self {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCM),
-                ..Self::default()
-            },
-            DataEncryptionAlgorithm::AesXts => Self {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::XTS),
-                ..Self::default()
-            },
-            #[cfg(not(feature = "fips"))]
-            DataEncryptionAlgorithm::AesGcmSiv => Self {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                block_cipher_mode: Some(BlockCipherMode::GCMSIV),
-                ..Self::default()
-            },
-        }
-    }
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy, EnumIter, strum::Display)]
-#[strum(serialize_all = "kebab-case")]
+#[derive(ValueEnum, Debug, Clone, Copy, EnumIter, Display)]
 pub enum KeyEncryptionAlgorithm {
     #[cfg(not(feature = "fips"))]
     Chacha20Poly1305,

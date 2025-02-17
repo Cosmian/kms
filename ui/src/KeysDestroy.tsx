@@ -1,5 +1,5 @@
 import { WarningFilled } from '@ant-design/icons'
-import { Button, Checkbox, Form, Input, Select } from 'antd'
+import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg"
@@ -62,14 +62,14 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+        <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-600" />
                 <h1 className="text-2xl font-bold ">Destroy {key_type_string} key</h1>
             </div>
 
             <div className="mb-8 space-y-2">
-                <div className="bg-red-50 border-l-4 border-red-600 rounded-md p-4">
+                <div className="bg-red-200 border-l-4 border-red-600 rounded-md p-4">
                     <div className="text-red-800 text-sm space-y-2">
                         <p className="font-bold">Warning: This is a destructive action!</p>
                         <ul className="list-disc pl-5 space-y-1">
@@ -91,47 +91,44 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                 initialValues={{
                     remove: false,
                 }}
-                className="space-y-6"
             >
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Key Identification (required)</h3>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
 
-                    <Form.Item
-                        name="keyId"
-                        label="Key ID"
-                        help="The unique identifier of the key to destroy"
-                    >
-                        <Input
-                            placeholder="Enter key ID"
-                            className="max-w-[500px]"
-                        />
-                    </Form.Item>
+                        <Form.Item
+                            name="keyId"
+                            label="Key ID"
+                            help="The unique identifier of the key to destroy"
+                        >
+                            <Input
+                                placeholder="Enter key ID"
+                            />
+                        </Form.Item>
 
-                    <Form.Item
-                        name="tags"
-                        label="Tags"
-                        help="Alternative to Key ID: specify tags to identify the key"
-                    >
-                        <Select
-                            mode="tags"
-                            placeholder="Enter tags"
-                            className="max-w-[500px]"
-                            open={false}
-                        />
-                    </Form.Item>
-                </div>
-
-                <Form.Item
-                    name="remove"
-                    valuePropName="checked"
-                    help="If enabled, the key will be completely removed from the database. Otherwise, metadata will be retained."
-                >
-                    <Checkbox>
-                        Remove completely from database
-                    </Checkbox>
-                </Form.Item>
-
-                <div className="pt-4">
+                        <Form.Item
+                            name="tags"
+                            label="Tags"
+                            help="Alternative to Key ID: specify tags to identify the key"
+                        >
+                            <Select
+                                mode="tags"
+                                placeholder="Enter tags"
+                                open={false}
+                            />
+                        </Form.Item>
+                    </Card>
+                    <Card>
+                        <Form.Item
+                            name="remove"
+                            valuePropName="checked"
+                            help="If enabled, the key will be completely removed from the database. Otherwise, metadata will be retained."
+                        >
+                            <Checkbox>
+                                Remove completely from database
+                            </Checkbox>
+                        </Form.Item>
+                    </Card>
                     <Form.Item>
                     <Button
                             type="primary"
@@ -139,12 +136,12 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                             loading={isLoading}
                             danger
                             disabled={isLoading}
-                            className="w-full bg-red-600 hover:bg-red-700 border-0 rounded-md py-2 text-white font-medium"
+                            className="w-full text-white font-medium"
                         >
                             Destroy Key
                         </Button>
                     </Form.Item>
-                </div>
+                </Space>
             </Form>
             {res && <div>{res}</div>}
         </div>
