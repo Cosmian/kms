@@ -14,7 +14,9 @@ use cosmian_kms_client::{
         },
         requests::{create_symmetric_key_kmip_object, decrypt_request},
     },
-    read_bytes_from_file, ExportObjectParams, KmsClient,
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::sym_utils::DataEncryptionAlgorithm,
+    ExportObjectParams, KmsClient,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{
@@ -32,10 +34,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{
-        console,
-        symmetric::{DataEncryptionAlgorithm, KeyEncryptionAlgorithm},
-    },
+    actions::{console, symmetric::KeyEncryptionAlgorithm},
     cli_bail,
     error::{
         result::{CliResult, CliResultHelper},

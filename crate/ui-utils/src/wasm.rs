@@ -32,6 +32,7 @@ use crate::{
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
     import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
+    sym_utils::DataEncryptionAlgorithm,
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -250,14 +251,19 @@ pub fn encrypt_ttlv_request(
     header_metadata: Option<Vec<u8>>,
     nonce: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_parameters: JsValue,
+    data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        if cryptographic_parameters.is_null() || cryptographic_parameters.is_undefined() {
-            None
-        } else {
-            Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
-        };
+    let cryptographic_parameters: Option<CryptographicParameters> = if data_encryption_algorithm
+        .is_null()
+        || data_encryption_algorithm.is_undefined()
+    {
+        None
+    } else {
+        Some(
+            serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+                .into(),
+        )
+    };
     let request = encrypt_request(
         key_unique_identifier,
         encryption_policy,
