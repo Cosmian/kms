@@ -1,13 +1,15 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{kmip_2_1::requests::encrypt_request, read_bytes_from_file, KmsClient};
+use cosmian_kms_client::{
+    kmip_2_1::requests::encrypt_request,
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    KmsClient,
+};
 
 use crate::{
-    actions::{
-        console,
-        rsa::{HashFn, RsaEncryptionAlgorithm},
-    },
+    actions::console,
     cli_bail,
     error::result::{CliResult, CliResultHelper},
 };

@@ -1,4 +1,4 @@
-import { Button, Checkbox, Form, Input, InputNumber, Select } from 'antd'
+import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
@@ -40,10 +40,10 @@ const RsaKeyCreateForm: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold  mb-6">Create an RSA key pair</h1>
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-6">Create an RSA key pair</h1>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>Create a new RSA key pair:</p>
                 <ul className="list-disc pl-5 space-y-1">
                     <li>The public key is used to encrypt or verify signatures and can be safely shared.</li>
@@ -60,66 +60,66 @@ const RsaKeyCreateForm: React.FC = () => {
                     tags: [],
                     sensitive: false,
                 }}
-                className="space-y-6"
             >
-                <Form.Item
-                    name="privateKeyId"
-                    label="Private Key ID"
-                    help="Optional: a random UUID will be generated if not specified"
-                >
-                    <Input
-                        placeholder="Enter private key ID"
-                        className="max-w-[500px]"
-                    />
-                </Form.Item>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <Form.Item
+                            name="privateKeyId"
+                            label="Private Key ID"
+                            help="Optional: a random UUID will be generated if not specified"
+                        >
+                            <Input
+                                placeholder="Enter private key ID"
+                            />
+                        </Form.Item>
 
-                <Form.Item
-                    name="sizeInBits"
-                    label="Size in Bits"
-                    help="The expected size in bits for the RSA key"
-                    rules={[{ required: true, message: 'Please specify the key size' }]}
-                >
-                    <InputNumber
-                        className="w-[200px]"
-                        min={1024}
-                        step={1024}
-                        max={8192}
-                    />
-                </Form.Item>
+                        <Form.Item
+                            name="sizeInBits"
+                            label="Size in Bits"
+                            help="The expected size in bits for the RSA key"
+                            rules={[{ required: true, message: 'Please specify the key size' }]}
+                        >
+                            <InputNumber
+                                className="w-[200px]"
+                                min={1024}
+                                step={1024}
+                                max={8192}
+                            />
+                        </Form.Item>
 
-                <Form.Item
-                    name="tags"
-                    label="Tags"
-                    help="Optional: Add tags to help retrieve the keys later"
-                >
-                    <Select
-                        mode="tags"
-                        placeholder="Enter tags"
-                        className="max-w-[500px]"
-                        open={false}
-                    />
-                </Form.Item>
+                        <Form.Item
+                            name="tags"
+                            label="Tags"
+                            help="Optional: Add tags to help retrieve the keys later"
+                        >
+                            <Select
+                                mode="tags"
+                                placeholder="Enter tags"
+                                open={false}
+                            />
+                        </Form.Item>
 
-                <Form.Item
-                    name="sensitive"
-                    valuePropName="checked"
-                    help="If set, the private key will not be exportable"
-                >
-                    <Checkbox>
-                        Sensitive
-                    </Checkbox>
-                </Form.Item>
-
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        loading={isLoading}
-                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
-                    >
-                        Create RSA Keypair
-                    </Button>
-                </Form.Item>
+                        <Form.Item
+                            name="sensitive"
+                            valuePropName="checked"
+                            help="If set, the private key will not be exportable"
+                        >
+                            <Checkbox>
+                                Sensitive
+                            </Checkbox>
+                        </Form.Item>
+                    </Card>
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            >
+                            Create RSA Keypair
+                        </Button>
+                    </Form.Item>
+                </Space>
             </Form>
             {res && <div>{res}</div>}
         </div>

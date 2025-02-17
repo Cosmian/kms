@@ -1,13 +1,12 @@
 use cosmian_kms_client::reexport::cosmian_kms_ui_utils::{
     create_utils::SymmetricAlgorithm, export_utils::ExportKeyFormat,
+    symmetric_utils::DataEncryptionAlgorithm,
 };
 use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::{
-    actions::symmetric::{
-        keys::create_key::CreateKeyAction, DataEncryptionAlgorithm, KeyEncryptionAlgorithm,
-    },
+    actions::symmetric::{keys::create_key::CreateKeyAction, KeyEncryptionAlgorithm},
     error::result::CliResult,
     tests::{
         hsm::KMS_HSM_CLIENT_CONF,

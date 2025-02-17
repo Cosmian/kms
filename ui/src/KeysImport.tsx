@@ -1,5 +1,5 @@
 import { UploadOutlined } from "@ant-design/icons"
-import { Button, Checkbox, Form, Input, Select, Upload } from 'antd'
+import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
@@ -130,10 +130,10 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
     }
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold  mb-6">Import {key_type_string} key</h1>
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-6">Import {key_type_string} key</h1>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>Import {key_type_string} key in the KMS.</p>
                 <p>When no unique ID is specified, a random UUID will be generated.</p>
             </div>
@@ -148,138 +148,141 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                     replaceExisting: false,
                     tags: [],
                 }}
-                className="space-y-6"
             >
-                <Form.Item
-                    name="keyFile"
-                    label="Key File"
-                    rules={[{ required: true, message: "Please upload a key file" }]}
-                    help="Upload the key file to import"
-                >
-                    <Upload
-                        beforeUpload={(file) => {
-                            const reader = new FileReader();
-                            reader.onload = (e) => {
-                                const arrayBuffer = e.target?.result;
-                                if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
-                                    const bytes = new Uint8Array(arrayBuffer);
-                                    form.setFieldsValue({ keyFile: bytes })
-                                }
-                            };
-                            reader.readAsArrayBuffer(file);
-                            return false;
-                        }}
-                        maxCount={1}
-                    >
-                        <Button icon={<UploadOutlined />}>Upload Key File</Button>
-                    </Upload>
-                </Form.Item>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <Form.Item
+                            name="keyFile"
+                            label="Key File"
+                            rules={[{ required: true, message: "Please upload a key file" }]}
+                            help="Upload the key file to import"
+                        >
+                            <Upload
+                                beforeUpload={(file) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                        const arrayBuffer = e.target?.result;
+                                        if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                            const bytes = new Uint8Array(arrayBuffer);
+                                            form.setFieldsValue({ keyFile: bytes })
+                                        }
+                                    };
+                                    reader.readAsArrayBuffer(file);
+                                    return false;
+                                }}
+                                maxCount={1}
+                            >
+                                <Button icon={<UploadOutlined />}>Upload Key File</Button>
+                            </Upload>
+                        </Form.Item>
 
-                <Form.Item
-                    name="keyId"
-                    label="Key ID"
-                    help="Optional: A random UUID will be generated if not specified"
-                >
-                    <Input placeholder="Enter key ID" />
-                </Form.Item>
+                        <Form.Item
+                            name="keyId"
+                            label="Key ID"
+                            help="Optional: A random UUID will be generated if not specified"
+                        >
+                            <Input placeholder="Enter key ID" />
+                        </Form.Item>
 
-                <Form.Item
-                    name="keyFormat"
-                    label="Key Format"
-                    help="Format of the key file to import"
-                    rules={[{ required: true }]}
-                >
-                    <Select options={key_formats} />
-                </Form.Item>
+                        <Form.Item
+                            name="keyFormat"
+                            label="Key Format"
+                            help="Format of the key file to import"
+                            rules={[{ required: true }]}
+                        >
+                            <Select options={key_formats} />
+                        </Form.Item>
+                    </Card>
+                    <Card>
+                        <h3 className="text-m font-bold mb-4">Key Relationships</h3>
 
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                    <h3 className="text-sm font-medium text-gray-700">Key Relationships</h3>
+                        <Form.Item
+                            name="publicKeyId"
+                            label="Public Key ID"
+                            help="For private keys: link to corresponding public key in KMS"
+                        >
+                            <Input placeholder="Enter public key ID" />
+                        </Form.Item>
 
-                    <Form.Item
-                        name="publicKeyId"
-                        label="Public Key ID"
-                        help="For private keys: link to corresponding public key in KMS"
-                    >
-                        <Input placeholder="Enter public key ID" />
+                        <Form.Item
+                            name="privateKeyId"
+                            label="Private Key ID"
+                            help="For public keys: link to corresponding private key in KMS"
+                        >
+                            <Input placeholder="Enter private key ID" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="certificateId"
+                            label="Certificate ID"
+                            help="Link to corresponding certificate in KMS"
+                        >
+                            <Input placeholder="Enter certificate ID" />
+                        </Form.Item>
+                    </Card>
+                    <Card>
+                        <Form.Item
+                            name="keyUsage"
+                            label="Key Usage"
+                            help="Specify allowed operations for this key"
+                        >
+                            <Select
+                                mode="multiple"
+                                options={key_usages}
+                                placeholder="Select key usage"
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="tags"
+                            label="Tags"
+                            help="Optional: Add tags to help retrieve the key later"
+                        >
+                            <Select
+                                mode="tags"
+                                placeholder="Enter tags"
+                                open={false}
+                            />
+                        </Form.Item>
+                    </Card>
+                    <Card>
+                        <Form.Item
+                            name="unwrap"
+                            valuePropName="checked"
+                            help="For JSON TTLV keys: unwrap the key if wrapped before storing"
+                        >
+                            <Checkbox>Unwrap key before import</Checkbox>
+                        </Form.Item>
+
+                        <Form.Item
+                            name="replaceExisting"
+                            valuePropName="checked"
+                            help="Replace an existing key with the same ID"
+                        >
+                            <Checkbox>Replace existing key</Checkbox>
+                        </Form.Item>
+                    </Card>
+                    <Card>
+                        <Form.Item
+                            name="authenticatedAdditionalData"
+                            label="Authenticated Additional Data"
+                            help="Optional: For AES256GCM authenticated encryption unwrapping"
+                        >
+                            <Input placeholder="Enter authenticated data" />
+                        </Form.Item>
+                    </Card>
+
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            >
+                            Import Key
+                        </Button>
                     </Form.Item>
-
-                    <Form.Item
-                        name="privateKeyId"
-                        label="Private Key ID"
-                        help="For public keys: link to corresponding private key in KMS"
-                    >
-                        <Input placeholder="Enter private key ID" />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="certificateId"
-                        label="Certificate ID"
-                        help="Link to corresponding certificate in KMS"
-                    >
-                        <Input placeholder="Enter certificate ID" />
-                    </Form.Item>
-                </div>
-
-                <Form.Item
-                    name="keyUsage"
-                    label="Key Usage"
-                    help="Specify allowed operations for this key"
-                >
-                    <Select
-                        mode="multiple"
-                        options={key_usages}
-                        placeholder="Select key usage"
-                    />
-                </Form.Item>
-
-                <Form.Item
-                    name="tags"
-                    label="Tags"
-                    help="Optional: Add tags to help retrieve the key later"
-                >
-                    <Select
-                        mode="tags"
-                        placeholder="Enter tags"
-                        open={false}
-                    />
-                </Form.Item>
-
-                <div className="space-y-4">
-                    <Form.Item
-                        name="unwrap"
-                        valuePropName="checked"
-                        help="For JSON TTLV keys: unwrap the key if wrapped before storing"
-                    >
-                        <Checkbox>Unwrap key before import</Checkbox>
-                    </Form.Item>
-
-                    <Form.Item
-                        name="replaceExisting"
-                        valuePropName="checked"
-                        help="Replace an existing key with the same ID"
-                    >
-                        <Checkbox>Replace existing key</Checkbox>
-                    </Form.Item>
-                </div>
-
-                <Form.Item
-                    name="authenticatedAdditionalData"
-                    label="Authenticated Additional Data"
-                    help="Optional: For AES256GCM authenticated encryption unwrapping"
-                >
-                    <Input placeholder="Enter authenticated data" />
-                </Form.Item>
-
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        loading={isLoading}
-                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
-                    >
-                        Import Key
-                    </Button>
-                </Form.Item>
+                </Space>
             </Form>
             {res && <div>{res}</div>}
         </div>

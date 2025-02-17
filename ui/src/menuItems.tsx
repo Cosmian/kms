@@ -1,13 +1,21 @@
-import { MenuItem } from './MenuItem';
+import {
+    SafetyCertificateOutlined,
+    SearchOutlined,
+    SolutionOutlined,
+    ToolOutlined
+} from '@ant-design/icons'
+import { MenuItem } from './MenuItem'
 
 export const menuItems: MenuItem[] = [
     {
         key: 'locate',
         label: 'Locate',
+        icon: <SearchOutlined />,
     },
     {
         key: 'sym',
         label: 'Symmetric',
+        collapsedLabel: 'SYM',
         children: [
             {
                 key: 'sym/keys',
@@ -27,6 +35,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'rsa',
         label: 'RSA',
+        collapsedLabel: 'RSA',
         children: [
             {
                 key: 'rsa/keys',
@@ -46,6 +55,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'ec',
         label: 'Elliptic Curve',
+        collapsedLabel: 'EC',
         children: [
             {
                 key: 'ec/keys',
@@ -65,6 +75,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'cc',
         label: 'Covercrypt',
+        collapsedLabel: 'CC',
         children: [
             {
                 key: 'cc/keys',
@@ -101,6 +112,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'certificates',
         label: 'Certificates',
+        icon: <SafetyCertificateOutlined />,
         children: [
             { key: 'certificates/certify', label: 'Certify' },
             { key: 'certificates/decrypt', label: 'Decrypt' },
@@ -115,6 +127,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'attributes',
         label: 'Attributes',
+        icon: <ToolOutlined />,
         children: [
             { key: 'attributes/get', label: 'Get' },
             { key: 'attributes/set', label: 'Set' },
@@ -124,6 +137,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'access-rights',
         label: 'Access Rights',
+        icon: <SolutionOutlined />,
         children: [
             { key: 'access-rights/grant', label: 'Grant' },
             { key: 'access-rights/revoke', label: 'Revoke' },

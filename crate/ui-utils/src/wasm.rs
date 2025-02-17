@@ -32,6 +32,8 @@ use crate::{
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
     import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
+    rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    symmetric_utils::{parse_decrypt_elements, DataEncryptionAlgorithm},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -187,27 +189,70 @@ pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Decrypt request
 #[wasm_bindgen]
-pub fn decrypt_ttlv_request(
+pub fn decrypt_sym_ttlv_request(
     key_unique_identifier: &str,
-    nonce: Option<Vec<u8>>,
     ciphertext: Vec<u8>,
-    authenticated_tag: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_parameters: JsValue,
+    data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        if cryptographic_parameters.is_null() || cryptographic_parameters.is_undefined() {
-            None
-        } else {
-            Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
-        };
+    let cryptographic_parameters: CryptographicParameters =
+        serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+            .into();
+    let (ciphertext, nonce, tag) = parse_decrypt_elements(&cryptographic_parameters, ciphertext)
+        .map_err(|e| JsValue::from(e.to_string()))?;
     let request: Decrypt = decrypt_request(
         key_unique_identifier,
-        nonce,
+        Some(nonce),
         ciphertext,
-        authenticated_tag,
+        Some(tag),
         authentication_data,
-        cryptographic_parameters,
+        Some(cryptographic_parameters),
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        None,
     );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
@@ -243,21 +288,26 @@ pub fn parse_destroy_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Encrypt request
 #[wasm_bindgen]
-pub fn encrypt_ttlv_request(
+pub fn encrypt_sym_ttlv_request(
     key_unique_identifier: &str,
     encryption_policy: Option<String>,
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
     nonce: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_parameters: JsValue,
+    data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        if cryptographic_parameters.is_null() || cryptographic_parameters.is_undefined() {
-            None
-        } else {
-            Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
-        };
+    let cryptographic_parameters: Option<CryptographicParameters> = if data_encryption_algorithm
+        .is_null()
+        || data_encryption_algorithm.is_undefined()
+    {
+        None
+    } else {
+        Some(
+            serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+                .into(),
+        )
+    };
     let request = encrypt_request(
         key_unique_identifier,
         encryption_policy,
@@ -266,6 +316,56 @@ pub fn encrypt_ttlv_request(
         nonce,
         authentication_data,
         cryptographic_parameters,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn encrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn encrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        authentication_data,
+        None,
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
     to_ttlv(&request)

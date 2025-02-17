@@ -1,4 +1,4 @@
-import { Button, Form, Input, Table } from 'antd'
+import { Button, Card, Form, Input, Space, Table } from 'antd'
 import React, { useState } from 'react'
 import { getNoTTLVRequest } from './utils'
 
@@ -54,10 +54,10 @@ const AccessListForm: React.FC = () => {
     ];
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
-            <h1 className="text-2xl font-bold  mb-6">List an object access rights</h1>
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-6">List an object access rights</h1>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>View all access rights granted on an object.</p>
                 <p>This action can only be performed by the owner of the object.</p>
             </div>
@@ -66,27 +66,30 @@ const AccessListForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                className="space-y-6"
             >
-                <Form.Item
-                    name="unique_identifier"
-                    label="Object UID"
-                    rules={[{ required: true, message: 'Please enter the object UID' }]}
-                    help="The unique identifier of the object stored in the KMS"
-                >
-                    <Input placeholder="Enter object UID" />
-                </Form.Item>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <Form.Item
+                            name="unique_identifier"
+                            label="Object UID"
+                            rules={[{ required: true, message: 'Please enter the object UID' }]}
+                            help="The unique identifier of the object stored in the KMS"
+                        >
+                            <Input placeholder="Enter object UID" />
+                        </Form.Item>
 
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        loading={isLoading}
-                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
-                    >
-                        List Access Right
-                    </Button>
-                </Form.Item>
+                    </Card>
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                        >
+                            List Access Right
+                        </Button>
+                    </Form.Item>
+                </Space>
             </Form>
             {res && <div>{res}</div>}
 

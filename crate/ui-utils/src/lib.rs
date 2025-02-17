@@ -55,4 +55,6 @@ pub mod create_utils;
 pub mod error;
 pub mod export_utils;
 pub mod import_utils;
+pub mod rsa_utils;
+pub mod symmetric_utils;
 pub mod wasm;
