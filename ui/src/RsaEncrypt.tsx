@@ -158,6 +158,7 @@ const RsaEncryptForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
                         Encrypt File

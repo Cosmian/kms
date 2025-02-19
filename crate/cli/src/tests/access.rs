@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{
-    reexport::cosmian_kms_ui_utils::sym_utils::DataEncryptionAlgorithm, KMS_CLI_CONF_ENV,
+    reexport::cosmian_kms_ui_utils::symmetric_utils::DataEncryptionAlgorithm, KMS_CLI_CONF_ENV,
 };
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
 use tracing::trace;

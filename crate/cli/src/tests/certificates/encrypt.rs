@@ -6,6 +6,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_ui_utils::{
         export_utils::{ExportKeyFormat, WrappingAlgorithm},
         import_utils::{ImportKeyFormat, KeyUsage},
+        rsa_utils::RsaEncryptionAlgorithm,
     },
     KMS_CLI_CONF_ENV,
 };
@@ -16,7 +17,7 @@ use uuid::Uuid;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::{certificates::CertificateInputFormat, rsa::RsaEncryptionAlgorithm},
+    actions::certificates::CertificateInputFormat,
     error::{result::CliResult, CliError},
     tests::{
         certificates::import::{import_certificate, ImportCertificateInput},

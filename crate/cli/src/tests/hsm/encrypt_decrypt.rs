@@ -3,7 +3,9 @@ use std::{fs, path::PathBuf};
 use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_ui_utils::{
-        create_utils::SymmetricAlgorithm, sym_utils::DataEncryptionAlgorithm,
+        create_utils::SymmetricAlgorithm,
+        rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+        symmetric_utils::DataEncryptionAlgorithm,
     },
 };
 use tempfile::TempDir;
@@ -11,10 +13,7 @@ use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
-    actions::{
-        rsa::{HashFn, RsaEncryptionAlgorithm},
-        symmetric::{keys::create_key::CreateKeyAction, KeyEncryptionAlgorithm},
-    },
+    actions::symmetric::{keys::create_key::CreateKeyAction, KeyEncryptionAlgorithm},
     error::result::CliResult,
     tests::{
         hsm::KMS_HSM_CLIENT_CONF,

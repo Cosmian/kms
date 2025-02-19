@@ -1,6 +1,6 @@
 use cosmian_kms_client::reexport::cosmian_kms_ui_utils::{
     create_utils::SymmetricAlgorithm, export_utils::ExportKeyFormat,
-    sym_utils::DataEncryptionAlgorithm,
+    symmetric_utils::DataEncryptionAlgorithm,
 };
 use tempfile::TempDir;
 use uuid::Uuid;

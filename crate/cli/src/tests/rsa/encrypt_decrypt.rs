@@ -1,7 +1,11 @@
 use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{
+    read_bytes_from_file,
+    reexport::cosmian_kms_ui_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    KMS_CLI_CONF_ENV,
+};
 use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -9,7 +13,6 @@ use tracing::trace;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::rsa::{HashFn, RsaEncryptionAlgorithm},
     error::{result::CliResult, CliError},
     tests::{
         rsa::create_key_pair::{create_rsa_key_pair, RsaKeyPairOptions},
