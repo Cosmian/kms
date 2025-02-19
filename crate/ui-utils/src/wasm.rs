@@ -10,7 +10,8 @@ use cosmian_kmip::kmip_2_1::{
         ValidateResponse,
     },
     kmip_types::{
-        CertificateRequestType, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
+        BlockCipherMode, CertificateRequestType, CryptographicAlgorithm, CryptographicParameters,
+        RecommendedCurve, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -24,6 +25,8 @@ use js_sys::Uint8Array;
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
+#[cfg(not(feature = "fips"))]
+use crate::symmetric_ciphers::{CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH};
 use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
@@ -33,6 +36,10 @@ use crate::{
     },
     import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
     sym_utils::DataEncryptionAlgorithm,
+    symmetric_ciphers::{
+        AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
+        AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH,
+    },
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -190,25 +197,45 @@ pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn decrypt_ttlv_request(
     key_unique_identifier: &str,
-    nonce: Option<Vec<u8>>,
-    ciphertext: Vec<u8>,
-    authenticated_tag: Option<Vec<u8>>,
+    mut ciphertext: Vec<u8>,
     authentication_data: Option<Vec<u8>>,
-    cryptographic_parameters: JsValue,
+    data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        if cryptographic_parameters.is_null() || cryptographic_parameters.is_undefined() {
-            None
-        } else {
-            Some(serde_wasm_bindgen::from_value(cryptographic_parameters)?)
-        };
+    let cryptographic_parameters: CryptographicParameters =
+        serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
+            .into();
+    let (nonce_size, tag_size) = match &cryptographic_parameters
+        .cryptographic_algorithm
+        .unwrap_or(CryptographicAlgorithm::AES)
+    {
+        CryptographicAlgorithm::AES => match cryptographic_parameters
+            .block_cipher_mode
+            .unwrap_or(BlockCipherMode::GCM)
+        {
+            BlockCipherMode::GCM | BlockCipherMode::GCMSIV => {
+                (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
+            }
+            BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
+            BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
+            _ => return Err(JsValue::from_str("Unsupported block cipher mode")),
+        },
+        #[cfg(not(feature = "fips"))]
+        CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
+            (CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH)
+        }
+        _ => return Err(JsValue::from_str("Unsupported cryptographic algorithm")),
+    };
+    let nonce = ciphertext.drain(..nonce_size).collect::<Vec<_>>();
+    let tag = ciphertext
+        .drain(ciphertext.len() - tag_size..)
+        .collect::<Vec<_>>();
     let request: Decrypt = decrypt_request(
         key_unique_identifier,
-        nonce,
+        Some(nonce),
         ciphertext,
-        authenticated_tag,
+        Some(tag),
         authentication_data,
-        cryptographic_parameters,
+        Some(cryptographic_parameters),
     );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))

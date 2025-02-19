@@ -1,6 +1,6 @@
 import { Button, Checkbox, Form, Input, Select } from 'antd'
 import React, { useState } from 'react'
-import { sendKmipRequest } from './utils'
+import { downloadFile, sendKmipRequest } from './utils'
 import { export_ttlv_request, parse_export_ttlv_response } from "./wasm/pkg"
 
 interface KeyExportFormData {
@@ -53,21 +53,6 @@ const exportFileExtension = {
 interface KeyExportFormProps {
     key_type: KeyType;
 }
-
-const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
-    const blob = new Blob([data], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    URL.revokeObjectURL(url);
-};
-
 
 const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) => {
     const [form] = Form.useForm<KeyExportFormData>();

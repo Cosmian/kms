@@ -1,13 +1,15 @@
 import { Button, Form, Input, Select, Upload } from 'antd'
-import type { UploadFile } from 'antd/es/upload/interface'
 import React, { useState } from 'react'
+import { downloadFile, sendKmipRequest } from './utils'
+import { encrypt_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
 interface SymmetricEncryptFormData {
-    inputFile: UploadFile[];
+    inpuFile: Uint8Array;
+    fileName: string;
     keyId?: string;
     tags?: string[];
-    dataEncryptionAlgorithm: 'aes-gcm' | 'aes-gcm-siv' | 'chacha20-poly1305' | 'aes-xts';
-    keyEncryptionAlgorithm?: 'rsa-oaep' | 'rsa-oaep-256' | 'rsa-oaep-384' | 'rsa-oaep-512';
+    dataEncryptionAlgorithm: 'AesGcm' | 'AesGcmSiv' | 'Chacha20Poly1305' | 'AesXts';
+    // keyEncryptionAlgorithm?: 'rsa-oaep' | 'rsa-oaep-256' | 'rsa-oaep-384' | 'rsa-oaep-512';
     outputFile?: string;
     nonce?: string;
     authenticationData?: string;
@@ -15,11 +17,40 @@ interface SymmetricEncryptFormData {
 
 const SymmetricEncryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricEncryptFormData>();
-    const [isClientSide, setIsClientSide] = useState(false);
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
+    // const [isClientSide, setIsClientSide] = useState(false);
 
-    const onFinish = (values: SymmetricEncryptFormData) => {
+    const onFinish = async (values: SymmetricEncryptFormData) => {
         console.log('Encrypt values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        try {
+            if (id == undefined) {
+                setRes("Missing key identifier.")
+                throw Error("Missing key identifier")
+            }
+            const request = encrypt_ttlv_request(id , undefined, values.inputFile, undefined, values.nonce, values.authenticationData, values.dataEncryptionAlgorithm);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const  { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str)
+                const combinedData = new Uint8Array(IvCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);
+                combinedData.set(IvCounterNonce, 0);
+                combinedData.set(Data, IvCounterNonce.length);
+                combinedData.set(AuthenticatedEncryptionTag, IvCounterNonce.length + Data.length);
+                const mimeType = "application/octet-stream";
+                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
+                const filename = `${name}.enc`;
+                downloadFile(combinedData, filename, mimeType);
+                setRes("File has been encrypted")
+            }
+        } catch (e) {
+            setRes(`Error encrypting: ${e}`)
+            console.error("Error encrypting:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -41,19 +72,33 @@ const SymmetricEncryptForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    dataEncryptionAlgorithm: 'aes-gcm',
+                    dataEncryptionAlgorithm: 'AesGcm',
                 }}
                 className="space-y-6"
             >
                 <div className="bg-gray-50 p-4 rounded-lg space-y-4">
                     <h3 className="text-sm font-medium text-gray-700">Input File</h3>
+
+                    <Form.Item name="fileName" style={{ display: "none" }}>
+                        <Input />
+                    </Form.Item>
+
                     <Form.Item
                         name="inputFile"
                         rules={[{ required: true, message: 'Please select a file to encrypt' }]}
                     >
                         <Upload.Dragger
                             beforeUpload={(file) => {
-                                form.setFieldsValue({ inputFile: file });
+                                form.setFieldValue("fileName", file.name)
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    const arrayBuffer = e.target?.result;
+                                    if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                        const bytes = new Uint8Array(arrayBuffer);
+                                        form.setFieldsValue({ inpuFile: bytes })
+                                    }
+                                };
+                                reader.readAsArrayBuffer(file);
                                 return false;
                             }}
                             maxCount={1}
@@ -93,14 +138,14 @@ const SymmetricEncryptForm: React.FC = () => {
                     help="Algorithm used to encrypt the data"
                 >
                     <Select>
-                        <Select.Option value="aes-gcm">AES-GCM</Select.Option>
-                        <Select.Option value="aes-gcm-siv">AES-GCM-SIV</Select.Option>
-                        <Select.Option value="chacha20-poly1305">ChaCha20-Poly1305</Select.Option>
-                        <Select.Option value="aes-xts">AES-XTS</Select.Option>
+                        <Select.Option value="AesGcm">AES-GCM</Select.Option>
+                        <Select.Option value="AesGcmSiv">AES-GCM-SIV</Select.Option>
+                        <Select.Option value="Chacha20Poly1305">ChaCha20-Poly1305</Select.Option>
+                        <Select.Option value="AesXts">AES-XTS</Select.Option>
                     </Select>
                 </Form.Item>
 
-                <Form.Item
+                {/* <Form.Item
                     name="keyEncryptionAlgorithm"
                     label="Key Encryption Algorithm"
                     help="Optional. If specified, encryption will be performed client-side"
@@ -115,7 +160,7 @@ const SymmetricEncryptForm: React.FC = () => {
                         <Select.Option value="rsa-oaep-384">RSA-OAEP-384</Select.Option>
                         <Select.Option value="rsa-oaep-512">RSA-OAEP-512</Select.Option>
                     </Select>
-                </Form.Item>
+                </Form.Item> */}
 
                 <Form.Item
                     name="nonce"
@@ -137,12 +182,14 @@ const SymmetricEncryptForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
-                        {isClientSide ? 'Encrypt File (Client-side)' : 'Encrypt File (Server-side)'}
+                        Encrypt File (Server-side)
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

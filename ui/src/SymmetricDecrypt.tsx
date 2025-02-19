@@ -1,37 +1,66 @@
 import { Button, Form, Input, Select, Upload } from 'antd'
-import React from 'react'
+import React, { useState } from 'react'
+import { downloadFile, sendKmipRequest } from './utils'
+import { decrypt_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
+
 
 interface SymmetricDecryptFormData {
-    inputFile: File;
+    inputFile: Uint8Array;
+    fileName: string;
     keyId?: string;
     tags?: string[];
-    dataEncryptionAlgorithm: 'aes-gcm' | 'aes-xts' | 'aes-gcm-siv' | 'chacha20-poly1305';
-    keyEncryptionAlgorithm?: 'nist-key-wrap' | 'aes-gcm' | 'rsa-pkcs-v15' | 'rsa-oaep' | 'rsa-aes-key-wrap';
+    dataEncryptionAlgorithm: 'AesGcm' | 'AesXts' | 'AesGcmSiv' | 'Chacha20Poly1305';
+    // keyEncryptionAlgorithm?: 'nist-key-wrap' | 'aes-gcm' | 'rsa-pkcs-v15' | 'rsa-oaep' | 'rsa-aes-key-wrap';
     outputFile?: string;
     authenticationData?: string;
 }
 
 const DATA_ENCRYPTION_ALGORITHMS = [
-    { label: 'AES-GCM (default)', value: 'aes-gcm' },
-    { label: 'AES-XTS', value: 'aes-xts' },
-    { label: 'AES-GCM-SIV', value: 'aes-gcm-siv' },
-    { label: 'ChaCha20-Poly1305', value: 'chacha20-poly1305' },
+    { label: 'AES-GCM (default)', value: 'AesGcm' },
+    { label: 'AES-XTS', value: 'AesXts' },
+    { label: 'AES-GCM-SIV', value: 'AesGcmSiv' },
+    { label: 'ChaCha20-Poly1305', value: 'Chacha20Poly1305' },
 ];
 
-const KEY_ENCRYPTION_ALGORITHMS = [
-    { label: 'NIST Key Wrap (RFC 5649)', value: 'nist-key-wrap' },
-    { label: 'AES GCM', value: 'aes-gcm' },
-    { label: 'RSA PKCS v1.5', value: 'rsa-pkcs-v15' },
-    { label: 'RSA OAEP', value: 'rsa-oaep' },
-    { label: 'RSA AES Key Wrap', value: 'rsa-aes-key-wrap' },
-];
+// const KEY_ENCRYPTION_ALGORITHMS = [
+//     { label: 'NIST Key Wrap (RFC 5649)', value: 'nist-key-wrap' },
+//     { label: 'AES GCM', value: 'aes-gcm' },
+//     { label: 'RSA PKCS v1.5', value: 'rsa-pkcs-v15' },
+//     { label: 'RSA OAEP', value: 'rsa-oaep' },
+//     { label: 'RSA AES Key Wrap', value: 'rsa-aes-key-wrap' },
+// ];
 
 const SymmetricDecryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricDecryptFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: SymmetricDecryptFormData) => {
+    const onFinish = async (values: SymmetricDecryptFormData) => {
         console.log('Decrypt values:', values);
-        // Handle form submission
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        try {
+            if (id == undefined) {
+                setRes("Missing key identifier.")
+                throw Error("Missing key identifier")
+            }
+            const request = decrypt_ttlv_request(id , values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const response = await parse_decrypt_ttlv_response(result_str);
+                const mimeType = "application/octet-stream";
+                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
+                const filename = `${name}.plain`;
+                const decoder = new TextDecoder("utf-8");
+                const text = decoder.decode(new Uint8Array(response.Data));
+                downloadFile(text, filename, mimeType);
+                setRes("File has been decrypted")
+            }
+        } catch (e) {
+            setRes(`Error decrypting: ${e}`)
+            console.error("Error decrypting:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -53,19 +82,33 @@ const SymmetricDecryptForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    dataEncryptionAlgorithm: 'aes-gcm',
+                    dataEncryptionAlgorithm: 'AesGcm',
                 }}
                 className="space-y-6"
             >
                 <div className="bg-gray-50 p-4 rounded-lg space-y-4">
                     <h3 className="text-sm font-medium text-gray-700">Input File</h3>
+
+                    <Form.Item name="fileName" style={{ display: "none" }}>
+                        <Input />
+                    </Form.Item>
+
                     <Form.Item
                         name="inputFile"
                         rules={[{ required: true, message: 'Please select a file to decrypt' }]}
                     >
                         <Upload.Dragger
                             beforeUpload={(file) => {
-                                form.setFieldsValue({ inputFile: file });
+                                form.setFieldValue("fileName", file.name)
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    const arrayBuffer = e.target?.result;
+                                    if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                        const bytes = new Uint8Array(arrayBuffer);
+                                        form.setFieldsValue({ inputFile: bytes })
+                                    }
+                                };
+                                reader.readAsArrayBuffer(file);
                                 return false;
                             }}
                             maxCount={1}
@@ -107,7 +150,7 @@ const SymmetricDecryptForm: React.FC = () => {
                     <Select options={DATA_ENCRYPTION_ALGORITHMS} />
                 </Form.Item>
 
-                <Form.Item
+                {/* <Form.Item
                     name="keyEncryptionAlgorithm"
                     label="Key Encryption Algorithm"
                     help="Optional. If not specified, decryption happens server-side"
@@ -117,7 +160,7 @@ const SymmetricDecryptForm: React.FC = () => {
                         allowClear
                         placeholder="Select for client-side decryption"
                     />
-                </Form.Item>
+                </Form.Item> */}
 
                 <Form.Item
                     name="authenticationData"
@@ -131,12 +174,14 @@ const SymmetricDecryptForm: React.FC = () => {
                     <Button
                         type="primary"
                         htmlType="submit"
+                        loading={isLoading}
                         className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
                     >
                         Decrypt File
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };
