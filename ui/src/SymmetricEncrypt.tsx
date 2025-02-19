@@ -1,10 +1,10 @@
 import { Button, Form, Input, Select, Upload } from 'antd'
 import React, { useState } from 'react'
 import { downloadFile, sendKmipRequest } from './utils'
-import { encrypt_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
+import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
 interface SymmetricEncryptFormData {
-    inpuFile: Uint8Array;
+    inputFile: Uint8Array;
     fileName: string;
     keyId?: string;
     tags?: string[];
@@ -31,7 +31,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 setRes("Missing key identifier.")
                 throw Error("Missing key identifier")
             }
-            const request = encrypt_ttlv_request(id , undefined, values.inputFile, undefined, values.nonce, values.authenticationData, values.dataEncryptionAlgorithm);
+            const request = encrypt_sym_ttlv_request(id , undefined, values.inputFile, undefined, values.nonce, values.authenticationData, values.dataEncryptionAlgorithm);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const  { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str)
@@ -95,7 +95,7 @@ const SymmetricEncryptForm: React.FC = () => {
                                     const arrayBuffer = e.target?.result;
                                     if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
                                         const bytes = new Uint8Array(arrayBuffer);
-                                        form.setFieldsValue({ inpuFile: bytes })
+                                        form.setFieldsValue({ inputFile: bytes })
                                     }
                                 };
                                 reader.readAsArrayBuffer(file);

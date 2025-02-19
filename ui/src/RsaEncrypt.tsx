@@ -1,35 +1,64 @@
 import { Button, Form, Input, Select, Upload } from 'antd'
-import React from 'react'
+import React, { useState } from 'react'
+import { downloadFile, sendKmipRequest } from './utils'
+import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
+
 
 interface RsaEncryptFormData {
-    inputFile: File;
+    inputFile: Uint8Array;
+    fileName: string;
     keyId?: string;
     tags?: string[];
-    encryptionAlgorithm: 'ckm-rsa-pkcs' | 'ckm-rsa-pkcs-oaep' | 'ckm-rsa-aes-key-wrap';
-    hashingAlgorithm: 'sha1' | 'sha224' | 'sha256' | 'sha384' | 'sha512';
-    outputFile?: string;
+    encryptionAlgorithm: 'CkmRsaPkcs' | 'CkmRsaPkcsOaep' | 'CkmRsaAesKeyWrap';
+    hashingAlgorithm: 'Sha1' | 'Sha224' | 'Sha256' | 'Sha384' | 'Sha512';
 }
 
 const ENCRYPTION_ALGORITHMS = [
-    { label: 'RSA PKCS #1 v1.5 (Legacy)', value: 'ckm-rsa-pkcs' },
-    { label: 'RSA OAEP (Recommended)', value: 'ckm-rsa-pkcs-oaep' },
-    { label: 'RSA AES Key Wrap', value: 'ckm-rsa-aes-key-wrap' },
+    { label: 'RSA PKCS #1 v1.5 (Legacy)', value: 'CkmRsaPkcs' },
+    { label: 'RSA OAEP (Recommended)', value: 'CkmRsaPkcsOaep' },
+    { label: 'RSA AES Key Wrap', value: 'CkmRsaAesKeyWrap' },
 ];
 
 const HASH_ALGORITHMS = [
-    { label: 'SHA-1', value: 'sha1' },
-    { label: 'SHA-224', value: 'sha224' },
-    { label: 'SHA-256', value: 'sha256' },
-    { label: 'SHA-384', value: 'sha384' },
-    { label: 'SHA-512', value: 'sha512' },
+    { label: 'SHA-1', value: 'Sha1' },
+    { label: 'SHA-224', value: 'Sha224' },
+    { label: 'SHA-256', value: 'Sha256' },
+    { label: 'SHA-384', value: 'Sha384' },
+    { label: 'SHA-512', value: 'Sha512' },
 ];
 
 const RsaEncryptForm: React.FC = () => {
     const [form] = Form.useForm<RsaEncryptFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: RsaEncryptFormData) => {
+    const onFinish = async (values: RsaEncryptFormData) => {
         console.log('Encrypt values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        try {
+            if (id == undefined) {
+                setRes("Missing key identifier.")
+                throw Error("Missing key identifier")
+            }
+            const request = encrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const response = await parse_encrypt_ttlv_response(result_str)
+                const data = new Uint8Array(response.Data)
+                const mimeType = "application/octet-stream";
+                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
+                const filename = `${name}.enc`;
+                downloadFile(data, filename, mimeType);
+                setRes("File has been encrypted")
+            }
+        } catch (e) {
+            setRes(`Error encrypting: ${e}`)
+            console.error("Error encrypting:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -47,20 +76,34 @@ const RsaEncryptForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    encryptionAlgorithm: 'ckm-rsa-pkcs-oaep',
-                    hashingAlgorithm: 'sha256',
+                    encryptionAlgorithm: 'CkmRsaPkcsOaep',
+                    hashingAlgorithm: 'Sha256',
                 }}
                 className="space-y-6"
             >
                 <div className="bg-gray-50 p-4 rounded-lg space-y-4">
                     <h3 className="text-sm font-medium text-gray-700">Input File</h3>
+
+                    <Form.Item name="fileName" style={{ display: "none" }}>
+                        <Input />
+                    </Form.Item>
+
                     <Form.Item
                         name="inputFile"
                         rules={[{ required: true, message: 'Please select a file to encrypt' }]}
                     >
                         <Upload.Dragger
                             beforeUpload={(file) => {
-                                form.setFieldsValue({ inputFile: file });
+                                form.setFieldValue("fileName", file.name)
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    const arrayBuffer = e.target?.result;
+                                    if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                        const bytes = new Uint8Array(arrayBuffer);
+                                        form.setFieldsValue({ inputFile: bytes })
+                                    }
+                                };
+                                reader.readAsArrayBuffer(file);
                                 return false;
                             }}
                             maxCount={1}
@@ -121,6 +164,7 @@ const RsaEncryptForm: React.FC = () => {
                     </Button>
                 </Form.Item>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

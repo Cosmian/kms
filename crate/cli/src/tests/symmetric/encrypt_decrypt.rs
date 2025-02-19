@@ -4,7 +4,7 @@ use assert_cmd::prelude::*;
 use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_ui_utils::{
-        create_utils::SymmetricAlgorithm, sym_utils::DataEncryptionAlgorithm,
+        create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
     },
     KmsClient, KMS_CLI_CONF_ENV,
 };

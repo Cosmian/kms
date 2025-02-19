@@ -10,8 +10,7 @@ use cosmian_kmip::kmip_2_1::{
         ValidateResponse,
     },
     kmip_types::{
-        BlockCipherMode, CertificateRequestType, CryptographicAlgorithm, CryptographicParameters,
-        RecommendedCurve, UniqueIdentifier,
+        CertificateRequestType, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -25,8 +24,6 @@ use js_sys::Uint8Array;
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
-#[cfg(not(feature = "fips"))]
-use crate::symmetric_ciphers::{CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH};
 use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
@@ -35,11 +32,8 @@ use crate::{
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
     import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
-    sym_utils::DataEncryptionAlgorithm,
-    symmetric_ciphers::{
-        AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_128_XTS_MAC_LENGTH,
-        AES_128_XTS_TWEAK_LENGTH, RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH,
-    },
+    rsa_utils::{HashFn, RsaEncryptionAlgorithm},
+    symmetric_utils::{parse_decrypt_elements, DataEncryptionAlgorithm},
 };
 
 fn parse_ttlv_response<T>(response: &str) -> Result<JsValue, JsValue>
@@ -195,40 +189,17 @@ pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Decrypt request
 #[wasm_bindgen]
-pub fn decrypt_ttlv_request(
+pub fn decrypt_sym_ttlv_request(
     key_unique_identifier: &str,
-    mut ciphertext: Vec<u8>,
+    ciphertext: Vec<u8>,
     authentication_data: Option<Vec<u8>>,
     data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
     let cryptographic_parameters: CryptographicParameters =
         serde_wasm_bindgen::from_value::<DataEncryptionAlgorithm>(data_encryption_algorithm)?
             .into();
-    let (nonce_size, tag_size) = match &cryptographic_parameters
-        .cryptographic_algorithm
-        .unwrap_or(CryptographicAlgorithm::AES)
-    {
-        CryptographicAlgorithm::AES => match cryptographic_parameters
-            .block_cipher_mode
-            .unwrap_or(BlockCipherMode::GCM)
-        {
-            BlockCipherMode::GCM | BlockCipherMode::GCMSIV => {
-                (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
-            }
-            BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
-            BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
-            _ => return Err(JsValue::from_str("Unsupported block cipher mode")),
-        },
-        #[cfg(not(feature = "fips"))]
-        CryptographicAlgorithm::ChaCha20Poly1305 | CryptographicAlgorithm::ChaCha20 => {
-            (CHACHA20_POLY1305_IV_LENGTH, CHACHA20_POLY1305_MAC_LENGTH)
-        }
-        _ => return Err(JsValue::from_str("Unsupported cryptographic algorithm")),
-    };
-    let nonce = ciphertext.drain(..nonce_size).collect::<Vec<_>>();
-    let tag = ciphertext
-        .drain(ciphertext.len() - tag_size..)
-        .collect::<Vec<_>>();
+    let (ciphertext, nonce, tag) = parse_decrypt_elements(&cryptographic_parameters, ciphertext)
+        .map_err(|e| JsValue::from(e.to_string()))?;
     let request: Decrypt = decrypt_request(
         key_unique_identifier,
         Some(nonce),
@@ -236,6 +207,31 @@ pub fn decrypt_ttlv_request(
         Some(tag),
         authentication_data,
         Some(cryptographic_parameters),
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
     );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
@@ -271,7 +267,7 @@ pub fn parse_destroy_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Encrypt request
 #[wasm_bindgen]
-pub fn encrypt_ttlv_request(
+pub fn encrypt_sym_ttlv_request(
     key_unique_identifier: &str,
     encryption_policy: Option<String>,
     plaintext: Vec<u8>,
@@ -299,6 +295,33 @@ pub fn encrypt_ttlv_request(
         nonce,
         authentication_data,
         cryptographic_parameters,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn encrypt_rsa_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    encryption_algorithm: JsValue,
+    hash_fn: JsValue,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm =
+        serde_wasm_bindgen::from_value::<RsaEncryptionAlgorithm>(encryption_algorithm)?;
+    let hash_fn = serde_wasm_bindgen::from_value::<HashFn>(hash_fn)?;
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        None,
+        Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
     to_ttlv(&request)

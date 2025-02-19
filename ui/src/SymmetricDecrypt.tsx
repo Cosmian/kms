@@ -1,7 +1,7 @@
 import { Button, Form, Input, Select, Upload } from 'antd'
 import React, { useState } from 'react'
 import { downloadFile, sendKmipRequest } from './utils'
-import { decrypt_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
+import { decrypt_sym_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
 
 
 interface SymmetricDecryptFormData {
@@ -43,9 +43,10 @@ const SymmetricDecryptForm: React.FC = () => {
                 setRes("Missing key identifier.")
                 throw Error("Missing key identifier")
             }
-            const request = decrypt_ttlv_request(id , values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
+            const request = decrypt_sym_ttlv_request(id , values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
+                console.log(result_str)
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const mimeType = "application/octet-stream";
                 const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;

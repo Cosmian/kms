@@ -13,7 +13,7 @@ use cosmian_kms_client::{
         requests::{create_symmetric_key_kmip_object, encrypt_request},
     },
     read_bytes_from_file,
-    reexport::cosmian_kms_ui_utils::sym_utils::DataEncryptionAlgorithm,
+    reexport::cosmian_kms_ui_utils::symmetric_utils::DataEncryptionAlgorithm,
     ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::crypto::{
