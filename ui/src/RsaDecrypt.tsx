@@ -45,7 +45,6 @@ const RsaDecryptForm: React.FC = () => {
             const request = decrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
-                console.log(result_str)
                 const response = await parse_decrypt_ttlv_response(result_str)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
@@ -59,7 +58,8 @@ const RsaDecryptForm: React.FC = () => {
             console.error("Error decrypting:", e);
         } finally {
             setIsLoading(false);
-        }    };
+        }
+    };
 
     return (
         <div className="p-6">

@@ -1,8 +1,11 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React from 'react'
+import React, { useState } from 'react'
+import { downloadFile, sendKmipRequest } from './utils'
+import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
 interface ECEncryptFormData {
-    inputFile: File;
+    inputFile: Uint8Array;
+    fileName: string;
     keyId?: string;
     tags?: string[];
     authenticationData?: string;
@@ -11,10 +14,37 @@ interface ECEncryptFormData {
 
 const ECEncryptForm: React.FC = () => {
     const [form] = Form.useForm<ECEncryptFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: ECEncryptFormData) => {
+    const onFinish = async (values: ECEncryptFormData) => {
         console.log('Encrypt values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        try {
+            if (id == undefined) {
+                setRes("Missing key identifier.")
+                throw Error("Missing key identifier")
+            }
+            const request = encrypt_ec_ttlv_request(id, values.inputFile, values.authenticationData);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const response = await parse_encrypt_ttlv_response(result_str)
+                console.log(response.Data, values.fileName)
+                const data = new Uint8Array(response.Data)
+                const mimeType = "application/octet-stream";
+                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
+                const filename = `${name}.enc`;
+                downloadFile(data, filename, mimeType);
+                setRes("File has been encrypted")
+            }
+        } catch (e) {
+            setRes(`Error encrypting: ${e}`)
+            console.error("Error encrypting:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -36,13 +66,27 @@ const ECEncryptForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>
+
+                        <Form.Item name="fileName" style={{ display: "none" }}>
+                            <Input />
+                        </Form.Item>
+
                         <Form.Item
                             name="inputFile"
                             rules={[{ required: true, message: 'Please select a file to encrypt' }]}
                         >
                             <Upload.Dragger
                                 beforeUpload={(file) => {
-                                    form.setFieldsValue({ inputFile: file });
+                                    form.setFieldValue("fileName", file.name)
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                        const arrayBuffer = e.target?.result;
+                                        if (arrayBuffer && arrayBuffer instanceof ArrayBuffer) {
+                                            const bytes = new Uint8Array(arrayBuffer);
+                                            form.setFieldsValue({ inputFile: bytes })
+                                        }
+                                    };
+                                    reader.readAsArrayBuffer(file);
                                     return false;
                                 }}
                                 maxCount={1}
@@ -89,6 +133,7 @@ const ECEncryptForm: React.FC = () => {
                         <Button
                             type="primary"
                             htmlType="submit"
+                            loading={isLoading}
                             className="w-full text-white font-medium"
                         >
                             Encrypt File
@@ -96,6 +141,7 @@ const ECEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

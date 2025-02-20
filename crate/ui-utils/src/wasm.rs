@@ -241,6 +241,27 @@ pub fn decrypt_rsa_ttlv_request(
 }
 
 #[wasm_bindgen]
+pub fn decrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        None,
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
 pub fn parse_decrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<DecryptResponse>(response)
 }
@@ -322,6 +343,29 @@ pub fn encrypt_rsa_ttlv_request(
         None,
         None,
         Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn encrypt_ec_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        authentication_data,
+        None,
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
     to_ttlv(&request)
