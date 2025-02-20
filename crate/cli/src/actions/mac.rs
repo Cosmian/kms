@@ -83,7 +83,7 @@ pub struct MacAction {
     )]
     pub hashing_algorithm: CHashingAlgorithm,
 
-    /// The data to be hashed.
+    /// The data to be hashed in hexadecimal format.
     #[clap(long, short = 'd')]
     pub data: Option<String>,
 

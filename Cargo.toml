@@ -65,9 +65,9 @@ chrono = "0.4.39"
 clap = { version = "4.5.27", default-features = false }
 cloudproof = "3.0"
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
-cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
-cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
-cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
+cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
@@ -91,7 +91,7 @@ thiserror = "2.0.11"
 time = "0.3.37"
 tiny-keccak = "2.0.2"
 tempfile = "3.16.0"
-tokio = { version = "1.42", default-features = false }
+tokio = { version = "1.43", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
