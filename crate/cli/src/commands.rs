@@ -11,9 +11,9 @@ use crate::{
     actions::{
         access::AccessAction, attributes::AttributesCommands, bench::BenchAction,
         certificates::CertificatesCommands, elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands, login::LoginAction, logout::LogoutAction, mac::MacAction,
-        new_database::NewDatabaseAction, rsa::RsaCommands, shared::LocateObjectsAction,
-        symmetric::SymmetricCommands, version::ServerVersionAction,
+        google::GoogleCommands, hash::HashAction, login::LoginAction, logout::LogoutAction,
+        mac::MacAction, new_database::NewDatabaseAction, rsa::RsaCommands,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::CliResult,
 };
@@ -106,6 +106,7 @@ pub enum KmsActions {
     Locate(LocateObjectsAction),
     Login(LoginAction),
     Logout(LogoutAction),
+    Hash(HashAction),
     Mac(MacAction),
     NewDatabase(NewDatabaseAction),
     #[command(subcommand)]
@@ -133,6 +134,7 @@ impl KmsActions {
             Self::Locate(action) => action.process(kms_rest_client).await,
             Self::Login(action) => action.process(&mut kms_rest_client.config).await,
             Self::Logout(action) => action.process(&mut kms_rest_client.config),
+            Self::Hash(action) => action.process(kms_rest_client).await,
             Self::Mac(action) => action.process(kms_rest_client).await,
             Self::NewDatabase(action) => action.process(kms_rest_client).await,
             Self::Rsa(action) => action.process(kms_rest_client).await,

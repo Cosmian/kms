@@ -81,7 +81,7 @@ pub struct MacAction {
         value_name = "ALGORITHM",
         verbatim_doc_comment
     )]
-    pub hashing_algorithm: Option<CHashingAlgorithm>,
+    pub hashing_algorithm: CHashingAlgorithm,
 
     /// The data to be hashed.
     #[clap(long, short = 'd')]
@@ -110,7 +110,7 @@ impl MacAction {
         let unique_identifier = Some(UniqueIdentifier::TextString(self.mac_key_id.clone()));
 
         let cryptographic_parameters = CryptographicParameters {
-            hashing_algorithm: self.hashing_algorithm.clone().map(std::convert::Into::into),
+            hashing_algorithm: Some(self.hashing_algorithm.clone().into()),
             ..Default::default()
         };
 

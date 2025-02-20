@@ -7,6 +7,7 @@ pub mod console;
 pub mod cover_crypt;
 pub mod elliptic_curves;
 pub mod google;
+pub mod hash;
 pub mod login;
 pub mod logout;
 pub mod mac;

@@ -129,7 +129,7 @@ pub enum Operation {
     GetResponse(GetResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(GetAttributesResponse),
-    Hash(HashOperation),
+    Hash(Hash),
     HashResponse(HashResponse),
     Import(Import),
     ImportResponse(ImportResponse),
@@ -1933,7 +1933,7 @@ impl Display for DestroyResponse {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "PascalCase")]
-pub struct HashOperation {
+pub struct Hash {
     /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
     pub cryptographic_parameters: CryptographicParameters,
     /// The data to be hashed.
@@ -1950,7 +1950,7 @@ pub struct HashOperation {
     pub final_indicator: Option<bool>,
 }
 
-impl Display for HashOperation {
+impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

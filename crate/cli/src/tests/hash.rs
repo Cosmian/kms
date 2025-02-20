@@ -7,26 +7,22 @@ use kms_test_server::start_default_test_kms_server;
 
 use super::utils::extract_uids::extract_uid;
 use crate::{
-    actions::{
-        mac::{CHashingAlgorithm, MacAction},
-        symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
-    },
+    actions::{hash::HashAction, mac::CHashingAlgorithm},
     error::{result::CliResult, CliError},
-    tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
+    tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
-const SUB_COMMAND: &str = "mac";
+const SUB_COMMAND: &str = "hash";
 
 /// Create a symmetric key via the CLI
-pub(crate) fn create_mac(cli_conf_path: &str, action: MacAction) -> CliResult<String> {
+pub(crate) fn create_hash(cli_conf_path: &str, action: HashAction) -> CliResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
 
-    let mut args = vec!["--mac-key-id".to_owned(), action.mac_key_id];
-    args.extend(vec![
+    let mut args = vec![
         "--algorithm".to_owned(),
         action.hashing_algorithm.to_string(),
-    ]);
+    ];
     if let Some(data) = action.data {
         args.extend(vec!["--data".to_owned(), data]);
     }
@@ -45,7 +41,7 @@ pub(crate) fn create_mac(cli_conf_path: &str, action: MacAction) -> CliResult<St
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
-        let unique_identifier = extract_uid(output, "Mac output").ok_or_else(|| {
+        let unique_identifier = extract_uid(output, "Hash output").ok_or_else(|| {
             CliError::Default("failed extracting the unique identifier".to_owned())
         })?;
         return Ok(unique_identifier.to_string())
@@ -57,23 +53,13 @@ pub(crate) fn create_mac(cli_conf_path: &str, action: MacAction) -> CliResult<St
 }
 
 #[tokio::test]
-pub(crate) async fn test_mac() -> CliResult<()> {
+pub(crate) async fn test_hash() -> CliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
 
-    let mac_key_id = create_symmetric_key(
+    create_hash(
         &ctx.owner_client_conf_path,
-        CreateKeyAction {
-            algorithm: SymmetricAlgorithm::Sha3,
-            number_of_bits: Some(256),
-            ..Default::default()
-        },
-    )?;
-
-    create_mac(
-        &ctx.owner_client_conf_path,
-        MacAction {
-            mac_key_id,
+        HashAction {
             hashing_algorithm: CHashingAlgorithm::SHA3_256,
             data: Some("010203".to_owned()),
             correlation_value: None,

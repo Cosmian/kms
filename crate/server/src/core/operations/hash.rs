@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_operations::{HashOperation, HashResponse},
+    kmip_operations::{Hash, HashResponse},
     kmip_types::HashingAlgorithm,
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -12,7 +12,7 @@ use crate::{core::KMS, kms_bail, result::KResult};
 
 pub(crate) async fn hash_operation(
     _kms: &KMS,
-    request: HashOperation,
+    request: Hash,
     _user: &str,
     _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<HashResponse> {
@@ -80,7 +80,7 @@ mod tests {
     use std::sync::Arc;
 
     use cosmian_kmip::kmip_2_1::{
-        kmip_operations::HashOperation,
+        kmip_operations::Hash,
         kmip_types::{CryptographicParameters, HashingAlgorithm},
     };
 
@@ -92,7 +92,7 @@ mod tests {
     async fn test_server_hash_operation() -> KResult<()> {
         let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
 
-        let request = HashOperation {
+        let request = Hash {
             cryptographic_parameters: CryptographicParameters {
                 hashing_algorithm: Some(HashingAlgorithm::SHA3256),
                 ..Default::default()

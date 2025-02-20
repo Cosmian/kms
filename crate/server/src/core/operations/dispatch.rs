@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::{
         Certify, Create, CreateKeyPair, Decrypt, DeleteAttribute, Destroy, Encrypt, Export, Get,
-        GetAttributes, HashOperation, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
+        GetAttributes, Hash, Import, Locate, Mac, Operation, ReKey, ReKeyKeyPair, Revoke,
         SetAttribute, Validate,
     },
     ttlv::{deserializer::from_ttlv, TTLV},
@@ -66,7 +66,7 @@ pub(crate) async fn dispatch(
             Operation::GetAttributesResponse(resp)
         }
         "Hash" => {
-            let req = from_ttlv::<HashOperation>(ttlv)?;
+            let req = from_ttlv::<Hash>(ttlv)?;
             let resp = kms.hash(req, user, database_params).await?;
             Operation::HashResponse(resp)
         }

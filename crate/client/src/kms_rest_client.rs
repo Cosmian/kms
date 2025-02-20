@@ -2,8 +2,8 @@ use cosmian_http_client::HttpClient;
 use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse},
     kmip_operations::{
-        DeleteAttribute, DeleteAttributeResponse, Mac, MacResponse, ReKey, ReKeyResponse,
-        SetAttribute, SetAttributeResponse,
+        DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
+        ReKeyResponse, SetAttribute, SetAttributeResponse,
     },
 };
 // re-export the kmip module as kmip
@@ -237,6 +237,17 @@ impl KmsClient {
     ) -> Result<GetAttributesResponse, KmsClientError> {
         self.post_ttlv::<GetAttributes, GetAttributesResponse>(&request)
             .await
+    }
+
+    /// This operation requests the server to perform a hash operation on the data provided.
+    ///
+    /// The request contains information about the cryptographic parameters (hash algorithm) and the data to be hashed.
+    ///
+    /// The response contains the result of the hash operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    pub async fn hash(&self, request: Hash) -> Result<HashResponse, KmsClientError> {
+        self.post_ttlv::<Hash, HashResponse>(&request).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.

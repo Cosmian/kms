@@ -6,10 +6,9 @@ use cosmian_kmip::kmip_2_1::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
         DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, HashOperation, HashResponse, Import, ImportResponse,
-        Locate, LocateResponse, Mac, MacResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-        ReKeyResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate,
-        ValidateResponse,
+        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+        LocateResponse, Mac, MacResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
+        Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
     },
     kmip_types::StateEnumeration,
 };
@@ -279,7 +278,7 @@ impl KMS {
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
     pub(crate) async fn hash(
         &self,
-        request: HashOperation,
+        request: Hash,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<HashResponse> {

@@ -6,6 +6,7 @@ mod certificates;
 mod cover_crypt;
 mod elliptic_curve;
 mod google_cmd;
+mod hash;
 mod hsm;
 mod mac;
 mod new_database;
