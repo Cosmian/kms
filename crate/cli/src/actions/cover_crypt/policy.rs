@@ -21,7 +21,6 @@ use cosmian_kms_crypto::{
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
 
-
 /// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
@@ -40,7 +39,7 @@ impl PolicyCommands {
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
             Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
-        }
+        };
 
         Ok(())
     }
@@ -97,14 +96,11 @@ impl ViewAction {
         } else {
             cli_bail!("either a key ID or a key TTLV file must be supplied");
         };
-
-        let key_block = object.key_block()?;
-        let key_bytes = key_block.key_bytes()?;
-
-        let mpk = MasterPublicKey::deserialize(&key_bytes).map_err(|e| {
-            CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
-        })?;
-        let stdout: String = format!("{:?}", mpk);
+        let mpk: MasterPublicKey = MasterPublicKey::deserialize(&object.key_block()?.key_bytes()?)
+            .map_err(|e| {
+                CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
+            })?;
+        let stdout: String = format!("{:?}", mpk.access_structure);
         console::Stdout::new(&stdout).write()?;
 
         Ok(())
@@ -264,7 +260,7 @@ impl DisableAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-       // Create the kmip query
+        // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from((
@@ -322,7 +318,7 @@ impl RemoveAttributeAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-     // Create the kmip query
+        // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::new("dimension", "name")]),

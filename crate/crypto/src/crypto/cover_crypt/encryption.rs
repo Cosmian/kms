@@ -2,7 +2,7 @@ use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, EncryptedHeader, Master
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::zeroize::Zeroizing,
-    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{
@@ -68,7 +68,6 @@ impl CoverCryptEncryption {
     ///
     fn bulk_encrypt(
         &self,
-        encrypted_header: &[u8],
         plaintext: &[u8],
         ad: Option<&[u8]>,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
@@ -91,10 +90,8 @@ impl CoverCryptEncryption {
         // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let mut encrypted_block = self.encrypt(chunk_data, ad, symmetric_key)?;
-            let mut chunk = encrypted_header.to_vec();
-            chunk.append(&mut encrypted_block);
-            ser.write_vec(&chunk)?;
+            let encrypted_block = self.encrypt(chunk_data, ad, symmetric_key)?;
+            ser.write_vec(&encrypted_block)?;
         }
 
         Ok(ser.finalize().to_vec())
@@ -108,14 +105,14 @@ impl CoverCryptEncryption {
     ) -> Result<Vec<u8>, CryptoError> {
         // Encrypt the data
         let nonce = Nonce::<12>::new(&mut *self.cover_crypt.rng());
-        let ciphertext = Aes256Gcm::new(symmetric_key).encrypt(&nonce, plaintext, ad)?;
+        let ctx = Aes256Gcm::new(symmetric_key).encrypt(&nonce, plaintext, ad)?;
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
             self.public_key_uid,
             plaintext.len(),
-            ciphertext.len(),
+            ctx.len(),
         );
-        Ok([nonce.as_bytes(), &ciphertext].concat())
+        Ok([nonce.as_bytes(), &ctx].concat())
     }
 }
 
@@ -129,12 +126,13 @@ impl EncryptionSystem for CoverCryptEncryption {
                 .as_deref()
                 .ok_or_else(|| CryptoError::Kmip("Missing data to encrypt".to_owned()))?,
         )?;
-        let mut de = Deserializer::new(self.public_key_bytes.as_slice());
-        let public_key = MasterPublicKey::read(&mut de).map_err(|e| {
-            CryptoError::Kmip(format!(
-                "cover crypt encrypt: failed recovering the public key: {e}"
-            ))
-        })?;
+
+        let public_key =
+            MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
+                CryptoError::Kmip(format!(
+                    "cover crypt encrypt: failed recovering the public key: {e}"
+                ))
+            })?;
 
         let encryption_policy_string = data_to_encrypt
             .encryption_policy
@@ -144,7 +142,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             .map_err(|e| CryptoError::Kmip(format!("invalid encryption policy: {e}")))?;
 
         // Generate a symmetric key and encrypt the header
-        let (secret, encrypted_header) = EncryptedHeader::generate(
+        let (secret, _encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
             &public_key,
             &encryption_policy,
@@ -153,30 +151,16 @@ impl EncryptionSystem for CoverCryptEncryption {
         )
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-        let mut secret_bytes: [u8; SYM_KEY_LENGTH] = [0_u8; SYM_KEY_LENGTH];
-        secret.to_unprotected_bytes(&mut secret_bytes);
-        let symmetric_key = SymmetricKey::try_from_bytes(secret_bytes)?;
+        let symmetric_key = SymmetricKey::derive(&secret, &[0_u8])?;
 
-        let mut encrypted_header = encrypted_header
-            .serialize()
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-
-            let encrypted_data = if let Some(CryptographicParameters {
+        let encrypted_data = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
             ..
         }) = request.cryptographic_parameters
         {
-            self.bulk_encrypt(
-                &encrypted_header,
-                &data_to_encrypt.plaintext,
-                ad,
-                &symmetric_key,
-            )?
+            self.bulk_encrypt(&data_to_encrypt.plaintext, ad, &symmetric_key)?
         } else {
-            let mut encrypted_data =
-                self.encrypt(&data_to_encrypt.plaintext, ad, &symmetric_key)?;
-            encrypted_header.append(&mut encrypted_data);
-            encrypted_header.to_vec()
+            self.encrypt(&data_to_encrypt.plaintext, ad, &symmetric_key)?
         };
 
         Ok(EncryptResponse {

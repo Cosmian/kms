@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
@@ -69,7 +69,8 @@ impl UserDecryptionKeysHandler {
     ) -> Result<Self, CryptoError> {
         let msk_key_block = master_private_key.key_block()?;
         let msk_key_bytes = msk_key_block.key_bytes()?;
-        let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
+        let mut de = Deserializer::new(&msk_key_bytes);
+        let msk = MasterSecretKey::read(&mut de).map_err(|e| {
             CryptoError::Kmip(format!(
                 "cover crypt: failed deserializing the master private key: {e}"
             ))

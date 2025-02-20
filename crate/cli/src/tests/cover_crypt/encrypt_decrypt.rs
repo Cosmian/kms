@@ -307,7 +307,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
         "../../test_data/policy_specifications.json",
@@ -318,7 +318,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
-        "[\"tag\"]",
+        &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
         Some(output_file.to_str().unwrap()),
         Some("myid"),
@@ -327,7 +327,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        "[\"tag\"]",
+        &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["tag"],
         false,
@@ -337,7 +337,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     decrypt(
         &ctx.owner_client_conf_path,
         &[output_file.to_str().unwrap()],
-        "[\"tag\"]",
+        &user_ok_key_id,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
     )?;
@@ -369,9 +369,9 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     // );
 
     // this user key should not be able to decrypt the file
-    let _user_ko_key_id = create_user_decryption_key(
+    let user_ko_key_id = create_user_decryption_key(
         &ctx.owner_client_conf_path,
-        "[\"tag\"]",
+        &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
         &["tag_ko"],
         false,
@@ -380,7 +380,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
         decrypt(
             &ctx.owner_client_conf_path,
             &[output_file.to_str().unwrap()],
-            "[\"tag_ko\"]",
+            &user_ko_key_id,
             Some(recovered_file.to_str().unwrap()),
             Some("myid"),
         )
@@ -393,7 +393,7 @@ async fn test_encrypt_decrypt_using_tags() -> CliResult<()> {
     decrypt(
         &ctx.owner_client_conf_path,
         &[output_file.to_str().unwrap()],
-        &user_ok_key_id,
+        &user_ko_key_id,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
     )?;

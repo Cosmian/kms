@@ -35,16 +35,17 @@ pub fn create_master_keypair(
 
     for (name, attributes) in access_structure {
         if name.contains("::<") {
-            msk.access_structure.add_hierarchy(name.clone())?;
+            let n = name.trim_end_matches("::<");
+            msk.access_structure.add_hierarchy(n.to_owned())?;
         } else {
             msk.access_structure.add_anarchy(name.clone())?;
         }
 
         for attr in attributes {
-            let _unused = msk.access_structure.add_attribute(
+            drop(msk.access_structure.add_attribute(
                 QualifiedAttribute {
                     dimension: name.clone(),
-                    name: attr.clone(),
+                    name: attr.trim_end_matches("::+").to_owned(),
                 },
                 if attr.contains("::+") {
                     EncryptionHint::Hybridized
@@ -52,7 +53,7 @@ pub fn create_master_keypair(
                     EncryptionHint::Classic
                 },
                 None,
-            );
+            ));
         }
     }
 

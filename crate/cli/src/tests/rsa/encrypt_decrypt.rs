@@ -354,7 +354,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (_private_key_id, _public_key_id) = create_rsa_key_pair(
+    let (private_key_id, public_key_id) = create_rsa_key_pair(
         &ctx.owner_client_conf_path,
         &RsaKeyPairOptions {
             tags: HashSet::from(["tag_rsa".to_string()]),
@@ -365,7 +365,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     encrypt(
         &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
-        "[\"tag_rsa\"]",
+        &public_key_id,
         RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
@@ -376,7 +376,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CliResult<()> {
     decrypt(
         &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
-        "[\"tag_rsa\"]",
+        &private_key_id,
         RsaEncryptionAlgorithm::CkmRsaPkcsOaep,
         Some(HashFn::Sha256),
         Some(recovered_file.to_str().unwrap()),

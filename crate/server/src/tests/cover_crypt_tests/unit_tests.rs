@@ -440,7 +440,8 @@ async fn test_abe_json_access() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     // Create CC master key pair
-    let master_keypair = build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false, Vec::new())?;
+    let master_keypair =
+        build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false, Vec::new())?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;

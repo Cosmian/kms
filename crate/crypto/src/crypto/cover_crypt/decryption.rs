@@ -1,5 +1,10 @@
-use cosmian_cover_crypt::{api::Covercrypt, CleartextHeader, EncryptedHeader, UserSecretKey};
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_cover_crypt::{
+    api::Covercrypt, CleartextHeader, EncryptedHeader, Error, UserSecretKey,
+};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, Secret, SymmetricKey,
+};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
@@ -48,8 +53,7 @@ impl CovercryptDecryption {
         ad: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
     ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
-        let mut de = Deserializer::new(encrypted_bytes);
-        let encrypted_header = EncryptedHeader::read(&mut de)
+        let encrypted_header = EncryptedHeader::deserialize(encrypted_bytes)
             .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
 
         let header = encrypted_header
@@ -57,7 +61,12 @@ impl CovercryptDecryption {
             .map_err(|e| CryptoError::Kmip(e.to_string()))?
             .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
-        let cleartext = header.serialize()?;
+        let key = SymmetricKey::derive(&header.secret, &[0_u8])?;
+        let nonce = Nonce::try_from_slice(encrypted_bytes)?;
+        let cleartext = Aes256Gcm::new(&key)
+            .decrypt(&nonce, encrypted_bytes, ad)
+            .map_err(Error::CryptoCoreError)
+            .map(Zeroizing::new)?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
@@ -113,43 +122,40 @@ impl CovercryptDecryption {
             })?
         };
 
-        let (mut h, mut c) = (
-            CleartextHeader {
-                secret: cosmian_crypto_core::Secret::new(),
-                metadata: None,
-            },
-            Zeroizing::from(vec![0_u8]),
-        );
+        let mut cleartext_header = CleartextHeader {
+            secret: Secret::default(),
+            metadata: vec![0_u8].into(),
+        };
+
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
 
-            let (encrypted_header, encrypted_block) = {
-                let mut de_chunk = Deserializer::new(chunk_data);
-                let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
-                    CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
-                })?;
-                let encrypted_block = de_chunk.finalize();
-                (encrypted_header, encrypted_block)
-            };
+            let encrypted_header = EncryptedHeader::deserialize(chunk_data).map_err(|e| {
+                CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
+            })?;
 
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, ad)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?
-                .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
+                .ok_or_else(|| CryptoError::Default("unable to recover header 147".to_owned()))?;
 
-            let cleartext = header.serialize()?;
+            cleartext_header = header;
 
             debug!(
                 "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
                 self.user_decryption_key_uid,
-                cleartext.len(),
-                encrypted_block.len(),
+                cleartext_header.length(),
+                encrypted_bytes.len(),
             );
 
-            (h, c) = (header, cleartext);
+            ser.write_vec(
+                &cleartext_header.metadata.clone().ok_or_else(|| {
+                    CryptoError::Default("unable to recover header 162".to_owned())
+                })?,
+            )?;
         }
 
-        Ok((h, c))
+        Ok((cleartext_header, ser.finalize()))
     }
 }
 

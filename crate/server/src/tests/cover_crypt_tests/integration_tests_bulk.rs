@@ -23,18 +23,10 @@ async fn integration_tests_bulk() -> KResult<()> {
         },
         items: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(
-                    EMPTY_TAGS,
-                    false,
-                    Vec::new(),
-                )?,
+                build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false, Vec::new())?,
             )),
             MessageBatchItem::new(Operation::CreateKeyPair(
-                build_create_covercrypt_master_keypair_request(
-                    EMPTY_TAGS,
-                    false,
-                    Vec::new(),
-                )?,
+                build_create_covercrypt_master_keypair_request(EMPTY_TAGS, false, Vec::new())?,
             )),
         ],
     };

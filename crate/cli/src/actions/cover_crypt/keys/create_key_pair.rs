@@ -60,21 +60,26 @@ pub struct CreateMasterKeyPairAction {
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PolicySpecs {
-    spec: Vec<(String, Vec<String>)>
+    #[serde(rename = "Security Level::<")]
+    pub security_level: Vec<String>,
+    #[serde(rename = "Department")]
+    pub department: Vec<String>,
 }
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
+        let file = File::open(&self.policy_specifications_file)?;
+        let buffer_reader = BufReader::new(file);
+        let json_policy: PolicySpecs = serde_json::from_reader(buffer_reader)?;
 
-        let a = File::open(&self.policy_specifications_file)?;
-        let b = BufReader::new(a);
-        let c: PolicySpecs = serde_json::from_reader(b)?;
-
-        println!("CCCCCCCCCCCCC{:?}", c.spec);
+        let access_structure: Vec<(String, Vec<String>)> = vec![
+            ("Security Level".to_string(), json_policy.security_level),
+            ("Department".to_string(), json_policy.department),
+        ];
         let create_key_pair = build_create_covercrypt_master_keypair_request(
             &self.tags,
             self.sensitive,
-            c.spec,
+            access_structure,
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids

@@ -674,8 +674,9 @@ impl Display for CreateKeyPair {
         write!(
             f,
             "CreateKeyPair {{ common_attributes: {:?}, private_key_attributes: {:?}, \
-             public_key_attributes: {:?}, access structure: {:?}, common_protection_storage_masks: {:?}, \
-             private_protection_storage_masks: {:?}, public_protection_storage_masks: {:?} }}",
+             public_key_attributes: {:?}, access structure: {:?}, \
+             common_protection_storage_masks: {:?}, private_protection_storage_masks: {:?}, \
+             public_protection_storage_masks: {:?} }}",
             self.common_attributes,
             self.private_key_attributes,
             self.public_key_attributes,
