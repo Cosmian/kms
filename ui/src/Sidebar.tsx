@@ -1,4 +1,4 @@
-import { Layout, Menu, MenuProps } from 'antd'
+import { Layout, Menu, MenuProps, Tooltip } from 'antd'
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { menuItems } from './menuItems'
@@ -54,6 +54,17 @@ const Sidebar: React.FC = () => {
       }
     };
 
+    const modifiedMenuItems = menuItems.map((item) => ({
+        ...item,
+        label: collapsed ? (
+            <Tooltip title={item.label}>
+                {item.icon ? item.icon : item.collapsedLabel}
+            </Tooltip>
+        ) : (
+            item.label
+        ),
+    }));
+
     return (
         <Sider
             collapsible
@@ -69,7 +80,7 @@ const Sidebar: React.FC = () => {
                 defaultOpenKeys={['access-rights']}
                 openKeys={stateOpenKeys}
                 onOpenChange={onOpenChange}
-                items={menuItems}
+                items={modifiedMenuItems}
                 onClick={({ key }) => navigate(key)}
                 className="h-full border-r-0"
                 style={{fontWeight: '500', overflow: 'auto'}}

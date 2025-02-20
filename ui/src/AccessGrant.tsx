@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select } from 'antd'
+import { Button, Card, Form, Input, Select, Space } from 'antd'
 import React, { useState } from 'react'
 import { postNoTTLVRequest } from './utils'
 
@@ -52,10 +52,10 @@ const AccessGrantForm: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-6 m-4">
+        <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">Grant access rights</h1>
 
-            <div className="mb-8 text-gray-600 space-y-2">
+            <div className="mb-8 space-y-2">
                 <p>Grant access rights to another user for specific KMIP operations on an object.</p>
                 <p>This action can only be performed by the owner of the object.</p>
             </div>
@@ -64,49 +64,51 @@ const AccessGrantForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                className="space-y-6"
             >
-                <Form.Item
-                    name="user_id"
-                    label="User Identifier"
-                    rules={[{ required: true, message: 'Please enter the user identifier' }]}
-                    help="The user to grant access to"
-                >
-                    <Input placeholder="Enter user identifier" />
-                </Form.Item>
+                <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+                    <Card>
+                        <Form.Item
+                            name="user_id"
+                            label="User Identifier"
+                            rules={[{ required: true, message: 'Please enter the user identifier' }]}
+                            help="The user to grant access to"
+                        >
+                            <Input placeholder="Enter user identifier" />
+                        </Form.Item>
 
-                <Form.Item
-                    name="unique_identifier"
-                    label="Object UID"
-                    rules={[{ required: true, message: 'Please enter the object UID' }]}
-                    help="The unique identifier of the object stored in the KMS"
-                >
-                    <Input placeholder="Enter object UID" />
-                </Form.Item>
+                        <Form.Item
+                            name="unique_identifier"
+                            label="Object UID"
+                            rules={[{ required: true, message: 'Please enter the object UID' }]}
+                            help="The unique identifier of the object stored in the KMS"
+                        >
+                            <Input placeholder="Enter object UID" />
+                        </Form.Item>
 
-                <Form.Item
-                    name="operation_types"
-                    label="KMIP Operations"
-                    rules={[{ required: true, message: 'Please select at least one operation' }]}
-                    help="Select one or more operations to grant access to"
-                >
-                    <Select
-                        mode="multiple"
-                        options={KMIP_OPERATIONS}
-                        placeholder="Select operations"
-                    />
-                </Form.Item>
-
-                <Form.Item>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        loading={isLoading}
-                        className="w-full bg-primary hover:bg-blue-700 border-0 rounded-md py-2 text-white font-medium"
-                    >
-                        Grand Access
-                    </Button>
-                </Form.Item>
+                        <Form.Item
+                            name="operation_types"
+                            label="KMIP Operations"
+                            rules={[{ required: true, message: 'Please select at least one operation' }]}
+                            help="Select one or more operations to grant access to"
+                        >
+                            <Select
+                                mode="multiple"
+                                options={KMIP_OPERATIONS}
+                                placeholder="Select operations"
+                            />
+                        </Form.Item>
+                    </Card>
+                    <Form.Item>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                        >
+                            Grand Access
+                        </Button>
+                    </Form.Item>
+                </Space>
             </Form>
             {res && <div>{res}</div>}
         </div>
