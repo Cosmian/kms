@@ -70,12 +70,14 @@ pub(crate) async fn test_mac() -> CliResult<()> {
         },
     )?;
 
+    let large_data = "00".repeat(1024);
+
     create_mac(
         &ctx.owner_client_conf_path,
         MacAction {
             mac_key_id,
             hashing_algorithm: CHashingAlgorithm::SHA3_256,
-            data: Some("010203".to_owned()),
+            data: Some(large_data),
             correlation_value: None,
             init_indicator: false,
             final_indicator: false,

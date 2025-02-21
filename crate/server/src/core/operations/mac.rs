@@ -16,6 +16,29 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
+fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
+    let message_digest = match algorithm {
+        HashingAlgorithm::SHA1 => Md::sha1(),
+        HashingAlgorithm::SHA224 => Md::sha224(),
+        HashingAlgorithm::SHA256 => Md::sha256(),
+        HashingAlgorithm::SHA384 => Md::sha384(),
+        HashingAlgorithm::SHA512 => Md::sha512(),
+        HashingAlgorithm::SHA3224 => Md::sha3_224(),
+        HashingAlgorithm::SHA3256 => Md::sha3_256(),
+        HashingAlgorithm::SHA3384 => Md::sha3_384(),
+        HashingAlgorithm::SHA3512 => Md::sha3_512(),
+        algorithm => kms_bail!("Unsupported hashing algorithm: {:?}", algorithm),
+    };
+
+    let key = PKey::hmac(key)?;
+    let mut ctx = MdCtx::new()?;
+    ctx.digest_sign_init(Some(message_digest), &key)?;
+    ctx.digest_sign_update(data)?;
+    let mut hmac = Vec::with_capacity(64); // 512 bits being the maximum size of supported hash functions
+    ctx.digest_sign_final_to_vec(&mut hmac)?;
+    Ok(hmac)
+}
+
 pub(crate) async fn mac(
     kms: &KMS,
     request: Mac,
@@ -31,95 +54,38 @@ pub(crate) async fn mac(
         .as_str()
         .context("Mac: unique_identifier must be a string")?;
 
-    let owm = retrieve_object_for_operation(
-        unique_identifier,
-        KmipOperation::Get,
-        kms,
-        user,
-        params.clone(),
-    )
-    .await?;
+    let algorithm = request
+        .cryptographic_parameters
+        .hashing_algorithm
+        .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
+
+    let data = request
+        .data
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("Data is required".to_owned()))?;
+
+    let owm =
+        retrieve_object_for_operation(unique_identifier, KmipOperation::Get, kms, user, params)
+            .await?;
 
     let unique_identifier = UniqueIdentifier::TextString(unique_identifier.to_owned());
 
-    // Get key bytes
-    let key_bytes = owm.object().key_block()?.key_value.raw_bytes()?;
-
-    let Some(algorithm) = request.cryptographic_parameters.hashing_algorithm else {
-        kms_bail!("Hashing algorithm is required");
+    let hmac = if let Some(correlation_value) = request.correlation_value {
+        compute_hmac(&correlation_value, data, algorithm)?
+    } else {
+        let key_bytes = owm.object().key_block()?.key_value.raw_bytes()?;
+        compute_hmac(key_bytes, data, algorithm)?
     };
 
-    let message_digest = match algorithm {
-        HashingAlgorithm::SHA1 => Md::sha1(),
-        HashingAlgorithm::SHA224 => Md::sha224(),
-        HashingAlgorithm::SHA256 => Md::sha256(),
-        HashingAlgorithm::SHA384 => Md::sha384(),
-        HashingAlgorithm::SHA512 => Md::sha512(),
-        HashingAlgorithm::SHA3224 => Md::sha3_224(),
-        HashingAlgorithm::SHA3256 => Md::sha3_256(),
-        HashingAlgorithm::SHA3384 => Md::sha3_384(),
-        HashingAlgorithm::SHA3512 => Md::sha3_512(),
-        algorithm => kms_bail!("Unsupported hashing algorithm: {:?}", algorithm),
-    };
-
-    match (request.data, request.correlation_value) {
-        (Some(data), Some(correlation_value)) => {
-            // Create a PKey
-            let key = PKey::hmac(&correlation_value)?;
-            let mut ctx = MdCtx::new()?;
-            // Key has already been hashed
-            ctx.digest_sign_init(Some(message_digest), &key)?;
-            ctx.digest_sign_update(&data)?;
-            let mut hmac = vec![];
-            ctx.digest_sign_final_to_vec(&mut hmac)?;
-
-            let response = if request.final_indicator == Some(true) {
-                MacResponse {
-                    unique_identifier,
-                    data: Some(hmac),
-                    correlation_value: None,
-                }
-            } else {
-                MacResponse {
-                    unique_identifier,
-                    data: None,
-                    correlation_value: Some(hmac),
-                }
-            };
-            Ok(response)
-        }
-        (Some(data), None) => {
-            // Create a PKey
-            let key = PKey::hmac(key_bytes)?;
-            // Compute the HMAC.
-            let mut ctx = MdCtx::new()?;
-            ctx.digest_sign_init(Some(message_digest), &key)?;
-            ctx.digest_sign_update(&data)?;
-            let mut hmac = vec![];
-            ctx.digest_sign_final_to_vec(&mut hmac)?;
-
-            let response = if request.init_indicator == Some(true) {
-                // Initialize the stream hashing
-                MacResponse {
-                    unique_identifier,
-                    data: None,
-                    correlation_value: Some(hmac),
-                }
-            } else {
-                MacResponse {
-                    unique_identifier,
-                    data: Some(hmac),
-                    correlation_value: None,
-                }
-            };
-            Ok(response)
-        }
-        (None, Some(_) | None) => kms_bail!("Data is required"),
-    }
+    Ok(MacResponse {
+        unique_identifier,
+        data: (!request.init_indicator.unwrap_or(false)).then_some(hmac.clone()),
+        correlation_value: request.init_indicator.unwrap_or(false).then_some(hmac),
+    })
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use std::sync::Arc;
 
@@ -131,8 +97,56 @@ mod tests {
     };
 
     use crate::{
-        config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+        config::ServerParams,
+        core::{operations::mac::compute_hmac, KMS},
+        result::KResult,
+        tests::test_utils::https_clap_config,
     };
+
+    #[test]
+    fn test_compute_hmac_limit_cases() -> KResult<()> {
+        // Empty data
+        let key = vec![1, 2, 3, 4];
+        let data = vec![];
+        let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
+        assert!(!hmac.is_empty());
+
+        // Empty key
+        let key = vec![];
+        let data = vec![1, 2, 3];
+        let result = compute_hmac(&key, &data, HashingAlgorithm::SHA256);
+        result.unwrap_err();
+
+        // Large data (1MB)
+        let key = vec![1, 2, 3, 4];
+        let data = vec![0_u8; 1024 * 1024];
+        let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
+        assert_eq!(hmac.len(), 32);
+
+        // Test all supported algorithms
+        let algorithms = vec![
+            HashingAlgorithm::SHA1,
+            HashingAlgorithm::SHA224,
+            HashingAlgorithm::SHA256,
+            HashingAlgorithm::SHA384,
+            HashingAlgorithm::SHA512,
+            HashingAlgorithm::SHA3224,
+            HashingAlgorithm::SHA3256,
+            HashingAlgorithm::SHA3384,
+            HashingAlgorithm::SHA3512,
+        ];
+
+        for algo in algorithms {
+            let hmac = compute_hmac(&key, &data, algo)?;
+            assert!(!hmac.is_empty());
+        }
+
+        // Test unsupported algorithm
+        let result = compute_hmac(&key, &data, HashingAlgorithm::MD5);
+        result.unwrap_err();
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {

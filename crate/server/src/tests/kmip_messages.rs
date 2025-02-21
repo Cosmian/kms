@@ -16,6 +16,7 @@ use crate::{
 };
 
 #[tokio::test]
+#[allow(clippy::as_conversions)]
 async fn test_kmip_mac_messages() -> KResult<()> {
     // cosmian_logger::log_init("info,hyper=info,reqwest=info");
 
@@ -49,14 +50,10 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     };
 
     // prepare and send the single message
-    let items = vec![
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-        MessageBatchItem::new(Operation::Mac(mac_request.clone())),
-    ];
+    let items_number = 1000;
+    let items: Vec<MessageBatchItem> = (0..items_number)
+        .map(|_| MessageBatchItem::new(Operation::Mac(mac_request.clone())))
+        .collect();
     let message_request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
@@ -73,8 +70,8 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     };
 
     let response = kms.message(message_request, owner, None).await?;
-    assert_eq!(response.header.batch_count, 6);
-    assert_eq!(response.items.len(), 6);
+    assert_eq!(response.header.batch_count, items_number);
+    assert_eq!(response.items.len(), items_number as usize);
 
     Ok(())
 }

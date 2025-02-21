@@ -88,7 +88,7 @@ impl<'a> Deserializer<'a> {
         let len_u64 = self.read_leb128_u64()?;
         if len_u64 == 0 {
             return Ok(vec![]);
-        };
+        }
         let len = usize::try_from(len_u64).map_err(|e| {
             KmipError::Deserialization(format!(
                 "size of vector is too big for architecture: {len_u64} bytes: {e}",

@@ -228,7 +228,7 @@ fn test_serialization_deserialization() {
             x => panic!("unexpected 2nd level type : {x:?}"),
         },
         x => panic!("unexpected type : {x:?}"),
-    };
+    }
 }
 
 #[test]

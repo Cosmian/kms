@@ -5,23 +5,16 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::HashingAlgorithm,
 };
 use cosmian_kms_interfaces::SessionParams;
-use openssl::hash::{hash, Hasher, MessageDigest};
+use openssl::hash::{Hasher, MessageDigest};
 use tracing::trace;
 
-use crate::{core::KMS, kms_bail, result::KResult};
+use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
-pub(crate) async fn hash_operation(
-    _kms: &KMS,
-    request: Hash,
-    _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
-) -> KResult<HashResponse> {
-    trace!("Hash: {}", serde_json::to_string(&request)?);
-
-    let Some(algorithm) = request.cryptographic_parameters.hashing_algorithm else {
-        kms_bail!("Hashing algorithm is required");
-    };
-
+fn compute_hash(
+    data: &[u8],
+    algorithm: HashingAlgorithm,
+    additional_data: Option<Vec<u8>>,
+) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
         HashingAlgorithm::SHA1 => MessageDigest::sha1(),
         HashingAlgorithm::SHA224 => MessageDigest::sha224(),
@@ -35,43 +28,39 @@ pub(crate) async fn hash_operation(
         algorithm => kms_bail!("Unsupported hashing algorithm: {:?}", algorithm),
     };
 
-    match (request.data, request.correlation_value) {
-        (Some(data), Some(correlation_value)) => {
-            let mut h = Hasher::new(message_digest)?;
-            h.update(&correlation_value)?;
-            h.update(&data)?;
-            let hashed_data = h.finish()?;
-            let response = if request.final_indicator == Some(true) {
-                HashResponse {
-                    data: Some(hashed_data.to_vec()),
-                    correlation_value: None,
-                }
-            } else {
-                HashResponse {
-                    data: None,
-                    correlation_value: Some(hashed_data.to_vec()),
-                }
-            };
-            Ok(response)
-        }
-        (Some(data), None) => {
-            let hashed_data = hash(message_digest, &data)?;
-            let response = if request.init_indicator == Some(true) {
-                // Initialize the stream hashing
-                HashResponse {
-                    data: None,
-                    correlation_value: Some(hashed_data.to_vec()),
-                }
-            } else {
-                HashResponse {
-                    data: Some(hashed_data.to_vec()),
-                    correlation_value: None,
-                }
-            };
-            Ok(response)
-        }
-        (None, Some(_) | None) => kms_bail!("Data is required"),
+    let mut h = Hasher::new(message_digest)?;
+    if let Some(additional_data) = additional_data {
+        h.update(&additional_data)?;
     }
+    h.update(data)?;
+
+    Ok(h.finish()?.to_vec())
+}
+
+pub(crate) async fn hash_operation(
+    _kms: &KMS,
+    request: Hash,
+    _user: &str,
+    _params: Option<Arc<dyn SessionParams>>,
+) -> KResult<HashResponse> {
+    trace!("Hash: {}", serde_json::to_string(&request)?);
+
+    let algorithm = request
+        .cryptographic_parameters
+        .hashing_algorithm
+        .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
+
+    let data = request
+        .data
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("Data is required".to_owned()))?;
+
+    let hash = compute_hash(data, algorithm, request.correlation_value)?;
+
+    Ok(HashResponse {
+        data: (!request.init_indicator.unwrap_or(false)).then_some(hash.clone()),
+        correlation_value: request.init_indicator.unwrap_or(false).then_some(hash),
+    })
 }
 
 #[cfg(test)]
@@ -111,6 +100,79 @@ mod tests {
             ])
         );
         assert_eq!(response.correlation_value, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_server_hash_operation_with_correlation() -> KResult<()> {
+        let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
+
+        // Test with correlation value and init indicator
+        let request = Hash {
+            cryptographic_parameters: CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..Default::default()
+            },
+            data: Some(vec![1, 2, 3]),
+            correlation_value: Some(vec![4, 5, 6]),
+            init_indicator: Some(true),
+            final_indicator: Some(true),
+        };
+        let response = kms.hash(request, "test", None).await.unwrap();
+        assert_eq!(response.data, None);
+        assert!(response.correlation_value.is_some());
+
+        // Test different hashing algorithms
+        for algorithm in [
+            HashingAlgorithm::SHA1,
+            HashingAlgorithm::SHA224,
+            HashingAlgorithm::SHA384,
+            HashingAlgorithm::SHA512,
+            HashingAlgorithm::SHA3224,
+            HashingAlgorithm::SHA3384,
+            HashingAlgorithm::SHA3512,
+        ] {
+            let request = Hash {
+                cryptographic_parameters: CryptographicParameters {
+                    hashing_algorithm: Some(algorithm),
+                    ..Default::default()
+                },
+                data: Some(vec![1, 2, 3]),
+                correlation_value: None,
+                init_indicator: None,
+                final_indicator: None,
+            };
+            let response = kms.hash(request, "test", None).await.unwrap();
+            assert!(response.data.is_some());
+            assert_eq!(response.correlation_value, None);
+        }
+
+        // Test invalid request (missing data)
+        let request = Hash {
+            cryptographic_parameters: CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..Default::default()
+            },
+            data: None,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        };
+        assert!(kms.hash(request, "test", None).await.is_err());
+
+        // Test invalid request (missing algorithm)
+        let request = Hash {
+            cryptographic_parameters: CryptographicParameters {
+                hashing_algorithm: None,
+                ..Default::default()
+            },
+            data: Some(vec![1, 2, 3]),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        };
+        assert!(kms.hash(request, "test", None).await.is_err());
+
         Ok(())
     }
 }
