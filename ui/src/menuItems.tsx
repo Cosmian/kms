@@ -87,24 +87,24 @@ export const menuItems: MenuItem[] = [
                     { key: 'cc/keys/import', label: 'Import' },
                     { key: 'cc/keys/revoke', label: 'Revoke' },
                     { key: 'cc/keys/destroy', label: 'Destroy' },
-                    { key: 'cc/keys/rekey', label: 'Rekey' },
-                    { key: 'cc/keys/prune', label: 'Prune' }
+                    // { key: 'cc/keys/rekey', label: 'Rekey' },
+                    // { key: 'cc/keys/prune', label: 'Prune' }
                 ]
             },
-            {
-                key: 'cc/policy',
-                label: 'Policy',
-                children: [
-                    { key: 'cc/policy/view', label: 'View' },
-                    { key: 'cc/policy/specs', label: 'Specs' },
-                    { key: 'cc/policy/binary', label: 'Binary' },
-                    { key: 'cc/policy/create', label: 'Create' },
-                    { key: 'cc/policy/add-attribute', label: 'Add Attribute' },
-                    { key: 'cc/policy/remove-attribute', label: 'Remove Attribute' },
-                    { key: 'cc/policy/disable-attribute', label: 'Disable Attribute' },
-                    { key: 'cc/policy/rename-attribute', label: 'Rename Attribute' }
-                ]
-            },
+            // {
+            //     key: 'cc/policy',
+            //     label: 'Policy',
+            //     children: [
+            //         { key: 'cc/policy/view', label: 'View' },
+            //         { key: 'cc/policy/specs', label: 'Specs' },
+            //         { key: 'cc/policy/binary', label: 'Binary' },
+            //         { key: 'cc/policy/create', label: 'Create' },
+            //         { key: 'cc/policy/add-attribute', label: 'Add Attribute' },
+            //         { key: 'cc/policy/remove-attribute', label: 'Remove Attribute' },
+            //         { key: 'cc/policy/disable-attribute', label: 'Disable Attribute' },
+            //         { key: 'cc/policy/rename-attribute', label: 'Rename Attribute' }
+            //     ]
+            // },
             { key: 'cc/encrypt', label: 'Encrypt' },
             { key: 'cc/decrypt', label: 'Decrypt' }
         ]

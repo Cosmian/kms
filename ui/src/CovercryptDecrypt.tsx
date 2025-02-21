@@ -1,42 +1,50 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
 import React, { useState } from 'react'
 import { downloadFile, sendKmipRequest } from './utils'
-import { decrypt_ec_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
+import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
 
-interface ECDecryptFormData {
+interface CCDecryptFormData {
     inputFile: Uint8Array;
     fileName: string;
     keyId?: string;
     tags?: string[];
     authenticationData?: string;
-    outputFile?: string;
-}
 
-const ECDecryptForm: React.FC = () => {
-    const [form] = Form.useForm<ECDecryptFormData>();
+  }
+
+const CCDecryptForm: React.FC = () => {
+    const [form] = Form.useForm<CCDecryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = async (values: ECDecryptFormData) => {
+    const onFinish = async (values: CCDecryptFormData) => {
         console.log('Decrypt values:', values);
         setIsLoading(true);
         setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+
         try {
             if (id == undefined) {
                 setRes("Missing key identifier.")
                 throw Error("Missing key identifier")
             }
-            const request = decrypt_ec_ttlv_request(id, values.inputFile, values.authenticationData);
+
+            const request = decrypt_cc_ttlv_request(
+                id,
+                values.inputFile,
+                values.authenticationData
+            );
+
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str)
+                console.log(response)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
                 const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
                 const filename = `${name}.plain`;
-                console.log("DATA", data)
-                downloadFile(data, filename, mimeType);
+                const filteredData = data.filter(byte => byte !== 0); // TODO: check why 0 byte at the beginning of the byte result
+                downloadFile(filteredData, filename, mimeType);
                 setRes("File has been decrypted")
             }
         } catch (e) {
@@ -49,10 +57,10 @@ const ECDecryptForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">EC Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">Covercrypt Decryption</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using ECIES (Elliptic Curve Integrated Encryption Scheme).</p>
+                <p>Decrypt a file using Covercrypt.</p>
                 <p>The key can be identified using either its ID or associated tags.</p>
                 <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
             </div>
@@ -65,6 +73,7 @@ const ECDecryptForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>
+
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
@@ -93,12 +102,13 @@ const ECDecryptForm: React.FC = () => {
                             </Upload.Dragger>
                         </Form.Item>
                     </Card>
+
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
                         <Form.Item
                             name="keyId"
                             label="Key ID"
-                            help="The unique identifier of the private key"
+                            help="The unique identifier of the user key"
                         >
                             <Input placeholder="Enter key ID" />
                         </Form.Item>
@@ -115,7 +125,9 @@ const ECDecryptForm: React.FC = () => {
                             />
                         </Form.Item>
                     </Card>
+
                     <Card>
+                        <h3 className="text-m font-bold mb-4">Additional Options</h3>
                         <Form.Item
                             name="authenticationData"
                             label="Authentication Data"
@@ -127,6 +139,7 @@ const ECDecryptForm: React.FC = () => {
                             />
                         </Form.Item>
                     </Card>
+
                     <Form.Item>
                         <Button
                             type="primary"
@@ -144,4 +157,4 @@ const ECDecryptForm: React.FC = () => {
     );
 };
 
-export default ECDecryptForm;
+export default CCDecryptForm;
