@@ -1,5 +1,7 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React from 'react'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { create_covercrypt_user_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
@@ -15,10 +17,26 @@ More examples:
 
 const CovercryptUserKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptUserKeyFormData>();
+    const [res, setRes] = useState<undefined | string>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = (values: CovercryptUserKeyFormData) => {
+    const onFinish = async (values: CovercryptUserKeyFormData) => {
         console.log('Create user key values:', values);
-        // Handle form submission
+        setIsLoading(true);
+        setRes(undefined);
+        try {
+            const request = create_covercrypt_user_key_ttlv_request(values.masterPrivateKeyId, values.accessPolicy, values.tags, values.sensitive);
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const result = await parse_create_ttlv_response(result_str)
+                setRes(`${result.UniqueIdentifier} has been created.`)
+            }
+        } catch (e) {
+            setRes(`${e}`)
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -36,6 +54,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                 layout="vertical"
                 initialValues={{
                     sensitive: false,
+                    tags: []
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
@@ -107,6 +126,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                         <Button
                             type="primary"
                             htmlType="submit"
+                            loading={isLoading}
                             className="w-full text-white font-medium"
                         >
                             Create User Key
@@ -114,6 +134,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
+            {res && <div>{res}</div>}
         </div>
     );
 };

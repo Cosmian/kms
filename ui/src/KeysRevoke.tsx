@@ -11,7 +11,7 @@ interface RevokeKeyFormData {
     tags?: string[];
 }
 
-type KeyType = 'rsa' | 'ec' | 'symmetric';
+type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
 interface KeyRevokeFormProps {
     key_type: KeyType;
@@ -56,6 +56,8 @@ const KeyRevokeForm: React.FC<KeyRevokeFormProps> = (props: KeyRevokeFormProps) 
         key_type_string = 'an RSA';
     } else if (props.key_type === 'ec') {
         key_type_string = 'an EC';
+    } else if (props.key_type === 'covercrypt') {
+        key_type_string = 'a CoverCrypt';
     } else {
         key_type_string = 'a symmetric';
     };
