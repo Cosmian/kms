@@ -5,6 +5,8 @@ import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
+import CCDecryptForm from './CovercryptDecrypt'
+import CCEncryptForm from './CovercryptEncrypt'
 import CovercryptMasterKeyForm from './CovercryptMasterKey'
 import CovercryptUserKeyForm from './CovercryptUserKey'
 import ECDecryptForm from './ECDecrypt'
@@ -143,6 +145,8 @@ function App() {
             <Route path="cc/keys/import" element={<KeyImportForm key_type={'covercrypt'} />} />
             <Route path="cc/keys/revoke" element={<KeyRevokeForm key_type='covercrypt' />} />
             <Route path="cc/keys/destroy" element={<KeyDestroyForm key_type='covercrypt' />} />
+            <Route path="cc/encrypt" element={<CCEncryptForm />} />
+            <Route path="cc/decrypt" element={<CCDecryptForm />} />
             <Route path="access-rights/grant" element={<AccessGrantForm />} />
             <Route path="access-rights/revoke" element={<AccessRevokeForm />} />
             <Route path="access-rights/list" element={<AccessListForm />} />

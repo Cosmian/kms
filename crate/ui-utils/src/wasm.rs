@@ -11,7 +11,8 @@ use cosmian_kmip::kmip_2_1::{
         ValidateResponse,
     },
     kmip_types::{
-        CertificateRequestType, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
+        CertificateRequestType, CryptographicAlgorithm, CryptographicParameters, RecommendedCurve,
+        UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -678,15 +679,15 @@ use std::collections::HashMap;
 // Covercrypt requests
 #[wasm_bindgen]
 pub fn create_covercrypt_master_keypair_ttlv_request(
-    policy: Vec<u8>,
+    policy: &[u8],
     tags: Vec<String>,
     sensitive: bool,
 ) -> Result<JsValue, JsValue> {
     let policy_specs: HashMap<String, Vec<String>> =
-        serde_json::from_slice(&policy).map_err(|e| JsValue::from(e.to_string()))?;
+        serde_json::from_slice(policy).map_err(|e| JsValue::from(e.to_string()))?;
     let policy: Policy = policy_specs.try_into().unwrap(); // TODO map_error properly - with the right Error Try_from type
     // let policy = Policy::parse_and_convert(policy.as_slice()).map_err(|e| JsValue::from(e.to_string()))?; // for bianary
-    let request = build_create_covercrypt_master_keypair_request(&policy, &tags, sensitive)
+    let request = build_create_covercrypt_master_keypair_request(&policy, tags, sensitive)
         .map_err(|e| {
             JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}"))
         })?;
@@ -699,20 +700,71 @@ pub fn create_covercrypt_master_keypair_ttlv_request(
 
 #[wasm_bindgen]
 pub fn create_covercrypt_user_key_ttlv_request(
-    master_private_key_id: String,
-    access_policy: String,
+    master_private_key_id: &str,
+    access_policy: &str,
     tags: Vec<String>,
     sensitive: bool,
 ) -> Result<JsValue, JsValue> {
-    AccessPolicy::from_boolean_expression(&access_policy)
+    AccessPolicy::from_boolean_expression(access_policy)
         .map_err(|e| JsValue::from(e.to_string()))?;
     let request = build_create_covercrypt_user_decryption_key_request(
-        &access_policy,
-        &master_private_key_id,
-        &tags,
+        access_policy,
+        master_private_key_id,
+        tags,
         sensitive,
     )
     .map_err(|e| JsValue::from_str(&format!("Covercrypt user key creation failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn encrypt_cc_ttlv_request(
+    key_unique_identifier: &str,
+    encryption_policy: String,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        Some(encryption_policy),
+        plaintext,
+        None,
+        None,
+        authentication_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+            ..Default::default()
+        }),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_cc_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+            ..Default::default()
+        }),
+    );
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
