@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
+import { Button, Form, Input, Select, Upload, Space, Car } from 'antd'
 import React, { useState } from 'react'
 import { downloadFile, sendKmipRequest } from './utils'
 import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
@@ -54,7 +54,7 @@ const SymmetricEncryptForm: React.FC = () => {
     };
 
     return (
-        <div className="p-6">
+        <div className="rounded-lg p-6 m-4">
             <h1 className="text-2xl font-bold  mb-6">Symmetric Encryption</h1>
 
             <div className="mb-8 space-y-2">

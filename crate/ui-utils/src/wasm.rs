@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use base64::Engine as _;
+use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{
@@ -25,6 +26,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::{
+    cover_crypt_utils::build_create_covercrypt_master_keypair_request,
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
     export_utils::{
@@ -668,26 +670,25 @@ pub fn validate_certificate_ttlv_request(
 pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<ValidateResponse>(response)
 }
+use std::collections::HashMap;
 
-// // Covercrypt requests
-// #[wasm_bindgen]
-// pub fn create_covercrypt_master_keypair_ttlv_request(
-//     policy: &str,
-//     tags: Vec<String>,
-//     sensitive: bool,
-// ) -> Result<JsValue, JsValue> {
-//     let policy = if let Some(specs_file) = &policy_specifications_file {
-//         policy_from_json_file(specs_file)?
-//     } else if let Some(binary_file) = &policy_binary_file {
-//         policy_from_binary_file(binary_file)?
-//     } else {
-//         Err(JsValue::from_str(&"Invalid policy specification"))?;
-//     };
-//     let request = build_create_covercrypt_master_keypair_request(&policy, &tags, sensitive)
-//         .map_err(|e| JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}")))?;
-//     to_ttlv(&request)
-//         .map_err(|e| JsValue::from(e.to_string()))
-//         .and_then(|objects| {
-//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-//         })
-// }
+// Covercrypt requests
+#[wasm_bindgen]
+pub fn create_covercrypt_master_keypair_ttlv_request(
+    policy: Vec<u8>,
+    tags: Vec<String>,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    let policy_specs: HashMap<String, Vec<String>> = serde_json::from_slice(&policy).map_err(|e| JsValue::from(e.to_string()))?;
+    let policy: Policy = policy_specs.try_into().unwrap(); // TODO map_error properly - with the right Error Try_from type
+    // let policy = Policy::parse_and_convert(policy.as_slice()).map_err(|e| JsValue::from(e.to_string()))?; // for bianary
+    let request = build_create_covercrypt_master_keypair_request(&policy, &tags, sensitive)
+        .map_err(|e| {
+            JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}"))
+        })?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
