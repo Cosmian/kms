@@ -5,7 +5,6 @@ import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
-import CovercryptRevokeForm from './CovercryptKeysRevoke'
 import CovercryptMasterKeyForm from './CovercryptMasterKey'
 import CovercryptUserKeyForm from './CovercryptUserKey'
 import ECDecryptForm from './ECDecrypt'
@@ -25,8 +24,6 @@ import SymKeyCreateForm from './SymKeysCreate'
 import SymmetricDecryptForm from './SymmetricDecrypt'
 import SymmetricEncryptForm from './SymmetricEncrypt'
 import init from "./wasm/pkg"
-const { defaultAlgorithm, darkAlgorithm } = theme;
-
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -144,7 +141,7 @@ function App() {
             <Route path="cc/keys/create-user-key" element={<CovercryptUserKeyForm />} />
             <Route path="cc/keys/export" element={<KeyExportForm key_type={'covercrypt'} />} />
             <Route path="cc/keys/import" element={<KeyImportForm key_type={'covercrypt'} />} />
-            <Route path="cc/keys/revoke" element={<CovercryptRevokeForm />} />
+            <Route path="cc/keys/revoke" element={<KeyRevokeForm key_type='covercrypt' />} />
             <Route path="cc/keys/destroy" element={<KeyDestroyForm key_type='covercrypt' />} />
             <Route path="access-rights/grant" element={<AccessGrantForm />} />
             <Route path="access-rights/revoke" element={<AccessRevokeForm />} />

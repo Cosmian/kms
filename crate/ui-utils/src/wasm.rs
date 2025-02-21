@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use base64::Engine as _;
-use cloudproof::reexport::cover_crypt::abe_policy::Policy;
+use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{
@@ -26,7 +26,10 @@ use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    cover_crypt_utils::build_create_covercrypt_master_keypair_request,
+    cover_crypt_utils::{
+        build_create_covercrypt_master_keypair_request,
+        build_create_covercrypt_user_decryption_key_request,
+    },
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
     export_utils::{
@@ -679,13 +682,37 @@ pub fn create_covercrypt_master_keypair_ttlv_request(
     tags: Vec<String>,
     sensitive: bool,
 ) -> Result<JsValue, JsValue> {
-    let policy_specs: HashMap<String, Vec<String>> = serde_json::from_slice(&policy).map_err(|e| JsValue::from(e.to_string()))?;
+    let policy_specs: HashMap<String, Vec<String>> =
+        serde_json::from_slice(&policy).map_err(|e| JsValue::from(e.to_string()))?;
     let policy: Policy = policy_specs.try_into().unwrap(); // TODO map_error properly - with the right Error Try_from type
     // let policy = Policy::parse_and_convert(policy.as_slice()).map_err(|e| JsValue::from(e.to_string()))?; // for bianary
     let request = build_create_covercrypt_master_keypair_request(&policy, &tags, sensitive)
         .map_err(|e| {
             JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}"))
         })?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn create_covercrypt_user_key_ttlv_request(
+    master_private_key_id: String,
+    access_policy: String,
+    tags: Vec<String>,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    AccessPolicy::from_boolean_expression(&access_policy)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = build_create_covercrypt_user_decryption_key_request(
+        &access_policy,
+        &master_private_key_id,
+        &tags,
+        sensitive,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Covercrypt user key creation failed: {e}")))?;
     to_ttlv(&request)
         .map_err(|e| JsValue::from(e.to_string()))
         .and_then(|objects| {
