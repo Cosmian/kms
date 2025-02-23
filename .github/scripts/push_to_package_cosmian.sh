@@ -47,6 +47,11 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
     scp -o 'StrictHostKeyChecking no' \
       -i /root/.ssh/id_rsa rhel9-"$DEBUG_OR_RELEASE"/generate-rpm/*.rpm \
       cosmian@package.cosmian.com:"$dir"/
+    # Remove the old packages
+    ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com rm -f "$dir"/rhel9/cosmian_cli*.rpm
+    for version in 20.04 22.04 24.04; do
+      ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com rm -f "$dir"/ubuntu-"$version"/cosmian-cli*.deb
+    done
   done
 
   # Ubuntu packages

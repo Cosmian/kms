@@ -6,7 +6,7 @@ use cosmian_config_utils::ConfigUtilsError;
 use cosmian_findex_cli::reexports::{
     cosmian_findex_client::{
         reexport::cosmian_findex::{self, Address, ADDRESS_LENGTH},
-        FindexClientError,
+        ClientError,
     },
     cosmian_findex_structs::StructsError,
 };
@@ -81,7 +81,7 @@ pub enum CosmianError {
     Findex(#[from] cosmian_findex::Error<Address<ADDRESS_LENGTH>>),
 
     #[error(transparent)]
-    FindexClientConfig(#[from] FindexClientError),
+    FindexClientConfig(#[from] ClientError),
 
     #[error(transparent)]
     FindexCliError(#[from] cosmian_findex_cli::error::CliError),

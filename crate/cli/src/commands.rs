@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use cosmian_findex_cli::{reexports::cosmian_findex_client::FindexRestClient, CoreFindexActions};
+use cosmian_findex_cli::{reexports::cosmian_findex_client::RestClient, CoreFindexActions};
 use cosmian_kms_cli::{reexport::cosmian_kms_client::KmsClient, KmsActions};
 use cosmian_logger::log_init;
 use tracing::{info, trace};
@@ -85,7 +85,7 @@ pub enum CliCommands {
 /// - The command-line arguments cannot be parsed.
 /// - The configuration file cannot be located or loaded.
 /// - Any of the subcommands fail during their execution.
-#[allow(clippy::future_not_send, clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity)]
 pub async fn cosmian_main() -> CosmianResult<()> {
     log_init(None);
     info!("Starting Cosmian CLI");
@@ -128,14 +128,22 @@ pub async fn cosmian_main() -> CosmianResult<()> {
             config.kms_config = kms_rest_client.config.clone();
         }
         CliCommands::FindexServer(findex_actions) => {
-            let findex_config = config.findex_config.as_ref().ok_or_else(|| {
-                cli_error!("Findex server configuration is missing in the configuration file")
-            })?;
-            let mut findex_rest_client = FindexRestClient::new(findex_config.clone())?;
+            let mut findex_config = config
+                .findex_config
+                .as_ref()
+                .ok_or_else(|| {
+                    cli_error!("Findex server configuration is missing in the configuration file")
+                })?
+                .clone();
+            let mut findex_rest_client = RestClient::new(&findex_config)?;
             findex_actions
-                .run(&mut findex_rest_client, &kms_rest_client)
+                .run(
+                    &mut findex_rest_client,
+                    &kms_rest_client,
+                    &mut findex_config,
+                )
                 .await?;
-            config.findex_config = Some(findex_rest_client.config.clone());
+            config.findex_config = Some(findex_config);
         }
     }
 

@@ -1,7 +1,7 @@
 
 ##  cosmian
 
-CLI used to manage the Cosmian KMS.
+CLI used to manage the Cosmian KMS and Findex server.
 
 ### Usage
 `cosmian <subcommand> [options]`
@@ -64,13 +64,15 @@ Handle KMS actions
 
 **`logout`** [[1.10]](#110-cosmian-kms-logout)  Logout from the Identity Provider.
 
-**`new-database`** [[1.11]](#111-cosmian-kms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+**`hash`** [[1.11]](#111-cosmian-kms-hash) 
+**`mac`** [[1.12]](#112-cosmian-kms-mac) 
+**`new-database`** [[1.13]](#113-cosmian-kms-new-database)  Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-**`rsa`** [[1.12]](#112-cosmian-kms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
+**`rsa`** [[1.14]](#114-cosmian-kms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
-**`server-version`** [[1.13]](#113-cosmian-kms-server-version)  Print the version of the server
+**`server-version`** [[1.15]](#115-cosmian-kms-server-version)  Print the version of the server
 
-**`sym`** [[1.14]](#114-cosmian-kms-sym)  Manage symmetric keys. Encrypt and decrypt data
+**`sym`** [[1.16]](#116-cosmian-kms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
 ---
 
@@ -1769,7 +1771,57 @@ Logout from the Identity Provider.
 
 ---
 
-## 1.11 cosmian kms new-database
+## 1.11 cosmian kms hash
+### Usage
+`cosmian kms hash [options]`
+### Arguments
+`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
+
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha512-224", "sha512-256", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+
+`--data [-d] <DATA>` The data to be hashed in hexadecimal format
+
+`--correlation-value [-c] <CORRELATION_VALUE>` Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation)
+
+`--init-indicator [-i] <INIT_INDICATOR>` Initial operation as Boolean
+
+Possible values:  `"true", "false"`
+
+`--final-indicator [-f] <FINAL_INDICATOR>` Final operation as Boolean
+
+Possible values:  `"true", "false"`
+
+
+
+---
+
+## 1.12 cosmian kms mac
+### Usage
+`cosmian kms mac [options]`
+### Arguments
+`--mac-key-id [-k] <MAC_KEY_ID>` Locate an object which has a link to this MAC key id
+
+`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
+
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha512-224", "sha512-256", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+
+`--data [-d] <DATA>` The data to be hashed in hexadecimal format
+
+`--correlation-value [-c] <CORRELATION_VALUE>` Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation)
+
+`--init-indicator [-i] <INIT_INDICATOR>` Initial operation as Boolean
+
+Possible values:  `"true", "false"`
+
+`--final-indicator [-f] <FINAL_INDICATOR>` Final operation as Boolean
+
+Possible values:  `"true", "false"`
+
+
+
+---
+
+## 1.13 cosmian kms new-database
 
 Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
@@ -1779,7 +1831,7 @@ Initialize a new user encrypted database and return the secret (`SQLCipher` only
 
 ---
 
-## 1.12 cosmian kms rsa
+## 1.14 cosmian kms rsa
 
 Manage RSA keys. Encrypt and decrypt data using RSA keys
 
@@ -1788,15 +1840,15 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Subcommands
 
-**`keys`** [[1.12.1]](#1121-cosmian-kms-rsa-keys)  Create, destroy, import, and export RSA key pairs
+**`keys`** [[1.14.1]](#1141-cosmian-kms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[1.12.2]](#1122-cosmian-kms-rsa-encrypt)  Encrypt a file with the given public key using either
+**`encrypt`** [[1.14.2]](#1142-cosmian-kms-rsa-encrypt)  Encrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`decrypt`** [[1.12.3]](#1123-cosmian-kms-rsa-decrypt)  Decrypt a file with the given public key using either
+**`decrypt`** [[1.14.3]](#1143-cosmian-kms-rsa-decrypt)  Decrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
@@ -1804,7 +1856,7 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ---
 
-## 1.12.1 cosmian kms rsa keys
+## 1.14.1 cosmian kms rsa keys
 
 Create, destroy, import, and export RSA key pairs
 
@@ -1813,23 +1865,23 @@ Create, destroy, import, and export RSA key pairs
 
 ### Subcommands
 
-**`create`** [[1.12.1.1]](#11211-cosmian-kms-rsa-keys-create)  Create a new RSA key pair
+**`create`** [[1.14.1.1]](#11411-cosmian-kms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[1.12.1.2]](#11212-cosmian-kms-rsa-keys-export)  Export a key from the KMS
+**`export`** [[1.14.1.2]](#11412-cosmian-kms-rsa-keys-export)  Export a key from the KMS
 
-**`import`** [[1.12.1.3]](#11213-cosmian-kms-rsa-keys-import)  Import a private or public key in the KMS.
+**`import`** [[1.14.1.3]](#11413-cosmian-kms-rsa-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[1.12.1.4]](#11214-cosmian-kms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[1.14.1.4]](#11414-cosmian-kms-rsa-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[1.12.1.5]](#11215-cosmian-kms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[1.14.1.5]](#11415-cosmian-kms-rsa-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[1.12.1.6]](#11216-cosmian-kms-rsa-keys-revoke)  Revoke a public or private key
+**`revoke`** [[1.14.1.6]](#11416-cosmian-kms-rsa-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[1.12.1.7]](#11217-cosmian-kms-rsa-keys-destroy)  Destroy a public or private key
+**`destroy`** [[1.14.1.7]](#11417-cosmian-kms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 1.12.1.1 cosmian kms rsa keys create
+## 1.14.1.1 cosmian kms rsa keys create
 
 Create a new RSA key pair
 
@@ -1851,7 +1903,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.12.1.2 cosmian kms rsa keys export
+## 1.14.1.2 cosmian kms rsa keys export
 
 Export a key from the KMS
 
@@ -1905,7 +1957,7 @@ Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-
 
 ---
 
-## 1.12.1.3 cosmian kms rsa keys import
+## 1.14.1.3 cosmian kms rsa keys import
 
 Import a private or public key in the KMS.
 
@@ -1948,7 +2000,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.12.1.4 cosmian kms rsa keys wrap
+## 1.14.1.4 cosmian kms rsa keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -1973,7 +2025,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.12.1.5 cosmian kms rsa keys unwrap
+## 1.14.1.5 cosmian kms rsa keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -1996,7 +2048,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.12.1.6 cosmian kms rsa keys revoke
+## 1.14.1.6 cosmian kms rsa keys revoke
 
 Revoke a public or private key
 
@@ -2014,7 +2066,7 @@ Revoke a public or private key
 
 ---
 
-## 1.12.1.7 cosmian kms rsa keys destroy
+## 1.14.1.7 cosmian kms rsa keys destroy
 
 Destroy a public or private key
 
@@ -2037,7 +2089,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.12.2 cosmian kms rsa encrypt
+## 1.14.2 cosmian kms rsa encrypt
 
 Encrypt a file with the given public key using either
 
@@ -2069,7 +2121,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 1.12.3 cosmian kms rsa decrypt
+## 1.14.3 cosmian kms rsa decrypt
 
 Decrypt a file with the given public key using either
 
@@ -2102,7 +2154,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 1.13 cosmian kms server-version
+## 1.15 cosmian kms server-version
 
 Print the version of the server
 
@@ -2112,7 +2164,7 @@ Print the version of the server
 
 ---
 
-## 1.14 cosmian kms sym
+## 1.16 cosmian kms sym
 
 Manage symmetric keys. Encrypt and decrypt data
 
@@ -2121,15 +2173,15 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[1.14.1]](#1141-cosmian-kms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[1.16.1]](#1161-cosmian-kms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[1.14.2]](#1142-cosmian-kms-sym-encrypt)  Encrypt a file using a symmetric cipher
+**`encrypt`** [[1.16.2]](#1162-cosmian-kms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
-**`decrypt`** [[1.14.3]](#1143-cosmian-kms-sym-decrypt)  Decrypt a file using a symmetric key.
+**`decrypt`** [[1.16.3]](#1163-cosmian-kms-sym-decrypt)  Decrypt a file using a symmetric key.
 
 ---
 
-## 1.14.1 cosmian kms sym keys
+## 1.16.1 cosmian kms sym keys
 
 Create, destroy, import, and export symmetric keys
 
@@ -2138,25 +2190,25 @@ Create, destroy, import, and export symmetric keys
 
 ### Subcommands
 
-**`create`** [[1.14.1.1]](#11411-cosmian-kms-sym-keys-create)  Create a new symmetric key
+**`create`** [[1.16.1.1]](#11611-cosmian-kms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[1.14.1.2]](#11412-cosmian-kms-sym-keys-re-key)  Refresh an existing symmetric key
+**`re-key`** [[1.16.1.2]](#11612-cosmian-kms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[1.14.1.3]](#11413-cosmian-kms-sym-keys-export)  Export a key from the KMS
+**`export`** [[1.16.1.3]](#11613-cosmian-kms-sym-keys-export)  Export a key from the KMS
 
-**`import`** [[1.14.1.4]](#11414-cosmian-kms-sym-keys-import)  Import a private or public key in the KMS.
+**`import`** [[1.16.1.4]](#11614-cosmian-kms-sym-keys-import)  Import a private or public key in the KMS.
 
-**`wrap`** [[1.14.1.5]](#11415-cosmian-kms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
+**`wrap`** [[1.16.1.5]](#11615-cosmian-kms-sym-keys-wrap)  Locally wrap a key in KMIP JSON TTLV format.
 
-**`unwrap`** [[1.14.1.6]](#11416-cosmian-kms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
+**`unwrap`** [[1.16.1.6]](#11616-cosmian-kms-sym-keys-unwrap)  Locally unwrap a key in KMIP JSON TTLV format.
 
-**`revoke`** [[1.14.1.7]](#11417-cosmian-kms-sym-keys-revoke)  Revoke a symmetric key
+**`revoke`** [[1.16.1.7]](#11617-cosmian-kms-sym-keys-revoke)  Revoke a symmetric key
 
-**`destroy`** [[1.14.1.8]](#11418-cosmian-kms-sym-keys-destroy)  Destroy a symmetric key
+**`destroy`** [[1.16.1.8]](#11618-cosmian-kms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
-## 1.14.1.1 cosmian kms sym keys create
+## 1.16.1.1 cosmian kms sym keys create
 
 Create a new symmetric key
 
@@ -2191,7 +2243,7 @@ If the wrapping key is:
 
 ---
 
-## 1.14.1.2 cosmian kms sym keys re-key
+## 1.16.1.2 cosmian kms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -2204,7 +2256,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 1.14.1.3 cosmian kms sym keys export
+## 1.16.1.3 cosmian kms sym keys export
 
 Export a key from the KMS
 
@@ -2258,7 +2310,7 @@ Possible values:  `"nist-key-wrap", "aes-gcm", "rsa-pkcs-v15", "rsa-oaep", "rsa-
 
 ---
 
-## 1.14.1.4 cosmian kms sym keys import
+## 1.16.1.4 cosmian kms sym keys import
 
 Import a private or public key in the KMS.
 
@@ -2301,7 +2353,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 1.14.1.5 cosmian kms sym keys wrap
+## 1.16.1.5 cosmian kms sym keys wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
@@ -2326,7 +2378,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.14.1.6 cosmian kms sym keys unwrap
+## 1.16.1.6 cosmian kms sym keys unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
@@ -2349,7 +2401,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ---
 
-## 1.14.1.7 cosmian kms sym keys revoke
+## 1.16.1.7 cosmian kms sym keys revoke
 
 Revoke a symmetric key
 
@@ -2367,7 +2419,7 @@ Revoke a symmetric key
 
 ---
 
-## 1.14.1.8 cosmian kms sym keys destroy
+## 1.16.1.8 cosmian kms sym keys destroy
 
 Destroy a symmetric key
 
@@ -2390,7 +2442,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 1.14.2 cosmian kms sym encrypt
+## 1.16.2 cosmian kms sym encrypt
 
 Encrypt a file using a symmetric cipher
 
@@ -2422,7 +2474,7 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rf
 
 ---
 
-## 1.14.3 cosmian kms sym decrypt
+## 1.16.3 cosmian kms sym decrypt
 
 Decrypt a file using a symmetric key.
 
@@ -2468,19 +2520,19 @@ Handle Findex server actions
 
 **`search-and-decrypt`** [[2.2]](#22-cosmian-findex-server-search-and-decrypt)  Search keywords and decrypt the content of corresponding UUIDs.
 
-**`datasets`** [[2.3]](#23-cosmian-findex-server-datasets)  Manage encrypted datasets
+**`index`** [[2.3]](#23-cosmian-findex-server-index)  Create new indexes
 
-**`delete`** [[2.4]](#24-cosmian-findex-server-delete)  Delete indexed keywords
+**`search`** [[2.4]](#24-cosmian-findex-server-search)  Search words among encrypted indexes.
 
-**`insert`** [[2.5]](#25-cosmian-findex-server-insert)  Insert new keywords
+**`delete`** [[2.5]](#25-cosmian-findex-server-delete)  Delete indexed keywords
 
-**`login`** [[2.6]](#26-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
+**`permissions`** [[2.6]](#26-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
 
-**`logout`** [[2.7]](#27-cosmian-findex-server-logout)  Logout from the Identity Provider.
+**`datasets`** [[2.7]](#27-cosmian-findex-server-datasets)  Manage encrypted datasets
 
-**`permissions`** [[2.8]](#28-cosmian-findex-server-permissions)  Manage the users permissions to the indexes
+**`login`** [[2.8]](#28-cosmian-findex-server-login)  Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
 
-**`search`** [[2.9]](#29-cosmian-findex-server-search)  Search words.
+**`logout`** [[2.9]](#29-cosmian-findex-server-logout)  Logout from the Identity Provider.
 
 **`server-version`** [[2.10]](#210-cosmian-findex-server-server-version)  Print the version of the server
 
@@ -2493,7 +2545,11 @@ Encrypt entries and index the corresponding database UUIDs with the Findex.
 ### Usage
 `cosmian findex-server encrypt-and-index [options]`
 ### Arguments
-`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -2505,7 +2561,7 @@ Encrypt entries and index the corresponding database UUIDs with the Findex.
 
 `--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
 
-Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"AesGcm"`]
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
 
 `--nonce [-n] <NONCE>` Optional nonce/IV (or tweak for XTS) as a hex string. If not provided, a random value is generated
 
@@ -2522,7 +2578,11 @@ Search keywords and decrypt the content of corresponding UUIDs.
 ### Usage
 `cosmian findex-server search-and-decrypt [options]`
 ### Arguments
-`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -2534,7 +2594,7 @@ Search keywords and decrypt the content of corresponding UUIDs.
 
 `--data-encryption-algorithm [-d] <DATA_ENCRYPTION_ALGORITHM>` The data encryption algorithm. If not specified, aes-gcm is used
 
-Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"AesGcm"`]
+Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
 
 `--authentication-data [-a] <AUTHENTICATION_DATA>` Optional additional authentication data as a hex string. This data needs to be provided back for decryption. This data is ignored with XTS
 
@@ -2542,77 +2602,60 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [de
 
 ---
 
-## 2.3 cosmian findex-server datasets
+## 2.3 cosmian findex-server index
 
-Manage encrypted datasets
-
-### Usage
-`cosmian findex-server datasets <subcommand>`
-
-### Subcommands
-
-**`add`** [[2.3.1]](#231-cosmian-findex-server-datasets-add)  Add datasets entries
-
-**`delete`** [[2.3.2]](#232-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
-
-**`get`** [[2.3.3]](#233-cosmian-findex-server-datasets-get)  Return datasets entries matching given UUID
-
----
-
-## 2.3.1 cosmian findex-server datasets add
-
-Add datasets entries
+Create new indexes
 
 ### Usage
-`cosmian findex-server datasets add [options]`
+`cosmian findex-server index [options]`
 ### Arguments
-`--index-id <INDEX_ID>` The index ID
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
-` [-D] <ENTRIES>` The entries to add under the format `KEY=VALUE` where: - `KEY` is a UUID - `VALUE` is a base64 encoded string
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
+
+`--index-id [-i] <INDEX_ID>` The index ID
+
+`--csv <CSV>` The path to the CSV file containing the data to index
 
 
 
 ---
 
-## 2.3.2 cosmian findex-server datasets delete
+## 2.4 cosmian findex-server search
 
-Delete datasets entries using corresponding entries UUID
+Search words among encrypted indexes.
 
 ### Usage
-`cosmian findex-server datasets delete [options]`
+`cosmian findex-server search [options]`
 ### Arguments
-`--index-id <INDEX_ID>` The index ID
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
 
-`--uuids <UUIDS>` The entries UUIDs to delete
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
+
+`--index-id [-i] <INDEX_ID>` The index ID
+
+`--keyword <KEYWORD>` The word to search. Can be repeated
 
 
 
 ---
 
-## 2.3.3 cosmian findex-server datasets get
-
-Return datasets entries matching given UUID
-
-### Usage
-`cosmian findex-server datasets get [options]`
-### Arguments
-`--index-id <INDEX_ID>` The index id
-
-`--uuids <UUIDS>` The entries uuids
-
-
-
-
----
-
-## 2.4 cosmian findex-server delete
+## 2.5 cosmian findex-server delete
 
 Delete indexed keywords
 
 ### Usage
 `cosmian findex-server delete [options]`
 ### Arguments
-`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
@@ -2622,44 +2665,7 @@ Delete indexed keywords
 
 ---
 
-## 2.5 cosmian findex-server insert
-
-Insert new keywords
-
-### Usage
-`cosmian findex-server insert [options]`
-### Arguments
-`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
-
-`--index-id [-i] <INDEX_ID>` The index ID
-
-`--csv <CSV>` The path to the CSV file containing the data to index
-
-
-
----
-
-## 2.6 cosmian findex-server login
-
-Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
-
-### Usage
-`cosmian findex-server login`
-
-
----
-
-## 2.7 cosmian findex-server logout
-
-Logout from the Identity Provider.
-
-### Usage
-`cosmian findex-server logout`
-
-
----
-
-## 2.8 cosmian findex-server permissions
+## 2.6 cosmian findex-server permissions
 
 Manage the users permissions to the indexes
 
@@ -2668,17 +2674,17 @@ Manage the users permissions to the indexes
 
 ### Subcommands
 
-**`create`** [[2.8.1]](#281-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
+**`create`** [[2.6.1]](#261-cosmian-findex-server-permissions-create)  Create a new index. It results on an `admin` permission on a new index
 
-**`list`** [[2.8.2]](#282-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
+**`list`** [[2.6.2]](#262-cosmian-findex-server-permissions-list)  List user's permission. Returns a list of indexes with their permissions
 
-**`grant`** [[2.8.3]](#283-cosmian-findex-server-permissions-grant)  Grant permission on a index
+**`set`** [[2.6.3]](#263-cosmian-findex-server-permissions-set)  Set permission on a index
 
-**`revoke`** [[2.8.4]](#284-cosmian-findex-server-permissions-revoke)  Revoke user permission
+**`revoke`** [[2.6.4]](#264-cosmian-findex-server-permissions-revoke)  Revoke user permission
 
 ---
 
-## 2.8.1 cosmian findex-server permissions create
+## 2.6.1 cosmian findex-server permissions create
 
 Create a new index. It results on an `admin` permission on a new index
 
@@ -2688,7 +2694,7 @@ Create a new index. It results on an `admin` permission on a new index
 
 ---
 
-## 2.8.2 cosmian findex-server permissions list
+## 2.6.2 cosmian findex-server permissions list
 
 List user's permission. Returns a list of indexes with their permissions
 
@@ -2701,12 +2707,12 @@ List user's permission. Returns a list of indexes with their permissions
 
 ---
 
-## 2.8.3 cosmian findex-server permissions grant
+## 2.6.3 cosmian findex-server permissions set
 
-Grant permission on a index
+Set permission on a index
 
 ### Usage
-`cosmian findex-server permissions grant [options]`
+`cosmian findex-server permissions set [options]`
 ### Arguments
 `--user <USER>` The user identifier to allow
 
@@ -2717,7 +2723,7 @@ Grant permission on a index
 
 ---
 
-## 2.8.4 cosmian findex-server permissions revoke
+## 2.6.4 cosmian findex-server permissions revoke
 
 Revoke user permission
 
@@ -2733,19 +2739,85 @@ Revoke user permission
 
 ---
 
-## 2.9 cosmian findex-server search
+## 2.7 cosmian findex-server datasets
 
-Search words.
+Manage encrypted datasets
 
 ### Usage
-`cosmian findex-server search [options]`
+`cosmian findex-server datasets <subcommand>`
+
+### Subcommands
+
+**`add`** [[2.7.1]](#271-cosmian-findex-server-datasets-add)  Add datasets entries
+
+**`delete`** [[2.7.2]](#272-cosmian-findex-server-datasets-delete)  Delete datasets entries using corresponding entries UUID
+
+**`get`** [[2.7.3]](#273-cosmian-findex-server-datasets-get)  Return datasets entries matching given UUID
+
+---
+
+## 2.7.1 cosmian findex-server datasets add
+
+Add datasets entries
+
+### Usage
+`cosmian findex-server datasets add [options]`
 ### Arguments
-`--seed [-s] <SEED>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+`--index-id <INDEX_ID>` The index ID
 
-`--index-id [-i] <INDEX_ID>` The index ID
+` [-D] <ENTRIES>` The entries to add under the format `KEY=VALUE` where: - `KEY` is a UUID - `VALUE` is a base64 encoded string
 
-`--keyword <KEYWORD>` The word to search. Can be repeated
 
+
+---
+
+## 2.7.2 cosmian findex-server datasets delete
+
+Delete datasets entries using corresponding entries UUID
+
+### Usage
+`cosmian findex-server datasets delete [options]`
+### Arguments
+`--index-id <INDEX_ID>` The index ID
+
+`--uuids <UUIDS>` The entries UUIDs to delete
+
+
+
+---
+
+## 2.7.3 cosmian findex-server datasets get
+
+Return datasets entries matching given UUID
+
+### Usage
+`cosmian findex-server datasets get [options]`
+### Arguments
+`--index-id <INDEX_ID>` The index id
+
+`--uuids <UUIDS>` The entries uuids
+
+
+
+
+---
+
+## 2.8 cosmian findex-server login
+
+Login to the Identity Provider of the Findex server using the `OAuth2` authorization code flow.
+
+### Usage
+`cosmian findex-server login`
+
+
+---
+
+## 2.9 cosmian findex-server logout
+
+Logout from the Identity Provider.
+
+### Usage
+`cosmian findex-server logout`
 
 
 ---

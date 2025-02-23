@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI used to manage the Cosmian KMS."
+description = "CLI used to manage the Cosmian KMS and Findex server."
 
 [[bin]]
 name = "cosmian"

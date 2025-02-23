@@ -100,7 +100,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/kmip/src/kmip/extra/x509_extensions.rs
+        exclude: documentation/docs/cli/main_commands.md
 
   - repo: https://github.com/psf/black
     rev: 24.8.0

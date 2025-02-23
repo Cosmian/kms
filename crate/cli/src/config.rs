@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use cosmian_config_utils::{location, ConfigUtils};
-use cosmian_findex_cli::reexports::cosmian_findex_client::FindexClientConfig;
+use cosmian_findex_cli::reexports::cosmian_findex_client::RestClientConfig;
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientConfig;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::error::CosmianError;
 
@@ -14,14 +15,14 @@ pub(crate) const COSMIAN_CLI_CONF_PATH: &str = ".cosmian/cosmian.toml";
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct ClientConf {
     pub kms_config: KmsClientConfig,
-    pub findex_config: Option<FindexClientConfig>,
+    pub findex_config: Option<RestClientConfig>,
 }
 
 impl Default for ClientConf {
     fn default() -> Self {
         Self {
             kms_config: KmsClientConfig::default(),
-            findex_config: Some(FindexClientConfig::default()),
+            findex_config: Some(RestClientConfig::default()),
         }
     }
 }
@@ -48,7 +49,7 @@ impl ClientConf {
     /// not a valid toml file.
     pub fn load(conf_path: Option<PathBuf>) -> Result<Self, CosmianError> {
         let conf_path_buf = Self::location(conf_path)?;
-        println!("Loading configuration from: {conf_path_buf:?}");
+        debug!("Loading configuration from: {conf_path_buf:?}");
 
         Ok(Self::from_toml(conf_path_buf.to_str().ok_or_else(
             || {
