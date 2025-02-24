@@ -139,7 +139,7 @@ const ECDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="EC decrypt response">{res}</Card>}
         </div>
     );
 };

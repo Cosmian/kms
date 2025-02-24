@@ -190,7 +190,7 @@ const SymmetricEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Symmetric keys encrypt response">{res}</Card>}
         </div>
     );
 };

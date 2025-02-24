@@ -1,5 +1,7 @@
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React from 'react'
+import React, { useState } from 'react'
+import { sendKmipRequest } from './utils'
+import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg"
 
 interface LocateFormData {
     tags?: string[];
@@ -41,9 +43,37 @@ const OBJECT_TYPES = [
 
 const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
+    const [isLoading, setIsLoading] = useState(false);
+    const [res, setRes] = useState<string | undefined>(undefined);
 
-    const onFinish = (values: LocateFormData) => {
+    const onFinish = async (values: LocateFormData) => {
         console.log('Locate values:', values);
+        setIsLoading(true);
+        setRes(undefined);
+        try {
+            const request = locate_ttlv_request(
+                values.tags,
+                values.cryptographicAlgorithm,
+                values.cryptographicLength,
+                values.keyFormatType,
+                values.objectType,
+                values.publicKeyId,
+                values.privateKeyId,
+                values.certificateId
+            );
+            const result_str = await sendKmipRequest(request);
+            if (result_str) {
+                const response = await parse_locate_ttlv_response(result_str)
+                console.log(response)
+                const objects = response.UniqueIdentifier.join(" - ");
+                setRes(`${response.LocatedItems} Object(s) located. ${objects}`)
+            }
+        } catch (e) {
+            setRes(`Error locating object: ${e}`)
+            console.error("Error locating object:", e);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -157,6 +187,7 @@ const LocateForm: React.FC = () => {
                         <Button
                             type="primary"
                             htmlType="submit"
+                            loading={isLoading}
                             className="w-full text-white font-medium"
                         >
                             Search Objects
@@ -164,6 +195,7 @@ const LocateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
+            {res && <Card title="Locate response">{res}</Card>}
         </div>
     );
 };

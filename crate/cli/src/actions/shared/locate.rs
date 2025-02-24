@@ -5,13 +5,9 @@ use clap::{
     Parser,
 };
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_operations::Locate,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        },
-    },
+    cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     kmip_2_1::kmip_objects::ObjectType,
+    reexport::cosmian_kms_ui_utils::locate_utils::build_locate_request,
     KmsClient,
 };
 use strum::IntoEnumIterator;
@@ -99,58 +95,18 @@ impl LocateObjectsAction {
     ///
     /// Returns an error if there is a problem communicating with the KMS or if the requested key cannot be located.
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let mut attributes = Attributes::default();
+        let request = build_locate_request(
+            self.tags.clone(),
+            self.cryptographic_algorithm,
+            self.cryptographic_length,
+            self.key_format_type,
+            self.object_type,
+            self.public_key_id.as_deref(),
+            self.private_key_id.as_deref(),
+            self.certificate_id.as_deref(),
+        )?;
 
-        if let Some(crypto_algo) = self.cryptographic_algorithm {
-            attributes.cryptographic_algorithm = Some(crypto_algo);
-        }
-
-        if let Some(cryptographic_length) = self.cryptographic_length {
-            attributes.cryptographic_length = Some(cryptographic_length);
-        }
-
-        if let Some(key_format_type) = self.key_format_type {
-            attributes.key_format_type = Some(key_format_type);
-        }
-
-        if let Some(object_type) = self.object_type {
-            attributes.object_type = Some(object_type);
-        }
-
-        if let Some(public_key_id) = &self.public_key_id {
-            attributes.set_link(
-                LinkType::PublicKeyLink,
-                LinkedObjectIdentifier::TextString(public_key_id.to_string()),
-            );
-        }
-
-        if let Some(private_key_id) = &self.private_key_id {
-            attributes.set_link(
-                LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(private_key_id.to_string()),
-            );
-        }
-
-        if let Some(certificate_id) = &self.certificate_id {
-            attributes.set_link(
-                LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(certificate_id.to_string()),
-            );
-        }
-
-        if let Some(tags) = &self.tags {
-            attributes.set_tags(tags.clone())?;
-        }
-
-        let locate = Locate {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
-            attributes,
-        };
-
-        let response = kms_rest_client.locate(locate).await?;
+        let response = kms_rest_client.locate(request).await?;
         if let Some(ids) = response.unique_identifiers {
             if ids.is_empty() {
                 console::Stdout::new("No object found.").write()?;

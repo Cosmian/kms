@@ -165,7 +165,7 @@ const CCEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Covercrypt encrypt response">{res}</Card>}
         </div>
     );
 };

@@ -9,7 +9,6 @@ interface CCDecryptFormData {
     keyId?: string;
     tags?: string[];
     authenticationData?: string;
-
   }
 
 const CCDecryptForm: React.FC = () => {
@@ -152,7 +151,7 @@ const CCDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Covercrypt decrypt response">{res}</Card>}
         </div>
     );
 };
