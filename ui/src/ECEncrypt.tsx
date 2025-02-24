@@ -141,7 +141,7 @@ const ECEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="EC encrypt response">{res}</Card>}
         </div>
     );
 };

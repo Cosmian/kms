@@ -160,8 +160,8 @@ const SymKeyCreateForm: React.FC = () => {
                         </Button>
                     </Form.Item>
                 </Space>
-                {res && <div>{res}</div>}
-            </Form>
+                {res && <Card title="Symmetric keys creation response">{res}</Card>}
+                </Form>
         </div>
     );
 };

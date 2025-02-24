@@ -127,7 +127,7 @@ const ECKeyCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="EC key pair creation response">{res}</Card>}
         </div>
     );
 };

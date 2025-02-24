@@ -15,7 +15,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'sym',
         label: 'Symmetric',
-        collapsedLabel: 'SYM',
+        collapsedlabel: 'SYM',
         children: [
             {
                 key: 'sym/keys',
@@ -35,7 +35,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'rsa',
         label: 'RSA',
-        collapsedLabel: 'RSA',
+        collapsedlabel: 'RSA',
         children: [
             {
                 key: 'rsa/keys',
@@ -55,7 +55,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'ec',
         label: 'Elliptic Curve',
-        collapsedLabel: 'EC',
+        collapsedlabel: 'EC',
         children: [
             {
                 key: 'ec/keys',
@@ -75,7 +75,7 @@ export const menuItems: MenuItem[] = [
     {
         key: 'cc',
         label: 'Covercrypt',
-        collapsedLabel: 'CC',
+        collapsedlabel: 'CC',
         children: [
             {
                 key: 'cc/keys',

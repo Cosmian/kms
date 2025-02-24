@@ -1,6 +1,6 @@
 import { ConfigProvider, theme } from 'antd'
 import { useEffect, useState } from "react"
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
@@ -116,6 +116,7 @@ function App() {
     >
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Navigate to="/locate" replace />} />
           <Route path="/" element={<MainLayout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}>
             <Route path="locate" element={<LocateForm />} />
             <Route path="sym/keys/create" element={<SymKeyCreateForm />} />

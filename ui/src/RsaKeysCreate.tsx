@@ -121,7 +121,7 @@ const RsaKeyCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="RSA keys creation response">{res}</Card>}
         </div>
     );
 };

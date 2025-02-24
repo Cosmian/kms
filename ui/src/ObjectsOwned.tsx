@@ -87,8 +87,7 @@ const ObjectsOwnedList: React.FC = () => {
                     />
                 </Card>
             </Space>
-            {res && <div>{res}</div>}
-
+            {res && <Card title="Owned objects response">{res}</Card>}
         </div>
     );
 };

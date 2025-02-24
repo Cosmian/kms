@@ -3,16 +3,16 @@ use std::str::FromStr;
 use base64::Engine as _;
 use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
+    kmip_objects::{Object, ObjectType},
     kmip_operations::{
         Certify, CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
         DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-        GetAttributesResponse, ImportResponse, Locate, LocateResponse, RevokeResponse, Validate,
+        GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse, Validate,
         ValidateResponse,
     },
     kmip_types::{
-        CertificateRequestType, CryptographicAlgorithm, CryptographicParameters, RecommendedCurve,
-        UniqueIdentifier,
+        CertificateRequestType, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
+        RecommendedCurve, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -38,6 +38,7 @@ use crate::{
         tag_from_object, ExportKeyFormat, WrappingAlgorithm,
     },
     import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
+    locate_utils::build_locate_request,
     rsa_utils::{HashFn, RsaEncryptionAlgorithm},
     symmetric_utils::{parse_decrypt_elements, DataEncryptionAlgorithm},
 };
@@ -52,6 +53,62 @@ where
         .and_then(|objects: T| {
             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
         })
+}
+
+// Locate request
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn locate_ttlv_request(
+    tags: Option<Vec<String>>,
+    cryptographic_algorithm: Option<String>,
+    cryptographic_length: Option<usize>,
+    key_format_type: Option<String>,
+    object_type: Option<String>,
+    public_key_id: Option<String>,
+    private_key_id: Option<String>,
+    certificate_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let cryptographic_algorithm: Option<CryptographicAlgorithm> = cryptographic_algorithm
+        .as_deref()
+        .map(|s| CryptographicAlgorithm::from_str(s).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let cryptographic_length = cryptographic_length
+        .map(|x| i32::try_from(x).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let key_format_type: Option<KeyFormatType> = key_format_type
+        .as_deref()
+        .map(|s| KeyFormatType::from_str(s).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let object_type: Option<ObjectType> = object_type
+        .as_deref()
+        .map(|s| ObjectType::try_from(s).map_err(|e| JsValue::from(e.to_string())))
+        .transpose()?;
+
+    let request = build_locate_request(
+        tags,
+        cryptographic_algorithm,
+        cryptographic_length,
+        key_format_type,
+        object_type,
+        public_key_id.as_deref(),
+        private_key_id.as_deref(),
+        certificate_id.as_deref(),
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<LocateResponse>(response)
 }
 
 // Certify request
@@ -600,32 +657,6 @@ pub fn import_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_import_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<ImportResponse>(response)
-}
-
-// Locate request
-#[wasm_bindgen]
-pub fn locate_ttlv_request(
-    maximum_items: Option<i32>,
-    offset_items: Option<i32>,
-    attributes: JsValue,
-) -> Result<JsValue, JsValue> {
-    let attributes = serde_wasm_bindgen::from_value(attributes)?;
-    let request = Locate {
-        maximum_items,
-        offset_items,
-        attributes,
-        ..Default::default()
-    };
-    to_ttlv(&request)
-        .map_err(|e| JsValue::from(e.to_string()))
-        .and_then(|objects| {
-            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-        })
-}
-
-#[wasm_bindgen]
-pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<LocateResponse>(response)
 }
 
 // Revoke request

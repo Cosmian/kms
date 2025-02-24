@@ -91,7 +91,7 @@ const AccessListForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="List access response">{res}</Card>}
 
             {accessRights.length > 0 && (
                 <div className="mt-8">

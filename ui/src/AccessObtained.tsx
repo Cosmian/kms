@@ -103,7 +103,7 @@ const AccessObtainedList: React.FC = () => {
                     />
                 </Card>
             </Space>
-            {res && <div>{res}</div>}
+            {res && <Card title="Obtained access response">{res}</Card>}
         </div >
     );
 };

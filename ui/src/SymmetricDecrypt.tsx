@@ -182,7 +182,7 @@ const SymmetricDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Symmetric keys decrypt response">{res}</Card>}
         </div>
     );
 };

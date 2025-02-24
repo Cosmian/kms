@@ -134,7 +134,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Covercrypt User key creation response">{res}</Card>}
         </div>
     );
 };

@@ -58,7 +58,7 @@ const Sidebar: React.FC = () => {
         ...item,
         label: collapsed ? (
             <Tooltip title={item.label}>
-                {item.icon ? item.icon : item.collapsedLabel}
+                {item.icon ? item.icon : item.collapsedlabel}
             </Tooltip>
         ) : (
             item.label
