@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM alpine:3.21.3
 
 LABEL version="4.22.1"
 LABEL name="Cosmian KMS docker container"
