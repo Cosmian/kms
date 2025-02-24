@@ -10,6 +10,12 @@ WORKDIR /root
 
 RUN apk update \
     && apk add -q \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    cargo \
     curl \
     build-base \
     libressl-dev \
