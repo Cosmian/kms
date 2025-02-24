@@ -143,7 +143,7 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Key destroy response">{res}</Card>}
         </div>
     );
 };

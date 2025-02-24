@@ -165,7 +165,7 @@ const RsaEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="RSA encrypt response">{res}</Card>}
         </div>
     );
 };

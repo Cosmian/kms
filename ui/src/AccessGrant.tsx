@@ -110,7 +110,7 @@ const AccessGrantForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <div>{res}</div>}
+            {res && <Card title="Grant access response">{res}</Card>}
         </div>
     );
 };

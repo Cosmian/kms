@@ -3,7 +3,7 @@ export interface MenuItem {
     label: string;
     description?: string;
     icon?: React.ReactNode;
-    collapsedLabel?: string;
+    collapsedlabel?: string;
     children?: MenuItem[];
     component?: React.ComponentType;
 }
