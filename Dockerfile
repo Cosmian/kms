@@ -14,7 +14,6 @@ RUN apk update \
     musl-dev \
     python3-dev \
     libffi-dev \
-    openssl-dev \
     cargo \
     curl \
     build-base \
