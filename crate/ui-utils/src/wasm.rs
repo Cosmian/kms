@@ -636,7 +636,7 @@ pub fn parse_import_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Revoke request
 #[wasm_bindgen]
-pub fn revoke_key_ttlv_request(
+pub fn revoke_ttlv_request(
     unique_identifier: &str,
     revocation_reason: JsValue,
 ) -> Result<JsValue, JsValue> {
