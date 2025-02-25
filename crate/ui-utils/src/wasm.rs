@@ -14,10 +14,7 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
-        build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
-        create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
-        get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
-        get_rsa_public_key_request, import_object_request, symmetric_key_create_request,
+        build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request, create_symmetric_key_kmip_object, decrypt_request, encrypt_request, get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request, get_rsa_public_key_request, import_object_request, symmetric_key_create_request
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -655,31 +652,6 @@ pub fn parse_revoke_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<RevokeResponse>(response)
 }
 
-// Validate request
-#[wasm_bindgen]
-pub fn validate_certificate_ttlv_request(
-    certificate: Option<Vec<u8>>,
-    unique_identifier: Option<String>,
-    validity_time: Option<String>,
-) -> Result<JsValue, JsValue> {
-    let certificate: Option<Vec<Vec<u8>>> = certificate.map(|bytes| vec![bytes]);
-    let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
-    let request = Validate {
-        certificate,
-        unique_identifier,
-        validity_time,
-    };
-    to_ttlv(&request)
-        .map_err(|e| JsValue::from(e.to_string()))
-        .and_then(|objects| {
-            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-        })
-}
-
-#[wasm_bindgen]
-pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ValidateResponse>(response)
-}
 use std::collections::HashMap;
 
 // Covercrypt requests
@@ -777,40 +749,6 @@ pub fn decrypt_cc_ttlv_request(
             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
         })
 }
-
-// Certify request
-// #[wasm_bindgen]
-// pub fn certify_ttlv_request(
-//     unique_identifier: Option<String>,
-//     certificate_request_type: Option<String>,
-//     certificate_request_value: Option<Vec<u8>>,
-//     attributes: JsValue,
-// ) -> Result<JsValue, JsValue> {
-//     let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
-//     let certificate_request_type = certificate_request_type.and_then(|s| {
-//         CertificateRequestType::from_str(&s)
-//             .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
-//             .ok()
-//     });
-//     let attributes = serde_wasm_bindgen::from_value(attributes)?;
-//     let request = Certify {
-//         unique_identifier,
-//         attributes: Some(attributes),
-//         certificate_request_value,
-//         certificate_request_type,
-//         ..Certify::default()
-//     };
-//     to_ttlv(&request)
-//         .map_err(|e| JsValue::from(e.to_string()))
-//         .and_then(|objects| {
-//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-//         })
-// }
-
-// #[wasm_bindgen]
-// pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-//     parse_ttlv_response::<CertifyResponse>(response)
-// }
 
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
@@ -1017,3 +955,64 @@ pub fn parse_export_certificate_ttlv_response(
         .map_err(|e| JsValue::from(e.to_string()))?,
     }
 }
+
+// Validate request
+#[wasm_bindgen]
+pub fn validate_certificate_ttlv_request(
+    certificate: Option<Vec<u8>>,
+    unique_identifier: Option<String>,
+    validity_time: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let certificate: Option<Vec<Vec<u8>>> = certificate.map(|bytes| vec![bytes]);
+    let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
+    let request = Validate {
+        certificate,
+        unique_identifier,
+        validity_time,
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<ValidateResponse>(response)
+}
+
+
+// Certify request
+// #[wasm_bindgen]
+// pub fn certify_ttlv_request(
+//     unique_identifier: Option<String>,
+//     certificate_request_type: Option<String>,
+//     certificate_request_value: Option<Vec<u8>>,
+//     attributes: JsValue,
+// ) -> Result<JsValue, JsValue> {
+//     let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
+//     let certificate_request_type = certificate_request_type.and_then(|s| {
+//         CertificateRequestType::from_str(&s)
+//             .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
+//             .ok()
+//     });
+//     let attributes = serde_wasm_bindgen::from_value(attributes)?;
+//     let request = Certify {
+//         unique_identifier,
+//         attributes: Some(attributes),
+//         certificate_request_value,
+//         certificate_request_type,
+//         ..Certify::default()
+//     };
+//     to_ttlv(&request)
+//         .map_err(|e| JsValue::from(e.to_string()))
+//         .and_then(|objects| {
+//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+//         })
+// }
+
+// #[wasm_bindgen]
+// pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+//     parse_ttlv_response::<CertifyResponse>(response)
+// }

@@ -7,6 +7,7 @@ import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
 import CertificateExportForm from './CertificateExport'
 import CertificateImportForm from './CertificateImport'
+import CertificateValidateForm from './CertificateValidate'
 import CCDecryptForm from './CovercryptDecrypt'
 import CCEncryptForm from './CovercryptEncrypt'
 import CovercryptMasterKeyForm from './CovercryptMasterKey'
@@ -27,6 +28,7 @@ import RsaKeyCreateForm from './RsaKeysCreate'
 import SymKeyCreateForm from './SymKeysCreate'
 import SymmetricDecryptForm from './SymmetricDecrypt'
 import SymmetricEncryptForm from './SymmetricEncrypt'
+
 import init from "./wasm/pkg"
 
 function App() {
@@ -159,6 +161,7 @@ function App() {
             <Route path="certificates/export" element={<CertificateExportForm />} />
             <Route path="certificates/revoke" element={<RevokeForm objectType='certificate' />} />
             <Route path="certificates/destroy" element={<DestroyForm objectType='certificate' />} />
+            <Route path="certificates/validate" element={<CertificateValidateForm />} />
           </Route>
         </Routes>
       </BrowserRouter>
