@@ -5,8 +5,17 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{InterfaceResult, ObjectWithMetadata, stores::SessionParams};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// The state of the database
+pub enum DbState {
+    Ready,
+    Upgrading,
+}
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
@@ -47,9 +56,6 @@ impl AtomicOperation {
 pub trait ObjectsStore {
     /// Return the filename of the database or `None` if not supported
     fn filename(&self, group_id: u128) -> Option<PathBuf>;
-
-    /// Migrate the database to the latest version
-    async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()>;
 
     /// Create the given Object in the database.
     ///
