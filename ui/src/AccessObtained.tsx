@@ -55,7 +55,6 @@ const AccessObtainedList: React.FC = () => {
         setAccessRights([])
         try {
             const response = await getNoTTLVRequest("/access/obtained");
-            console.log(response)
             if (response.length) {
                 setAccessRights(response);
             } else {

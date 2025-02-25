@@ -37,7 +37,6 @@ const CCDecryptForm: React.FC = () => {
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str)
-                console.log(response)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
                 const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;

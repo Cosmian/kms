@@ -51,6 +51,7 @@
     clippy::cognitive_complexity
 )]
 
+pub mod certificate_utils;
 pub mod cover_crypt_utils;
 pub mod create_utils;
 pub mod error;

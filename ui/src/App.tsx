@@ -5,6 +5,7 @@ import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
+import CertificateImportForm from './CertificateImport'
 import CCDecryptForm from './CovercryptDecrypt'
 import CCEncryptForm from './CovercryptEncrypt'
 import CovercryptMasterKeyForm from './CovercryptMasterKey'
@@ -153,6 +154,7 @@ function App() {
             <Route path="access-rights/list" element={<AccessListForm />} />
             <Route path="access-rights/owned" element={<ObjectsOwnedList />} />
             <Route path="access-rights/obtained" element={<AccessObtainedList />} />
+            <Route path="certificates/import" element={<CertificateImportForm />} />
           </Route>
         </Routes>
       </BrowserRouter>
