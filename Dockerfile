@@ -8,12 +8,12 @@ ENV OPENSSL_DIR=/usr/local/openssl
 
 WORKDIR /root
 
-# RUN rm /var/lib/dpkg/info/libc-bin.*
+RUN rm /var/lib/dpkg/info/libc-bin.*
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -qq -y \
     qemu-system-arm \
-    # libc-bin \
+    libc-bin \
     curl \
     build-essential \
     libssl-dev \
