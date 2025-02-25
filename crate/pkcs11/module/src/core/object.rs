@@ -151,7 +151,7 @@ impl Object {
                         KeyAlgorithm::EccP256
                         | KeyAlgorithm::EccP384
                         | KeyAlgorithm::EccP521
-                        | KeyAlgorithm::X25519 {}
+                        | KeyAlgorithm::X25519
                         | KeyAlgorithm::Ed25519
                         | KeyAlgorithm::X448
                         | KeyAlgorithm::Ed448 => Some(Attribute::EcParams(

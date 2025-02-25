@@ -330,7 +330,7 @@ impl KMSSqliteCache {
             item.last_used_at = _now()?;
 
             sqlites.insert(id, item);
-        };
+        }
 
         self.current_size.fetch_add(1, Ordering::Relaxed);
 
@@ -471,7 +471,7 @@ impl FreeableSqliteCache {
                 self.entries[prev].next = FSCNeighborEntry::Chained(next);
                 self.entries[next].prev = FSCNeighborEntry::Chained(prev);
             }
-        };
+        }
 
         self.entries[index].chained = false;
         self.length -= 1;

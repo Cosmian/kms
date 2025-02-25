@@ -310,7 +310,7 @@ fn decrypt_bulk(
                 "decryption with keys of format: {other}"
             )))
         }
-    };
+    }
 
     debug!(
         "decrypt_bulk: ==> decrypted {} plaintexts",

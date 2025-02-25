@@ -55,7 +55,7 @@ impl KeysCommands {
             Self::Destroy(action) => {
                 action.run(kms_rest_client).await?;
             }
-        };
+        }
 
         Ok(())
     }

@@ -204,7 +204,7 @@ ON objects.id = matched_tags.id"
                 "{query} AND {} = '{cryptographic_algorithm}'",
                 P::extract_text_from_key_block_path("CryptographicAlgorithm")
             );
-        };
+        }
 
         // CryptographicLength
         if let Some(cryptographic_length) = attributes.cryptographic_length {
@@ -213,7 +213,7 @@ ON objects.id = matched_tags.id"
                 P::extract_text_from_key_block_path("CryptographicLength"),
                 P::TYPE_INTEGER
             );
-        };
+        }
 
         // KeyFormatType
         if let Some(key_format_type) = attributes.key_format_type {
@@ -221,7 +221,7 @@ ON objects.id = matched_tags.id"
                 "{query} AND {} = '{key_format_type}'",
                 P::extract_text_from_key_block_path("KeyFormatType")
             );
-        };
+        }
 
         // ObjectType
         if let Some(object_type) = attributes.object_type {
@@ -229,7 +229,7 @@ ON objects.id = matched_tags.id"
                 "{query} AND {} = '{object_type}'",
                 P::extract_text_from_object_type_path()
             );
-        };
+        }
 
         // Link
         if let Some(links) = &attributes.link {

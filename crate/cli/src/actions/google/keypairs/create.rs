@@ -252,7 +252,7 @@ impl CreateKeyPairsAction {
                 Err(CliError::ServerError(format!(
                     "Error inserting key pair for {email:?} - exported object is not a Certificate"
                 )))?;
-            };
+            }
         }
         Ok(())
     }

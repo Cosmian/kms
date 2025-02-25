@@ -2,8 +2,8 @@ use cosmian_http_client::HttpClient;
 use cosmian_kmip::kmip_2_1::{
     kmip_messages::{Message, MessageResponse},
     kmip_operations::{
-        DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
-        SetAttributeResponse,
+        DeleteAttribute, DeleteAttributeResponse, Hash, HashResponse, Mac, MacResponse, ReKey,
+        ReKeyResponse, SetAttribute, SetAttributeResponse,
     },
 };
 // re-export the kmip module as kmip
@@ -239,6 +239,19 @@ impl KmsClient {
             .await
     }
 
+    /// This operation requests the server to perform a hash operation on the data provided.
+    ///
+    /// The request contains information about the cryptographic parameters (hash algorithm)
+    /// and the data to be hashed.
+    ///
+    /// The response contains the result of the hash operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status
+    /// (and if failure the Result Reason) in the response header.
+    pub async fn hash(&self, request: Hash) -> Result<HashResponse, KmsClientError> {
+        self.post_ttlv::<Hash, HashResponse>(&request).await
+    }
+
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
     pub async fn set_attribute(
         &self,
@@ -362,6 +375,23 @@ impl KmsClient {
     /// indicator.
     pub async fn locate(&self, request: Locate) -> Result<LocateResponse, KmsClientError> {
         self.post_ttlv::<Locate, LocateResponse>(&request).await
+    }
+
+    /// This operation requests the server to perform message authentication code (MAC)
+    /// operation on the provided data using a Managed Cryptographic Object as the key
+    /// for the MAC operation.
+    ///
+    /// The request contains information about the cryptographic parameters (cryptographic algorithm)
+    /// and the data to be `MACed`. The cryptographic parameters MAY be omitted from the request as they can
+    /// be specified as associated attributes of the Managed Cryptographic Object.
+    ///
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and
+    /// the result of the MAC operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result
+    /// Reason) in the response header.
+    pub async fn mac(&self, request: Mac) -> Result<MacResponse, KmsClientError> {
+        self.post_ttlv::<Mac, MacResponse>(&request).await
     }
 
     // This request is used to generate a replacement key pair for an existing

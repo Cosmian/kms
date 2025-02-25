@@ -64,7 +64,7 @@ pub fn initialize_telemetry(telemetry: &TelemetryConfig) -> KResult<()> {
             .with_ansi(true)
             .compact()
             .init();
-    };
+    }
 
     // We need to create a span to be able to log the initialization
     // because, for an unknown reason, the first log message is not displayed

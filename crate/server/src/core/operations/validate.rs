@@ -115,7 +115,7 @@ pub(crate) async fn validate_operation(
              not match"
                 .to_owned(),
         ));
-    };
+    }
 
     // Convert the certificates from bytes to X509
     let certificates = certificates
@@ -503,7 +503,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     "Error that should not manifest".to_owned(),
                 ))
             }
-        };
+        }
     }
 
     debug!(
@@ -597,7 +597,7 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
                         "Invalid CRL signature: {:?}",
                         crl.issuer_name()
                     )))
-                };
+                }
 
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Revocation status: result: {res:?}");

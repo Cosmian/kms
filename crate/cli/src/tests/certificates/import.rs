@@ -91,7 +91,7 @@ pub(crate) fn import_certificate(
             args.push("--pkcs12-password".to_owned());
             args.push(pkcs12_password.unwrap_or("").to_owned());
         }
-    };
+    }
     if let Some(key_usage_vec) = key_usage_vec {
         for key_usage in key_usage_vec {
             args.push("--key-usage".to_owned());

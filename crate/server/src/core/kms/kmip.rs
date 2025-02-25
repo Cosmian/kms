@@ -6,9 +6,9 @@ use cosmian_kmip::kmip_2_1::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
         DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse, ReKey,
-        ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, Validate, ValidateResponse,
+        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+        LocateResponse, Mac, MacResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
+        Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
     },
     kmip_types::StateEnumeration,
 };
@@ -143,6 +143,16 @@ impl KMS {
         operations::decrypt(self, request, user, params).await
     }
 
+    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
+    pub(crate) async fn delete_attribute(
+        &self,
+        request: DeleteAttribute,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<DeleteAttributeResponse> {
+        operations::delete_attribute(self, request, user, params).await
+    }
+
     /// This operation is used to indicate to the server that the key material
     /// for the specified Managed Object SHALL be destroyed or rendered
     /// inaccessible. The meta-data for the key material SHALL be retained by
@@ -260,24 +270,19 @@ impl KMS {
         operations::get_attributes(self, request, user, params).await
     }
 
-    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
-    pub(crate) async fn set_attribute(
+    /// This operation requests the server to perform a hash operation on the data provided.
+    ///
+    /// The request contains information about the cryptographic parameters (hash algorithm) and the data to be hashed.
+    /// The response contains the result of the hash operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    pub(crate) async fn hash(
         &self,
-        request: SetAttribute,
+        request: Hash,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<SetAttributeResponse> {
-        operations::set_attribute(self, request, user, params).await
-    }
-
-    /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
-    pub(crate) async fn delete_attribute(
-        &self,
-        request: DeleteAttribute,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<DeleteAttributeResponse> {
-        operations::delete_attribute(self, request, user, params).await
+    ) -> KResult<HashResponse> {
+        operations::hash_operation(self, request, user, params).await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -379,7 +384,32 @@ impl KMS {
         operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
     }
 
-    #[allow(clippy::large_futures)]
+    /// This operation requests the server to perform message authentication code (MAC) operation on the provided data using a Managed Cryptographic Object as the key for the MAC operation.
+    ///
+    /// The request contains information about the cryptographic parameters (cryptographic algorithm) and the data to be `MACed`. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+    ///
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the MAC operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    pub(crate) async fn mac(
+        &self,
+        request: Mac,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<MacResponse> {
+        operations::mac(self, request, user, params).await
+    }
+
+    pub(crate) async fn message(
+        &self,
+        request: Message,
+        user: &str,
+        params: Option<Arc<dyn SessionParams>>,
+    ) -> KResult<MessageResponse> {
+        // This is a large future, hence pinning
+        Box::pin(operations::message(self, request, user, params)).await
+    }
+
     // This request is used to generate a replacement key pair for an existing
     // public/private key pair.  It is analogous to the Create Key Pair operation,
     // except that attributes of the replacement key pair are copied from the
@@ -432,14 +462,14 @@ impl KMS {
         operations::rekey(self, request, user, params).await
     }
 
-    pub(crate) async fn message(
+    /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
+    pub(crate) async fn set_attribute(
         &self,
-        request: Message,
+        request: SetAttribute,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MessageResponse> {
-        // This is a large future, hence pinning
-        Box::pin(operations::message(self, request, user, params)).await
+    ) -> KResult<SetAttributeResponse> {
+        operations::set_attribute(self, request, user, params).await
     }
 
     pub(crate) async fn validate(

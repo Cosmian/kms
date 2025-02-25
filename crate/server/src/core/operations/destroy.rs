@@ -193,7 +193,7 @@ pub(crate) async fn recursively_destroy_object(
             x => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
             ))),
-        };
+        }
         debug!(
             "Object type: {}, with unique identifier: {}, destroyed by user {}",
             owm.object().object_type(),

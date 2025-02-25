@@ -88,7 +88,7 @@ impl PrivateKey for Pkcs11PrivateKey {
                 MError::Cryptography("Failed to read DER bytes".to_string())
             })?
             .clone();
-        if der_bytes.len() > 0 {
+        if !der_bytes.is_empty() {
             return Ok(der_bytes);
         }
         let sk = backend().find_private_key(SearchOptions::Id(self.remote_id.clone()))?;
@@ -108,7 +108,7 @@ impl PrivateKey for Pkcs11PrivateKey {
             error!("Failed to read DER bytes: {:?}", e);
             MError::Cryptography("Failed to read DER bytes".to_string())
         })?;
-        Ok(if pkcs8_der_bytes.len() > 0 {
+        Ok(if !pkcs8_der_bytes.is_empty() {
             let rsa_key = RsaPrivateKey::from_der(pkcs8_der_bytes.as_ref()).map_err(|e| {
                 error!("Failed to parse RSA public key: {:?}", e);
                 MError::Cryptography("Failed to parse RSA public key".to_string())

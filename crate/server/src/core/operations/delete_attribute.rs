@@ -88,7 +88,7 @@ pub(crate) async fn delete_attribute(
                 }
             }
         }
-    };
+    }
 
     if let Some(attribute_references) = request.attribute_references {
         for attribute_reference in attribute_references {

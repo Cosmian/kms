@@ -68,7 +68,7 @@ impl PolicyCommands {
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
             Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
-        };
+        }
 
         Ok(())
     }

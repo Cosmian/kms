@@ -120,7 +120,7 @@ cargo build --target $TARGET $RELEASE $FEATURES
 
 echo "Database KMS: $KMS_TEST_DB"
 # shellcheck disable=SC2086
-cargo test --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
+cargo test --lib --target $TARGET $RELEASE $FEATURES --workspace -- --nocapture $SKIP_SERVICES_TESTS
 
 # Uncomment this code to run tests indefinitely
 # counter=1

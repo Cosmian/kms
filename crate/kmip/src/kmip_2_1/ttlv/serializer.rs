@@ -52,7 +52,7 @@ where
 
     if let Some(object_type) = value.detect() {
         ttlv.tag = object_type.to_string();
-    };
+    }
 
     Ok(ttlv)
 }
@@ -696,7 +696,7 @@ impl ser::SerializeStruct for &mut TTLVSerializer {
                     "'unexpected value for struct: {v:?}"
                 )))
             }
-        };
+        }
         trace!(
             "After serialize field {:?} #### {:?}",
             self.parents,

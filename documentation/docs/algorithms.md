@@ -219,6 +219,14 @@ In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA
 by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2)
 which follows FIPS recommendations as well. An additional random 128-bit salt is used.
 
+## Hash functions
+
+The Cosmian server supports the following FIPS compliant hashing algorithms:
+
+- SHA-256
+- SHA-384
+- SHA-512
+
 ## References
 
 - NIST.FIPS.140-3, Implementation Guidance for FIPS 140-3 and the Cryptographic Module Validation

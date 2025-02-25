@@ -36,7 +36,7 @@ impl AccessAction {
             Self::List(action) => action.run(kms_rest_client).await?,
             Self::Owned(action) => action.run(kms_rest_client).await?,
             Self::Obtained(action) => action.run(kms_rest_client).await?,
-        };
+        }
 
         Ok(())
     }
