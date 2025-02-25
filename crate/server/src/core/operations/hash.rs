@@ -16,8 +16,6 @@ fn compute_hash(
     additional_data: Option<Vec<u8>>,
 ) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
-        HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-        HashingAlgorithm::SHA224 => MessageDigest::sha224(),
         HashingAlgorithm::SHA256 => MessageDigest::sha256(),
         HashingAlgorithm::SHA384 => MessageDigest::sha384(),
         HashingAlgorithm::SHA512 => MessageDigest::sha512(),
@@ -50,12 +48,13 @@ pub(crate) async fn hash_operation(
         .hashing_algorithm
         .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
 
-    let data = request
-        .data
-        .as_ref()
-        .ok_or_else(|| KmsError::InvalidRequest("Data is required".to_owned()))?;
+    let data = request.data.unwrap_or_default();
 
-    let hash = compute_hash(data, algorithm, request.correlation_value)?;
+    if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
+        kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
+    }
+
+    let hash = compute_hash(&data, algorithm, request.correlation_value)?;
 
     Ok(HashResponse {
         data: (!request.init_indicator.unwrap_or(false)).then_some(hash.clone()),
@@ -81,25 +80,33 @@ mod tests {
     async fn test_server_hash_operation() -> KResult<()> {
         let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
 
-        let request = Hash {
-            cryptographic_parameters: CryptographicParameters {
-                hashing_algorithm: Some(HashingAlgorithm::SHA3256),
-                ..Default::default()
-            },
-            data: Some(vec![1, 2, 3]),
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
-        };
-        let response = kms.hash(request, "test", None).await.unwrap();
-        assert_eq!(
-            response.data,
-            Some(vec![
-                253, 23, 128, 166, 252, 158, 224, 218, 178, 108, 235, 75, 57, 65, 171, 3, 230, 108,
-                205, 151, 13, 29, 185, 22, 18, 198, 109, 244, 81, 91, 10, 10
-            ])
-        );
-        assert_eq!(response.correlation_value, None);
+        let expected_hash = vec![
+            253, 23, 128, 166, 252, 158, 224, 218, 178, 108, 235, 75, 57, 65, 171, 3, 230, 108,
+            205, 151, 13, 29, 185, 22, 18, 198, 109, 244, 81, 91, 10, 10,
+        ];
+
+        // Test different combinations of init_indicator and final_indicator
+        for (init_indicator, final_indicator) in [
+            (None, None),
+            (Some(false), None),
+            (Some(false), Some(true)),
+            (None, Some(true)),
+        ] {
+            let request = Hash {
+                cryptographic_parameters: CryptographicParameters {
+                    hashing_algorithm: Some(HashingAlgorithm::SHA3256),
+                    ..Default::default()
+                },
+                data: Some(vec![1, 2, 3]),
+                correlation_value: None,
+                init_indicator,
+                final_indicator,
+            };
+            let response = kms.hash(request, "test", None).await.unwrap();
+            assert_eq!(response.data, Some(expected_hash.clone()));
+            assert_eq!(response.correlation_value, None);
+        }
+
         Ok(())
     }
 
@@ -118,14 +125,10 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: Some(true),
         };
-        let response = kms.hash(request, "test", None).await.unwrap();
-        assert_eq!(response.data, None);
-        assert!(response.correlation_value.is_some());
+        assert!(kms.hash(request, "test", None).await.is_err());
 
         // Test different hashing algorithms
         for algorithm in [
-            HashingAlgorithm::SHA1,
-            HashingAlgorithm::SHA224,
             HashingAlgorithm::SHA384,
             HashingAlgorithm::SHA512,
             HashingAlgorithm::SHA3224,
@@ -158,7 +161,9 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        assert!(kms.hash(request, "test", None).await.is_err());
+        let response = kms.hash(request, "test", None).await?;
+        assert!(response.data.is_some());
+        assert!(response.correlation_value.is_none());
 
         // Test invalid request (missing algorithm)
         let request = Hash {

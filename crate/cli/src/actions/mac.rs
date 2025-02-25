@@ -15,13 +15,9 @@ use crate::{actions::console, error::result::CliResult};
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum CHashingAlgorithm {
-    SHA1,
-    SHA224,
     SHA256,
     SHA384,
     SHA512,
-    SHA512_224,
-    SHA512_256,
     SHA3_224,
     SHA3_256,
     SHA3_384,
@@ -31,13 +27,9 @@ pub enum CHashingAlgorithm {
 impl Display for CHashingAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::SHA1 => write!(f, "sha1"),
-            Self::SHA224 => write!(f, "sha224"),
             Self::SHA256 => write!(f, "sha256"),
             Self::SHA384 => write!(f, "sha384"),
             Self::SHA512 => write!(f, "sha512"),
-            Self::SHA512_224 => write!(f, "sha512-224"),
-            Self::SHA512_256 => write!(f, "sha512-256"),
             Self::SHA3_224 => write!(f, "sha3-224"),
             Self::SHA3_256 => write!(f, "sha3-256"),
             Self::SHA3_384 => write!(f, "sha3-384"),
@@ -49,13 +41,9 @@ impl Display for CHashingAlgorithm {
 impl From<CHashingAlgorithm> for HashingAlgorithm {
     fn from(algo: CHashingAlgorithm) -> Self {
         match algo {
-            CHashingAlgorithm::SHA1 => Self::SHA1,
-            CHashingAlgorithm::SHA224 => Self::SHA224,
             CHashingAlgorithm::SHA256 => Self::SHA256,
             CHashingAlgorithm::SHA384 => Self::SHA384,
             CHashingAlgorithm::SHA512 => Self::SHA512,
-            CHashingAlgorithm::SHA512_224 => Self::SHA512224,
-            CHashingAlgorithm::SHA512_256 => Self::SHA512256,
             CHashingAlgorithm::SHA3_224 => Self::SHA3224,
             CHashingAlgorithm::SHA3_256 => Self::SHA3256,
             CHashingAlgorithm::SHA3_384 => Self::SHA3384,
@@ -84,11 +72,20 @@ pub struct MacAction {
     pub hashing_algorithm: CHashingAlgorithm,
 
     /// The data to be hashed in hexadecimal format.
-    #[clap(long, short = 'd')]
+    /// The data to be hashed in hexadecimal format.
+    #[clap(
+        long,
+        short = 'd',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e))
+    )]
     pub data: Option<String>,
 
     /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
-    #[clap(long, short = 'c')]
+    /// The correlation value is represented as a hexadecimal string.
+    #[clap(long,
+        short = 'c',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e))
+)]
     pub correlation_value: Option<String>,
 
     /// Initial operation as Boolean

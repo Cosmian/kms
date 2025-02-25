@@ -241,11 +241,13 @@ impl KmsClient {
 
     /// This operation requests the server to perform a hash operation on the data provided.
     ///
-    /// The request contains information about the cryptographic parameters (hash algorithm) and the data to be hashed.
+    /// The request contains information about the cryptographic parameters (hash algorithm)
+    /// and the data to be hashed.
     ///
     /// The response contains the result of the hash operation.
     ///
-    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    /// The success or failure of the operation is indicated by the Result Status
+    /// (and if failure the Result Reason) in the response header.
     pub async fn hash(&self, request: Hash) -> Result<HashResponse, KmsClientError> {
         self.post_ttlv::<Hash, HashResponse>(&request).await
     }
@@ -375,13 +377,19 @@ impl KmsClient {
         self.post_ttlv::<Locate, LocateResponse>(&request).await
     }
 
-    /// This operation requests the server to perform message authentication code (MAC) operation on the provided data using a Managed Cryptographic Object as the key for the MAC operation.
+    /// This operation requests the server to perform message authentication code (MAC)
+    /// operation on the provided data using a Managed Cryptographic Object as the key
+    /// for the MAC operation.
     ///
-    /// The request contains information about the cryptographic parameters (cryptographic algorithm) and the data to be `MACed`. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+    /// The request contains information about the cryptographic parameters (cryptographic algorithm)
+    /// and the data to be `MACed`. The cryptographic parameters MAY be omitted from the request as they can
+    /// be specified as associated attributes of the Managed Cryptographic Object.
     ///
-    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the MAC operation.
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and
+    /// the result of the MAC operation.
     ///
-    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result
+    /// Reason) in the response header.
     pub async fn mac(&self, request: Mac) -> Result<MacResponse, KmsClientError> {
         self.post_ttlv::<Mac, MacResponse>(&request).await
     }

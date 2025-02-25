@@ -71,7 +71,7 @@ pub(crate) async fn encrypt(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Encrypt")?;
-    debug!("Encrypt: candidate uids: {uids:?}");
+    trace!("Encrypt: candidate uids: {uids:?}");
 
     // Determine which uid to select. The decision process is as follows: loop through the uids
     // 1. if the uid has a prefix, try using that
@@ -129,7 +129,7 @@ pub(crate) async fn encrypt(
                 continue
             }
         }
-        debug!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
+        trace!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
         //TODO check why usage masks are not checked for certificates
         if let Object::Certificate { .. } = owm.object() {
             selected_owm = Some(owm);

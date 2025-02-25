@@ -23,11 +23,15 @@ pub struct HashAction {
     pub hashing_algorithm: CHashingAlgorithm,
 
     /// The data to be hashed in hexadecimal format.
-    #[clap(long, short = 'd')]
+    #[clap(long,
+        short = 'd',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e)))]
     pub data: Option<String>,
 
     /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
-    #[clap(long, short = 'c')]
+    #[clap(long,
+        short = 'c',
+        value_parser = |s: &str| hex::decode(s).map(|_| s.to_string()).map_err(|e| format!("Invalid hex format: {}", e)))]
     pub correlation_value: Option<String>,
 
     /// Initial operation as Boolean

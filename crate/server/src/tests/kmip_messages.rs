@@ -3,13 +3,15 @@ use std::sync::Arc;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_operations::{Decrypt, ErrorReason, Locate, Mac, Operation},
+    kmip_operations::{Decrypt, Encrypt, ErrorReason, Locate, Mac, Operation},
     kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, OperationEnumeration, ProtocolVersion,
-        RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
+        BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
+        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+        UniqueIdentifier,
     },
     requests::{create_ec_key_pair_request, symmetric_key_create_request},
 };
+use cosmian_logger::log_init;
 
 use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
@@ -18,7 +20,7 @@ use crate::{
 #[tokio::test]
 #[allow(clippy::as_conversions)]
 async fn test_kmip_mac_messages() -> KResult<()> {
-    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
+    log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -42,15 +44,15 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let mac_request = Mac {
         unique_identifier,
         cryptographic_parameters: CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::SHA3256),
+            hashing_algorithm: Some(HashingAlgorithm::SHA3512),
             ..Default::default()
         },
-        data: Some([1, 2, 3, 4].to_vec()),
+        data: Some(vec![0; 32]),
         ..Default::default()
     };
 
     // prepare and send the single message
-    let items_number = 1000;
+    let items_number = 100_000;
     let items: Vec<MessageBatchItem> = (0..items_number)
         .map(|_| MessageBatchItem::new(Operation::Mac(mac_request.clone())))
         .collect();
@@ -63,7 +65,78 @@ async fn test_kmip_mac_messages() -> KResult<()> {
             maximum_response_size: Some(9999),
             // wrong number of items but it is only checked
             // when TTLV-serialization is done
-            batch_count: 1,
+            batch_count: items_number,
+            ..Default::default()
+        },
+        items,
+    };
+
+    let response = kms.message(message_request, owner, None).await?;
+    assert_eq!(response.header.batch_count, items_number);
+    // Check that all operations succeeded
+    for item in &response.items {
+        assert_eq!(item.result_status, ResultStatusEnumeration::Success);
+        assert_eq!(item.operation, Some(OperationEnumeration::MAC));
+        assert!(matches!(
+            item.response_payload,
+            Some(Operation::MacResponse(_))
+        ));
+    }
+    assert_eq!(response.items.len(), items_number as usize);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[allow(clippy::as_conversions)]
+async fn test_encrypt_kmip_messages() -> KResult<()> {
+    // cosmian_logger::log_init("info,hyper=info,reqwest=info");
+    let clap_config = https_clap_config();
+    let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+    // Create a symmetric key first
+
+    let symmetric_key_request = symmetric_key_create_request(
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+
+    let unique_identifier = Some(
+        kms.create(symmetric_key_request, owner, None)
+            .await?
+            .unique_identifier,
+    );
+
+    let encrypt_request = Encrypt {
+        unique_identifier: unique_identifier.clone(),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::XTS),
+            ..Default::default()
+        }),
+        data: Some(vec![0_u8; 32].into()),
+        iv_counter_nonce: Some(vec![0_u8; 16]),
+        ..Default::default()
+    };
+
+    // prepare and send multiple encrypt requests
+    let items_number = 100_000;
+    let items: Vec<MessageBatchItem> = (0..items_number)
+        .map(|_| MessageBatchItem::new(Operation::Encrypt(encrypt_request.clone())))
+        .collect();
+
+    let message_request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: items_number,
             ..Default::default()
         },
         items,
@@ -72,6 +145,16 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let response = kms.message(message_request, owner, None).await?;
     assert_eq!(response.header.batch_count, items_number);
     assert_eq!(response.items.len(), items_number as usize);
+
+    // Check that all operations succeeded
+    for item in response.items {
+        assert_eq!(item.result_status, ResultStatusEnumeration::Success);
+        assert_eq!(item.operation, Some(OperationEnumeration::Encrypt));
+        assert!(matches!(
+            item.response_payload,
+            Some(Operation::EncryptResponse(_))
+        ));
+    }
 
     Ok(())
 }

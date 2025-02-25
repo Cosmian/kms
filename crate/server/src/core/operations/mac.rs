@@ -7,7 +7,7 @@ use cosmian_kmip::kmip_2_1::{
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::{
     core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
@@ -18,8 +18,6 @@ use crate::{
 
 fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
-        HashingAlgorithm::SHA1 => Md::sha1(),
-        HashingAlgorithm::SHA224 => Md::sha224(),
         HashingAlgorithm::SHA256 => Md::sha256(),
         HashingAlgorithm::SHA384 => Md::sha384(),
         HashingAlgorithm::SHA512 => Md::sha512(),
@@ -36,6 +34,7 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
     ctx.digest_sign_update(data)?;
     let mut hmac = Vec::with_capacity(64); // 512 bits being the maximum size of supported hash functions
     ctx.digest_sign_final_to_vec(&mut hmac)?;
+    debug!("HMAC: {:?}", hmac);
     Ok(hmac)
 }
 
@@ -47,41 +46,46 @@ pub(crate) async fn mac(
 ) -> KResult<MacResponse> {
     trace!("Mac: {}", serde_json::to_string(&request)?);
 
-    let unique_identifier = request
+    let uid = request
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Mac: unique_identifier must be a string")?;
+    trace!("Mac: Unique identifier: {uid}");
 
     let algorithm = request
         .cryptographic_parameters
         .hashing_algorithm
         .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
+    trace!("Mac: algorithm: {algorithm:?}");
 
-    let data = request
-        .data
-        .as_ref()
-        .ok_or_else(|| KmsError::InvalidRequest("Data is required".to_owned()))?;
+    let data = request.data.unwrap_or_default();
+    trace!("Mac: data: {data:?}");
 
-    let owm =
-        retrieve_object_for_operation(unique_identifier, KmipOperation::Get, kms, user, params)
-            .await?;
+    if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
+        kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
+    }
 
-    let unique_identifier = UniqueIdentifier::TextString(unique_identifier.to_owned());
-
-    let hmac = if let Some(correlation_value) = request.correlation_value {
-        compute_hmac(&correlation_value, data, algorithm)?
+    let digest = if let Some(correlation_value) = request.correlation_value {
+        compute_hmac(&correlation_value, &data, algorithm)?
     } else {
+        let owm = retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params).await?;
         let key_bytes = owm.object().key_block()?.key_value.raw_bytes()?;
-        compute_hmac(key_bytes, data, algorithm)?
+        compute_hmac(key_bytes, &data, algorithm)?
     };
 
-    Ok(MacResponse {
-        unique_identifier,
-        data: (!request.init_indicator.unwrap_or(false)).then_some(hmac.clone()),
-        correlation_value: request.init_indicator.unwrap_or(false).then_some(hmac),
-    })
+    let response = MacResponse {
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
+        correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
+    };
+    trace!(
+        "Mac response
+    : {}",
+        serde_json::to_string(&response)?
+    );
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -105,6 +109,12 @@ mod tests {
 
     #[test]
     fn test_compute_hmac_limit_cases() -> KResult<()> {
+        // Empty key, empty data
+        let key = vec![];
+        let data = vec![];
+        let result = compute_hmac(&key, &data, HashingAlgorithm::SHA256);
+        result.unwrap_err();
+
         // Empty data
         let key = vec![1, 2, 3, 4];
         let data = vec![];
@@ -125,8 +135,6 @@ mod tests {
 
         // Test all supported algorithms
         let algorithms = vec![
-            HashingAlgorithm::SHA1,
-            HashingAlgorithm::SHA224,
             HashingAlgorithm::SHA256,
             HashingAlgorithm::SHA384,
             HashingAlgorithm::SHA512,
