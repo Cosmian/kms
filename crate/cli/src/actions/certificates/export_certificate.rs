@@ -1,25 +1,18 @@
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
     export_object,
-    kmip_2_1::{kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv},
+    kmip_2_1::{kmip_objects::Object, ttlv::serializer::to_ttlv},
+    reexport::cosmian_kms_ui_utils::export_utils::{
+        prepare_certificate_export_elements, CertificateExportFormat,
+    },
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file, ExportObjectParams,
     KmsClient,
 };
 use tracing::log::trace;
 
 use crate::{actions::console, cli_bail, error::result::CliResult};
-
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
-pub enum CertificateExportFormat {
-    JsonTtlv,
-    Pem,
-    Pkcs12,
-    #[cfg(not(feature = "fips"))]
-    Pkcs12Legacy,
-    Pkcs7,
-}
 
 /// Export a certificate from the KMS
 ///
@@ -96,26 +89,15 @@ impl ExportCertificateAction {
             cli_bail!("Either `--certificate-id` or one or more `--tag` must be specified")
         };
 
-        let (key_format_type, wrapping_key_id) = match self.output_format {
-            CertificateExportFormat::JsonTtlv | CertificateExportFormat::Pem => {
-                (KeyFormatType::X509, None)
-            }
-            CertificateExportFormat::Pkcs12 => {
-                (KeyFormatType::PKCS12, self.pkcs12_password.as_deref())
-            }
-            #[cfg(not(feature = "fips"))]
-            CertificateExportFormat::Pkcs12Legacy => {
-                (KeyFormatType::Pkcs12Legacy, self.pkcs12_password.as_deref())
-            }
-            CertificateExportFormat::Pkcs7 => (KeyFormatType::PKCS7, None),
-        };
+        let (key_format_type, wrapping_key_id) =
+            prepare_certificate_export_elements(&self.output_format, self.pkcs12_password.clone());
 
         // export the object
         let (id, object, export_attributes) = export_object(
             client_connector,
             &id_or_tags,
             ExportObjectParams {
-                wrapping_key_id,
+                wrapping_key_id: wrapping_key_id.as_deref(),
                 allow_revoked: self.allow_revoked,
                 key_format_type: Some(key_format_type),
                 ..ExportObjectParams::default()

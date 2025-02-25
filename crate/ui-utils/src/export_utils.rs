@@ -271,3 +271,30 @@ fn key_wrapping_specification(
         ..KeyWrappingSpecification::default()
     }
 }
+
+// Certificate utils
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq, EnumString)]
+pub enum CertificateExportFormat {
+    JsonTtlv,
+    Pem,
+    Pkcs12,
+    #[cfg(not(feature = "fips"))]
+    Pkcs12Legacy,
+    Pkcs7,
+}
+
+#[must_use]
+pub fn prepare_certificate_export_elements(
+    output_format: &CertificateExportFormat,
+    pkcs12_password: Option<String>,
+) -> (KeyFormatType, Option<String>) {
+    match output_format {
+        CertificateExportFormat::JsonTtlv | CertificateExportFormat::Pem => {
+            (KeyFormatType::X509, None)
+        }
+        CertificateExportFormat::Pkcs12 => (KeyFormatType::PKCS12, pkcs12_password),
+        #[cfg(not(feature = "fips"))]
+        CertificateExportFormat::Pkcs12Legacy => (KeyFormatType::Pkcs12Legacy, pkcs12_password),
+        CertificateExportFormat::Pkcs7 => (KeyFormatType::PKCS7, None),
+    }
+}

@@ -38,8 +38,9 @@ use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
     export_utils::{
-        der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
-        tag_from_object, ExportKeyFormat, WrappingAlgorithm,
+        der_to_pem, export_request, get_export_key_format_type,
+        prepare_certificate_export_elements, prepare_key_export_elements, tag_from_object,
+        CertificateExportFormat, ExportKeyFormat, WrappingAlgorithm,
     },
     import_utils::{
         build_private_key_from_der_bytes, build_usage_mask_from_key_usage,
@@ -921,4 +922,98 @@ pub fn import_certificate_ttlv_request(
         .and_then(|objects| {
             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
         })
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn export_certificate_ttlv_request(
+    unique_identifier: &str,
+    output_format: &str,
+    pkcs12_password: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let (key_format_type, wrapping_key_id) =
+        prepare_certificate_export_elements(&output_format, pkcs12_password);
+    let request = export_request(
+        unique_identifier,
+        false,
+        wrapping_key_id.as_deref(),
+        Some(key_format_type),
+        false,
+        None,
+        None,
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_export_certificate_ttlv_response(
+    response: &str,
+    output_format: &str,
+) -> Result<JsValue, JsValue> {
+    // let response = parse_ttlv_response::<ExportResponse>(response)?;
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let response: ExportResponse = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let object = Object::post_fix(response.object_type, response.object);
+    let object_type = response.object_type;
+    match &object {
+        Object::Certificate {
+            certificate_value, ..
+        } => {
+            let data = match output_format {
+                CertificateExportFormat::JsonTtlv => {
+                    let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
+                    ttlv.tag = tag_from_object(&object);
+                    let bytes = serde_json::to_vec::<TTLV>(&ttlv)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+                    JsValue::from(Uint8Array::from(bytes.as_slice()))
+                }
+                CertificateExportFormat::Pem => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new("CERTIFICATE", certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+                CertificateExportFormat::Pkcs12 => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                #[cfg(not(feature = "fips"))]
+                CertificateExportFormat::Pkcs12Legacy => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                CertificateExportFormat::Pkcs7 => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+            };
+            Ok(data)
+        }
+        // PKCS12 is exported as a private key object
+        Object::PrivateKey { key_block } => {
+            let p12_bytes = key_block
+                .key_bytes()
+                .map_err(|e| JsValue::from(e.to_string()))?
+                .to_vec();
+            Ok(JsValue::from(Uint8Array::from(p12_bytes.as_slice())))
+        }
+        _ => Err(UtilsError::Default(format!(
+            "The object is not a certificate but a {object_type}"
+        )))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+    }
 }
