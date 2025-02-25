@@ -45,10 +45,6 @@ impl ObjectsStore for HsmStore {
         None
     }
 
-    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        Ok(())
-    }
-
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM

@@ -13,7 +13,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-clap = { workspace = true, features = ["std", "cargo"] }
+#clap = { workspace = true, features = ["std", "cargo"] }
 cloudproof = { workspace = true }
 cloudproof_findex = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
@@ -25,20 +25,20 @@ lru = { workspace = true }
 num_cpus = { workspace = true }
 rawsql = "0.1"
 redis = { version = "0.23", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
+    "aio",
+    "ahash",
+    "script",
+    "connection-manager",
+    "tokio-comp",
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.8.2", default-features = false, features = [
-  "json",
-  "runtime-tokio-native-tls",
-  "mysql",
-  "postgres",
-  "sqlite",
+    "json",
+    "runtime-tokio-native-tls",
+    "mysql",
+    "postgres",
+    "sqlite",
 ] }
 thiserror = { workspace = true }
 tiny-keccak = "2.0.2"
@@ -46,7 +46,6 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
-version-compare = "0.2.0"
 zeroize = { workspace = true }
 
 [dev-dependencies]

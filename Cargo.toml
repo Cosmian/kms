@@ -98,6 +98,7 @@ tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
 uuid = "1.12.1"
+version-compare = "0.2.0"
 x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17.0"
 zeroize = { version = "1.8", default-features = false }
