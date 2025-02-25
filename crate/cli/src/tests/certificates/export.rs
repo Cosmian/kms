@@ -8,7 +8,10 @@ use cosmian_kms_client::{
         ttlv::{deserializer::from_ttlv, TTLV},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
-    reexport::cosmian_kms_ui_utils::export_utils::ExportKeyFormat::JsonTtlv,
+    reexport::cosmian_kms_ui_utils::{
+        export_utils::{CertificateExportFormat, ExportKeyFormat::JsonTtlv},
+        import_utils::CertificateInputFormat,
+    },
     KMS_CLI_CONF_ENV,
 };
 use kms_test_server::start_default_test_kms_server;
@@ -22,7 +25,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::{
-    actions::certificates::{Algorithm, CertificateExportFormat, CertificateInputFormat},
+    actions::certificates::Algorithm,
     error::{result::CliResult, CliError},
     tests::{
         certificates::{

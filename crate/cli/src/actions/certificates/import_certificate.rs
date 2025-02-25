@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cloudproof::reexport::crypto_core::reexport::x509_cert;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
@@ -12,7 +12,8 @@ use cosmian_kms_client::{
     },
     read_bytes_from_file, read_object_from_json_ttlv_file,
     reexport::cosmian_kms_ui_utils::import_utils::{
-        build_private_key_from_der_bytes, build_usage_mask_from_key_usage, KeyUsage,
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage, CertificateInputFormat,
+        KeyUsage,
     },
     KmsClient,
 };
@@ -28,16 +29,6 @@ use crate::{
 
 const MOZILLA_CCADB: &str =
     "https://ccadb.my.salesforce-sites.com/mozilla/IncludedRootsPEMTxt?TrustBitsInclude=Websites";
-
-#[derive(ValueEnum, Debug, Clone)]
-pub enum CertificateInputFormat {
-    JsonTtlv,
-    Pem,
-    Der,
-    Chain,
-    CCADB,
-    Pkcs12,
-}
 
 /// Import one of the following:
 /// - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)

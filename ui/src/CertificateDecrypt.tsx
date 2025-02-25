@@ -1,48 +1,53 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
 import React, { useState } from 'react'
 import { downloadFile, sendKmipRequest } from './utils'
-import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
+import { decrypt_certificate_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
 
-interface CCDecryptFormData {
+interface CertificateDecryptFormData {
     inputFile: Uint8Array;
     fileName: string;
-    keyId?: string;
+    privateKeyId?: string;
     tags?: string[];
+    outputFile?: string;
     authenticationData?: string;
-  }
+    encryptionAlgorithm?: 'RsaPkcs' | 'RsaPkcsOaep' | 'RsaAesKeyWrap';
+}
 
-const CCDecryptForm: React.FC = () => {
-    const [form] = Form.useForm<CCDecryptFormData>();
+const RSA_ENCRYPTION_ALGORITHMS = [
+    { label: 'RSA PKCS #1 v1.5 (Legacy)', value: 'CkmRsaPkcs' },
+    { label: 'RSA OAEP (Recommended)', value: 'CkmRsaPkcsOaep' },
+    { label: 'RSA AES Key Wrap', value: 'CkmRsaAesKeyWrap' },
+];
+
+const CertificateDecryptForm: React.FC = () => {
+    const [form] = Form.useForm<CertificateDecryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = async (values: CCDecryptFormData) => {
-        console.log('Decrypt values:', values);
+    const onFinish = async (values: CertificateDecryptFormData) => {
+        console.log('Certificate Decrypt values:', values);
         setIsLoading(true);
         setRes(undefined);
-        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-
+        const id = values.privateKeyId ? values.privateKeyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
             if (id == undefined) {
                 setRes("Missing key identifier.")
                 throw Error("Missing key identifier")
             }
-
-            const request = decrypt_cc_ttlv_request(
+            const request = decrypt_certificate_ttlv_request(
                 id,
                 values.inputFile,
-                values.authenticationData
+                values.authenticationData,
+                values.encryptionAlgorithm
             );
-
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
                 const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.plain`;
-                const filteredData = data.filter(byte => byte !== 0); // TODO: check why 0 byte at the beginning of the byte result
-                downloadFile(filteredData, filename, mimeType);
+                const filename = values.outputFile || `${name}.plain`;
+                downloadFile(data, filename, mimeType);
                 setRes("File has been decrypted")
             }
         } catch (e) {
@@ -55,11 +60,11 @@ const CCDecryptForm: React.FC = () => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Covercrypt Decryption</h1>
+            <h1 className="text-2xl font-bold mb-6">Certificate Decryption</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Decrypt a file using Covercrypt.</p>
-                <p>The key can be identified using either its ID or associated tags.</p>
+                <p>Decrypt a file using the private key of a certificate.</p>
+                <p>The private key can be identified using either its ID or associated tags.</p>
                 <p className="text-sm text-yellow-600">Note: This operation loads the entire file in memory.</p>
             </div>
 
@@ -67,11 +72,13 @@ const CCDecryptForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
+                initialValues={{
+                    encryptionAlgorithm: 'CkmRsaPkcsOaep',
+                }}
             >
                 <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>
-
                         <Form.Item name="fileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
@@ -100,15 +107,14 @@ const CCDecryptForm: React.FC = () => {
                             </Upload.Dragger>
                         </Form.Item>
                     </Card>
-
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">Private Key Identification (required)</h3>
                         <Form.Item
-                            name="keyId"
-                            label="Key ID"
-                            help="The unique identifier of the user key"
+                            name="privateKeyId"
+                            label="Private Key ID"
+                            help="The unique identifier of the private key related to certificate"
                         >
-                            <Input placeholder="Enter key ID" />
+                            <Input placeholder="Enter private key ID" />
                         </Form.Item>
 
                         <Form.Item
@@ -123,21 +129,31 @@ const CCDecryptForm: React.FC = () => {
                             />
                         </Form.Item>
                     </Card>
-
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Additional Options</h3>
+                        <Form.Item
+                            name="encryptionAlgorithm"
+                            label="Encryption Algorithm"
+                            help="Optional: This is only available for RSA keys (default is PKCS_OAEP)"
+                        >
+                            <Select options={RSA_ENCRYPTION_ALGORITHMS} />
+                        </Form.Item>
+
                         <Form.Item
                             name="authenticationData"
                             label="Authentication Data"
-                            help="Optional: authentication data that was supplied during encryption"
+                            help="Optional: Authentication data that was supplied during encryption"
                         >
-                            <Input.TextArea
-                                placeholder="Enter authentication data"
-                                rows={2}
-                            />
+                            <Input placeholder="Enter authentication data" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="outputFile"
+                            label="Output File Path"
+                            help="Optional: Specify a custom output file path"
+                        >
+                            <Input placeholder="Enter output file path" />
                         </Form.Item>
                     </Card>
-
                     <Form.Item>
                         <Button
                             type="primary"
@@ -150,9 +166,9 @@ const CCDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Covercrypt decrypt response">{res}</Card>}
+            {res && <Card title="Certificate decrypt response">{res}</Card>}
         </div>
     );
 };
 
-export default CCDecryptForm;
+export default CertificateDecryptForm;

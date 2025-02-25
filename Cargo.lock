@@ -1607,6 +1607,7 @@ dependencies = [
  "tracing",
  "wasm-bindgen",
  "web-sys",
+ "x509-cert",
  "zeroize",
 ]
 

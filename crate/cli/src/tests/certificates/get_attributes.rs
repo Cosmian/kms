@@ -1,9 +1,11 @@
-use cosmian_kms_client::kmip_2_1::kmip_types::{LinkType, Tag};
+use cosmian_kms_client::{
+    kmip_2_1::kmip_types::{LinkType, Tag},
+    reexport::cosmian_kms_ui_utils::import_utils::CertificateInputFormat,
+};
 use kms_test_server::start_default_test_kms_server;
 use tracing::debug;
 
 use crate::{
-    actions::certificates::CertificateInputFormat,
     error::result::CliResult,
     tests::{
         attributes::get_attributes,

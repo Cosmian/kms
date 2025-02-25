@@ -35,7 +35,6 @@ const ECDecryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
                 const filename = `${name}.plain`;
-                console.log("DATA", data)
                 downloadFile(data, filename, mimeType);
                 setRes("File has been decrypted")
             }

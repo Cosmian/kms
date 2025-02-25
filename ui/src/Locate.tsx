@@ -64,8 +64,7 @@ const LocateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request);
             if (result_str) {
                 const response = await parse_locate_ttlv_response(result_str)
-                console.log(response)
-                const objects = response.UniqueIdentifier.join(" - ");
+                const objects = response.UniqueIdentifier && response.UniqueIdentifier.length > 0 ? response.UniqueIdentifier.join(" - ") : "";
                 setRes(`${response.LocatedItems} Object(s) located. ${objects}`)
             }
         } catch (e) {
