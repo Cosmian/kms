@@ -12,7 +12,7 @@ RUN rm /var/lib/dpkg/info/libc-bin.*
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -qq -y \
-    qemu-system-arm \
+    qemu-system-aarch64 \
     libc-bin \
     curl \
     build-essential \
