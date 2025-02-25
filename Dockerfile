@@ -22,6 +22,7 @@ RUN apt-get update \
     git \
     wget \
     && apt-get -y -q upgrade \
+    && apt --fix-broken install \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
