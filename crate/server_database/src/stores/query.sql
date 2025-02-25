@@ -1,8 +1,22 @@
--- name: create-table-context
-CREATE TABLE IF NOT EXISTS context (
-        version VARCHAR(40) PRIMARY KEY,
-        state VARCHAR(40)
+
+-- name: create-table-parameters
+CREATE TABLE IF NOT EXISTS parameters (
+  name VARCHAR(40) PRIMARY KEY,
+  value VARCHAR(256)
 );
+
+-- name: upsert-parameter
+INSERT INTO parameters (name,value) VALUES ($1, $2)
+        ON CONFLICT(name)
+        DO UPDATE SET value=$2
+        WHERE parameter.name=$1;
+
+-- name: select-parameter
+SELECT value FROM parameters WHERE name=$1;
+
+-- name: delete-parameter
+DELETE FROM parameters WHERE name=$1;
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects (
@@ -32,9 +46,6 @@ CREATE TABLE IF NOT EXISTS tags (
         UNIQUE (id, tag)
 );
 
--- name: clean-table-context
-DELETE FROM context;
-
 -- name: clean-table-objects
 DELETE FROM objects;
 
@@ -43,18 +54,6 @@ DELETE FROM read_access;
 
 -- name: clean-table-tags
 DELETE FROM tags;
-
--- name: select-context
-SELECT * FROM context ORDER BY version ASC LIMIT 1;
-
--- name: insert-context
-INSERT INTO context (version, state) VALUES ($1, $2);
-
--- name: update-context
-UPDATE context SET version=$1, state=$2 WHERE state=$3;
-
--- name: delete-version
-DELETE FROM context WHERE version=$1;
 
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5);

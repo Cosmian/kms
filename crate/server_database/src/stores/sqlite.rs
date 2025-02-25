@@ -6,14 +6,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
     KmipOperation,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, SessionParams,
 };
 use serde_json::Value;
@@ -27,12 +26,12 @@ use uuid::Uuid;
 use crate::{
     db_bail, db_error,
     error::{DbResult, DbResultHelper},
-    migrate::do_migration,
+    impl_migrate,
     stores::{
         locate_query::{query_from_attributes, SqlitePlaceholder},
         DBObject, SQLITE_QUERIES,
     },
-    DbError, KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
+    DbError,
 };
 
 #[macro_export]
@@ -50,7 +49,7 @@ macro_rules! get_sqlite_query {
 }
 
 /// Convert a row from the `objects` table into an `ObjectWithMetadata`
-/// This function is used to convert the result of a query into a `ObjectWithMetadata`
+/// This function is used to convert the result of a query into a `ObjectWithMetadata`.
 /// It is used in the `retrieve_` function
 /// # Arguments
 /// * `row` - The row to convert
@@ -95,7 +94,7 @@ impl SqlitePool {
             .connect_with(options)
             .await?;
 
-        sqlx::query(get_sqlite_query!("create-table-context"))
+        sqlx::query(get_sqlite_query!("create-table-parameters"))
             .execute(&pool)
             .await?;
 
@@ -111,12 +110,16 @@ impl SqlitePool {
             .execute(&pool)
             .await?;
 
+        // Old table context used between version 4.13.0 and 4.22.1
+        let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
+
         if clear_database {
             clear_database_(&pool).await?;
         }
 
         let sqlite_pool = Self { pool };
-        sqlite_pool.migrate(None).await?;
+        // perform any necessary migration now
+        sqlite_pool.migrate().await?;
         Ok(sqlite_pool)
     }
 }
@@ -125,47 +128,6 @@ impl SqlitePool {
 impl ObjectsStore for SqlitePool {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
-    }
-
-    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        trace!("Migrate database");
-        // Get the context rows
-        match sqlx::query(get_sqlite_query!("select-context"))
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| db_error!("Failed to fetch the context row from the database: {e}"))?
-        {
-            None => {
-                trace!("No context row found, migrating from scratch");
-                migrate_(
-                    &self.pool,
-                    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
-                    "insert-context",
-                )
-                .await?;
-                return Ok(())
-            }
-            Some(context_row) => {
-                let last_kms_version_run = context_row.get::<String, _>(0);
-                let state = context_row.get::<String, _>(1);
-                trace!(
-                    "Context row found, migrating from version {last_kms_version_run} (state: \
-                     {state})"
-                );
-                let current_kms_version = crate_version!();
-                debug!(
-                    "[state={state}] Last KMS version run: {last_kms_version_run}, Current KMS \
-                     version: {current_kms_version}"
-                );
-
-                if do_migration(&last_kms_version_run, current_kms_version, &state)? {
-                    migrate_(&self.pool, current_kms_version, "update-context").await?;
-                    return Ok(())
-                }
-            }
-        }
-
-        Ok(())
     }
 
     async fn create(
@@ -177,11 +139,6 @@ impl ObjectsStore for SqlitePool {
         tags: &HashSet<String>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         let mut tx = self
             .pool
             .begin()
@@ -226,11 +183,6 @@ impl ObjectsStore for SqlitePool {
         tags: Option<&HashSet<String>>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         let mut tx = self
             .pool
             .begin()
@@ -256,11 +208,6 @@ impl ObjectsStore for SqlitePool {
         state: StateEnumeration,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         let mut tx = self
             .pool
             .begin()
@@ -287,11 +234,6 @@ impl ObjectsStore for SqlitePool {
         uid: &str,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         let mut tx = self
             .pool
             .begin()
@@ -317,12 +259,6 @@ impl ObjectsStore for SqlitePool {
         operations: &[AtomicOperation],
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
-
         let mut tx = self
             .pool
             .begin()
@@ -403,11 +339,6 @@ impl PermissionsStore for SqlitePool {
         operation_types: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         Ok(insert_access_(uid, user, operation_types, &self.pool).await?)
     }
 
@@ -418,11 +349,6 @@ impl PermissionsStore for SqlitePool {
         operation_types: HashSet<KmipOperation>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        if is_migration_in_progress_(&self.pool).await? {
-            return Err(InterfaceError::Db(
-                "Migration in progress. Please retry later".to_owned(),
-            ));
-        }
         Ok(remove_access_(uid, user, operation_types, &self.pool).await?)
     }
 
@@ -888,10 +814,6 @@ pub(crate) async fn clear_database_<'e, E>(executor: E) -> DbResult<()>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
-    // Erase `context` table
-    sqlx::query(get_sqlite_query!("clean-table-context"))
-        .execute(executor)
-        .await?;
     // Erase `objects` table
     sqlx::query(get_sqlite_query!("clean-table-objects"))
         .execute(executor)
@@ -954,135 +876,134 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-pub(crate) async fn is_migration_in_progress_<'e, E>(executor: E) -> DbResult<bool>
-where
-    E: Executor<'e, Database = Sqlite> + Copy,
-{
-    (sqlx::query(get_sqlite_query!("select-context"))
-        .fetch_optional(executor)
-        .await?)
-        .map_or(Ok(false), |context_row| {
-            let state = context_row.get::<String, _>(1);
-            Ok(state == "upgrading")
-        })
-}
+impl_migrate!(SqlitePool, get_sqlite_query);
 
-pub(crate) async fn migrate_(
-    executor: &Pool<Sqlite>,
-    last_version_run: &str,
-    query_name: &str,
-) -> DbResult<()> {
-    trace!("Set status to upgrading and last version run: {last_version_run}");
-    let upsert_context = get_sqlite_query!(query_name);
-    trace!("{query_name}: {upsert_context}");
-    match query_name {
-        "insert-context" => {
-            sqlx::query(upsert_context)
-                .bind(last_version_run)
-                .bind("upgrading")
-                .execute(executor)
-                .await
-        }
-        "update-context" => {
-            sqlx::query(upsert_context)
-                .bind(last_version_run)
-                .bind("upgrading")
-                .bind("upgrading")
-                .execute(executor)
-                .await
-        }
-        _ => db_bail!("Unknown query name: {query_name}"),
-    }?;
-
-    trace!("Migrate data from version {last_version_run}");
-
-    // Process migration for each KMS version
-    let current_kms_version = crate_version!();
-    if last_version_run == KMS_VERSION_BEFORE_MIGRATION_SUPPORT {
-        migrate_from_4_12_0_to_4_13_0(executor).await?;
-    } else {
-        trace!("No migration needed between {last_version_run} and {current_kms_version}");
-    }
-
-    // Set the current running version
-    trace!("Set status to ready and last version run: {current_kms_version}");
-    sqlx::query(get_sqlite_query!("update-context"))
-        .bind(current_kms_version)
-        .bind("ready")
-        .bind("upgrading")
-        .execute(executor)
-        .await?;
-
-    Ok(())
-}
-
-/// Before the version 4.13.0, the KMIP attributes were stored in the objects table (via the objects themselves).
-/// The new column attributes allows to store the KMIP attributes in a dedicated column even for KMIP objects that do not have KMIP attributes (such as Certificates).
-pub(crate) async fn migrate_from_4_12_0_to_4_13_0(executor: &Pool<Sqlite>) -> DbResult<()> {
-    trace!("Migrating from 4.12.0 to 4.13.0");
-
-    // Add the column attributes to the objects table
-    if (sqlx::query("SELECT attributes from objects")
-        .execute(executor)
-        .await)
-        .is_ok()
-    {
-        trace!("Column attributes already exists, nothing to do");
-        return Ok(());
-    }
-
-    trace!("Column attributes does not exist, adding it");
-    sqlx::query(get_sqlite_query!("add-column-attributes"))
-        .execute(executor)
-        .await?;
-
-    // Select all objects and extract the KMIP attributes to be stored in the new column
-    let rows = sqlx::query("SELECT * FROM objects")
-        .fetch_all(executor)
-        .await?;
-
-    let mut operations = Vec::with_capacity(rows.len());
-    for row in rows {
-        let uid = row.get::<String, _>(0);
-        let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
-            .context("migrate: failed deserializing the object")?;
-        let object = db_object.object;
-        trace!(
-            "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
-            object.object_type(),
-            uid
-        );
-        let attributes = match object.attributes() {
-            Ok(attrs) => attrs.clone(),
-            Err(_error) => {
-                // For example, Certificate object has no KMIP-attribute
-                Attributes::default()
-            }
-        };
-        let tags = retrieve_tags_(&uid, executor).await?;
-        operations.push(AtomicOperation::UpdateObject((
-            uid,
-            object,
-            attributes,
-            Some(tags),
-        )));
-    }
-
-    let mut tx = executor.begin().await?;
-    match atomic_(
-        "this user is not used to update objects",
-        &operations,
-        &mut tx,
-    )
-    .await
-    {
-        Ok(_v) => {
-            tx.commit().await?;
-            Ok(())
-        }
-        Err(e) => {
-            tx.rollback().await.context("transaction failed")?;
-            Err(e)
-        }
-    }
-}
+//
+// #[async_trait(?Send)]
+// impl Migrate for SqlitePool {
+//     async fn get_db_state(&self) -> InterfaceResult<Option<DbState>> {
+//         match sqlx::query(get_sqlite_query!("select-parameter"))
+//             .bind("db_state")
+//             .fetch_optional(&self.pool)
+//             .await
+//             .map_err(DbError::from)?
+//         {
+//             None => {
+//                 trace!("No state found, old KMS version");
+//                 Ok(None)
+//             }
+//             Some(row) => {
+//                 let json = row.get::<String, _>(0);
+//                 Ok(Some(
+//                     serde_json::from_str(&json).context("failed deserializing the DB state")?,
+//                 ))
+//             }
+//         }
+//     }
+//
+//     async fn set_db_state(&self, state: DbState) -> InterfaceResult<()> {
+//         sqlx::query(get_sqlite_query!("upsert-parameter"))
+//             .bind("db_state")
+//             .bind(serde_json::to_string(&state).context("failed serializing the DB state")?)
+//             .execute(&self.pool)
+//             .await
+//             .map_err(DbError::from)?;
+//         Ok(())
+//     }
+//
+//     async fn get_current_db_version(&self) -> InterfaceResult<Option<String>> {
+//         match sqlx::query(get_sqlite_query!("select-parameter"))
+//             .bind("db_version")
+//             .fetch_optional(&self.pool)
+//             .await
+//             .map_err(DbError::from)?
+//         {
+//             None => {
+//                 trace!("No state found, old KMS version");
+//                 Ok(None)
+//             }
+//             Some(row) => Ok(Some(row.get::<String, _>(0))),
+//         }
+//     }
+//
+//     async fn set_current_db_version(&self, version: &str) -> InterfaceResult<()> {
+//         sqlx::query(get_sqlite_query!("upsert-parameter"))
+//             .bind("db_version")
+//             .bind(version)
+//             .execute(&self.pool)
+//             .await
+//             .map_err(DbError::from)?;
+//         Ok(())
+//     }
+//
+//     async fn migrate_from_4_12_0_to_4_13_0(&self) -> InterfaceResult<()> {
+//         trace!("Migrating from 4.12.0 to 4.13.0");
+//
+//         // Add the column attributes to the objects table
+//         if sqlx::query("SELECT attributes from objects")
+//             .execute(&self.pool)
+//             .await
+//             .is_ok()
+//         {
+//             trace!("Column attributes already exists, nothing to do");
+//             return Ok(());
+//         }
+//
+//         trace!("Column attributes does not exist, adding it");
+//         sqlx::query(get_sqlite_query!("add-column-attributes"))
+//             .execute(&self.pool)
+//             .await
+//             .map_err(DbError::from)?;
+//
+//         // Select all objects and extract the KMIP attributes to be stored in the new column
+//         let rows = sqlx::query("SELECT * FROM objects")
+//             .fetch_all(&self.pool)
+//             .await
+//             .map_err(DbError::from)?;
+//
+//         let mut operations = Vec::with_capacity(rows.len());
+//         for row in rows {
+//             let uid = row.get::<String, _>(0);
+//             let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+//                 .context("migrate: failed deserializing the object")?;
+//             let object = db_object.object;
+//             trace!(
+//                 "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
+//                 object.object_type(),
+//                 uid
+//             );
+//             let attributes = match object.attributes() {
+//                 Ok(attrs) => attrs.clone(),
+//                 Err(_error) => {
+//                     // For example, a Certificate object has no KMIP-attribute
+//                     Attributes::default()
+//                 }
+//             };
+//             let tags = retrieve_tags_(&uid, &self.pool).await?;
+//             operations.push(AtomicOperation::UpdateObject((
+//                 uid,
+//                 object,
+//                 attributes,
+//                 Some(tags),
+//             )));
+//         }
+//
+//         let mut tx = (&self.pool).begin().await.map_err(DbError::from)?;
+//         match atomic_(
+//             "this user is not used to update objects",
+//             &operations,
+//             &mut tx,
+//         )
+//         .await
+//         {
+//             Ok(_v) => {
+//                 tx.commit().await.map_err(DbError::from)?;
+//                 Ok(())
+//             }
+//             Err(e) => {
+//                 tx.rollback().await.context("transaction failed")?;
+//                 Err(InterfaceError::from(e))
+//             }
+//         }
+//     }
+// }

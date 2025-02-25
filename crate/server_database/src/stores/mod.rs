@@ -2,6 +2,7 @@ mod cached_sqlcipher;
 mod cached_sqlite_struct;
 pub(crate) mod extra_store_params;
 mod locate_query;
+mod migrate_pg_sl;
 mod mysql;
 mod pgsql;
 mod redis;

@@ -123,16 +123,6 @@ impl Database {
             .and_then(|db| db.filename(group_id))
     }
 
-    #[allow(dead_code)]
-    /// Migrate all the databases to the latest version
-    pub async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> DbResult<()> {
-        let map = self.objects.write().await;
-        for (_prefix, db) in map.iter() {
-            db.migrate(params.clone()).await?;
-        }
-        Ok(())
-    }
-
     /// Create the given Object in the database.
     /// A new UUID will be created if none is supplier.
     /// This method will fail if an ` uid ` is supplied
