@@ -6,7 +6,6 @@ import { create_covercrypt_master_keypair_ttlv_request, parse_create_keypair_ttl
 
 
 interface CovercryptMasterKeyFormData {
-    // policySpecifications?: File;
     policy: Uint8Array;
     tags: string[];
     sensitive: boolean;
@@ -28,7 +27,7 @@ const POLICY_EXAMPLE = `{
 
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
-    const [policyType, setPolicyType] = React.useState<'json-file' | 'json-text' | 'binary'>('json-file');
+    const [policyType, setPolicyType] = React.useState<'json-file' | 'json-text'>('json-file');
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -102,22 +101,18 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                     options={[
                                         { label: 'Upload JSON Policy File', value: 'json-file' },
                                         { label: 'Enter JSON Policy', value: 'json-text' },
-                                        // { label: 'Upload Binary Policy File', value: 'binary' },
                                     ]}
                                 />
                             </Form.Item>
 
-                            {policyType !== 'binary' && (
-                                <div className="p-4 rounded mb-4">
-                                    <p className="text-sm mb-2">Example Policy Format:</p>
-                                    <pre className="p-2 rounded text-xs overflow-auto">{POLICY_EXAMPLE}</pre>
-                                    <PolicyExplanation />
-                                </div>
-                            )}
+                            <div className="p-4 rounded mb-4">
+                                <p className="text-sm mb-2">Example Policy Format:</p>
+                                <pre className="p-2 rounded text-xs overflow-auto">{POLICY_EXAMPLE}</pre>
+                                <PolicyExplanation />
+                            </div>
 
                             {policyType === 'json-file' && (
                                 <Form.Item
-                                    name="policySpecifications"
                                     rules={[{ required: true, message: 'Please provide policy specifications' }]}
                                 >
                                     <Upload.Dragger
@@ -143,7 +138,6 @@ const CovercryptMasterKeyForm: React.FC = () => {
 
                             {policyType === 'json-text' && (
                                 <Form.Item
-                                    name="policyJson"
                                     rules={[
                                         { required: true, message: 'Please enter policy JSON' },
                                         {
@@ -155,7 +149,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                                         const uint8Array = encoder.encode(JSON.stringify(jsonObject));
                                                         form.setFieldValue("policy", uint8Array)
                                                     } catch (e) {
-                                                        throw new Error('Invalid JSON format');
+                                                        throw new Error(`Invalid JSON format: ${e}`);
                                                     }
                                                 }
                                             },
@@ -169,24 +163,6 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                     />
                                 </Form.Item>
                             )}
-
-                            {/* {policyType === 'binary' && (
-                                <Form.Item
-                                    name="policyBinary"
-                                    help="Binary policy file generated using the policy command"
-                                    rules={[{ required: true, message: 'Please provide binary policy file' }]}
-                                >
-                                    <Upload.Dragger
-                                        beforeUpload={(file) => {
-                                            form.setFieldsValue({ policyBinary: file });
-                                            return false;
-                                        }}
-                                        maxCount={1}
-                                    >
-                                        <p className="ant-upload-text">Click or drag binary policy file</p>
-                                    </Upload.Dragger>
-                                </Form.Item>
-                            )} */}
                         </div>
 
                         <Form.Item

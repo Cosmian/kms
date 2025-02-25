@@ -2,8 +2,6 @@
 pub(crate) use certify::Algorithm;
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
-pub use export_certificate::CertificateExportFormat;
-pub use import_certificate::CertificateInputFormat;
 
 use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,

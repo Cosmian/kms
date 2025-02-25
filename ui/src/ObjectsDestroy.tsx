@@ -2,70 +2,77 @@ import { WarningFilled } from '@ant-design/icons'
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
 import React, { useState } from 'react'
 import { sendKmipRequest } from './utils'
-import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg"
+import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg/cosmian_kms_ui_utils"
 
 
-interface DestroyKeyFormData {
-    keyId?: string;
+interface DestroyFormData {
+    objectId?: string;
     tags?: string[];
     remove: boolean;
 }
 
-type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
+type ObjectType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt' | 'certificate';
 
-interface DestroyKeyFormProps {
-    key_type: KeyType;
+interface DestroyFormProps {
+    objectType: ObjectType;
 }
 
-type DestroyKeyResponse = {
+type DestroyResponse = {
     UniqueIdentifier: string,
 }
 
-const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProps) => {
-    const [form] = Form.useForm<DestroyKeyFormData>();
+const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
+    const [form] = Form.useForm<DestroyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
 
-    const onFinish = async (values: DestroyKeyFormData) => {
+    const isKeyType = props.objectType !== 'certificate';
+    const objectTypeLabel = isKeyType ? 'key' : 'certificate';
+
+    const onFinish = async (values: DestroyFormData) => {
         setIsLoading(true);
         setRes(undefined);
-        console.log('Destroy key values:', values);
-        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+        console.log(`Destroy ${objectTypeLabel} values:`, values);
+
+        const id = values.objectId ? values.objectId : values.tags ? JSON.stringify(values.tags) : undefined;
         if (id == undefined) {
-            setRes("Missing key identifier.")
-            throw Error("Missing key identifier")
+            setRes(`Missing ${objectTypeLabel} identifier.`);
+            throw Error(`Missing ${objectTypeLabel} identifier`);
         }
+
         try {
             const request = destroy_ttlv_request(id, values.remove);
             const result_str = await sendKmipRequest(request);
             if (result_str) {
-                const result: DestroyKeyResponse = await parse_destroy_ttlv_response(result_str)
-                setRes(`${result.UniqueIdentifier} has been destroyed.`)
+                const result: DestroyResponse = await parse_destroy_ttlv_response(result_str);
+                setRes(`${result.UniqueIdentifier} has been destroyed.`);
             }
         } catch (e) {
-            setRes(`Error destroyin key: ${e}`)
-            console.error("Error destroyin key:", e);
+            setRes(`Error destroying ${objectTypeLabel}: ${e}`);
+            console.error(`Error destroying ${objectTypeLabel}:`, e);
         } finally {
             setIsLoading(false);
         }
     };
 
-    let key_type_string = '';
-    if (props.key_type === 'rsa') {
-        key_type_string = 'an RSA';
-    } else if (props.key_type === 'ec') {
-        key_type_string = 'an EC';
-    } else if (props.key_type === 'covercrypt') {
-        key_type_string = 'a Covercrypt';
+    let typeString = '';
+    if (props.objectType === 'rsa') {
+        typeString = 'an RSA';
+    } else if (props.objectType === 'ec') {
+        typeString = 'an EC';
+    } else if (props.objectType === 'covercrypt') {
+        typeString = 'a Covercrypt';
+    } else if (props.objectType === 'symmetric') {
+        typeString = 'a symmetric';
     } else {
-        key_type_string = 'a symmetric';
-    };
+        typeString = 'a';
+    }
 
     return (
         <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
                 <WarningFilled className="text-2xl text-red-600" />
-                <h1 className="text-2xl font-bold ">Destroy {key_type_string} key</h1>
+                <h1 className="text-2xl font-bold">Destroy {typeString} {objectTypeLabel}</h1>
             </div>
 
             <div className="mb-8 space-y-2">
@@ -73,12 +80,17 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                     <div className="text-red-800 text-sm space-y-2">
                         <p className="font-bold">Warning: This is a destructive action!</p>
                         <ul className="list-disc pl-5 space-y-1">
-                            <li>The key must be revoked first</li>
-                            {props.key_type === 'rsa' || props.key_type === 'ec' || props.key_type === 'covercrypt' ? (
+                            <li>The {objectTypeLabel} must be revoked first</li>
+                            {isKeyType && (props.objectType === 'rsa' || props.objectType === 'ec' || props.objectType === 'covercrypt') && (
                                 <li>Destroying either public or private key will destroy the whole key pair</li>
-                            ) : null}
-                            <li>Keys in external stores (HSMs) are automatically removed</li>
-                            <li>Destroyed keys can only be exported by the owner, without key material</li>
+                            )}
+                            {isKeyType && (
+                                <li>Keys in external stores (HSMs) are automatically removed</li>
+                            )}
+                            {props.objectType === 'certificate' && (
+                                <li>Destroying a certificate does not destroy its associated private key</li>
+                            )}
+                            <li>Destroyed {objectTypeLabel}s can only be exported by the owner, without key material</li>
                         </ul>
                     </div>
                 </div>
@@ -94,22 +106,22 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
             >
                 <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <h3 className="text-m font-bold mb-4">{isKeyType ? 'Key' : 'Certificate'} Identification (required)</h3>
 
                         <Form.Item
-                            name="keyId"
-                            label="Key ID"
-                            help="The unique identifier of the key to destroy"
+                            name="objectId"
+                            label={`${isKeyType ? 'Key' : 'Certificate'} ID`}
+                            help={`The unique identifier of the ${objectTypeLabel} to destroy`}
                         >
                             <Input
-                                placeholder="Enter key ID"
+                                placeholder={`Enter ${objectTypeLabel} ID`}
                             />
                         </Form.Item>
 
                         <Form.Item
                             name="tags"
                             label="Tags"
-                            help="Alternative to Key ID: specify tags to identify the key"
+                            help={`Alternative to ${isKeyType ? 'Key' : 'Certificate'} ID: specify tags to identify the ${objectTypeLabel}`}
                         >
                             <Select
                                 mode="tags"
@@ -122,7 +134,7 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                         <Form.Item
                             name="remove"
                             valuePropName="checked"
-                            help="If enabled, the key will be completely removed from the database. Otherwise, metadata will be retained."
+                            help={`If enabled, the ${objectTypeLabel} will be completely removed from the database. Otherwise, metadata will be retained.`}
                         >
                             <Checkbox>
                                 Remove completely from database
@@ -138,14 +150,14 @@ const KeyDestroyForm: React.FC<DestroyKeyFormProps> = (props: DestroyKeyFormProp
                             disabled={isLoading}
                             className="w-full text-white font-medium"
                         >
-                            Destroy Key
+                            Destroy {isKeyType ? 'Key' : 'Certificate'}
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Key destroy response">{res}</Card>}
+            {res && <Card title={`${isKeyType ? 'Key' : 'Certificate'} destroy response`}>{res}</Card>}
         </div>
     );
 };
 
-export default KeyDestroyForm;
+export default DestroyForm;

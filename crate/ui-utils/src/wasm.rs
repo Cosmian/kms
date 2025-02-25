@@ -5,14 +5,14 @@ use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
-        Certify, CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
+        CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
         DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
         GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse, Validate,
         ValidateResponse,
     },
     kmip_types::{
-        CertificateRequestType, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-        RecommendedCurve, UniqueIdentifier,
+        CertificateType, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, LinkType,
+        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -25,8 +25,14 @@ use cosmian_kmip::kmip_2_1::{
 use js_sys::Uint8Array;
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
+use x509_cert::{
+    der::{Decode, DecodePem, Encode},
+    Certificate,
+};
+use zeroize::Zeroizing;
 
 use crate::{
+    certificate_utils::{build_certify_request, Algorithm},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request,
         build_create_covercrypt_user_decryption_key_request,
@@ -34,10 +40,15 @@ use crate::{
     create_utils::{prepare_sym_key_elements, Curve, SymmetricAlgorithm},
     error::UtilsError,
     export_utils::{
-        der_to_pem, export_request, get_export_key_format_type, prepare_key_export_elements,
-        tag_from_object, ExportKeyFormat, WrappingAlgorithm,
+        der_to_pem, export_request, get_export_key_format_type,
+        prepare_certificate_export_elements, prepare_key_export_elements, tag_from_object,
+        CertificateExportFormat, ExportKeyFormat, WrappingAlgorithm,
     },
-    import_utils::{prepare_key_import_elements, ImportKeyFormat, KeyUsage},
+    import_utils::{
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage,
+        prepare_certificate_attributes, prepare_key_import_elements,
+        read_object_from_json_ttlv_bytes, CertificateInputFormat, ImportKeyFormat, KeyUsage,
+    },
     locate_utils::build_locate_request,
     rsa_utils::{HashFn, RsaEncryptionAlgorithm},
     symmetric_utils::{parse_decrypt_elements, DataEncryptionAlgorithm},
@@ -109,40 +120,6 @@ pub fn locate_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<LocateResponse>(response)
-}
-
-// Certify request
-#[wasm_bindgen]
-pub fn certify_ttlv_request(
-    unique_identifier: Option<String>,
-    certificate_request_type: Option<String>,
-    certificate_request_value: Option<Vec<u8>>,
-    attributes: JsValue,
-) -> Result<JsValue, JsValue> {
-    let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
-    let certificate_request_type = certificate_request_type.and_then(|s| {
-        CertificateRequestType::from_str(&s)
-            .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
-            .ok()
-    });
-    let attributes = serde_wasm_bindgen::from_value(attributes)?;
-    let request = Certify {
-        unique_identifier,
-        attributes: Some(attributes),
-        certificate_request_value,
-        certificate_request_type,
-        ..Certify::default()
-    };
-    to_ttlv(&request)
-        .map_err(|e| JsValue::from(e.to_string()))
-        .and_then(|objects| {
-            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-        })
-}
-
-#[wasm_bindgen]
-pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<CertifyResponse>(response)
 }
 
 // Create_key_pair requests
@@ -661,7 +638,7 @@ pub fn parse_import_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
 
 // Revoke request
 #[wasm_bindgen]
-pub fn revoke_key_ttlv_request(
+pub fn revoke_ttlv_request(
     unique_identifier: &str,
     revocation_reason: JsValue,
 ) -> Result<JsValue, JsValue> {
@@ -680,31 +657,6 @@ pub fn parse_revoke_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<RevokeResponse>(response)
 }
 
-// Validate request
-#[wasm_bindgen]
-pub fn validate_certificate_ttlv_request(
-    certificate: Option<Vec<u8>>,
-    unique_identifier: Option<String>,
-    validity_time: Option<String>,
-) -> Result<JsValue, JsValue> {
-    let certificate: Option<Vec<Vec<u8>>> = certificate.map(|bytes| vec![bytes]);
-    let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
-    let request = Validate {
-        certificate,
-        unique_identifier,
-        validity_time,
-    };
-    to_ttlv(&request)
-        .map_err(|e| JsValue::from(e.to_string()))
-        .and_then(|objects| {
-            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-        })
-}
-
-#[wasm_bindgen]
-pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ValidateResponse>(response)
-}
 use std::collections::HashMap;
 
 // Covercrypt requests
@@ -801,4 +753,339 @@ pub fn decrypt_cc_ttlv_request(
         .and_then(|objects| {
             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
         })
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn import_certificate_ttlv_request(
+    certificate_id: Option<String>,
+    certificate_bytes: Vec<u8>,
+    input_format: &str,
+    private_key_id: Option<String>,
+    public_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    pkcs12_password: Option<String>,
+    replace_existing: bool,
+    tags: Vec<String>,
+    key_usage: Option<Vec<String>>,
+) -> Result<JsValue, JsValue> {
+    let input_format =
+        CertificateInputFormat::from_str(input_format).map_err(|e| JsValue::from(e.to_string()))?;
+    let key_usage: Option<Vec<KeyUsage>> = key_usage.map(|vec| {
+        vec.into_iter()
+            .filter_map(|s| s.parse::<KeyUsage>().ok()) // Parse and filter out errors
+            .collect()
+    });
+    let attributes =
+        prepare_certificate_attributes(&issuer_certificate_id, &private_key_id, &public_key_id);
+    let request = match input_format {
+        CertificateInputFormat::JsonTtlv => {
+            let object: Object = read_object_from_json_ttlv_bytes(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            import_object_request(
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Pem => {
+            let certificate = Certificate::from_pem(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            let object = Object::Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: certificate
+                    .to_der()
+                    .map_err(|e| JsValue::from(e.to_string()))?,
+            };
+            import_object_request(
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Der => {
+            let certificate = Certificate::from_der(&certificate_bytes)
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            let object = Object::Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: certificate
+                    .to_der()
+                    .map_err(|e| JsValue::from(e.to_string()))?,
+            };
+            import_object_request(
+                certificate_id,
+                object,
+                attributes,
+                false,
+                replace_existing,
+                tags,
+            )
+        }
+        CertificateInputFormat::Pkcs12 => {
+            let cryptographic_usage_mask = key_usage
+                .as_deref()
+                .and_then(build_usage_mask_from_key_usage);
+            let pkcs12_bytes = Zeroizing::from(certificate_bytes);
+            let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);
+            let mut attributes = private_key.attributes().cloned().unwrap_or_default();
+            attributes.set_cryptographic_usage_mask(cryptographic_usage_mask);
+            if let Some(password) = &pkcs12_password {
+                attributes.set_link(
+                    LinkType::PKCS12PasswordLink,
+                    LinkedObjectIdentifier::TextString(password.clone()),
+                );
+            }
+            import_object_request(
+                certificate_id,
+                private_key,
+                Some(attributes),
+                false,
+                replace_existing,
+                &tags,
+            )
+        }
+        CertificateInputFormat::Chain => Err(UtilsError::Default(
+            "Chain import not supported from the UI.".to_owned(),
+        ))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+        CertificateInputFormat::CCADB => Err(UtilsError::Default(
+            "CCADB import not supported from the UI.".to_owned(),
+        ))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn export_certificate_ttlv_request(
+    unique_identifier: &str,
+    output_format: &str,
+    pkcs12_password: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let (key_format_type, wrapping_key_id) =
+        prepare_certificate_export_elements(&output_format, pkcs12_password);
+    let request = export_request(
+        unique_identifier,
+        false,
+        wrapping_key_id.as_deref(),
+        Some(key_format_type),
+        false,
+        None,
+        None,
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_export_certificate_ttlv_response(
+    response: &str,
+    output_format: &str,
+) -> Result<JsValue, JsValue> {
+    // let response = parse_ttlv_response::<ExportResponse>(response)?;
+    let output_format = CertificateExportFormat::from_str(output_format)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let response: ExportResponse = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let object = Object::post_fix(response.object_type, response.object);
+    let object_type = response.object_type;
+    match &object {
+        Object::Certificate {
+            certificate_value, ..
+        } => {
+            let data = match output_format {
+                CertificateExportFormat::JsonTtlv => {
+                    let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
+                    ttlv.tag = tag_from_object(&object);
+                    let bytes = serde_json::to_vec::<TTLV>(&ttlv)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+                    JsValue::from(Uint8Array::from(bytes.as_slice()))
+                }
+                CertificateExportFormat::Pem => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new("CERTIFICATE", certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+                CertificateExportFormat::Pkcs12 => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                #[cfg(not(feature = "fips"))]
+                CertificateExportFormat::Pkcs12Legacy => {
+                    // PKCS12 is exported as a private key object
+                    Err(UtilsError::Default(
+                        "PKCS12: invalid object returned by the server.".to_owned(),
+                    ))
+                    .map_err(|e| JsValue::from(e.to_string()))?
+                }
+                CertificateExportFormat::Pkcs7 => {
+                    // save the pem to a file
+                    let pem = pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
+                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                }
+            };
+            Ok(data)
+        }
+        // PKCS12 is exported as a private key object
+        Object::PrivateKey { key_block } => {
+            let p12_bytes = key_block
+                .key_bytes()
+                .map_err(|e| JsValue::from(e.to_string()))?
+                .to_vec();
+            Ok(JsValue::from(Uint8Array::from(p12_bytes.as_slice())))
+        }
+        _ => Err(UtilsError::Default(format!(
+            "The object is not a certificate but a {object_type}"
+        )))
+        .map_err(|e| JsValue::from(e.to_string()))?,
+    }
+}
+
+// Validate request
+#[wasm_bindgen]
+pub fn validate_certificate_ttlv_request(
+    certificate: Option<Vec<u8>>,
+    unique_identifier: Option<String>,
+    validity_time: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let certificate: Option<Vec<Vec<u8>>> = certificate.map(|bytes| vec![bytes]);
+    let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
+    let request = Validate {
+        certificate,
+        unique_identifier,
+        validity_time,
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<ValidateResponse>(response)
+}
+
+#[wasm_bindgen]
+pub fn encrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = encrypt_request(
+        unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = decrypt_request(
+        unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+// Certify request
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn certify_ttlv_request(
+    certificate_id: Option<String>,
+    certificate_signing_request_format: Option<String>,
+    certificate_signing_request: Option<Vec<u8>>,
+    public_key_id_to_certify: Option<String>,
+    certificate_id_to_re_certify: Option<String>,
+    generate_key_pair: bool,
+    subject_name: Option<String>,
+    algorithm: Option<String>,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    certificate_extensions: Option<Vec<u8>>,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = build_certify_request(
+        &certificate_id,
+        &certificate_signing_request_format,
+        &certificate_signing_request,
+        &public_key_id_to_certify,
+        &certificate_id_to_re_certify,
+        generate_key_pair,
+        &subject_name,
+        algorithm,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &certificate_extensions,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<CertifyResponse>(response)
 }

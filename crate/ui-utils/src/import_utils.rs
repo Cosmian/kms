@@ -395,3 +395,46 @@ pub fn prepare_key_import_elements(
     }
     Ok((object, import_attributes))
 }
+
+// Certificates import utils
+#[derive(ValueEnum, Debug, Clone, EnumString)]
+pub enum CertificateInputFormat {
+    JsonTtlv,
+    Pem,
+    Der,
+    Chain,
+    Pkcs12,
+    CCADB,
+}
+
+#[must_use]
+pub fn prepare_certificate_attributes(
+    issuer_certificate_id: &Option<String>,
+    private_key_id: &Option<String>,
+    public_key_id: &Option<String>,
+) -> Option<Attributes> {
+    let mut certificate_attributes = None;
+    if let Some(issuer_certificate_id) = &issuer_certificate_id {
+        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        attributes.set_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+        );
+    };
+    if let Some(private_key_id) = &private_key_id {
+        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        attributes.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(private_key_id.clone()),
+        );
+    };
+    if let Some(public_key_id) = &public_key_id {
+        let attributes = certificate_attributes.get_or_insert(Attributes::default());
+        attributes.set_link(
+            LinkType::PublicKeyLink,
+            LinkedObjectIdentifier::TextString(public_key_id.clone()),
+        );
+    };
+
+    certificate_attributes
+}
