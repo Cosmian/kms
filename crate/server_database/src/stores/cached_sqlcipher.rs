@@ -6,7 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use clap::crate_version;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
@@ -16,14 +15,14 @@ use cosmian_kms_crypto::crypto::{
     secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, SessionParams,
 };
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    ConnectOptions, Pool, Row, Sqlite,
+    ConnectOptions, Pool, Sqlite,
 };
-use tracing::{debug, trace};
+use tracing::trace;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -37,14 +36,10 @@ use crate::{
     db_error,
     error::{DbResult, DbResultHelper},
     get_sqlite_query,
-    migrate::do_migration,
     stores::{
-        sqlite::{
-            atomic_, is_migration_in_progress_, list_uids_for_tags_, migrate_, retrieve_tags_,
-        },
+        sqlite::{atomic_, list_uids_for_tags_, retrieve_tags_},
         SQLITE_QUERIES,
     },
-    KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
 };
 
 #[derive(Clone)]
@@ -96,7 +91,7 @@ impl CachedSqlCipher {
     }
 
     async fn create_tables(pool: &Pool<Sqlite>) -> DbResult<()> {
-        sqlx::query(get_sqlite_query!("create-table-context"))
+        sqlx::query(get_sqlite_query!("create-table-parameters"))
             .execute(pool)
             .await?;
 
@@ -111,6 +106,9 @@ impl CachedSqlCipher {
         sqlx::query(get_sqlite_query!("create-table-tags"))
             .execute(pool)
             .await?;
+
+        // Old table context used between version 4.13.0 and 4.22.1
+        let _ = sqlx::query("DROP TABLE context").execute(pool).await;
 
         Ok(())
     }
@@ -143,57 +141,6 @@ impl ObjectsStore for CachedSqlCipher {
         Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
-    async fn migrate(&self, params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        if let Some(params) = params {
-            let params =
-                <dyn SessionParams>::downcast_ref::<SqlCipherSessionParams>(params.as_ref());
-            let pool = self.pre_query(params.group_id, &params.key).await?;
-
-            trace!("Migrate database");
-            // Get the context rows
-            match sqlx::query(get_sqlite_query!("select-context"))
-                .fetch_optional(&*pool)
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to fetch context row: {e}")))?
-            {
-                None => {
-                    trace!("No context row found, migrating from scratch");
-                    migrate_(
-                        &pool,
-                        KMS_VERSION_BEFORE_MIGRATION_SUPPORT,
-                        "insert-context",
-                    )
-                    .await?;
-                    return Ok(());
-                }
-                Some(context_row) => {
-                    let last_kms_version_run = context_row.get::<String, _>(0);
-                    let state = context_row.get::<String, _>(1);
-                    trace!(
-                        "Context row found, migrating from version {last_kms_version_run} (state: \
-                         {state})"
-                    );
-                    let current_kms_version = crate_version!();
-                    debug!(
-                        "[state={state}] Last KMS version run: {last_kms_version_run}, Current \
-                         KMS version: {current_kms_version}"
-                    );
-
-                    if do_migration(&last_kms_version_run, current_kms_version, &state)? {
-                        migrate_(&pool, current_kms_version, "update-context").await?;
-                        return Ok(())
-                    }
-                }
-            }
-
-            return Ok(());
-        }
-
-        Err(InterfaceError::Db(
-            "Missing group_id/key for opening SQLCipher".to_owned(),
-        ))
-    }
-
     async fn create(
         &self,
         uid: Option<String>,
@@ -208,11 +155,6 @@ impl ObjectsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
 
             let mut tx = pool
                 .begin()
@@ -294,11 +236,6 @@ impl ObjectsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
 
             let mut tx = pool
                 .begin()
@@ -338,11 +275,7 @@ impl ObjectsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
+
             let mut tx = pool
                 .begin()
                 .await
@@ -380,11 +313,7 @@ impl ObjectsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
+
             let mut tx = pool
                 .begin()
                 .await
@@ -423,11 +352,7 @@ impl ObjectsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
+
             let mut tx = pool
                 .begin()
                 .await
@@ -579,11 +504,7 @@ impl PermissionsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
+
             let ret = insert_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return Ok(ret?)
@@ -606,11 +527,7 @@ impl PermissionsStore for CachedSqlCipher {
                 params.as_ref(),
             );
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            if is_migration_in_progress_(&*pool).await? {
-                return Err(InterfaceError::Db(
-                    "Migration in progress. Please retry later".to_owned(),
-                ));
-            }
+
             let ret = remove_access_(uid, user, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return Ok(ret?)
@@ -658,4 +575,30 @@ fn remove_dir_content(path: &Path) -> Result<(), std::io::Error> {
         }
     }
     Ok(())
+}
+
+impl Migrate for CachedSqlCipher {
+    async fn get_db_state(&self) -> InterfaceResult<Option<DbState>> {
+        todo!()
+    }
+
+    async fn set_db_state(&self, state: DbState) -> InterfaceResult<()> {
+        todo!()
+    }
+
+    async fn get_current_db_version(&self) -> InterfaceResult<Option<String>> {
+        todo!()
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> InterfaceResult<()> {
+        todo!()
+    }
+
+    async fn migrate_from_4_12_0_to_4_13_0(&self) -> InterfaceResult<()> {
+        todo!()
+    }
+
+    async fn migrate_from_4_13_0_to_4_22_1(&self) -> InterfaceResult<()> {
+        todo!()
+    }
 }
