@@ -1,0 +1,103 @@
+use std::ops::Deref;
+
+use cosmian_kms_interfaces::{DbState, InterfaceError, InterfaceResult};
+use rawsql::Loader;
+use sqlx::{Acquire, Arguments, Executor, IntoArguments, Pool, Transaction};
+
+use crate::{
+    db_error,
+    error::DbResultHelper,
+    stores::sqlite::{atomic_, clear_database_},
+    Database, DbError,
+};
+
+fn get_query(loader: &Loader, name: &str) -> &String {
+    loader
+        .get(name)
+        .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
+}
+
+pub async fn instantiate<'a, 'c, DB>(loader: &Loader, pool: &Pool<DB>) -> InterfaceResult<()>
+where
+    DB: sqlx::Database,
+    for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,
+    DB::Arguments<'c>: IntoArguments<'c, DB>,
+{
+    let is_new = sqlx::query("SELECT * FROM objects LIMIT 1")
+        .fetch_optional(pool)
+        .await
+        .is_err();
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
+
+    match create_tables(loader, &mut tx).await {
+        Ok(()) => {
+            tx.commit().await.map_err(|e| {
+                InterfaceError::Db(format!("failed to commit the transaction: {e}"))
+            })?;
+            Ok(())
+        }
+        Err(e) => {
+            tx.rollback().await.context("transaction failed")?;
+            Err(InterfaceError::Db(format!("{e}")))
+        }
+    }
+}
+
+pub async fn create_tables<'a, 'e, DB>(
+    loader: &Loader,
+    executor: &mut Transaction<'e, DB>,
+) -> InterfaceResult<()>
+where
+    DB: sqlx::Database,
+    for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>, // DB::Connection: Deref<Target = E>,
+    DB::Arguments<'a>: IntoArguments<'a, DB>,
+{
+    sqlx::query(get_query(loader, "create-table-parameters"))
+        .execute(&mut **executor)
+        .await
+        .map_err(DbError::from)?;
+
+    sqlx::query(get_query(loader, "create-table-objects"))
+        .execute(&mut **executor)
+        .await
+        .map_err(DbError::from)?;
+
+    sqlx::query(get_query(loader, "create-table-read_access"))
+        .execute(&mut **executor)
+        .await
+        .map_err(DbError::from)?;
+
+    sqlx::query(get_query(loader, "create-table-tags"))
+        .execute(&mut **executor)
+        .await
+        .map_err(DbError::from)?;
+
+    // Old table context used between version 4.13.0 and 4.22.1
+    let _ = sqlx::query("DROP TABLE context")
+        .execute(&mut **executor)
+        .await;
+
+    Ok(())
+}
+
+// if clear_database {
+//     clear_database_(executor).await?;
+// }
+//
+// let sqlite_pool = Self { pool };
+//
+// if is_new {
+//     sqlite_pool
+//         .set_current_db_version(env!("CARGO_PKG_VERSION"))
+//         .await?;
+//     sqlite_pool.set_db_state(DbState::Ready).await?;
+// } else {
+//     // perform any necessary migration now
+//     sqlite_pool.migrate().await?;
+// }
+//
+// Ok(())

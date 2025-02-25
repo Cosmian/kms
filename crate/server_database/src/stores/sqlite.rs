@@ -12,8 +12,8 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, SessionParams,
 };
 use serde_json::Value;
 use sqlx::{
@@ -94,6 +94,11 @@ impl SqlitePool {
             .connect_with(options)
             .await?;
 
+        let is_new = sqlx::query("SELECT * FROM objects LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .is_err();
+
         sqlx::query(get_sqlite_query!("create-table-parameters"))
             .execute(&pool)
             .await?;
@@ -118,8 +123,16 @@ impl SqlitePool {
         }
 
         let sqlite_pool = Self { pool };
-        // perform any necessary migration now
-        sqlite_pool.migrate().await?;
+
+        if is_new {
+            sqlite_pool
+                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            sqlite_pool.set_db_state(DbState::Ready).await?;
+        } else {
+            // perform any necessary migration now
+            sqlite_pool.migrate().await?;
+        }
         Ok(sqlite_pool)
     }
 }
