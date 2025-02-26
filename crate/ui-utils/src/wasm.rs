@@ -5,9 +5,10 @@ use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
-        CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, Destroy,
-        DestroyResponse, EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse,
-        ImportResponse, LocateResponse, RevokeResponse, Validate, ValidateResponse,
+        CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
+        DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
+        GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse, Validate,
+        ValidateResponse,
     },
     kmip_types::{
         CertificateType, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, LinkType,
@@ -31,6 +32,7 @@ use x509_cert::{
 use zeroize::Zeroizing;
 
 use crate::{
+    certificate_utils::{build_certify_request, Algorithm},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request,
         build_create_covercrypt_user_decryption_key_request,
@@ -1040,35 +1042,50 @@ pub fn decrypt_certificate_ttlv_request(
 }
 
 // Certify request
-// #[wasm_bindgen]
-// pub fn certify_ttlv_request(
-//     unique_identifier: Option<String>,
-//     certificate_request_type: Option<String>,
-//     certificate_request_value: Option<Vec<u8>>,
-//     attributes: JsValue,
-// ) -> Result<JsValue, JsValue> {
-//     let unique_identifier = unique_identifier.map(UniqueIdentifier::TextString);
-//     let certificate_request_type = certificate_request_type.and_then(|s| {
-//         CertificateRequestType::from_str(&s)
-//             .map_err(|e| JsValue::from_str(&format!("Invalid certificate type: {e}")))
-//             .ok()
-//     });
-//     let attributes = serde_wasm_bindgen::from_value(attributes)?;
-//     let request = Certify {
-//         unique_identifier,
-//         attributes: Some(attributes),
-//         certificate_request_value,
-//         certificate_request_type,
-//         ..Certify::default()
-//     };
-//     to_ttlv(&request)
-//         .map_err(|e| JsValue::from(e.to_string()))
-//         .and_then(|objects| {
-//             serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-//         })
-// }
+#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn certify_ttlv_request(
+    certificate_id: Option<String>,
+    certificate_signing_request_format: Option<String>,
+    certificate_signing_request: Option<Vec<u8>>,
+    public_key_id_to_certify: Option<String>,
+    certificate_id_to_re_certify: Option<String>,
+    generate_key_pair: bool,
+    subject_name: Option<String>,
+    algorithm: Option<String>,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    certificate_extensions: Option<Vec<u8>>,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = build_certify_request(
+        &certificate_id,
+        &certificate_signing_request_format,
+        &certificate_signing_request,
+        &public_key_id_to_certify,
+        &certificate_id_to_re_certify,
+        generate_key_pair,
+        &subject_name,
+        algorithm,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &certificate_extensions,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
 
-// #[wasm_bindgen]
-// pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-//     parse_ttlv_response::<CertifyResponse>(response)
-// }
+#[wasm_bindgen]
+pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<CertifyResponse>(response)
+}
