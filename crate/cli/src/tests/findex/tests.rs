@@ -1,5 +1,5 @@
+use cosmian_client::RestClient;
 use cosmian_config_utils::ConfigUtils;
-use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::Uuids;
 use cosmian_kms_cli::{
     actions::symmetric::{keys::create_key::CreateKeyAction, DataEncryptionAlgorithm},
@@ -21,7 +21,7 @@ use crate::{
             datasets::DeleteEntries, findex::parameters::FindexParameters, permissions::CreateIndex,
         },
     },
-    config::ClientConf,
+    config::ClientConfig,
     error::result::CosmianResult,
 };
 
@@ -53,7 +53,7 @@ impl TestsCliContext {
         expected_results: &str,
         expected_len: usize,
     ) -> CosmianResult<Self> {
-        let client_config = ClientConf::from_toml(config_path)?;
+        let client_config = ClientConfig::from_toml(config_path)?;
         let kms = KmsClient::new(client_config.kms_config)?;
         let findex = RestClient::new(&client_config.findex_config.unwrap())?;
         let kek_id = Some(CreateKeyAction::default().run(&kms).await?);
@@ -75,7 +75,8 @@ impl TestsCliContext {
     }
 
     async fn run_test_sequence(&self) -> CosmianResult<()> {
-        let findex_parameters = FindexParameters::new(self.index_id, &self.kms, true).await?;
+        let findex_parameters =
+            FindexParameters::new(self.index_id, &self.kms, true, Some(1)).await?;
 
         // Index
         let uuids = self.index(&findex_parameters).await?;

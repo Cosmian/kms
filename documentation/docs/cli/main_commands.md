@@ -2553,6 +2553,8 @@ Create new indexes
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
+`--num-threads [-t] <NUM_THREADS>` The number of threads to use for parallel operations
+
 `--csv <CSV>` The path to the CSV file containing the data to index
 
 
@@ -2573,6 +2575,8 @@ Encrypt entries and index the corresponding database UUIDs with the Findex.
 `--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
+
+`--num-threads [-t] <NUM_THREADS>` The number of threads to use for parallel operations
 
 `--csv <CSV>` The path to the CSV file path containing the data to index
 
@@ -2607,6 +2611,8 @@ Search words among encrypted indexes.
 
 `--index-id [-i] <INDEX_ID>` The index ID
 
+`--num-threads [-t] <NUM_THREADS>` The number of threads to use for parallel operations
+
 `--keyword <KEYWORD>` The word to search. Can be repeated
 
 
@@ -2627,6 +2633,8 @@ Search keywords and decrypt the content of corresponding UUIDs.
 `--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
+
+`--num-threads [-t] <NUM_THREADS>` The number of threads to use for parallel operations
 
 `--keyword <KEYWORD>` The word to search. Can be repeated
 
@@ -2658,6 +2666,8 @@ Delete indexed keywords
 `--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
 
 `--index-id [-i] <INDEX_ID>` The index ID
+
+`--num-threads [-t] <NUM_THREADS>` The number of threads to use for parallel operations
 
 `--csv <CSV>` The path to the CSV file containing the data to index
 

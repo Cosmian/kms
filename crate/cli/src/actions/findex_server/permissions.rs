@@ -1,5 +1,5 @@
 use clap::Parser;
-use cosmian_findex_client::RestClient;
+use cosmian_client::RestClient;
 use cosmian_findex_structs::Permission;
 use uuid::Uuid;
 

@@ -8,13 +8,15 @@ use crate::{
     },
     error::result::CosmianResult,
 };
-use cosmian_findex_client::{FindexRestClient, KmsEncryptionLayer, RestClient, RestClientConfig};
+use cosmian_client::{FindexRestClient, KmsEncryptionLayer, RestClient, RestClientConfig};
 use cosmian_kms_cli::reexport::cosmian_kms_client::{
     reexport::cosmian_http_client::HttpClientConfig, KmsClient, KmsClientConfig,
 };
 use std::{ops::Deref, path::PathBuf};
 use test_findex_server::start_default_test_findex_server;
 use uuid::Uuid;
+
+use super::basic::findex_number_of_threads;
 
 pub(crate) const SMALL_DATASET: &str = "../../test_data/datasets/smallpop.csv";
 pub(crate) const HUGE_DATASET: &str = "../../test_data/datasets/business-employment.csv";
@@ -84,7 +86,13 @@ pub(crate) async fn create_encryption_layer<const WORD_LENGTH: usize>(
 ) -> CosmianResult<KmsEncryptionLayer<WORD_LENGTH, FindexRestClient<WORD_LENGTH>>> {
     let ctx = start_default_test_findex_server().await;
     let kms_client = instantiate_kms_client()?;
-    let findex_parameters = FindexParameters::new(Uuid::new_v4(), &kms_client, true).await?;
+    let findex_parameters = FindexParameters::new(
+        Uuid::new_v4(),
+        &kms_client,
+        true,
+        findex_number_of_threads(),
+    )
+    .await?;
 
     let encryption_layer = KmsEncryptionLayer::<WORD_LENGTH, _>::new(
         kms_client.clone(),

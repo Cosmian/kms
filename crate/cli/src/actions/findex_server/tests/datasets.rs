@@ -3,7 +3,7 @@ use crate::{
     error::result::CosmianResult,
 };
 use base64::{engine::general_purpose, Engine};
-use cosmian_findex_client::RestClient;
+use cosmian_client::RestClient;
 use cosmian_findex_structs::EncryptedEntries;
 use cosmian_logger::log_init;
 use std::ops::Deref;

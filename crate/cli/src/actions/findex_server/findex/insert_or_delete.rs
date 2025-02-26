@@ -3,8 +3,8 @@ use crate::{
     actions::findex_server::findex::findex_instance::FindexInstance, error::result::CosmianResult,
 };
 use clap::Parser;
+use cosmian_client::RestClient;
 use cosmian_findex::Value;
-use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::{Keyword, Keywords, CUSTOM_WORD_LENGTH};
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClient;
 use std::{
@@ -75,7 +75,7 @@ impl InsertOrDeleteAction {
         .await?;
 
         let written_keywords = findex_instance
-            .insert_or_delete(bindings, is_insert)
+            .insert_or_delete(bindings, is_insert, self.findex_parameters.num_threads)
             .await?;
         let operation_name = if is_insert { "Indexing" } else { "Deleting" };
 

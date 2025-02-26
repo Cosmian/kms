@@ -4,7 +4,7 @@ use crate::{
     error::result::{CosmianResult, CosmianResultHelper},
 };
 use clap::Parser;
-use cosmian_findex_client::{
+use cosmian_client::{
     reexport::cosmian_findex_structs::{Uuids, CUSTOM_WORD_LENGTH},
     RestClient,
 };
@@ -83,7 +83,9 @@ impl SearchAndDecryptAction {
         )
         .await?;
 
-        let search_results = findex_instance.search(&self.keyword).await?;
+        let search_results = findex_instance
+            .search(&self.keyword, self.findex_parameters.num_threads)
+            .await?;
 
         trace!("Search results: {search_results}");
         let uuids = Uuids::try_from(search_results)?;

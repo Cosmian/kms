@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::Parser;
-use cosmian_findex_client::{
+use cosmian_client::{
     reexport::{
         cosmian_findex::Value,
         cosmian_findex_structs::{
@@ -322,7 +322,11 @@ impl EncryptAndIndexAction {
         .await?;
 
         let written_keywords = findex_instance
-            .insert_or_delete(keywords_indexed_value_map.0, true)
+            .insert_or_delete(
+                keywords_indexed_value_map.0,
+                true,
+                self.findex_parameters.num_threads,
+            )
             .await?;
 
         trace!("indexing done: keywords: {written_keywords}");

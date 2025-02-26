@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use cosmian_client::RestClientConfig;
 use cosmian_config_utils::{location, ConfigUtils};
-use cosmian_findex_client::RestClientConfig;
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientConfig;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -13,12 +13,12 @@ pub(crate) const COSMIAN_CLI_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/cosm
 pub(crate) const COSMIAN_CLI_CONF_PATH: &str = ".cosmian/cosmian.toml";
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
-pub struct ClientConf {
+pub struct ClientConfig {
     pub kms_config: KmsClientConfig,
     pub findex_config: Option<RestClientConfig>,
 }
 
-impl Default for ClientConf {
+impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             kms_config: KmsClientConfig::default(),
@@ -28,7 +28,7 @@ impl Default for ClientConf {
 }
 
 #[allow(clippy::print_stdout)]
-impl ClientConf {
+impl ClientConfig {
     /// Load the default location of the configuration file.
     ///
     /// # Errors
@@ -75,7 +75,7 @@ impl ClientConf {
     }
 }
 
-impl ConfigUtils for ClientConf {}
+impl ConfigUtils for ClientConfig {}
 
 #[cfg(test)]
 mod tests {
@@ -84,7 +84,7 @@ mod tests {
     use cosmian_config_utils::{get_default_conf_path, ConfigUtils};
     use cosmian_logger::log_init;
 
-    use super::{ClientConf, COSMIAN_CLI_CONF_ENV};
+    use super::{ClientConfig, COSMIAN_CLI_CONF_ENV};
     use crate::config::COSMIAN_CLI_CONF_PATH;
 
     #[test]
@@ -94,7 +94,7 @@ mod tests {
         unsafe {
             env::set_var(COSMIAN_CLI_CONF_ENV, "../../test_data/configs/cosmian.toml");
         }
-        assert!(ClientConf::load(None).is_ok());
+        assert!(ClientConfig::load(None).is_ok());
 
         // another valid conf
         unsafe {
@@ -103,7 +103,7 @@ mod tests {
                 "../../test_data/configs/cosmian_partial.toml",
             );
         }
-        assert!(ClientConf::load(None).is_ok());
+        assert!(ClientConfig::load(None).is_ok());
 
         // Default conf file
         unsafe {
@@ -112,7 +112,7 @@ mod tests {
         drop(fs::remove_file(
             get_default_conf_path(COSMIAN_CLI_CONF_PATH).unwrap(),
         ));
-        assert!(ClientConf::load(None).is_ok());
+        assert!(ClientConfig::load(None).is_ok());
         assert!(get_default_conf_path(COSMIAN_CLI_CONF_PATH)
             .unwrap()
             .exists());
@@ -124,7 +124,7 @@ mod tests {
                 "../../test_data/configs/cosmian.bad.toml",
             );
         }
-        let e = ClientConf::load(None).err().unwrap().to_string();
+        let e = ClientConfig::load(None).err().unwrap().to_string();
         assert!(e.contains("missing field `server_url`"));
 
         // with a file
@@ -132,9 +132,9 @@ mod tests {
             env::remove_var(COSMIAN_CLI_CONF_ENV);
         }
         let conf_path =
-            ClientConf::location(Some(PathBuf::from("../../test_data/configs/cosmian.toml")))
+            ClientConfig::location(Some(PathBuf::from("../../test_data/configs/cosmian.toml")))
                 .unwrap();
 
-        assert!(ClientConf::from_toml(conf_path.to_str().unwrap()).is_ok());
+        assert!(ClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
     }
 }

@@ -40,7 +40,7 @@ clap = { workspace = true, features = [
 cosmian_config_utils = { workspace = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_findex = { workspace = true }
-cosmian_findex_client = { workspace = true }
+cosmian_client = { path = "../client" }
 cosmian_findex_structs = { workspace = true }
 cosmian_kms_cli = { workspace = true }
 cosmian_logger = { workspace = true }
@@ -55,7 +55,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 actix-rt = "2.10"
-actix-server = { version = "2.5", default-features = false }
+actix-server = { workspace = true }
 assert_cmd = "2.0"
 const-oid = { version = "0.9", features = ["db"] }
 cosmian_findex = { workspace = true, features = ["test-utils"] }
@@ -66,7 +66,7 @@ rand = "0.9.0"
 rand_chacha = "0.9.0"
 regex = { version = "1.11", default-features = false }
 tempfile = "3.16"
-test_findex_server = { workspace = true }
+test_findex_server = { path = "../test_findex_server" }
 x509-parser = { workspace = true, features = ["verify"] }
 
 # ------------------------------------------------------------------------------

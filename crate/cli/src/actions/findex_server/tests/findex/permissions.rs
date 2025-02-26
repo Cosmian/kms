@@ -5,15 +5,18 @@ use crate::{
             search::SearchAction,
         },
         tests::{
-            findex::utils::{insert_search_delete, instantiate_kms_client, SMALL_DATASET},
+            findex::{
+                basic::findex_number_of_threads,
+                utils::{insert_search_delete, instantiate_kms_client, SMALL_DATASET},
+            },
             permissions::{create_index_id, list_permissions, revoke_permission, set_permission},
             search_options::SearchOptions,
         },
     },
     error::result::CosmianResult,
 };
+use cosmian_client::RestClient;
 use cosmian_findex::Value;
-use cosmian_findex_client::RestClient;
 use cosmian_findex_structs::Permission;
 use cosmian_logger::log_init;
 use std::{ops::Deref, path::PathBuf};
@@ -44,7 +47,8 @@ pub(crate) async fn test_findex_set_and_revoke_permission() -> CosmianResult<()>
     let user_rest_client = RestClient::new(&ctx.user_client_conf)?;
     let kms_client = instantiate_kms_client()?;
 
-    let findex_parameters = FindexParameters::new(index_id, &kms_client, true).await?;
+    let findex_parameters =
+        FindexParameters::new(index_id, &kms_client, true, findex_number_of_threads()).await?;
 
     // Index the dataset as admin
     InsertOrDeleteAction {
@@ -151,7 +155,13 @@ pub(crate) async fn test_findex_no_permission() -> CosmianResult<()> {
     let ctx = start_default_test_findex_server_with_cert_auth().await;
 
     let kms_client = instantiate_kms_client()?;
-    let findex_parameters = FindexParameters::new(Uuid::new_v4(), &kms_client, true).await?;
+    let findex_parameters = FindexParameters::new(
+        Uuid::new_v4(),
+        &kms_client,
+        true,
+        findex_number_of_threads(),
+    )
+    .await?;
 
     let search_options = SearchOptions {
         dataset_path: SMALL_DATASET.into(),

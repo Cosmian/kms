@@ -3,10 +3,10 @@ use std::{
     sync::Arc,
 };
 
+use cosmian_client::{FindexRestClient, KmsEncryptionLayer, RestClient};
 use cosmian_findex::{
     generic_decode, generic_encode, Findex, IndexADT, MemoryEncryptionLayer, Value,
 };
-use cosmian_findex_client::{FindexRestClient, KmsEncryptionLayer, RestClient};
 use cosmian_findex_structs::{Keyword, Keywords, SearchResults};
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClient;
 use tokio::sync::Semaphore;
@@ -18,25 +18,12 @@ use crate::{
     error::{result::CosmianResult, CosmianError},
 };
 
-/// Calculates maximum concurrent operations based on CPU cores and implicitly on maximum available file descriptors on Unix systems.
-///
-/// # Returns
-///
-/// Returns usize value representing concurrent operation limit (CPU cores * 4)
-///
-/// # Implementation constraints
-///
-/// - Must works cross-platform
-/// - Must adapt to maximum available CPU cores
-/// - Must optimize maximum the number concurrent network calls while avoiding resource exhaustion
-/// - Keeps concurrent operations within safe bounds (e.g. file descriptors on Unix systems)
-/// - Must be bound between 1 and 128
-/// - For the record, 256 has proven to be an instable value: Github runners are not able to handle it
-fn get_semaphore_limit() -> usize {
-    let res = (std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get) * 4)
-        .clamp(1, 128);
-    debug!("Semaphore limit: {res}");
-    res
+const MAX_PERMITS: usize = 256;
+
+fn get_semaphore_limit(num_threads: Option<usize>) -> usize {
+    let limit = num_threads.map_or(MAX_PERMITS, |threads| threads);
+    debug!("Semaphore limit: {}", limit);
+    limit
 }
 
 pub enum FindexKeys {
@@ -127,13 +114,17 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
     /// # Errors
     /// - If any of the concurrent search operations fail:
     /// - If the semaphore acquisition fails due to system resource exhaustion
-    pub async fn search(&self, keywords: &[String]) -> CosmianResult<SearchResults> {
+    pub async fn search(
+        &self,
+        keywords: &[String],
+        num_threads: Option<usize>,
+    ) -> CosmianResult<SearchResults> {
         let lowercase_keywords = keywords
             .iter()
             .map(|kw| kw.to_lowercase())
             .collect::<Vec<_>>();
 
-        let semaphore = Arc::new(Semaphore::new(get_semaphore_limit()));
+        let semaphore = Arc::new(Semaphore::new(get_semaphore_limit(num_threads)));
 
         let mut handles = lowercase_keywords
             .iter()
@@ -184,8 +175,9 @@ impl<const WORD_LENGTH: usize> FindexInstance<WORD_LENGTH> {
         &self,
         bindings: HashMap<Keyword, HashSet<Value>>,
         is_insert: bool,
+        num_threads: Option<usize>,
     ) -> CosmianResult<Keywords> {
-        let semaphore = Arc::new(Semaphore::new(get_semaphore_limit()));
+        let semaphore = Arc::new(Semaphore::new(get_semaphore_limit(num_threads)));
         let written_keywords = bindings.keys().cloned().collect::<Vec<_>>();
 
         let handles = bindings

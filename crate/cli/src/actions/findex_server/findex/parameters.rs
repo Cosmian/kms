@@ -44,6 +44,10 @@ pub struct FindexParameters {
     /// The index ID
     #[clap(long, short = 'i')]
     pub index_id: Uuid,
+
+    /// The number of threads to use for parallel operations
+    #[clap(short = 't', long)]
+    pub num_threads: Option<usize>,
 }
 
 impl FindexParameters {
@@ -57,6 +61,7 @@ impl FindexParameters {
         index_id: Uuid,
         kms_client: &KmsClient,
         server_side_encryption: bool,
+        num_threads: Option<usize>,
     ) -> CosmianResult<Self> {
         async fn generate_key(
             kms_client: &KmsClient,
@@ -94,6 +99,7 @@ impl FindexParameters {
                     .await?,
                 ),
                 index_id,
+                num_threads,
             })
         } else {
             Ok(Self {
@@ -104,6 +110,7 @@ impl FindexParameters {
                 hmac_key_id: None,
                 aes_xts_key_id: None,
                 index_id,
+                num_threads,
             })
         }
     }

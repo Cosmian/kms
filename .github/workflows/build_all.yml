@@ -46,13 +46,13 @@ jobs:
           - distribution: macos-13
             archive-name: macos_intel
             target: x86_64-apple-darwin
-            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server
+            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server --skip test_server_auth_matrix --skip memory_adt
             docker_compose: false
 
           - distribution: macos-14
             archive-name: macos_arm
             target: aarch64-apple-darwin
-            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server
+            skip_services_tests: --skip test_encrypt --skip test_create --skip findex_server --skip test_server_auth_matrix --skip memory_adt
             docker_compose: false
 
     name: ${{ matrix.distribution }}

@@ -1,6 +1,6 @@
 use crate::error::result::CosmianResult;
 use clap::Parser;
-use cosmian_findex_client::RestClientConfig;
+use cosmian_client::RestClientConfig;
 use tracing::info;
 
 /// Logout from the Identity Provider.
