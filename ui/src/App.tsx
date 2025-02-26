@@ -5,6 +5,8 @@ import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
+import CertificateDecryptForm from './CertificateDecrypt'
+import CertificateEncryptForm from './CertificateEncrypt'
 import CertificateExportForm from './CertificateExport'
 import CertificateImportForm from './CertificateImport'
 import CertificateValidateForm from './CertificateValidate'
@@ -162,6 +164,8 @@ function App() {
             <Route path="certificates/revoke" element={<RevokeForm objectType='certificate' />} />
             <Route path="certificates/destroy" element={<DestroyForm objectType='certificate' />} />
             <Route path="certificates/validate" element={<CertificateValidateForm />} />
+            <Route path="certificates/encrypt" element={<CertificateEncryptForm />} />
+            <Route path="certificates/decrypt" element={<CertificateDecryptForm />} />
           </Route>
         </Routes>
       </BrowserRouter>

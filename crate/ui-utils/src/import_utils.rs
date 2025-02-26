@@ -10,6 +10,7 @@ use serde::Deserialize;
 use strum::{EnumIter, EnumString};
 
 #[derive(Debug, Clone, EnumString, ValueEnum)]
+#[strum(serialize_all = "kebab-case")]
 pub enum ImportKeyFormat {
     JsonTtlv,
     Pem,

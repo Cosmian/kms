@@ -14,7 +14,10 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
     },
     requests::{
-        build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request, create_symmetric_key_kmip_object, decrypt_request, encrypt_request, get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request, get_rsa_public_key_request, import_object_request, symmetric_key_create_request
+        build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
+        create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
+        get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
+        get_rsa_public_key_request, import_object_request, symmetric_key_create_request,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -982,6 +985,59 @@ pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> 
     parse_ttlv_response::<ValidateResponse>(response)
 }
 
+#[wasm_bindgen]
+pub fn encrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    plaintext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = encrypt_request(
+        unique_identifier,
+        None,
+        plaintext,
+        None,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn decrypt_certificate_ttlv_request(
+    unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
+    encryption_algorithm: &str,
+) -> Result<JsValue, JsValue> {
+    let encryption_algorithm: RsaEncryptionAlgorithm =
+        RsaEncryptionAlgorithm::from_str(encryption_algorithm)
+            .map_err(|e| JsValue::from(e.to_string()))?;
+    let cryptographic_parameters = encryption_algorithm.to_cryptographic_parameters(HashFn::Sha256);
+    let request = decrypt_request(
+        unique_identifier,
+        None,
+        ciphertext,
+        None,
+        authentication_data,
+        Some(cryptographic_parameters),
+    );
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
 
 // Certify request
 // #[wasm_bindgen]

@@ -6,6 +6,7 @@ import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from 
 
 interface ValidateCertificateFormData {
     certificateBytes?: Uint8Array;
+    certificateContent?: string;
     uniqueIdentifier?: string;
     validityTime?: Date;
 }
@@ -69,7 +70,10 @@ const CertificateValidateForm: React.FC = () => {
                         <Form.Item>
                             <Radio.Group
                                 value={certificateInputType}
-                                onChange={(e) => setCertificateInputType(e.target.value)}
+                                onChange={(e) => {
+                                  setCertificateInputType(e.target.value)
+                                  form.setFieldsValue({ certificateBytes: undefined, certificateContent: undefined, uniqueIdentifier: undefined })
+                                }}
                             >
                                 <Radio.Button value="file">Upload Certificate File</Radio.Button>
                                 <Radio.Button value="text">Paste Certificate Content</Radio.Button>
