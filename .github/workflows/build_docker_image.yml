@@ -60,10 +60,13 @@ jobs:
           platforms: ${{ inputs.platforms }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.9.0
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: ${{ inputs.platforms }}
+
 
       - name: Build and tag docker container
-        uses: docker/build-push-action@v6.14.0
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
