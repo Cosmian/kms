@@ -9,7 +9,7 @@ ENV OPENSSL_DIR=/usr/local/openssl
 WORKDIR /root
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -qq -y \
+    && apt-get install --no-install-recommends -y \
     curl \
     build-essential \
     libssl-dev \
@@ -19,7 +19,6 @@ RUN apt-get update \
     git \
     wget \
     && apt-get -y -q upgrade \
-    && dpkg --configure -a \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
