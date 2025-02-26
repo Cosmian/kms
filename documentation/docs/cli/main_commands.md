@@ -1777,7 +1777,7 @@ Logout from the Identity Provider.
 ### Arguments
 `--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
 
-Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha512-224", "sha512-256", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
 `--data [-d] <DATA>` The data to be hashed in hexadecimal format
 
@@ -1803,11 +1803,11 @@ Possible values:  `"true", "false"`
 
 `--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
 
-Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha512-224", "sha512-256", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
-`--data [-d] <DATA>` The data to be hashed in hexadecimal format
+`--data [-d] <DATA>` The data to be hashed in hexadecimal format. The data to be hashed in hexadecimal format
 
-`--correlation-value [-c] <CORRELATION_VALUE>` Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation)
+`--correlation-value [-c] <CORRELATION_VALUE>` Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation). The correlation value is represented as a hexadecimal string
 
 `--init-indicator [-i] <INIT_INDICATOR>` Initial operation as Boolean
 
@@ -2516,13 +2516,13 @@ Handle Findex server actions
 
 ### Subcommands
 
-**`encrypt-and-index`** [[2.1]](#21-cosmian-findex-server-encrypt-and-index)  Encrypt entries and index the corresponding database UUIDs with the Findex.
+**`index`** [[2.1]](#21-cosmian-findex-server-index)  Create new indexes
 
-**`search-and-decrypt`** [[2.2]](#22-cosmian-findex-server-search-and-decrypt)  Search keywords and decrypt the content of corresponding UUIDs.
+**`encrypt-and-index`** [[2.2]](#22-cosmian-findex-server-encrypt-and-index)  Encrypt entries and index the corresponding database UUIDs with the Findex.
 
-**`index`** [[2.3]](#23-cosmian-findex-server-index)  Create new indexes
+**`search`** [[2.3]](#23-cosmian-findex-server-search)  Search words among encrypted indexes.
 
-**`search`** [[2.4]](#24-cosmian-findex-server-search)  Search words among encrypted indexes.
+**`search-and-decrypt`** [[2.4]](#24-cosmian-findex-server-search-and-decrypt)  Search keywords and decrypt the content of corresponding UUIDs.
 
 **`delete`** [[2.5]](#25-cosmian-findex-server-delete)  Delete indexed keywords
 
@@ -2538,7 +2538,28 @@ Handle Findex server actions
 
 ---
 
-## 2.1 cosmian findex-server encrypt-and-index
+## 2.1 cosmian findex-server index
+
+Create new indexes
+
+### Usage
+`cosmian findex-server index [options]`
+### Arguments
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
+
+`--index-id [-i] <INDEX_ID>` The index ID
+
+`--csv <CSV>` The path to the CSV file containing the data to index
+
+
+
+---
+
+## 2.2 cosmian findex-server encrypt-and-index
 
 Encrypt entries and index the corresponding database UUIDs with the Findex.
 
@@ -2571,7 +2592,28 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [de
 
 ---
 
-## 2.2 cosmian findex-server search-and-decrypt
+## 2.3 cosmian findex-server search
+
+Search words among encrypted indexes.
+
+### Usage
+`cosmian findex-server search [options]`
+### Arguments
+`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
+
+`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
+
+`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
+
+`--index-id [-i] <INDEX_ID>` The index ID
+
+`--keyword <KEYWORD>` The word to search. Can be repeated
+
+
+
+---
+
+## 2.4 cosmian findex-server search-and-decrypt
 
 Search keywords and decrypt the content of corresponding UUIDs.
 
@@ -2597,48 +2639,6 @@ Search keywords and decrypt the content of corresponding UUIDs.
 Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv"` [default: `"aes-gcm"`]
 
 `--authentication-data [-a] <AUTHENTICATION_DATA>` Optional additional authentication data as a hex string. This data needs to be provided back for decryption. This data is ignored with XTS
-
-
-
----
-
-## 2.3 cosmian findex-server index
-
-Create new indexes
-
-### Usage
-`cosmian findex-server index [options]`
-### Arguments
-`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
-
-`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
-
-`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
-
-`--index-id [-i] <INDEX_ID>` The index ID
-
-`--csv <CSV>` The path to the CSV file containing the data to index
-
-
-
----
-
-## 2.4 cosmian findex-server search
-
-Search words among encrypted indexes.
-
-### Usage
-`cosmian findex-server search [options]`
-### Arguments
-`--seed-key-id [-s] <SEED_KEY_ID>` The user findex seed used (to insert, search and delete). The seed is a 32 bytes hex string
-
-`--hmac-key-id [-p] <HMAC_KEY_ID>` Either the seed or the KMS keys (HMAC and AES XTS keys) must be provided. The HMAC key ID used to encrypt the seed
-
-`--aes-xts-key-id [-x] <AES_XTS_KEY_ID>` The AES XTS key ID used to encrypt the index
-
-`--index-id [-i] <INDEX_ID>` The index ID
-
-`--keyword <KEYWORD>` The word to search. Can be repeated
 
 
 
@@ -2701,7 +2701,7 @@ List user's permission. Returns a list of indexes with their permissions
 ### Usage
 `cosmian findex-server permissions list [options]`
 ### Arguments
-`--user <USER>` The user identifier to allow
+`--user [-u] <USER>` The user identifier to allow
 
 
 

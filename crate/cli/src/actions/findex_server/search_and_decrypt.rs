@@ -1,20 +1,20 @@
 use crate::{
+    actions::findex_server::findex::findex_instance::FindexInstance,
     cli_bail, cli_error,
-    error::result::{CliResultHelper, CosmianResult},
+    error::result::{CosmianResult, CosmianResultHelper},
 };
 use clap::Parser;
-use cosmian_findex_cli::{
-    actions::findex::{findex_instance::FindexInstance, parameters::FindexParameters},
-    reexports::{
-        cosmian_findex_client::RestClient,
-        cosmian_findex_structs::{Uuids, CUSTOM_WORD_LENGTH},
-    },
+use cosmian_findex_client::{
+    reexport::cosmian_findex_structs::{Uuids, CUSTOM_WORD_LENGTH},
+    RestClient,
 };
 use cosmian_kms_cli::{
     actions::symmetric::{DataEncryptionAlgorithm, DecryptAction},
     reexport::cosmian_kms_client::KmsClient,
 };
 use tracing::trace;
+
+use super::findex::parameters::FindexParameters;
 
 /// Search keywords and decrypt the content of corresponding UUIDs.
 #[derive(Parser, Debug)]
@@ -65,10 +65,9 @@ pub struct SearchAndDecryptAction {
 }
 
 impl SearchAndDecryptAction {
-    #[allow(clippy::print_stdout)]
     pub(crate) async fn run(
         &self,
-        rest_client: &RestClient,
+        rest_client: RestClient,
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<Vec<String>> {
         // Either seed key is required or both hmac_key_id and aes_xts_key_id are required
@@ -78,7 +77,7 @@ impl SearchAndDecryptAction {
         }
 
         let findex_instance = FindexInstance::<CUSTOM_WORD_LENGTH>::instantiate_findex(
-            rest_client,
+            rest_client.clone(),
             kms_rest_client.clone(),
             self.findex_parameters.clone().instantiate_keys()?,
         )
@@ -142,8 +141,6 @@ impl SearchAndDecryptAction {
             let decrypted_record_str = std::str::from_utf8(&decrypted_record)?;
             results.push(decrypted_record_str.to_string());
         }
-
-        println!("Decrypted records: {results:?}");
 
         Ok(results)
     }

@@ -1,14 +1,3 @@
-=== "Ubuntu 20.04"
-
-    Download package and install it:
-
-    ```console title="On local machine"
-    sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/cli/0.2.0/ubuntu-20.04/cosmian-cli_0.2.0-1_amd64.deb
-    sudo apt install ./cosmian-cli_0.2.0-1_amd64.deb
-    cosmian --version
-    ```
-
 === "Ubuntu 22.04"
 
     Download package and install it:

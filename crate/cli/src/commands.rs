@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use cosmian_findex_cli::{reexports::cosmian_findex_client::RestClient, CoreFindexActions};
+use cosmian_findex_client::RestClient;
 use cosmian_kms_cli::{reexport::cosmian_kms_client::KmsClient, KmsActions};
 use cosmian_logger::log_init;
 use tracing::{info, trace};
 
 use crate::{
-    actions::{findex::FindexActions, markdown::MarkdownAction},
+    actions::{findex_server::actions::FindexActions, markdown::MarkdownAction},
     cli_error,
     config::ClientConf,
     error::result::CosmianResult,
@@ -128,22 +128,18 @@ pub async fn cosmian_main() -> CosmianResult<()> {
             config.kms_config = kms_rest_client.config.clone();
         }
         CliCommands::FindexServer(findex_actions) => {
-            let mut findex_config = config
+            let findex_config = config
                 .findex_config
                 .as_ref()
                 .ok_or_else(|| {
                     cli_error!("Findex server configuration is missing in the configuration file")
                 })?
                 .clone();
-            let mut findex_rest_client = RestClient::new(&findex_config)?;
-            findex_actions
-                .run(
-                    &mut findex_rest_client,
-                    &kms_rest_client,
-                    &mut findex_config,
-                )
+            let findex_rest_client = RestClient::new(&findex_config)?;
+            let new_findex_config = findex_actions
+                .run(findex_rest_client, kms_rest_client, findex_config)
                 .await?;
-            config.findex_config = Some(findex_config);
+            config.findex_config = Some(new_findex_config);
         }
     }
 
@@ -152,9 +148,7 @@ pub async fn cosmian_main() -> CosmianResult<()> {
         CliCommands::Kms(KmsActions::Login(_) | KmsActions::Logout(_)) => {
             config.save(cli.conf_path.clone())?;
         }
-        CliCommands::FindexServer(FindexActions::Findex(
-            CoreFindexActions::Login(_) | CoreFindexActions::Logout(_),
-        )) => {
+        CliCommands::FindexServer(FindexActions::Login(_) | FindexActions::Logout(_)) => {
             config.save(cli.conf_path)?;
         }
         _ => {}

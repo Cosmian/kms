@@ -3,12 +3,13 @@ use std::str::Utf8Error;
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
-use cosmian_findex_cli::reexports::{
-    cosmian_findex_client::{
-        reexport::cosmian_findex::{self, Address, ADDRESS_LENGTH},
-        ClientError,
+use cosmian_findex_client::{
+    reexport::{
+        cosmian_findex::{self, Address, ADDRESS_LENGTH},
+        cosmian_findex_structs::StructsError,
+        cosmian_http_client::HttpClientError,
     },
-    cosmian_findex_structs::StructsError,
+    ClientError,
 };
 use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientError;
 use thiserror::Error;
@@ -78,13 +79,16 @@ pub enum CosmianError {
     KmsCliError(#[from] cosmian_kms_cli::error::CliError),
 
     #[error(transparent)]
+    KmipError(#[from] cosmian_kms_cli::reexport::cosmian_kms_client::cosmian_kmip::KmipError),
+
+    #[error(transparent)]
+    HttpClientError(#[from] HttpClientError),
+
+    #[error(transparent)]
     Findex(#[from] cosmian_findex::Error<Address<ADDRESS_LENGTH>>),
 
     #[error(transparent)]
     FindexClientConfig(#[from] ClientError),
-
-    #[error(transparent)]
-    FindexCliError(#[from] cosmian_findex_cli::error::CliError),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
@@ -106,6 +110,9 @@ pub enum CosmianError {
 
     #[error(transparent)]
     FmtError(#[from] std::fmt::Error),
+
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
 
     #[cfg(test)]
     #[error(transparent)]

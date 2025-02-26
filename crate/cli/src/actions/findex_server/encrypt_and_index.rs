@@ -5,14 +5,14 @@ use std::{
 };
 
 use clap::Parser;
-use cosmian_findex_cli::{
-    actions::findex::{findex_instance::FindexInstance, parameters::FindexParameters},
-    reexports::{
-        cosmian_findex_client::{reexport::cosmian_findex::Value, RestClient},
+use cosmian_findex_client::{
+    reexport::{
+        cosmian_findex::Value,
         cosmian_findex_structs::{
             EncryptedEntries, Keyword, KeywordToDataSetsMap, Uuids, CUSTOM_WORD_LENGTH,
         },
     },
+    RestClient,
 };
 use cosmian_kms_cli::{
     actions::symmetric::{DataEncryptionAlgorithm, EncryptAction, KeyEncryptionAlgorithm},
@@ -21,9 +21,12 @@ use cosmian_kms_cli::{
 use tracing::trace;
 
 use crate::{
+    actions::findex_server::findex::findex_instance::FindexInstance,
     cli_bail,
-    error::result::{CliResultHelper, CosmianResult},
+    error::result::{CosmianResult, CosmianResultHelper},
 };
+
+use super::findex::parameters::FindexParameters;
 
 /// Encrypt entries and index the corresponding database UUIDs with the Findex.
 ///
@@ -261,7 +264,7 @@ impl EncryptAndIndexAction {
     #[allow(clippy::print_stdout)]
     pub async fn run(
         &self,
-        rest_client: &RestClient,
+        rest_client: RestClient,
         kms_rest_client: &KmsClient,
     ) -> CosmianResult<Uuids> {
         let nonce = self
