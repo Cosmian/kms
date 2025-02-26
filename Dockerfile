@@ -19,6 +19,7 @@ RUN apt-get update \
     git \
     wget \
     && apt-get -y -q upgrade \
+    && dpkg --configure -a \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
