@@ -1,8 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
-    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -15,20 +14,18 @@ use cosmian_kms_interfaces::{
     AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
     ObjectsStore, PermissionsStore, SessionParams,
 };
+use rawsql::Loader;
 use serde_json::Value;
-use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
-    ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
-};
+use sqlx::{sqlite::SqliteRow, Executor, Pool, Row, Sqlite, Transaction};
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
     db_bail, db_error,
     error::{DbResult, DbResultHelper},
-    impl_migrate,
     stores::{
         locate_query::{query_from_attributes, SqlitePlaceholder},
+        sql::SqlMainStore,
         DBObject, SQLITE_QUERIES,
     },
     DbError,
@@ -70,75 +67,87 @@ fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
 }
 
 #[derive(Clone)]
-pub(crate) struct SqlitePool {
+pub(crate) struct SqlitePool<'p> {
     pool: Pool<Sqlite>,
+    // phantom data to keep the lifetime of the pool
+    _phantom: std::marker::PhantomData<&'p ()>,
 }
 
-impl SqlitePool {
-    /// Instantiate a new `SQLite` database
-    /// and create the appropriate table(s) if need be
-    pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> DbResult<Self> {
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
-            .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true)
-            // disable logging of each query
-            .disable_statement_logging();
+impl<'a, 's: 'a> SqlMainStore<'s, 'a, Sqlite> for SqlitePool<'s> {
+    fn get_pool(&'s self) -> &'a Pool<Sqlite> {
+        &self.pool
+    }
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(
-                u32::try_from(num_cpus::get())
-                    .expect("this conversion cannot fail (or I want that machine)"),
-            )
-            .connect_with(options)
-            .await?;
-
-        let is_new = sqlx::query("SELECT * FROM objects LIMIT 1")
-            .fetch_optional(&pool)
-            .await
-            .is_err();
-
-        sqlx::query(get_sqlite_query!("create-table-parameters"))
-            .execute(&pool)
-            .await?;
-
-        sqlx::query(get_sqlite_query!("create-table-objects"))
-            .execute(&pool)
-            .await?;
-
-        sqlx::query(get_sqlite_query!("create-table-read_access"))
-            .execute(&pool)
-            .await?;
-
-        sqlx::query(get_sqlite_query!("create-table-tags"))
-            .execute(&pool)
-            .await?;
-
-        // Old table context used between version 4.13.0 and 4.22.1
-        let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
-
-        if clear_database {
-            clear_database_(&pool).await?;
-        }
-
-        let sqlite_pool = Self { pool };
-
-        if is_new {
-            sqlite_pool
-                .set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            sqlite_pool.set_db_state(DbState::Ready).await?;
-        } else {
-            // perform any necessary migration now
-            sqlite_pool.migrate().await?;
-        }
-        Ok(sqlite_pool)
+    fn get_loader(&'s self) -> &'a Loader {
+        &SQLITE_QUERIES
     }
 }
 
+// impl SqlitePool {
+//     /// Instantiate a new `SQLite` database
+//     /// and create the appropriate table(s) if need be
+//     pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> DbResult<Self> {
+//         let options = SqliteConnectOptions::new()
+//             .filename(path)
+//             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
+//             .busy_timeout(Duration::from_secs(120))
+//             .create_if_missing(true)
+//             // disable logging of each query
+//             .disable_statement_logging();
+//
+//         let pool = SqlitePoolOptions::new()
+//             .max_connections(
+//                 u32::try_from(num_cpus::get())
+//                     .expect("this conversion cannot fail (or I want that machine)"),
+//             )
+//             .connect_with(options)
+//             .await?;
+//
+//         let is_new = sqlx::query("SELECT * FROM objects LIMIT 1")
+//             .fetch_optional(&pool)
+//             .await
+//             .is_err();
+//
+//         sqlx::query(get_sqlite_query!("create-table-parameters"))
+//             .execute(&pool)
+//             .await?;
+//
+//         sqlx::query(get_sqlite_query!("create-table-objects"))
+//             .execute(&pool)
+//             .await?;
+//
+//         sqlx::query(get_sqlite_query!("create-table-read_access"))
+//             .execute(&pool)
+//             .await?;
+//
+//         sqlx::query(get_sqlite_query!("create-table-tags"))
+//             .execute(&pool)
+//             .await?;
+//
+//         // Old table context used between version 4.13.0 and 4.22.1
+//         let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
+//
+//         if clear_database {
+//             clear_database_(&pool).await?;
+//         }
+//
+//         let sqlite_pool = Self { pool };
+//
+//         if is_new {
+//             sqlite_pool
+//                 .set_current_db_version(env!("CARGO_PKG_VERSION"))
+//                 .await?;
+//             sqlite_pool.set_db_state(DbState::Ready).await?;
+//         } else {
+//             // perform any necessary migration now
+//             sqlite_pool.migrate().await?;
+//         }
+//         Ok(sqlite_pool)
+//     }
+// }
+
 #[async_trait(?Send)]
-impl ObjectsStore for SqlitePool {
+impl<'s> ObjectsStore for SqlitePool<'s> {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
     }
@@ -328,7 +337,7 @@ impl ObjectsStore for SqlitePool {
 }
 
 #[async_trait(?Send)]
-impl PermissionsStore for SqlitePool {
+impl<'s> PermissionsStore for SqlitePool<'s> {
     async fn list_user_operations_granted(
         &self,
         user: &str,
@@ -889,134 +898,133 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-impl_migrate!(SqlitePool, get_sqlite_query);
+// impl_migrate!(SqlitePool, get_sqlite_query);
 
-//
-// #[async_trait(?Send)]
-// impl Migrate for SqlitePool {
-//     async fn get_db_state(&self) -> InterfaceResult<Option<DbState>> {
-//         match sqlx::query(get_sqlite_query!("select-parameter"))
-//             .bind("db_state")
-//             .fetch_optional(&self.pool)
-//             .await
-//             .map_err(DbError::from)?
-//         {
-//             None => {
-//                 trace!("No state found, old KMS version");
-//                 Ok(None)
-//             }
-//             Some(row) => {
-//                 let json = row.get::<String, _>(0);
-//                 Ok(Some(
-//                     serde_json::from_str(&json).context("failed deserializing the DB state")?,
-//                 ))
-//             }
-//         }
-//     }
-//
-//     async fn set_db_state(&self, state: DbState) -> InterfaceResult<()> {
-//         sqlx::query(get_sqlite_query!("upsert-parameter"))
-//             .bind("db_state")
-//             .bind(serde_json::to_string(&state).context("failed serializing the DB state")?)
-//             .execute(&self.pool)
-//             .await
-//             .map_err(DbError::from)?;
-//         Ok(())
-//     }
-//
-//     async fn get_current_db_version(&self) -> InterfaceResult<Option<String>> {
-//         match sqlx::query(get_sqlite_query!("select-parameter"))
-//             .bind("db_version")
-//             .fetch_optional(&self.pool)
-//             .await
-//             .map_err(DbError::from)?
-//         {
-//             None => {
-//                 trace!("No state found, old KMS version");
-//                 Ok(None)
-//             }
-//             Some(row) => Ok(Some(row.get::<String, _>(0))),
-//         }
-//     }
-//
-//     async fn set_current_db_version(&self, version: &str) -> InterfaceResult<()> {
-//         sqlx::query(get_sqlite_query!("upsert-parameter"))
-//             .bind("db_version")
-//             .bind(version)
-//             .execute(&self.pool)
-//             .await
-//             .map_err(DbError::from)?;
-//         Ok(())
-//     }
-//
-//     async fn migrate_from_4_12_0_to_4_13_0(&self) -> InterfaceResult<()> {
-//         trace!("Migrating from 4.12.0 to 4.13.0");
-//
-//         // Add the column attributes to the objects table
-//         if sqlx::query("SELECT attributes from objects")
-//             .execute(&self.pool)
-//             .await
-//             .is_ok()
-//         {
-//             trace!("Column attributes already exists, nothing to do");
-//             return Ok(());
-//         }
-//
-//         trace!("Column attributes does not exist, adding it");
-//         sqlx::query(get_sqlite_query!("add-column-attributes"))
-//             .execute(&self.pool)
-//             .await
-//             .map_err(DbError::from)?;
-//
-//         // Select all objects and extract the KMIP attributes to be stored in the new column
-//         let rows = sqlx::query("SELECT * FROM objects")
-//             .fetch_all(&self.pool)
-//             .await
-//             .map_err(DbError::from)?;
-//
-//         let mut operations = Vec::with_capacity(rows.len());
-//         for row in rows {
-//             let uid = row.get::<String, _>(0);
-//             let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
-//                 .context("migrate: failed deserializing the object")?;
-//             let object = db_object.object;
-//             trace!(
-//                 "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
-//                 object.object_type(),
-//                 uid
-//             );
-//             let attributes = match object.attributes() {
-//                 Ok(attrs) => attrs.clone(),
-//                 Err(_error) => {
-//                     // For example, a Certificate object has no KMIP-attribute
-//                     Attributes::default()
-//                 }
-//             };
-//             let tags = retrieve_tags_(&uid, &self.pool).await?;
-//             operations.push(AtomicOperation::UpdateObject((
-//                 uid,
-//                 object,
-//                 attributes,
-//                 Some(tags),
-//             )));
-//         }
-//
-//         let mut tx = (&self.pool).begin().await.map_err(DbError::from)?;
-//         match atomic_(
-//             "this user is not used to update objects",
-//             &operations,
-//             &mut tx,
-//         )
-//         .await
-//         {
-//             Ok(_v) => {
-//                 tx.commit().await.map_err(DbError::from)?;
-//                 Ok(())
-//             }
-//             Err(e) => {
-//                 tx.rollback().await.context("transaction failed")?;
-//                 Err(InterfaceError::from(e))
-//             }
-//         }
-//     }
-// }
+#[async_trait(?Send)]
+impl<'s> Migrate for SqlitePool<'s> {
+    async fn get_db_state(&self) -> InterfaceResult<Option<DbState>> {
+        match sqlx::query(get_sqlite_query!("select-parameter"))
+            .bind("db_state")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(DbError::from)?
+        {
+            None => {
+                trace!("No state found, old KMS version");
+                Ok(None)
+            }
+            Some(row) => {
+                let json = row.get::<String, _>(0);
+                Ok(Some(
+                    serde_json::from_str(&json).context("failed deserializing the DB state")?,
+                ))
+            }
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> InterfaceResult<()> {
+        sqlx::query(get_sqlite_query!("upsert-parameter"))
+            .bind("db_state")
+            .bind(serde_json::to_string(&state).context("failed serializing the DB state")?)
+            .execute(&self.pool)
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> InterfaceResult<Option<String>> {
+        match sqlx::query(get_sqlite_query!("select-parameter"))
+            .bind("db_version")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(DbError::from)?
+        {
+            None => {
+                trace!("No state found, old KMS version");
+                Ok(None)
+            }
+            Some(row) => Ok(Some(row.get::<String, _>(0))),
+        }
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> InterfaceResult<()> {
+        sqlx::query(get_sqlite_query!("upsert-parameter"))
+            .bind("db_version")
+            .bind(version)
+            .execute(&self.pool)
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn migrate_from_4_12_0_to_4_13_0(&self) -> InterfaceResult<()> {
+        trace!("Migrating from 4.12.0 to 4.13.0");
+
+        // Add the column attributes to the objects table
+        if sqlx::query("SELECT attributes from objects")
+            .execute(&self.pool)
+            .await
+            .is_ok()
+        {
+            trace!("Column attributes already exists, nothing to do");
+            return Ok(());
+        }
+
+        trace!("Column attributes does not exist, adding it");
+        sqlx::query(get_sqlite_query!("add-column-attributes"))
+            .execute(&self.pool)
+            .await
+            .map_err(DbError::from)?;
+
+        // Select all objects and extract the KMIP attributes to be stored in the new column
+        let rows = sqlx::query("SELECT * FROM objects")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(DbError::from)?;
+
+        let mut operations = Vec::with_capacity(rows.len());
+        for row in rows {
+            let uid = row.get::<String, _>(0);
+            let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+                .context("migrate: failed deserializing the object")?;
+            let object = db_object.object;
+            trace!(
+                "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
+                object.object_type(),
+                uid
+            );
+            let attributes = match object.attributes() {
+                Ok(attrs) => attrs.clone(),
+                Err(_error) => {
+                    // For example, a Certificate object has no KMIP-attribute
+                    Attributes::default()
+                }
+            };
+            let tags = retrieve_tags_(&uid, &self.pool).await?;
+            operations.push(AtomicOperation::UpdateObject((
+                uid,
+                object,
+                attributes,
+                Some(tags),
+            )));
+        }
+
+        let mut tx = (&self.pool).begin().await.map_err(DbError::from)?;
+        match atomic_(
+            "this user is not used to update objects",
+            &operations,
+            &mut tx,
+        )
+        .await
+        {
+            Ok(_v) => {
+                tx.commit().await.map_err(DbError::from)?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                Err(InterfaceError::from(e))
+            }
+        }
+    }
+}
