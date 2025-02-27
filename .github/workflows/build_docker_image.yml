@@ -23,8 +23,8 @@ env:
 jobs:
   build-and-push-image:
     name: ${{ inputs.prefix }} Image
-    runs-on: ubuntu-22.04
-    container: docker:19.03.15
+    runs-on: ubuntu-24.04
+    container: docker:28.0.0
 
     steps:
       - name: Display cpuinfo
@@ -53,11 +53,6 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: ${{ inputs.platforms }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
