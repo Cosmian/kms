@@ -7,15 +7,16 @@ on:
       prefix:
         required: true
         type: string
-      dockerfile:
-        required: true
-        type: string
       registry-image:
         required: true
         type: string
       platforms:
         required: true
         type: string
+      fips:
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -56,9 +57,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          platforms: ${{ inputs.platforms }}
-
 
       - name: Build and tag docker container
         uses: docker/build-push-action@v6
@@ -68,8 +66,9 @@ jobs:
           platforms: ${{ inputs.platforms }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: ${{ inputs.dockerfile }}
           network: host
+          build-args: |
+            FIPS=${{ inputs.fips }}
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
