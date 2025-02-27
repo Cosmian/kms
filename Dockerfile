@@ -1,19 +1,14 @@
-FROM rust:1.85.0-slim-bullseye AS builder
+FROM rust:1.85.0-bullseye AS builder
 
 LABEL version="4.22.1"
 LABEL name="Cosmian KMS docker container"
 
-ENV DEBIAN_FRONTEND=noninteractive
 ENV OPENSSL_DIR=/usr/local/openssl
 
 # Add build argument for FIPS mode
 ARG FIPS=false
 
 WORKDIR /root
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y \
-    wget
 
 COPY . /root/kms
 
@@ -34,10 +29,6 @@ RUN if [ "$FIPS" = "true" ]; then \
 # KMS server
 #
 FROM debian:bullseye-slim AS kms-server
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/kms/target/release/cosmian_kms        /usr/bin/cosmian_kms
 COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
