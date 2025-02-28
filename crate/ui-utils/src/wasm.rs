@@ -6,13 +6,14 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
         CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-        DecryptResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-        GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse, Validate,
+        DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy, DestroyResponse,
+        EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, ImportResponse,
+        LocateResponse, RevokeResponse, SetAttribute, SetAttributeResponse, Validate,
         ValidateResponse,
     },
     kmip_types::{
-        CertificateType, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, LinkType,
-        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
+        AttributeReference, CertificateType, CryptographicAlgorithm, CryptographicParameters,
+        KeyFormatType, LinkType, LinkedObjectIdentifier, RecommendedCurve, Tag, UniqueIdentifier,
     },
     requests::{
         build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -32,6 +33,7 @@ use x509_cert::{
 use zeroize::Zeroizing;
 
 use crate::{
+    attributes_utils::{build_selected_attribute, parse_selected_attributes, CLinkType},
     certificate_utils::{build_certify_request, Algorithm},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request,
@@ -560,26 +562,6 @@ pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsV
         })
 }
 
-// Get attributes request
-#[wasm_bindgen]
-pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
-    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
-    let request = GetAttributes {
-        unique_identifier: Some(unique_identifier),
-        attribute_references: None,
-    };
-    to_ttlv(&request)
-        .map_err(|e| JsValue::from(e.to_string()))
-        .and_then(|objects| {
-            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
-        })
-}
-
-#[wasm_bindgen]
-pub fn parse_get_attributes_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<GetAttributesResponse>(response)
-}
-
 // Import request
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
@@ -1088,4 +1070,133 @@ pub fn certify_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CertifyResponse>(response)
+}
+
+// Get attributes request
+#[wasm_bindgen]
+pub fn get_attributes_ttlv_request(
+    unique_identifier: String,
+    attribute_tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let attribute_tags: Result<Vec<Tag>, JsValue> = attribute_tags
+        .into_iter()
+        .map(|tag| Tag::from_str(&tag).map_err(|e| JsValue::from(e.to_string())))
+        .collect();
+
+    let attribute_tags = attribute_tags?;
+    let mut references: Vec<AttributeReference> = Vec::with_capacity(attribute_tags.len());
+    for tag in &attribute_tags {
+        references.push(AttributeReference::Standard(*tag));
+    }
+    let request = GetAttributes {
+        unique_identifier: Some(unique_identifier),
+        attribute_references: Some(references),
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_get_attributes_ttlv_response(
+    response: &str,
+    attribute_tags: Vec<String>,
+    attribute_link_types: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let attribute_tags: Result<Vec<Tag>, JsValue> = attribute_tags
+        .into_iter()
+        .map(|tag| Tag::from_str(&tag).map_err(|e| JsValue::from(e.to_string())))
+        .collect();
+    let attribute_tags = attribute_tags?;
+    let attribute_link_types: Result<Vec<CLinkType>, JsValue> = attribute_link_types
+        .into_iter()
+        .map(|tag| CLinkType::from_str(&tag).map_err(|e| JsValue::from(e.to_string())))
+        .collect();
+    let attribute_link_types = attribute_link_types?;
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let GetAttributesResponse {
+        unique_identifier: _,
+        attributes,
+    } = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let results = parse_selected_attributes(&attributes, &attribute_tags, &attribute_link_types)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(serde_wasm_bindgen::to_value(&results)?)
+}
+
+// Set attributes request
+#[wasm_bindgen]
+pub fn set_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+    attribute_value: String,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let attribute = build_selected_attribute(attribute_name, attribute_value)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = SetAttribute {
+        unique_identifier: Some(unique_identifier),
+        new_attribute: attribute,
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_set_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<SetAttributeResponse>(response)
+}
+
+// Set attributes request
+#[wasm_bindgen]
+pub fn delete_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+) -> Result<JsValue, JsValue> {
+    // use web_sys::console;
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    // console::log_1(&"two".into());
+    let request = match attribute_name {
+        "public_key_id"
+        | "private_key_id"
+        | "certificate_id"
+        | "pkcs12_certificate_id"
+        | "pkcs12_password_certificate"
+        | "parent_id"
+        | "child_id" => {
+            let attribute = build_selected_attribute(attribute_name, String::new())
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: Some(attribute),
+                attribute_references: None,
+            }
+        }
+        _ => {
+            let attribute_tag =
+                Tag::from_str(attribute_name).map_err(|e| JsValue::from(e.to_string()))?;
+            let attribute_reference = AttributeReference::Standard(attribute_tag);
+            let references = vec![attribute_reference];
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: None,
+                attribute_references: Some(references),
+            }
+        }
+    };
+    to_ttlv(&request)
+        .map_err(|e| JsValue::from(e.to_string()))
+        .and_then(|objects| {
+            serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        })
+}
+
+#[wasm_bindgen]
+pub fn parse_delete_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<DeleteAttributeResponse>(response)
 }
