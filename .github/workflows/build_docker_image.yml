@@ -7,15 +7,16 @@ on:
       prefix:
         required: true
         type: string
-      dockerfile:
-        required: true
-        type: string
       registry-image:
         required: true
         type: string
       platforms:
         required: true
         type: string
+      fips:
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -23,8 +24,8 @@ env:
 jobs:
   build-and-push-image:
     name: ${{ inputs.prefix }} Image
-    runs-on: ubuntu-22.04
-    container: docker:19.03.15
+    runs-on: ubuntu-24.04
+    container: docker:28.0.0
 
     steps:
       - name: Display cpuinfo
@@ -65,8 +66,9 @@ jobs:
           platforms: ${{ inputs.platforms }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: ${{ inputs.dockerfile }}
           network: host
+          build-args: |
+            FIPS=${{ inputs.fips }}
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |

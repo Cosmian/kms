@@ -9,7 +9,7 @@ if [ -z "$OPENSSL_DIR" ]; then
 fi
 
 if [ -z "$OS_NAME" ]; then
-    OS_NAME=ubuntu_22_04
+    OS_NAME=ubuntu_20_04
 else
     OS_NAME=${OS_NAME#fips_}
 fi

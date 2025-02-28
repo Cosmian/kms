@@ -16,6 +16,7 @@ on:
 
 jobs:
   pyo3-test-linux:
+    name: ${{ inputs.fips }} KMS Python tests
     services:
       kms:
         image: ${{ inputs.kms-version }}

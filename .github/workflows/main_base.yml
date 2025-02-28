@@ -50,18 +50,18 @@ jobs:
     uses: ./.github/workflows/build_docker_image.yml
     with:
       prefix: ''
-      dockerfile: Dockerfile
       registry-image: ghcr.io/cosmian/kms
       platforms: ${{ inputs.platforms }}
+      fips: false
 
   fips-image:
     name: FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
       prefix: FIPS
-      dockerfile: Dockerfile.fips
       registry-image: ghcr.io/cosmian/kms-fips
       platforms: ${{ inputs.platforms }}
+      fips: true
 
   ##############################################################################
   ### Releases
