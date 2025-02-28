@@ -4,8 +4,8 @@ use std::{
 };
 
 use serde::{
-    de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
+    de::{self, MapAccess, Visitor},
 };
 use strum::Display;
 use zeroize::Zeroizing;
@@ -329,6 +329,8 @@ impl Operation {
     }
 }
 
+/// Import
+///
 /// This operation requests the server to Import a Managed Object specified by
 /// its Unique Identifier. The request specifies the object being imported and
 /// all the attributes to be assigned to the object. The attribute rules for
@@ -510,6 +512,8 @@ impl Display for ImportResponse {
     }
 }
 
+/// Certify
+///
 /// This request is used to generate a Certificate object for a public key. This
 /// request supports the certification of a new public key, as well as the
 /// certification of a public key that has already been certified (i.e.,
@@ -593,6 +597,8 @@ impl Display for CertifyResponse {
     }
 }
 
+/// Create
+///
 /// This operation requests the server to generate a new symmetric key or
 /// generate Secret Data as aManaged Cryptographic Object. The request contains
 /// information about the type of object being created, and some of the
@@ -642,6 +648,8 @@ impl Display for CreateResponse {
     }
 }
 
+/// `CreateKeyPair`
+///
 /// This operation requests the server to generate a new public/private key pair
 /// and register the two corresponding new Managed Cryptographic Object
 /// The request contains attributes to be assigned to the objects (e.g.,
@@ -754,6 +762,8 @@ pub struct DerivationParameters {
     iteration_count: Option<i32>,
 }
 
+/// `DeriveKey`
+///
 /// This request is used to derive a Symmetric Key or Secret Data object from
 /// keys or Secret Data objects that are already known to the key management
 /// system. The request SHALL only apply to Managed Objects that have the Derive
@@ -782,6 +792,8 @@ pub struct DeriveKey {
     pub attributes: Attributes,
 }
 
+/// Export
+///
 /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
 /// together with its attributes.
 /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
@@ -1466,6 +1478,8 @@ impl Display for DecryptResponse {
     }
 }
 
+/// Locate
+///
 /// This operation requests that the server search for one or more Managed
 /// Objects, depending on the attributes specified in the request. All attributes
 /// are allowed to be used. The request MAY contain a Maximum Items field, which
@@ -1614,6 +1628,8 @@ impl Display for LocateResponse {
     }
 }
 
+/// Revoke
+///
 /// This operation requests the server to revoke a Managed Cryptographic Object
 /// or an Opaque Object. The request contains a reason for the revocation (e.g.,
 /// "key compromise", "cessation of operation", etc.). The operation has one of
@@ -1732,6 +1748,8 @@ impl Display for ReKeyResponse {
     }
 }
 
+/// `RekeyKeyPair`
+///
 /// This request is used to generate a replacement key pair for an existing
 /// public/private key pair. It is analogous to the Create Key Pair operation,
 /// except that attributes of the replacement key pair are copied from the
@@ -1995,6 +2013,8 @@ impl Display for MacResponse {
     }
 }
 
+/// Validate
+///
 /// This operation requests the server to validate a certificate chain and return
 /// information on its validity. Only a single certificate chain SHALL be
 /// included in each request.

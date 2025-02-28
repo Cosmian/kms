@@ -1,6 +1,6 @@
 # Specifies which edition is used by the parser.
 # Default value: "2015"
-edition = "2021"
+style_edition = "2024"
 
 # How imports should be grouped into use statements. Imports will be merged or split to the configured level of granularity.
 # Default value: Preserve
@@ -43,10 +43,6 @@ unstable_features = true
 # Use field initialize shorthand if possible.
 # Default value: false
 use_field_init_shorthand = true
-
-# Which version of the formatting rules to use. Version::One is backwards-compatible with Rustfmt 1.0. Other versions are only backwards compatible within a major version number.
-# Default value: "One"
-version = "Two"
 
 # The following rust files listing have been made in october 2021.
 # This listing allows us first to ignore all rust files formmatting.

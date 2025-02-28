@@ -4,7 +4,9 @@ use num_bigint_dig::BigUint;
 use serde::Deserialize;
 use zeroize::Zeroize;
 
-/// Holds a big integer secret information. Wraps around `BigUint` type which is
+/// Holds a big integer secret information.
+///
+/// Wraps around `BigUint` type which is
 /// essentially a pointer on the heap. Guarantees to be zeroized on drop with
 /// feature `zeroize` enabled from `num_bigint_dig` crate.
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize)]

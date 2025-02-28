@@ -1,14 +1,14 @@
 #![allow(clippy::indexing_slicing)]
 use serde::{
-    de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
+    de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
 };
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
 use crate::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
-    ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
+    ttlv::{TTLV, TTLVEnumeration, TTLValue, error::TtlvError, to_u32_digits},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;
@@ -130,9 +130,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'de> {
     {
         trace!(
             "deserialize_any  {:?}:  {:?} -> {:?}",
-            self.deserializing,
-            self.index,
-            self.inputs
+            self.deserializing, self.index, self.inputs
         );
         if self.deserializing == Deserializing::ByteString {
             return visitor.visit_u8(self.get_bytes()?[self.index - 1])

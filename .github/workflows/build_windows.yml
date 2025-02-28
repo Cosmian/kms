@@ -22,7 +22,9 @@ jobs:
       - name: Print ENV
         run: printenv
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -81,9 +83,8 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
-            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe
+            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian.exe
             target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms.exe
-            target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms_pkcs11.dll
             fips.dll
             legacy.dll
           retention-days: 1
@@ -109,8 +110,8 @@ jobs:
           Copy-Item -Path legacy.dll -Destination C:/Windows/System32/OpenSSL/lib/ossl-modules/legacy.dll
           Get-ChildItem -Recurse C:/Windows/System32/OpenSSL
 
-      - name: Launch ckms and cosmian_kms
+      - name: Launch cosmian and cosmian_kms
         run: |
           pwd
-          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/ckms.exe -V
+          ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian.exe -V
           ./target/x86_64-pc-windows-msvc/${{ inputs.debug_or_release }}/cosmian_kms.exe --info

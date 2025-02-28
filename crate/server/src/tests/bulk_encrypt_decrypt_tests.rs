@@ -1,4 +1,5 @@
 use cosmian_kmip::{
+    KmipError,
     kmip_2_1::{
         extra::BulkData,
         kmip_objects::ObjectType,
@@ -10,7 +11,6 @@ use cosmian_kmip::{
             CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
         },
     },
-    KmipError,
 };
 use uuid::Uuid;
 
@@ -18,6 +18,7 @@ use crate::{error::KmsError, result::KResult, tests::test_utils};
 
 const NUM_MESSAGES: usize = 1000;
 
+#[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 #[allow(clippy::panic_in_result_fn)]
 async fn bulk_encrypt_decrypt() -> KResult<()> {

@@ -17,11 +17,11 @@ use core::fmt;
 
 use num_bigint_dig::BigUint;
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct, Serializer},
-    Deserialize, Serialize,
 };
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::error::result::KmipResult;
 

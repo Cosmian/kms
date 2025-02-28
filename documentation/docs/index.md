@@ -62,4 +62,4 @@ The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
   package
 - Pre-built [binaries](https://package.cosmian.com/cli/) for multiple operating systems (Linux, Windows, MacOS)
 
-**Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.
+**Note:** `cosmian` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.

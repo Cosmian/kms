@@ -7,12 +7,12 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_base_hsm::{
-    test_helpers::{get_hsm_password, initialize_logging},
     AesKeySize, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, SlotManager,
+    test_helpers::{get_hsm_password, initialize_logging},
 };
 use cosmian_kms_interfaces::{HsmObjectFilter, KeyMaterial, KeyType};
 use libloading::Library;
-use pkcs11_sys::{CKF_OS_LOCKING_OK, CKR_OK, CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR};
+use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 use tracing::info;
 use uuid::Uuid;
 
@@ -27,24 +27,24 @@ fn get_slot() -> HResult<Arc<SlotManager>> {
 }
 
 #[test]
-fn test_all() -> HResult<()> {
+fn test_hsm_all() -> HResult<()> {
     test_hsm_get_info()?;
-    test_destroy_all()?;
-    test_generate_aes_key()?;
-    test_generate_rsa_keypair()?;
-    test_rsa_key_wrap()?;
-    test_rsa_pkcs_encrypt()?;
-    test_rsa_oaep_encrypt()?;
-    test_aes_gcm_encrypt()?;
-    multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_get_key_metadata()?;
-    test_list_objects()?;
-    test_destroy_all()?;
+    test_hsm_destroy_all()?;
+    test_hsm_generate_aes_key()?;
+    test_hsm_generate_rsa_keypair()?;
+    test_hsm_rsa_key_wrap()?;
+    test_hsm_rsa_pkcs_encrypt()?;
+    test_hsm_rsa_oaep_encrypt()?;
+    test_hsm_aes_gcm_encrypt()?;
+    test_hsm_multi_threaded_rsa_encrypt_decrypt_test()?;
+    test_hsm_get_key_metadata()?;
+    test_hsm_list_objects()?;
+    test_hsm_destroy_all()?;
     Ok(())
 }
 
 #[test]
-fn low_level_test() -> HResult<()> {
+fn test_hsm_low_level_test() -> HResult<()> {
     let path = "/lib/libcs_pkcs11_R3.so";
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
@@ -73,7 +73,7 @@ fn test_hsm_get_info() -> HResult<()> {
 }
 
 #[test]
-fn test_generate_aes_key() -> HResult<()> {
+fn test_hsm_generate_aes_key() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -115,7 +115,7 @@ fn test_generate_aes_key() -> HResult<()> {
 }
 
 #[test]
-fn test_generate_rsa_keypair() -> HResult<()> {
+fn test_hsm_generate_rsa_keypair() -> HResult<()> {
     initialize_logging();
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk ";
@@ -176,7 +176,7 @@ fn test_generate_rsa_keypair() -> HResult<()> {
 }
 
 #[test]
-fn test_rsa_key_wrap() -> HResult<()> {
+fn test_hsm_rsa_key_wrap() -> HResult<()> {
     initialize_logging();
     let key_id = Uuid::new_v4().to_string();
     let slot = get_slot()?;
@@ -199,7 +199,7 @@ fn test_rsa_key_wrap() -> HResult<()> {
 }
 
 #[test]
-fn test_rsa_pkcs_encrypt() -> HResult<()> {
+fn test_hsm_rsa_pkcs_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -221,7 +221,7 @@ fn test_rsa_pkcs_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_rsa_oaep_encrypt() -> HResult<()> {
+fn test_hsm_rsa_oaep_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -243,7 +243,7 @@ fn test_rsa_oaep_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn test_aes_gcm_encrypt() -> HResult<()> {
+fn test_hsm_aes_gcm_encrypt() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -272,7 +272,7 @@ fn test_aes_gcm_encrypt() -> HResult<()> {
 }
 
 #[test]
-fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
+fn test_hsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     initialize_logging();
 
     // Initialize the HSM once and share it across threads
@@ -314,7 +314,7 @@ fn multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 }
 
 #[test]
-fn test_list_objects() -> HResult<()> {
+fn test_hsm_list_objects() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -373,7 +373,7 @@ fn test_list_objects() -> HResult<()> {
 }
 
 #[test]
-fn test_get_key_metadata() -> HResult<()> {
+fn test_hsm_get_key_metadata() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;
@@ -439,7 +439,7 @@ fn test_get_key_metadata() -> HResult<()> {
 }
 
 #[test]
-fn test_destroy_all() -> HResult<()> {
+fn test_hsm_destroy_all() -> HResult<()> {
     initialize_logging();
     let slot = get_slot()?;
     let session = slot.open_session(true)?;

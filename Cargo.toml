@@ -1,21 +1,20 @@
 [workspace]
-default-members = ["crate/cli", "crate/server", "crate/pkcs11/provider"]
+default-members = ["cli/crate/cli", "crate/server"]
 members = [
+  "cli/crate/cli",
+  "cli/crate/kms_client",
+  "cli/crate/pkcs11/module",
+  "cli/crate/pkcs11/provider",
   "crate/access",
-  "crate/cli",
-  "crate/client",
   "crate/crypto",
   "crate/hsm/proteccio",
   "crate/hsm/utimaco",
   "crate/hsm/base_hsm",
   "crate/interfaces",
   "crate/kmip",
-  "crate/pkcs11/module",
-  "crate/pkcs11/provider",
   "crate/pkcs11/sys",
   "crate/server",
   "crate/server_database",
-  "crate/test_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -57,46 +56,60 @@ opt-level = 0
 actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
 actix-web = { version = "4.9", default-features = false }
-async-trait = "0.1.86"
-base64 = "0.22.1"
-bitflags = "2.8.0"
-chrono = "0.4.39"
-clap = { version = "4.5.27", default-features = false }
-cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
+async-trait = "0.1"
+base64 = "0.22"
+bitflags = "2.8"
+chrono = "0.4"
+clap = { version = "4.5", default-features = false }
+cloudproof = "3.0"
+cosmian_crypto_core = { version = "10.0", default-features = false }
+cosmian_cli = { path = "cli/crate/cli" }
+cosmian_findex = { git = "https://github.com/Cosmian/findex", default-features = false, rev = "98fcb6e97054e1bb9dddd7a0d620e27438cb91b7" }
+cosmian_findex_client = { path = "cli/crate/findex_client" }
+cosmian_findex_server = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
+cosmian_findex_structs = { git = "https://www.github.com/Cosmian/findex-server", branch = "develop" }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "release/v15.0.0" }
 cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
   "ser",
 ] }
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
+cosmian_kmip = { path = "crate/kmip" }
+cosmian_kms_access = { path = "crate/access" }
+cosmian_kms_client = { path = "cli/crate/kms_client" }
+cosmian_kms_crypto = { path = "crate/crypto" }
+cosmian_kms_server = { path = "crate/server" }
+cosmian_kms_server_database = { path = "crate/server_database" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 der = { version = "0.7", default-features = false }
 hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
-libloading = "0.8.6"
-log = { version = "0.4.25", default-features = false }
-lru = "0.12.5"
+libloading = "0.8"
+log = { version = "0.4", default-features = false }
+lru = "0.12"
 num_cpus = "1.16"
 num-format = "0.4"
 num-bigint-dig = { version = "0.8", default-features = false }
-openssl = { version = "0.10.70", default-features = false }
+openssl = { version = "0.10", default-features = false }
 pem = "3.0"
+pkcs11_sys = { path = "crate/pkcs11/sys" }
+pyo3 = { version = "0.20", default-features = false }
 rand = "0.9"
 reqwest = { version = "0.11", default-features = false }
-serde = "1.0.217"
-serde_json = "1.0.138"
+serde = "1.0"
+serde_json = "1.0"
 sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.25", default-features = false }
-thiserror = "2.0.11"
-time = "0.3.37"
-tiny-keccak = "2.0.2"
-tempfile = "3.16.0"
+thiserror = "2.0"
+time = "0.3"
+tiny-keccak = "2.0"
+tempfile = "3.16"
 tokio = { version = "1.43", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing = "0.1"
 url = "2.5"
 uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }
-x509-parser = "0.17.0"
+x509-parser = "0.17"
 zeroize = { version = "1.8", default-features = false }

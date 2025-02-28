@@ -4,15 +4,15 @@ use std::{env::temp_dir, path::PathBuf, sync::Arc};
 
 use actix_http::Request;
 use actix_web::{
+    App,
     body::MessageBody,
     dev::{Service, ServiceResponse},
     http::StatusCode,
     test::{self, call_service, read_body},
     web::{self, Data},
-    App,
 };
-use cosmian_kmip::kmip_2_1::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
-use serde::{de::DeserializeOwned, Serialize};
+use cosmian_kmip::kmip_2_1::ttlv::{TTLV, deserializer::from_ttlv, serializer::to_ttlv};
+use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use super::google_cse::utils::google_cse_auth;

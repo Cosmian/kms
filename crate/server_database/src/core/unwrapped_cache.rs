@@ -117,7 +117,6 @@ mod tests {
 
     use cosmian_crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        CsRng,
     };
     use cosmian_kmip::kmip_2_1::{
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
@@ -126,10 +125,10 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{core::main_db_params::MainDbParams, error::DbResult, Database};
+    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
 
     #[tokio::test]
-    #[allow(clippy::unwrap_used)]
+    #[allow(clippy::unwrap_used, clippy::panic_in_result_fn)]
     async fn test_lru_cache() -> DbResult<()> {
         log_init(option_env!("RUST_LOG"));
 

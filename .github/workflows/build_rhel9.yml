@@ -75,8 +75,6 @@ jobs:
       - name: Display cpuinfo
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v3
-
       - name: RHEL 9 prerequisites
         run: |
           set -x
@@ -84,6 +82,11 @@ jobs:
           yum -y install python-devel
           yum -y install wget
           yum -y install perl-IPC-Cmd perl-Digest-SHA1 perl-CPAN perl-devel
+          yum -y install git
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -118,6 +121,7 @@ jobs:
           KMS_SQLITE_PATH: data/shared
 
           REDIS_HOST: redis
+          REDIS_URL: redis://redis:6379
 
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
@@ -143,9 +147,8 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
-            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms
-            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
             target/${{ inputs.target }}/generate-rpm/cosmian_kms_server-*
             ${{ inputs.artifacts }}
           retention-days: 1
@@ -164,7 +167,7 @@ jobs:
       - run: find .
         if: contains(runner.os, 'linux')
 
-      - name: Launch ckms and cosmian_kms
+      - name: Launch cosmian and cosmian_kms
         if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
         run: |
           # The current path should be /home/runner/work/kms/kms
@@ -174,10 +177,10 @@ jobs:
           #   usr/local/openssl/
           #   __w/kms/kms/target/
           KMS_PATH="__w/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian
           chmod u+x ./$KMS_PATH/cosmian_kms
 
-          ./$KMS_PATH/ckms -V
+          ./$KMS_PATH/cosmian -V
 
           # Copy openssl build for FIPS mode
           sudo mkdir /usr/local/openssl

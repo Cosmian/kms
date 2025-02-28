@@ -28,6 +28,10 @@ on:
       skip_services_tests:
         required: false
         type: string
+      docker_compose:
+        required: false
+        type: boolean
+        default: false
 
 env:
   OPENSSL_DIR: /usr/local/openssl
@@ -41,7 +45,9 @@ jobs:
         if: contains(runner.os, 'Linux')
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - run: |
           sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
@@ -56,12 +62,34 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Build
+      - name: Run docker containers
+        if: ${{ inputs.docker_compose }}
+        run: |
+          docker compose -h
+          docker compose up -d
+
+      - name: Build and tests
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+
+          POSTGRES_USER: kms
+          PGUSER: kms
+          POSTGRES_PASSWORD: kms
+          POSTGRES_DB: kms
+          KMS_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
+
+          MYSQL_DATABASE: kms
+          MYSQL_ROOT_PASSWORD: kms
+          KMS_MYSQL_URL: mysql://kms:kms@localhost:3306/kms
+
+          KMS_SQLITE_PATH: data/shared
+
+          # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
           TARGET: ${{ inputs.target }}
           DEBUG_OR_RELEASE: ${{ inputs.debug_or_release }}
           FEATURES: ${{ inputs.features }}
@@ -78,9 +106,8 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
-            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/ckms
+            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian
             target/${{ inputs.target }}/${{ inputs.debug_or_release }}/cosmian_kms
-            target/${{ inputs.target }}/${{ inputs.debug_or_release }}/libckms_pkcs11.*
             target/${{ inputs.target }}/debian/*.deb
             ${{ inputs.artifacts }}
           retention-days: 1
@@ -98,7 +125,7 @@ jobs:
       - run: find .
         if: contains(runner.os, 'linux')
 
-      - name: Linux launch ckms and cosmian_kms
+      - name: Linux launch cosmian and cosmian_kms
         if: contains(runner.os, 'Linux')
         run: |
           set -ex
@@ -109,10 +136,10 @@ jobs:
           #   usr/local/openssl/
           #   home/runner/work/kms/kms/target/
           KMS_PATH="home/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian
           chmod u+x ./$KMS_PATH/cosmian_kms
 
-          ./$KMS_PATH/ckms -V
+          ./$KMS_PATH/cosmian -V
 
           # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl
@@ -122,7 +149,7 @@ jobs:
           chmod u+x /usr/local/openssl/lib64/ossl-modules/*.so
           ./$KMS_PATH/cosmian_kms --info
 
-      - name: MacOS launch ckms and cosmian_kms
+      - name: MacOS launch cosmian and cosmian_kms
         if: contains(runner.os, 'macos')
         run: |
           set -ex
@@ -134,10 +161,10 @@ jobs:
           #   usr/local/openssl/
           #   Users/runner/work/kms/kms/target/
           KMS_PATH="Users/runner/work/kms/kms/target/${{ inputs.target }}/${{ inputs.debug_or_release }}"
-          chmod u+x ./$KMS_PATH/ckms
+          chmod u+x ./$KMS_PATH/cosmian
           chmod u+x ./$KMS_PATH/cosmian_kms
 
-          ./$KMS_PATH/ckms -V
+          ./$KMS_PATH/cosmian -V
 
           # Copy openssl build for Legacy mode
           sudo mkdir /usr/local/openssl

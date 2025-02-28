@@ -1,7 +1,7 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
-use tracing::{dispatcher, info, span, Dispatch};
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use tracing::{Dispatch, dispatcher, info, span};
+use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt};
 
 use crate::result::KResult;
 

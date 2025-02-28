@@ -9,7 +9,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{operations::import::process_symmetric_key, KMS},
+    core::{KMS, operations::import::process_symmetric_key},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},

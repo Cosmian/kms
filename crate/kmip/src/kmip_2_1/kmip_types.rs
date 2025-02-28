@@ -6,9 +6,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use serde::{
+    Deserialize, Serialize,
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
-    Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 use tracing::trace;
@@ -18,14 +18,15 @@ use super::kmip_objects::ObjectType;
 use crate::{
     error::KmipError,
     kmip_2_1::{
-        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
         kmip_operations::ErrorReason,
     },
     kmip_error,
 };
 pub const VENDOR_ATTR_AAD: &str = "aad";
 
-/// 4.7
+/// `CertificateType`
+///
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
@@ -211,6 +212,8 @@ pub enum CryptographicAlgorithm {
     CoverCryptBulk = 0x8880_0005,
 }
 
+/// `CryptographicDomainParameters`
+///
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
 /// contains fields that MAY need to be specified in the Create Key Pair Request
 /// Payload. Specific fields MAY only pertain to certain types of Managed
@@ -673,6 +676,8 @@ pub enum LinkType {
     //Extensions 8XXXXXXX
 }
 
+/// `UniqueIdentifierEnumeration`
+///
 /// The following values may be specified in an operation request for a Unique
 /// Identifier: If multiple unique identifiers would be referenced then the
 /// operation is repeated for each of them. If an operation appears
@@ -746,6 +751,8 @@ pub enum RevocationReasonEnumeration {
     //Extensions 8XXXXXXX
 }
 
+/// `RevocationReason`
+///
 /// The Revocation Reason attribute is a structure used to indicate why the
 /// Managed Cryptographic Object was revoked (e.g., "compromised", "expired",
 /// "no longer used", etc.). This attribute is only set by the server as a part
@@ -763,6 +770,8 @@ pub enum RevocationReason {
     TextString(String),
 }
 
+/// Link
+///
 /// The Link attribute is a structure used to create a link from one Managed
 /// Cryptographic Object to another, closely related target Managed
 /// Cryptographic Object. The link has a type, and the allowed types differ,
@@ -796,6 +805,8 @@ pub struct Link {
     pub linked_object_identifier: LinkedObjectIdentifier,
 }
 
+/// `VendorAttribute`
+///
 /// A vendor specific Attribute is a structure used for sending and receiving
 /// a Managed Object attribute. The Vendor Identification
 /// and Attribute Name are text-strings that are used to identify the attribute.
@@ -834,6 +845,8 @@ impl Display for VendorAttribute {
     }
 }
 
+/// Attributes
+///
 /// The following subsections describe the attributes that are associated with
 /// Managed Objects. Attributes that an object MAY have multiple instances of
 /// are referred to as multi-instance attributes. All instances of an attribute
@@ -2065,6 +2078,8 @@ pub enum MaskGenerator {
     MFG1 = 0x0000_0001,
 }
 
+/// `CryptographicParameters`
+///
 /// The Cryptographic Parameters attribute is a structure that contains a set of
 /// OPTIONAL fields that describe certain cryptographic parameters to be used
 /// when performing cryptographic operations using the object. Specific fields
@@ -2180,6 +2195,8 @@ pub enum KeyWrapType {
     AsRegistered = 0x0000_0002,
 }
 
+/// `StateEnumeration`
+///
 /// This attribute is an indication of the State of an object as known to the
 /// key management server. The State SHALL NOT be changed by using the Modify
 /// Attribute operation on this attribute. The State SHALL only be changed by

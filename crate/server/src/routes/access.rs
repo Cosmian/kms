@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use actix_web::{
-    get, post,
+    HttpRequest, get, post,
     web::{Data, Json, Path},
-    HttpRequest,
 };
 use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_access::access::{

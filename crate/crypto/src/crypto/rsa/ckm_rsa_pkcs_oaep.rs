@@ -1,4 +1,5 @@
 //! Implements the RSA Key Encryption Mechanism `CKM_RSA_PKCS_OAEP`
+//!
 //! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 //! <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 //!
@@ -26,6 +27,7 @@ use crate::crypto_bail;
 use crate::{error::CryptoError, openssl::hashing_algorithm_to_openssl_ref};
 
 /// Key Wrap using `CKM_RSA_PKCS_OAEP`
+///
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
@@ -50,6 +52,7 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
 }
 
 /// Encryption using `CKM_RSA_PKCS_OAEP`
+///
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
@@ -101,6 +104,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 }
 
 /// Key Unwrap using `CKM_RSA_PKCS_OAEP`
+///
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///
@@ -123,6 +127,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 }
 
 /// Decrypt using `CKM_RSA_PKCS_OAEP`
+///
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// <http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
 ///

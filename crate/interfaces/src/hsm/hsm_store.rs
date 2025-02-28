@@ -4,8 +4,10 @@
 #![allow(unused_variables)]
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
+use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
 use cosmian_kmip::{
+    SafeBigUint,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -14,15 +16,13 @@ use cosmian_kmip::{
             StateEnumeration,
         },
     },
-    SafeBigUint,
 };
 use num_bigint_dig::BigUint;
 use tracing::debug;
-use KmipKeyMaterial::TransparentRSAPublicKey;
 
 use crate::{
-    AtomicOperation, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
-    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams, HSM,
+    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, InterfaceError,
+    InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
 };
 
 pub struct HsmStore {

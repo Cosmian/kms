@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::kmip_types::{BlockCipherMode, CryptographicParameters, PaddingMethod};
 use zeroize::Zeroizing;
 
-use crate::{error::InterfaceResult, InterfaceError, KeyType};
+use crate::{InterfaceError, KeyType, error::InterfaceResult};
 
 #[derive(Debug)]
 pub struct KeyMetadata {

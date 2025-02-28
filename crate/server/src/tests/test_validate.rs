@@ -13,13 +13,15 @@ use crate::{
     config::ServerParams, core::KMS, error::KmsError, tests::test_utils::https_clap_config,
 };
 
+#[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
-    let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
-    let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
-    let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
-    let leaf2_path = path::Path::new("src/tests/certificates/chain/leaf2.cert.der"); // valid
+    let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
+    let intermediate_path =
+        path::Path::new("../../test_data/certificates/chain/intermediate.cert.der");
+    let leaf1_path = path::Path::new("../../test_data/certificates/chain/leaf1.cert.der"); // invalid
+    let leaf2_path = path::Path::new("../../test_data/certificates/chain/leaf2.cert.der"); // valid
     let root_cert = fs::read(root_path)?;
     let intermediate_cert = fs::read(intermediate_path)?;
     let leaf1_cert = fs::read(leaf1_path)?;
@@ -102,13 +104,15 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     Result::Ok(())
 }
 
+#[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
-    let root_path = path::Path::new("src/tests/certificates/chain/ca.cert.der");
-    let intermediate_path = path::Path::new("src/tests/certificates/chain/intermediate.cert.der");
-    let leaf1_path = path::Path::new("src/tests/certificates/chain/leaf1.cert.der"); // invalid
-    let leaf2_path = path::Path::new("src/tests/certificates/chain/leaf2.cert.der"); // valid
+    let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
+    let intermediate_path =
+        path::Path::new("../../test_data/certificates/chain/intermediate.cert.der");
+    let leaf1_path = path::Path::new("../../test_data/certificates/chain/leaf1.cert.der"); // invalid
+    let leaf2_path = path::Path::new("../../test_data/certificates/chain/leaf2.cert.der"); // valid
 
     let root_cert = fs::read(root_path)?;
     let intermediate_cert = fs::read(intermediate_path)?;

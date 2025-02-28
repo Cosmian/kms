@@ -224,14 +224,11 @@ async fn integration_tests_with_tags() -> KResult<()> {
     assert_eq!(data, &*decrypted_data);
 
     // Revoke key of user 1
-    let _revoke_response: RevokeResponse = test_utils::post(
-        &app,
-        &Revoke {
-            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
-            revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
-            compromise_occurrence_date: None,
-        },
-    )
+    let _revoke_response: RevokeResponse = test_utils::post(&app, &Revoke {
+        unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
+        revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
+        compromise_occurrence_date: None,
+    })
     .await?;
 
     //

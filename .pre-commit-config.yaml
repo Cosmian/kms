@@ -13,32 +13,26 @@ repos:
     rev: v3.4.0
     hooks:
       - id: conventional-pre-commit
-        stages: [ commit-msg ]
-        args: [ ] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
+        stages: [commit-msg]
+        args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.42.0
     hooks:
       - id: markdownlint-fix
-        args:
-          [
-            --disable=MD013,
-            --disable=MD041,
-            --disable=MD046,
-            --fix,
-          ]
+        args: [--disable=MD013, --disable=MD041, --disable=MD046, --fix]
 
   - repo: https://github.com/tcort/markdown-link-check
     rev: v3.12.2
     hooks:
       - id: markdown-link-check
-        args: [ -q, --config, .markdown-link-check.json ]
+        args: [-q, --config, .markdown-link-check.json]
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
       - id: yamlfmt
-        args: [ --mapping, "2", --sequence, "4", --offset, "2" ]
+        args: [--mapping, "2", --sequence, "4", --offset, "2"]
         exclude: ansible
 
   - repo: https://github.com/crate-ci/typos
@@ -99,7 +93,7 @@ repos:
       - id: fix-byte-order-marker
       - id: fix-encoding-pragma
       - id: mixed-line-ending
-        args: [ --fix=lf ]
+        args: [--fix=lf]
       - id: name-tests-test
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
@@ -111,20 +105,27 @@ repos:
     hooks:
       - id: black
         # avoid clash with `double-quote-string-fixer`
-        args: [ --skip-string-normalization ]
+        args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.32
     hooks:
       # - id: cargo-format
-      # - id: dprint-toml-fix
-      # - id: cargo-upgrade
-      # - id: cargo-update
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
       - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test
-        args: [ --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm ]
+        args: [--, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
+      - id: cargo-build-all
+      - id: cargo-test
+        alias: cargo-test-all
+        args: [--all-features, --, --skip, test_wrap_auth, --skip, google_cse, --skip, hsm]
       - id: clippy-autofix-unreachable-pub
       - id: clippy-autofix-all-targets-all-features
       - id: clippy-autofix-all-targets
@@ -137,4 +138,4 @@ repos:
     rev: 0.16.1
     hooks:
       - id: cargo-deny
-        args: [ --all-features, check ]
+        args: [--all-features, check]

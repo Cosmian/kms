@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cosmian_kmip::{
+    KmipError,
     kmip_2_1::{
+        KmipOperation,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
@@ -9,9 +11,7 @@ use cosmian_kmip::{
             Attributes, CertificateType, CryptographicAlgorithm, CryptographicUsageMask,
             KeyFormatType, KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
         },
-        KmipOperation,
     },
-    KmipError,
 };
 use cosmian_kms_crypto::openssl::{
     kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
@@ -31,11 +31,11 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
+        KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
         operations::import::upsert_imported_links_in_attributes,
         retrieve_object_utils::retrieve_object_for_operation,
         wrapping::wrap_key,
-        KMS,
     },
     error::KmsError,
     kms_bail,
@@ -263,6 +263,7 @@ async fn post_process_private_key(
     Ok(())
 }
 
+#[allow(clippy::ref_option)]
 async fn post_process_active_private_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -397,6 +398,7 @@ async fn post_process_active_private_key(
     Ok(())
 }
 
+#[allow(clippy::ref_option)]
 async fn process_public_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -521,6 +523,7 @@ async fn process_public_key(
     Ok(())
 }
 
+#[allow(clippy::ref_option)]
 async fn transform_to_key_wrap_type(
     object_with_metadata: &mut ObjectWithMetadata,
     key_wrap_type: &Option<KeyWrapType>,
@@ -544,6 +547,7 @@ async fn transform_to_key_wrap_type(
     Ok(())
 }
 
+#[allow(clippy::ref_option)]
 async fn process_covercrypt_key(
     key_block: &mut KeyBlock,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
@@ -612,6 +616,7 @@ pub(crate) fn openssl_public_key_to_kmip_default_format(
     Ok(object)
 }
 
+#[allow(clippy::ref_option)]
 async fn process_symmetric_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,

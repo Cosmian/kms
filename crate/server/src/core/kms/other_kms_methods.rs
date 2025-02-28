@@ -2,8 +2,8 @@ use std::{collections::HashSet, fs, sync::Arc};
 
 use actix_web::HttpRequest;
 use base64::{
-    engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
+    engine::general_purpose::{self, STANDARD as b64},
 };
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
@@ -23,7 +23,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_key, KMS},
+    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_key},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},

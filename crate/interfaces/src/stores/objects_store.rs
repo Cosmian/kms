@@ -6,7 +6,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, StateEnumeration},
 };
 
-use crate::{stores::SessionParams, InterfaceResult, ObjectWithMetadata};
+use crate::{InterfaceResult, ObjectWithMetadata, stores::SessionParams};
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {

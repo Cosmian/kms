@@ -15,7 +15,7 @@ doctest = false
 async-trait = { workspace = true }
 clap = { workspace = true }
 cosmian_crypto_core = { workspace = true }
-cloudproof_findex = { workspace = true }
+cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_crypto = { path = "../crypto" }
 cosmian_kms_interfaces = { path = "../interfaces" }

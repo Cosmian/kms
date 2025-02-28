@@ -78,7 +78,7 @@ PKCS#12 file for authentication.
 By default, the logs are available in the User home `.cosmian` sub-directory.
 
 ```powershell
-Get-Content -path C:\<USER HOME>\.cosmian\ckms-pkcs11.log -wait
+Get-Content -path C:\<USER HOME>\.cosmian\cosmian-pkcs11.log -wait
 ```
 
 The log level can be adjusted using the `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable.
@@ -94,7 +94,7 @@ This tag is the default tag searched. The value can be changed by setting
 the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment value.
 
 ```powershell
-ckms.exe rsa keys create -s 2048 -t disk-encryption
+cosmian.exe rsa keys create -s 2048 -t disk-encryption
 ```
 
 ```shell

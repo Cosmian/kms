@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     kmip_operations::{Mac, MacResponse},
     kmip_types::{HashingAlgorithm, UniqueIdentifier},
-    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use tracing::{debug, trace};
 
 use crate::{
-    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -102,7 +102,7 @@ mod tests {
 
     use crate::{
         config::ServerParams,
-        core::{operations::mac::compute_hmac, KMS},
+        core::{KMS, operations::mac::compute_hmac},
         result::KResult,
         tests::test_utils::https_clap_config,
     };
