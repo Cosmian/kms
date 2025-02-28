@@ -5,6 +5,9 @@ import AccessGrantForm from './AccessGrant'
 import AccessListForm from './AccessList'
 import AccessObtainedList from './AccessObtained'
 import AccessRevokeForm from './AccessRevoke'
+import AttributeDeleteForm from './AttributeDelete'
+import AttributeGetForm from './AttributeGet'
+import AttributeSetForm from './AttributeSet'
 import CertificateCertifyForm from './CertificateCertify'
 import CertificateDecryptForm from './CertificateDecrypt'
 import CertificateEncryptForm from './CertificateEncrypt'
@@ -168,6 +171,9 @@ function App() {
             <Route path="certificates/encrypt" element={<CertificateEncryptForm />} />
             <Route path="certificates/decrypt" element={<CertificateDecryptForm />} />
             <Route path="certificates/certify" element={<CertificateCertifyForm />} />
+            <Route path="attributes/get" element={<AttributeGetForm />} />
+            <Route path="attributes/set" element={<AttributeSetForm />} />
+            <Route path="attributes/delete" element={<AttributeDeleteForm />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -113,6 +113,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
 
                             {policyType === 'json-file' && (
                                 <Form.Item
+                                    name="policySpecifications"
                                     rules={[{ required: true, message: 'Please provide policy specifications' }]}
                                 >
                                     <Upload.Dragger
@@ -138,6 +139,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
 
                             {policyType === 'json-text' && (
                                 <Form.Item
+                                    name="policyJson"
                                     rules={[
                                         { required: true, message: 'Please enter policy JSON' },
                                         {
