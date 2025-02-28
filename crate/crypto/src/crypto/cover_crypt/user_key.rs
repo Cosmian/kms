@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterSecretKey, UserSecretKey};
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
@@ -54,14 +54,6 @@ pub struct UserDecryptionKeysHandler {
     master_private_key: MasterSecretKey,
 }
 
-impl std::ops::Deref for UserDecryptionKeysHandler {
-    type Target = MasterSecretKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.master_private_key
-    }
-}
-
 impl UserDecryptionKeysHandler {
     pub fn instantiate(
         cover_crypt: Covercrypt,
@@ -69,8 +61,7 @@ impl UserDecryptionKeysHandler {
     ) -> Result<Self, CryptoError> {
         let msk_key_block = master_private_key.key_block()?;
         let msk_key_bytes = msk_key_block.key_bytes()?;
-        let mut de = Deserializer::new(&msk_key_bytes);
-        let msk = MasterSecretKey::read(&mut de).map_err(|e| {
+        let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
             CryptoError::Kmip(format!(
                 "cover crypt: failed deserializing the master private key: {e}"
             ))
@@ -82,7 +73,7 @@ impl UserDecryptionKeysHandler {
     }
 
     /// Create a User Decryption Key Object from the passed master private key bytes,
-    /// Policy, Access Policy and optional additional attributes
+    /// Access Policy and optional additional attributes
     ///
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_user_decryption_key_object(
@@ -99,6 +90,7 @@ impl UserDecryptionKeysHandler {
             .cover_crypt
             .generate_user_secret_key(&mut self.master_private_key, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+        println!("UK: {uk:?}");
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
         let user_decryption_key_bytes = uk.serialize().map_err(|e| {
             CryptoError::Kmip(format!("cover crypt: failed serializing the user key: {e}"))
@@ -136,7 +128,7 @@ impl UserDecryptionKeysHandler {
 
     /// Refresh the user decryption key according to the (new) policy of the master key
     pub fn refresh_user_decryption_key_object(
-        &self,
+        &mut self,
         user_decryption_key: &Object,
         keep_old_rights: bool,
     ) -> Result<Object, CryptoError> {
@@ -147,9 +139,10 @@ impl UserDecryptionKeysHandler {
                 "cover crypt: failed deserializing the user decryption key: {e}"
             ))
         })?;
-        let (mut msk, _mpk) = self.cover_crypt.setup()?;
+
+        let msk = &mut self.master_private_key;
         self.cover_crypt
-            .refresh_usk(&mut msk, &mut usk, keep_old_rights)
+            .refresh_usk(msk, &mut usk, keep_old_rights)
             .map_err(|e| {
                 CryptoError::Kmip(format!(
                     "cover crypt: failed refreshing the user decryption key: {e}"

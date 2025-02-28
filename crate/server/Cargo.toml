@@ -46,7 +46,6 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-# cloudproof = { workspace = true }
 cloudproof_findex = { workspace = true }
 cosmian_cover_crypt = { workspace = true }
 cosmian_crypto_core = { workspace = true, features = ["ecies", "blake", "chacha"] } # TODO(default features crypto_core have changed?)

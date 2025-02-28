@@ -313,7 +313,6 @@ pub(crate) fn generate_key_pair_and_tags(
             &Some(common_attributes),
             &request.private_key_attributes,
             &request.public_key_attributes,
-            request.access_structure,
         )
         .map_err(Into::into),
         other => {

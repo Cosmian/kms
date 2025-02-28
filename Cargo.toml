@@ -62,7 +62,6 @@ base64 = "0.21"
 bitflags = "2.6"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-cloudproof = { version = "3.0" }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", branch = "develop" }
 cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "expose-QA" }

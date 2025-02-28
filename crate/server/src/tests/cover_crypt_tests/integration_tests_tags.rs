@@ -14,7 +14,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
         build_rekey_keypair_request,
     },
 };
-
+use cosmian_kms_crypto::crypto::cover_crypt::master_keys::AccessStructure;
 use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
@@ -26,8 +26,10 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let policy = AccessStructure::default();
+
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request([mkp_tag], false, Vec::new())?;
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -80,8 +82,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let policy = AccessStructure::default();
+
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request([mkp_tag], false, Vec::new())?;
+        build_create_covercrypt_master_keypair_request(&policy, [mkp_tag], false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 

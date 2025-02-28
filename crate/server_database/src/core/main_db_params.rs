@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use cloudproof::reexport::crypto_core::SymmetricKey;
+use cosmian_crypto_core::SymmetricKey;
 use cloudproof_findex::Label;
 use url::Url;
 

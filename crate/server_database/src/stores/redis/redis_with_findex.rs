@@ -5,7 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
+use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,

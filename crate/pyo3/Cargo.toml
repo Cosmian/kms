@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 name = "cosmian_kms"
 
 [dependencies]
-cloudproof = { workspace = true }
+cloudproof = "3.0"
 cosmian_cover_crypt = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }

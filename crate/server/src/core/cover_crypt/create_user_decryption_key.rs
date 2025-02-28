@@ -7,7 +7,10 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::{
-    cover_crypt::{attributes::access_policy_from_attributes, user_key::UserDecryptionKeysHandler},
+    cover_crypt::{
+        attributes::{access_policy_from_attributes, policy_from_attributes},
+        user_key::UserDecryptionKeysHandler,
+    },
     KeyPair,
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -81,6 +84,11 @@ async fn create_user_decryption_key_(
         if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
             continue;
         };
+
+        // a master key should have policies in the attributes
+        if policy_from_attributes(attributes).is_err() {
+            continue;
+        }
 
         let master_private_key = owm.object();
         if master_private_key.key_wrapping_data().is_some() {

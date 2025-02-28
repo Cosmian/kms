@@ -379,7 +379,6 @@ async fn get_subject(
         private_protection_storage_masks: None,
         public_protection_storage_masks: None,
         public_key_attributes: public_attributes,
-        access_structure: Vec::new(),
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
     let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(

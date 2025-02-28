@@ -1444,7 +1444,6 @@ impl<'de> Deserialize<'de> for Attribute {
             "link",
             "public_key_link",
             "vendor_attributes",
-            "access_structure",
         ];
         deserializer.deserialize_struct("Attribute", FIELDS, AttributeVisitor)
     }

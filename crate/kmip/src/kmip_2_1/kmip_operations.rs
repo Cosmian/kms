@@ -653,8 +653,6 @@ pub struct CreateKeyPair {
     /// to the Public Key Object.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_key_attributes: Option<Attributes>,
-    // TODO
-    pub access_structure: Vec<(String, Vec<String>)>,
     /// Specifies all `ProtectionStorage` Mask selections that are permissible for
     /// the new Private Key and Public Key objects.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -674,13 +672,12 @@ impl Display for CreateKeyPair {
         write!(
             f,
             "CreateKeyPair {{ common_attributes: {:?}, private_key_attributes: {:?}, \
-             public_key_attributes: {:?}, access structure: {:?}, \
+             public_key_attributes: {:?}, \
              common_protection_storage_masks: {:?}, private_protection_storage_masks: {:?}, \
              public_protection_storage_masks: {:?} }}",
             self.common_attributes,
             self.private_key_attributes,
             self.public_key_attributes,
-            self.access_structure,
             self.common_protection_storage_masks,
             self.private_protection_storage_masks,
             self.public_protection_storage_masks

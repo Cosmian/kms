@@ -1,7 +1,7 @@
 use std::num::TryFromIntError;
 
-use cloudproof::reexport::crypto_core::reexport::pkcs8;
 use cosmian_crypto_core::CryptoCoreError;
+// use cosmian_crypto_core::{reexport::pkcs8, CryptoCoreError};
 use cosmian_kmip::KmipError;
 use thiserror::Error;
 
@@ -80,17 +80,17 @@ impl From<openssl::error::ErrorStack> for CryptoError {
     }
 }
 
-impl From<pkcs8::spki::Error> for CryptoError {
-    fn from(e: pkcs8::spki::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
+// impl From<pkcs8::spki::Error> for CryptoError {
+//     fn from(e: pkcs8::spki::Error) -> Self {
+//         Self::ConversionError(e.to_string())
+//     }
+// }
 
-impl From<pkcs8::Error> for CryptoError {
-    fn from(e: pkcs8::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
+// impl From<pkcs8::Error> for CryptoError {
+//     fn from(e: pkcs8::Error) -> Self {
+//         Self::ConversionError(e.to_string())
+//     }
+// }
 
 impl From<TryFromIntError> for CryptoError {
     fn from(e: TryFromIntError) -> Self {

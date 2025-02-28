@@ -1,14 +1,11 @@
 use cosmian_cover_crypt::{
-    api::Covercrypt, CleartextHeader, EncryptedHeader, Error, UserSecretKey,
+    api::Covercrypt, EncryptedHeader, Error, UserSecretKey,
 };
-use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
-    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, Secret, SymmetricKey,
-};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
-    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    kmip_types::UniqueIdentifier,
 };
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
@@ -46,117 +43,126 @@ impl CovercryptDecryption {
         })
     }
 
-    /// Decrypt a single payload
-    fn decrypt(
-        &self,
-        encrypted_bytes: &[u8],
-        ad: Option<&[u8]>,
-        user_decryption_key: &UserSecretKey,
-    ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
-        let encrypted_header = EncryptedHeader::deserialize(encrypted_bytes)
-            .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
+    // Decrypt a single payload
+    // fn decrypt(
+    //     &self,
+    //     encrypted_bytes: &[u8],
+    //     ad: Option<&[u8]>,
+    //     user_decryption_key: &UserSecretKey,
+    // ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
+    //     let mut de = Deserializer::new(encrypted_bytes);
+    //     let encrypted_header = EncryptedHeader::read(&mut de)?;
+    //     let ciphertext = de.finalize();
 
-        let header = encrypted_header
-            .decrypt(&self.cover_crypt, user_decryption_key, ad)
-            .map_err(|e| CryptoError::Kmip(e.to_string()))?
-            .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
+    //     let plaintext_header = encrypted_header
+    //         .decrypt(&self.cover_crypt, user_decryption_key, ad)?
+    //         .ok_or_else(|| {
+    //             Error::OperationNotPermitted("insufficient rights to open encapsulation".to_owned())
+    //         })?;
+        // let encrypted_header = EncryptedHeader::deserialize(encrypted_bytes)
+        //     .map_err(|e| CryptoError::Kmip(format!("Bad or corrupted encrypted data: {e}")))?;
 
-        let key = SymmetricKey::derive(&header.secret, &[0_u8])?;
-        let nonce = Nonce::try_from_slice(encrypted_bytes)?;
-        let cleartext = Aes256Gcm::new(&key)
-            .decrypt(&nonce, encrypted_bytes, ad)
-            .map_err(Error::CryptoCoreError)
-            .map(Zeroizing::new)?;
+        // let header = encrypted_header
+        //     .decrypt(&self.cover_crypt, user_decryption_key, ad)
+        //     .map_err(|e| CryptoError::Kmip(e.to_string()))?
+        //     .ok_or_else(|| CryptoError::Default("unable to recover header".to_owned()))?;
 
-        debug!(
-            "Decrypted data with user key {} of len (CT/Enc): {}/{}",
-            &self.user_decryption_key_uid,
-            cleartext.len(),
-            encrypted_bytes.len(),
-        );
+        // let key = SymmetricKey::derive(&header.secret, &[0_u8])?;
+        // let nonce = Nonce::try_from_slice(encrypted_bytes)?;
+        // let cleartext = Aes256Gcm::new(&key)
+        //     .decrypt(&nonce, encrypted_bytes, ad)
+        //     .map_err(Error::CryptoCoreError)
+        //     .map(Zeroizing::new)?;
 
-        Ok((header, cleartext))
-    }
+    //     debug!(
+    //         "Decrypted data with user key {} of len (CT/Enc): {}/{}",
+    //         &self.user_decryption_key_uid,
+    //         plaintext_header.length(),
+    //         encrypted_header.length(),
+    //     );
 
-    /// Decrypt multiple LEB128-serialized payloads
-    ///
-    /// The input encrypted data is serialized using LEB128 (bulk mode).
-    /// Each chunk of data is decrypted and serialized back to LEB128.
-    ///
-    /// Bulk encryption / decryption scheme
-    ///
-    /// ENC request
-    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
-    ///                           <-------------- `nb_chunks` times ------------>
-    ///
-    /// ENC response
-    /// | EH | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (encrypted)
-    ///                                <-------------- `nb_chunks` times ------------>
-    ///
-    /// DEC request
-    /// | `nb_chunks` (LEB128) | size(EH + `chunk_data`) (LEB128) | EH | `chunk_data` (encrypted)
-    ///                                                             <------ chunk with EH ------>
-    ///                          <------------------------ `nb_chunks` times ------------------->
-    ///
-    /// DEC response
-    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
-    ///                           <------------- `nb_chunks` times ------------->
-    ///
-    fn bulk_decrypt(
-        &self,
-        encrypted_bytes: &[u8],
-        ad: Option<&[u8]>,
-        user_decryption_key: &UserSecretKey,
-    ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
-        let mut de = Deserializer::new(encrypted_bytes);
-        let mut ser = Serializer::new();
+    //     Ok((plaintext_header, ciphertext.into()))
+    // }
 
-        // number of chunks of encrypted data to decrypt
-        let nb_chunks = {
-            let len = de.read_leb128_u64()?;
-            ser.write_leb128_u64(len)?;
-            usize::try_from(len).map_err(|e| {
-                CryptoError::Kmip(format!(
-                    "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
-                ))
-            })?
-        };
+    // Decrypt multiple LEB128-serialized payloads
+    // /
+    // / The input encrypted data is serialized using LEB128 (bulk mode).
+    // / Each chunk of data is decrypted and serialized back to LEB128.
+    // /
+    // / Bulk encryption / decryption scheme
+    // /
+    // / ENC request
+    // / | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    // /                           <-------------- `nb_chunks` times ------------>
+    // /
+    // / ENC response
+    // / | EH | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (encrypted)
+    // /                                <-------------- `nb_chunks` times ------------>
+    // /
+    // / DEC request
+    // / | `nb_chunks` (LEB128) | size(EH + `chunk_data`) (LEB128) | EH | `chunk_data` (encrypted)
+    // /                                                             <------ chunk with EH ------>
+    // /                          <------------------------ `nb_chunks` times ------------------->
+    // /
+    // / DEC response
+    // / | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    // /                           <------------- `nb_chunks` times ------------->
+    // /
+    // fn bulk_decrypt(
+    //     &self,
+    //     encrypted_bytes: &[u8],
+    //     ad: Option<&[u8]>,
+    //     user_decryption_key: &UserSecretKey,
+    // ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), CryptoError> {
+        // let mut de = Deserializer::new(encrypted_bytes);
+        // let mut ser = Serializer::new();
 
-        let mut cleartext_header = CleartextHeader {
-            secret: Secret::default(),
-            metadata: vec![0_u8].into(),
-        };
+        // // number of chunks of encrypted data to decrypt
+        // let nb_chunks = {
+        //     let len = de.read_leb128_u64()?;
+        //     ser.write_leb128_u64(len)?;
+        //     usize::try_from(len).map_err(|e| {
+        //         CryptoError::Kmip(format!(
+        //             "size of vector is too big for architecture: {len} bytes. Error: {e:?}"
+        //         ))
+        //     })?
+        // };
 
-        for _ in 0..nb_chunks {
-            let chunk_data = de.read_vec_as_ref()?;
+        // let mut cleartext_header = CleartextHeader {
+        //     secret: Secret::default(),
+        //     metadata: vec![0_u8].into(),
+        // };
 
-            let encrypted_header = EncryptedHeader::deserialize(chunk_data).map_err(|e| {
-                CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
-            })?;
+        // for _ in 0..nb_chunks {
+        //     let chunk_data = de.read_vec_as_ref()?;
 
-            let header = encrypted_header
-                .decrypt(&self.cover_crypt, user_decryption_key, ad)
-                .map_err(|e| CryptoError::Kmip(e.to_string()))?
-                .ok_or_else(|| CryptoError::Default("unable to recover header 147".to_owned()))?;
+        //     let encrypted_header = EncryptedHeader::deserialize(chunk_data).map_err(|e| {
+        //         CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
+        //     })?;
 
-            cleartext_header = header;
+        //     let header = encrypted_header
+        //         .decrypt(&self.cover_crypt, user_decryption_key, ad)
+        //         .map_err(|e| CryptoError::Kmip(e.to_string()))?
+        //         .ok_or_else(|| CryptoError::Default("unable to recover header 147".to_owned()))?;
 
-            debug!(
-                "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
-                self.user_decryption_key_uid,
-                cleartext_header.length(),
-                encrypted_bytes.len(),
-            );
+    //         cleartext_header = header;
 
-            ser.write_vec(
-                &cleartext_header.metadata.clone().ok_or_else(|| {
-                    CryptoError::Default("unable to recover header 162".to_owned())
-                })?,
-            )?;
-        }
+    //         debug!(
+    //             "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
+    //             self.user_decryption_key_uid,
+    //             cleartext_header.length(),
+    //             encrypted_bytes.len(),
+    //         );
 
-        Ok((cleartext_header, ser.finalize()))
-    }
+    //         ser.write_vec(
+    //             &cleartext_header.metadata.clone().ok_or_else(|| {
+    //                 CryptoError::Default("unable to recover header 162".to_owned())
+    //             })?,
+    //         )?;
+    //     }
+
+    //     Ok((cleartext_header, ser.finalize()))
+    // }
 }
 
 impl DecryptionSystem for CovercryptDecryption {
@@ -172,29 +178,43 @@ impl DecryptionSystem for CovercryptDecryption {
             CryptoError::Kmip("The decryption request should contain encrypted data".to_owned())
         })?;
 
-        let (header, plaintext) = if let Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
-            ..
-        }) = request.cryptographic_parameters
-        {
-            self.bulk_decrypt(
-                encrypted_bytes.as_slice(),
-                request.ad.as_deref(),
-                &user_decryption_key,
-            )?
-        } else {
-            self.decrypt(
-                encrypted_bytes.as_slice(),
-                request.ad.as_deref(),
-                &user_decryption_key,
-            )?
-        };
+        let ad = request.ad.as_ref().ok_or_else(|| {
+            CryptoError::Kmip("The decryption request should contain ad".to_owned())
+        })?;
+
+        let mut de = Deserializer::new(encrypted_bytes);
+        let encrypted_header = EncryptedHeader::read(&mut de)?;
+        let ciphertext = de.finalize();
+        // println!("USK :{user_decryption_key:?}");
+        let plaintext = encrypted_header
+            .decrypt(&self.cover_crypt, &user_decryption_key, Some(ad))?
+            .ok_or_else(|| {
+                Error::OperationNotPermitted("insufficient rights to open encapsulation".to_owned())
+            })?;
+
+        // let (header, plaintext) = if let Some(CryptographicParameters {
+        //     cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
+        //     ..
+        // }) = request.cryptographic_parameters
+        // {
+        //     self.bulk_decrypt(
+        //         encrypted_bytes.as_slice(),
+        //         request.ad.as_deref(),
+        //         &user_decryption_key,
+        //     )?
+        // } else {
+        //     self.decrypt(
+        //         encrypted_bytes.as_slice(),
+        //         request.ad.as_deref(),
+        //         &user_decryption_key,
+        //     )?
+        // };
 
         // Declaring a vector and then zeroizing it is fine since it represents
         // a unique pointer to data on the heap.
         let decrypted_data: Vec<u8> = DecryptedData {
-            metadata: header.metadata.unwrap_or_default(),
-            plaintext,
+            metadata: plaintext.metadata.unwrap_or_default(),
+            plaintext: ciphertext.into(),
         }
         .try_into()?;
 

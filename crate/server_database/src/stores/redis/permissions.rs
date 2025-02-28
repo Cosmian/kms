@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,

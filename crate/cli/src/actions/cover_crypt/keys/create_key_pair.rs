@@ -1,15 +1,16 @@
-use std::{fs::File, io::BufReader, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
-use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    actions::console,
-    error::result::{CliResult, CliResultHelper},
+use cosmian_kms_crypto::crypto::cover_crypt::{
+    kmip_requests::build_create_covercrypt_master_keypair_request, master_keys::AccessStructure,
 };
 
+use crate::{
+    actions::{console, cover_crypt::policy::policy_from_json_file},
+    cli_bail,
+    error::result::{CliResult, CliResultHelper},
+};
 /// Create a new master key pair for a given policy and return the key IDs.
 ///
 ///
@@ -58,29 +59,14 @@ pub struct CreateMasterKeyPairAction {
     #[clap(long = "sensitive", default_value = "false")]
     sensitive: bool,
 }
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PolicySpecs {
-    #[serde(rename = "Security Level::<")]
-    pub security_level: Vec<String>,
-    #[serde(rename = "Department")]
-    pub department: Vec<String>,
-}
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        let file = File::open(&self.policy_specifications_file)?;
-        let buffer_reader = BufReader::new(file);
-        let json_policy: PolicySpecs = serde_json::from_reader(buffer_reader)?;
+        // Parse the json policy file
+        let policy = policy_from_json_file(&self.policy_specifications_file)?;
 
-        let access_structure: Vec<(String, Vec<String>)> = vec![
-            ("Security Level".to_string(), json_policy.security_level),
-            ("Department".to_string(), json_policy.department),
-        ];
-        let create_key_pair = build_create_covercrypt_master_keypair_request(
-            &self.tags,
-            self.sensitive,
-            access_structure,
-        )?;
+        let create_key_pair =
+            build_create_covercrypt_master_keypair_request(&policy, &self.tags, self.sensitive)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

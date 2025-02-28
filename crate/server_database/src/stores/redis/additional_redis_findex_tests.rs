@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{
+use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
