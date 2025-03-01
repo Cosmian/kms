@@ -83,7 +83,7 @@ pub use error::DbError;
 mod migrate;
 mod stores;
 pub use stores::{redis_master_key_from_password, SqlCipherSessionParams};
-
+mod sql;
 pub const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 
 #[cfg(test)]
