@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
-    impl_migrate,
+    impl_sql_migrate,
     stores::{
         locate_query::{query_from_attributes, PgSqlPlaceholder},
         DBObject, PGSQL_QUERIES,
@@ -99,7 +99,7 @@ impl PgPool {
             .await?;
 
         // Old table context used between version 4.13.0 and 4.22.1
-        let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
+        let _unused = sqlx::query("DROP TABLE context").execute(&pool).await;
 
         if clear_database {
             clear_database_(&pool).await?;
@@ -864,7 +864,7 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-impl_migrate!(PgPool, get_pgsql_query);
+impl_sql_migrate!(PgPool, get_pgsql_query);
 
 // #[async_trait(?Send)]
 // impl Migrate for PgPool {
