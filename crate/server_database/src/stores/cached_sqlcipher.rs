@@ -108,7 +108,7 @@ impl CachedSqlCipher {
             .await?;
 
         // Old table context used between version 4.13.0 and 4.22.1
-        let _ = sqlx::query("DROP TABLE context").execute(pool).await;
+        let _unused = sqlx::query("DROP TABLE context").execute(pool).await;
 
         Ok(())
     }
@@ -577,28 +577,37 @@ fn remove_dir_content(path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+#[async_trait(?Send)]
 impl Migrate for CachedSqlCipher {
     async fn get_db_state(&self) -> InterfaceResult<Option<DbState>> {
-        todo!()
+        Ok(Some(DbState::Ready))
     }
 
-    async fn set_db_state(&self, state: DbState) -> InterfaceResult<()> {
-        todo!()
+    async fn set_db_state(&self, _state: DbState) -> InterfaceResult<()> {
+        Err(InterfaceError::Db(
+            "SQL Cipher does not support migration".to_owned(),
+        ))
     }
 
     async fn get_current_db_version(&self) -> InterfaceResult<Option<String>> {
-        todo!()
+        Ok(Some(env!("CARGO_PKG_VERSION").to_owned()))
     }
 
-    async fn set_current_db_version(&self, version: &str) -> InterfaceResult<()> {
-        todo!()
+    async fn set_current_db_version(&self, _version: &str) -> InterfaceResult<()> {
+        Err(InterfaceError::Db(
+            "SQL Cipher does not support migration".to_owned(),
+        ))
     }
 
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> InterfaceResult<()> {
-        todo!()
+        Err(InterfaceError::Db(
+            "SQL Cipher does not support migration".to_owned(),
+        ))
     }
 
     async fn migrate_from_4_13_0_to_4_22_1(&self) -> InterfaceResult<()> {
-        todo!()
+        Err(InterfaceError::Db(
+            "SQL Cipher does not support migration".to_owned(),
+        ))
     }
 }

@@ -239,10 +239,6 @@ impl ObjectsStore for RedisWithFindex {
         None
     }
 
-    async fn migrate(&self, _params: Option<Arc<dyn SessionParams>>) -> InterfaceResult<()> {
-        unimplemented!("Redis-with-Findex does not support migrate operation");
-    }
-
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.

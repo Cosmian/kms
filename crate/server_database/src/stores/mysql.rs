@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::{
     KMS_VERSION_BEFORE_MIGRATION_SUPPORT, db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
-    impl_migrate,
+    impl_sql_migrate,
     stores::{
         DBObject, MYSQL_QUERIES,
         locate_query::{MySqlPlaceholder, query_from_attributes},
@@ -107,7 +107,7 @@ impl MySqlPool {
             .await?;
 
         // Old table context used between version 4.13.0 and 4.22.1
-        let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
+        let _unused = sqlx::query("DROP TABLE context").execute(&pool).await;
 
         if clear_database {
             clear_database_(&pool).await?;
@@ -867,4 +867,4 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-impl_migrate!(MySqlPool, get_mysql_query);
+impl_sql_migrate!(MySqlPool, get_mysql_query);
