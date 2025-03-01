@@ -12,8 +12,8 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, SessionParams,
 };
 use serde_json::Value;
 use sqlx::{
@@ -78,6 +78,7 @@ impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
     pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> DbResult<Self> {
+        trace!("Instantiating SQLite database at path: {path:?}, clear_database: {clear_database}");
         let options = SqliteConnectOptions::new()
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -94,32 +95,66 @@ impl SqlitePool {
             .connect_with(options)
             .await?;
 
-        sqlx::query(get_sqlite_query!("create-table-parameters"))
-            .execute(&pool)
-            .await?;
+        let is_new_instance = sqlx::query("SELECT * FROM objects LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .is_err();
 
-        sqlx::query(get_sqlite_query!("create-table-objects"))
-            .execute(&pool)
-            .await?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
 
-        sqlx::query(get_sqlite_query!("create-table-read_access"))
-            .execute(&pool)
-            .await?;
+        let create_tx = async {
+            sqlx::query(get_sqlite_query!("create-table-parameters"))
+                .execute(&mut *tx)
+                .await?;
 
-        sqlx::query(get_sqlite_query!("create-table-tags"))
-            .execute(&pool)
-            .await?;
+            sqlx::query(get_sqlite_query!("create-table-objects"))
+                .execute(&mut *tx)
+                .await?;
 
-        // Old table context used between version 4.13.0 and 4.22.1
-        let _unused = sqlx::query("DROP TABLE context").execute(&pool).await;
+            sqlx::query(get_sqlite_query!("create-table-read_access"))
+                .execute(&mut *tx)
+                .await?;
 
-        if clear_database {
-            clear_database_(&pool).await?;
+            sqlx::query(get_sqlite_query!("create-table-tags"))
+                .execute(&mut *tx)
+                .await?;
+
+            // Old table context used between version 4.13.0 and 4.22.1
+            let _unused = sqlx::query("DROP TABLE context").execute(&mut *tx).await;
+
+            Ok::<(), DbError>(())
+        };
+        if let Err(e) = create_tx.await {
+            tx.rollback().await.context("transaction failed")?;
+            return Err(DbError::DatabaseError(format!(
+                "tables creation falied: {e}"
+            )))
         }
 
+        // Commit database tables creation
+        tx.commit()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("failed to commit the transaction: {e}")))?;
+
         let sqlite_pool = Self { pool };
-        // perform any necessary migration now
-        sqlite_pool.migrate().await?;
+        if is_new_instance {
+            trace!("New SQLite database instantiated at path: {path:?}");
+            // just in case
+            clear_database_(&sqlite_pool.pool).await?;
+            sqlite_pool
+                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            sqlite_pool.set_db_state(DbState::Ready).await?;
+        } else {
+            // perform any necessary migration now
+            sqlite_pool.migrate().await?;
+            if clear_database {
+                clear_database_(&sqlite_pool.pool).await?;
+            }
+        }
         Ok(sqlite_pool)
     }
 }
@@ -793,7 +828,6 @@ fn to_qualified_uids(rows: &[SqliteRow]) -> DbResult<Vec<(String, StateEnumerati
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        trace!("to_qualified_uids: raw: {raw:?}");
         let attrs = if raw.is_empty() {
             Attributes::default()
         } else {
@@ -814,6 +848,7 @@ pub(crate) async fn clear_database_<'e, E>(executor: E) -> DbResult<()>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
+    trace!("Clearing the database");
     // Erase `objects` table
     sqlx::query(get_sqlite_query!("clean-table-objects"))
         .execute(executor)
@@ -826,6 +861,7 @@ where
     sqlx::query(get_sqlite_query!("clean-table-tags"))
         .execute(executor)
         .await?;
+    debug!("Database cleared");
     Ok(())
 }
 
