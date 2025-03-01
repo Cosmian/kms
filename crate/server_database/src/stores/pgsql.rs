@@ -12,8 +12,8 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, SessionParams,
 };
 use serde_json::Value;
 use sqlx::{
@@ -82,32 +82,66 @@ impl PgPool {
             .connect_with(options)
             .await?;
 
-        sqlx::query(get_pgsql_query!("create-table-parameters"))
-            .execute(&pool)
-            .await?;
+        let is_new_instance = sqlx::query("SELECT * FROM objects LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .is_err();
 
-        sqlx::query(get_pgsql_query!("create-table-objects"))
-            .execute(&pool)
-            .await?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
 
-        sqlx::query(get_pgsql_query!("create-table-read_access"))
-            .execute(&pool)
-            .await?;
+        let create_tx = async {
+            sqlx::query(get_pgsql_query!("create-table-parameters"))
+                .execute(&mut *tx)
+                .await?;
 
-        sqlx::query(get_pgsql_query!("create-table-tags"))
-            .execute(&pool)
-            .await?;
+            sqlx::query(get_pgsql_query!("create-table-objects"))
+                .execute(&mut *tx)
+                .await?;
 
-        // Old table context used between version 4.13.0 and 4.22.1
-        let _unused = sqlx::query("DROP TABLE context").execute(&pool).await;
+            sqlx::query(get_pgsql_query!("create-table-read_access"))
+                .execute(&mut *tx)
+                .await?;
 
-        if clear_database {
-            clear_database_(&pool).await?;
+            sqlx::query(get_pgsql_query!("create-table-tags"))
+                .execute(&mut *tx)
+                .await?;
+
+            // Old table context used between version 4.13.0 and 4.22.1
+            let _unused = sqlx::query("DROP TABLE context").execute(&mut *tx).await;
+
+            Ok::<(), DbError>(())
+        };
+        if let Err(e) = create_tx.await {
+            tx.rollback().await.context("transaction failed")?;
+            return Err(DbError::DatabaseError(format!(
+                "tables creation falied: {e}"
+            )))
         }
 
+        // Commit database tables creation
+        tx.commit()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("failed to commit the transaction: {e}")))?;
+
         let pgsql_pool = Self { pool };
-        // perform any necessary migration now
-        pgsql_pool.migrate().await?;
+        if is_new_instance {
+            trace!("New PostgresSQL database instantiated");
+            // just in case
+            clear_database_(&pgsql_pool.pool).await?;
+            pgsql_pool
+                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            pgsql_pool.set_db_state(DbState::Ready).await?;
+        } else {
+            // perform any necessary migration now
+            pgsql_pool.migrate().await?;
+            if clear_database {
+                clear_database_(&pgsql_pool.pool).await?;
+            }
+        }
         Ok(pgsql_pool)
     }
 }
