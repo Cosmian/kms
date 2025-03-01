@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::{
     db_bail, db_error,
     error::{DbResult, DbResultHelper},
-    impl_migrate,
+    impl_sql_migrate,
     stores::{
         locate_query::{query_from_attributes, SqlitePlaceholder},
         DBObject, SQLITE_QUERIES,
@@ -111,7 +111,7 @@ impl SqlitePool {
             .await?;
 
         // Old table context used between version 4.13.0 and 4.22.1
-        let _ = sqlx::query("DROP TABLE context").execute(&pool).await;
+        let _unused = sqlx::query("DROP TABLE context").execute(&pool).await;
 
         if clear_database {
             clear_database_(&pool).await?;
@@ -876,7 +876,7 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-impl_migrate!(SqlitePool, get_sqlite_query);
+impl_sql_migrate!(SqlitePool, get_sqlite_query);
 
 //
 // #[async_trait(?Send)]

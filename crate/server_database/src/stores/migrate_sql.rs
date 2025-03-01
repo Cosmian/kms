@@ -1,8 +1,14 @@
+//! This module contains the implementation of the Migrate trait for the SQL stores
+//! (`SQLite`, `PostgreSQL`, `MySQL`, `MariaDB`).
+//!
+//! The implementation is generic and can be used for all SQL stores but should ultimately
+//! be replaced to a non-macro version when <https://github.com/Cosmian/kms/issues/379> is resolved.
+
 #[macro_export]
-macro_rules! impl_migrate {
-    ($pool:ty, $query_macro:ident) => {
+macro_rules! impl_sql_migrate {
+    ($sql_pool:ty, $query_macro:ident) => {
         #[async_trait(?Send)]
-        impl cosmian_kms_interfaces::Migrate for $pool {
+        impl cosmian_kms_interfaces::Migrate for $sql_pool {
             async fn get_db_state(
                 &self,
             ) -> InterfaceResult<Option<cosmian_kms_interfaces::DbState>> {
@@ -133,6 +139,11 @@ macro_rules! impl_migrate {
                         Err(InterfaceError::from(e))
                     }
                 }
+            }
+
+            async fn migrate_from_4_13_0_to_4_22_1(&self) -> InterfaceResult<()> {
+                tracing::info!("Migrating from 4.13.0 to 4.22.1");
+                Ok(())
             }
         }
     };
