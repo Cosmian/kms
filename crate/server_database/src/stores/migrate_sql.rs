@@ -19,7 +19,7 @@ macro_rules! impl_sql_migrate {
                     .map_err(DbError::from)?
                 {
                     None => {
-                        trace!("No state found, old KMS version");
+                        trace!("No state found, old KMS version database");
                         Ok(None)
                     }
                     Some(row) => {
@@ -53,7 +53,7 @@ macro_rules! impl_sql_migrate {
                     .map_err(DbError::from)?
                 {
                     None => {
-                        trace!("No state found, old KMS version");
+                        trace!("No current DB version, old KMS version database");
                         Ok(None)
                     }
                     Some(row) => Ok(Some(row.get::<String, _>(0))),
