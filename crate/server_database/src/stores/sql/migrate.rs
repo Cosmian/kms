@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore};
 use serde_json::Value;
 use sqlx::{Executor, IntoArguments, Row};
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{
     error::{DbResult, DbResultHelper},
@@ -146,7 +146,7 @@ where
     }
 
     async fn migrate_from_4_13_0_to_4_22_1(&self) -> DbResult<()> {
-        tracing::info!("Migrating from 4.13.0 to 4.22.1");
+        tracing::debug!("Migrating from 4.13.0 to 4.22.1");
 
         let ids = sqlx::query("SELECT id FROM objects")
             .fetch_all(self.get_pool())
@@ -203,6 +203,10 @@ where
             ))
         })?;
 
+        info!(
+            "Migration from 4.13.0 to 4.22.1 completed: {} objects migrated",
+            ids.len()
+        );
         Ok(())
     }
 }

@@ -43,7 +43,7 @@ pub(crate) fn get_redis_url() -> String {
 }
 
 async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
-    SqlitePool::instantiate(db_file, false).await
+    SqlitePool::instantiate(db_file, true).await
 }
 
 // To run local tests with a Postgres in Docker, run
@@ -93,30 +93,27 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_sqlite() -> DbResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-         cosmian_kms_interfaces=trace",
-    ));
-    let db_path = "src/tests/migrate/kms_4.22.1.sqlite";
-    let db_file = Path::new("/tmp/sqlite.db");
-    std::fs::copy(db_path, db_file)?;
-    json_access(&get_sqlite(db_file).await?, None).await?;
-
+    log_init(option_env!("RUST_LOG"));
+    // log_init(Some(
+    //     "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
+    //      cosmian_kms_interfaces=trace",
+    // ));
     let dir = TempDir::new()?;
     let db_file = dir.path().join("test_sqlite.db");
+    // let db_file = Path::new("/tmp/sqlite.db");
     if db_file.exists() {
         std::fs::remove_file(&db_file)?;
     }
-    // find_attributes(&get_sqlite(&db_file).await?, None).await?;
-    // owner(&get_sqlite(&db_file).await?, None).await?;
-    // permissions(&get_sqlite(&db_file).await?, None).await?;
-    // tags(&get_sqlite(&db_file).await?, None, true).await?;
-    // tx_and_list(&get_sqlite(&db_file).await?, None).await?;
-    // atomic(&get_sqlite(&db_file).await?, None).await?;
-    // upsert(&get_sqlite(&db_file).await?, None).await?;
-    // crud(&get_sqlite(&db_file).await?, None).await?;
-    // list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
+    json_access(&get_sqlite(&db_file).await?, None).await?;
+    find_attributes(&get_sqlite(&db_file).await?, None).await?;
+    owner(&get_sqlite(&db_file).await?, None).await?;
+    permissions(&get_sqlite(&db_file).await?, None).await?;
+    tags(&get_sqlite(&db_file).await?, None, true).await?;
+    tx_and_list(&get_sqlite(&db_file).await?, None).await?;
+    atomic(&get_sqlite(&db_file).await?, None).await?;
+    upsert(&get_sqlite(&db_file).await?, None).await?;
+    crud(&get_sqlite(&db_file).await?, None).await?;
+    list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
     Ok(())
 }
 

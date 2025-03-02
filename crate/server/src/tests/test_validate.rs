@@ -106,6 +106,8 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 
 #[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
+#[allow(clippy::large_futures)]
+
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");

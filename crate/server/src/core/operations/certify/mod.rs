@@ -597,6 +597,8 @@ fn build_and_sign_certificate(
     debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
+    // Set the object type
+    attributes.object_type = Some(ObjectType::Certificate);
 
     // remove any link that helped identify the issuer
     // these will be properly re-added later
@@ -691,7 +693,7 @@ fn build_and_sign_certificate(
 
     // Add certificate attributes
     let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
-    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
+    attributes.certificate_attributes = Some(certificate_attributes);
 
     Ok((
         openssl_certificate_to_kmip(&x509).map_err(KmsError::from)?,

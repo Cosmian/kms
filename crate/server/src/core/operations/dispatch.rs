@@ -13,6 +13,8 @@ use cosmian_kms_interfaces::SessionParams;
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 /// Dispatch operation depending on the TTLV tag
+#[allow(clippy::large_stack_frames)]
+#[allow(clippy::large_futures)]
 pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: TTLV,
