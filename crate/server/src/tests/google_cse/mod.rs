@@ -294,6 +294,8 @@ pub(crate) fn build_private_key_from_der_bytes(
 }
 
 #[tokio::test]
+#[allow(clippy::large_futures)]
+
 async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(None);
 
@@ -391,9 +393,9 @@ async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     // Certify the public key: sign created public key with issuer private key
     let attributes = Attributes {
         object_type: Some(ObjectType::Certificate),
-        certificate_attributes: Some(Box::new(CertificateAttributes::parse_subject_line(
+        certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "CN=Google CSE Gmail",
-        )?)),
+        )?),
         link: Some(vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(

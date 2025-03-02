@@ -169,7 +169,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         link: attributes.link,
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        certificate_attributes: Some(Box::new(certificate_attributes)),
+        certificate_attributes: Some(certificate_attributes),
         #[cfg(not(feature = "fips"))]
         // In non-FIPS mode, if no CryptographicUsageMask has been specified,
         // default to Unrestricted.
@@ -563,7 +563,7 @@ fn process_pkcs12(
         link: Some(request_links.clone()),
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(leaf_certificate_uid.clone())),
-        certificate_attributes: Some(Box::new(leaf_certificate_attributes)),
+        certificate_attributes: Some(leaf_certificate_attributes),
         ..Attributes::default()
     };
     // Add links to the leaf certificate
@@ -612,7 +612,7 @@ fn process_pkcs12(
             link: Some(request_links.clone()),
             object_type: Some(ObjectType::Certificate),
             unique_identifier: Some(UniqueIdentifier::TextString(chain_certificate_uid.clone())),
-            certificate_attributes: Some(Box::new(chain_certificate_attributes)),
+            certificate_attributes: Some(chain_certificate_attributes),
             ..Attributes::default()
         };
 

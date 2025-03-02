@@ -234,6 +234,8 @@ async fn get_master_keys(
 }
 
 /// Import the updated master keys in place of the old ones in the KMS
+#[allow(clippy::large_futures)]
+
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
@@ -269,6 +271,8 @@ async fn import_rekeyed_master_keys(
 }
 
 /// Updates user secret keys for actions like rekeying or pruning.
+#[allow(clippy::large_futures)]
+
 async fn update_all_active_usk(
     kmip_server: &KMS,
     cover_crypt: &Covercrypt,

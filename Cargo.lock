@@ -964,6 +964,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckms_pkcs11"
+version = "4.22.2"
+dependencies = [
+ "cosmian_config_utils",
+ "cosmian_kmip",
+ "cosmian_kms_client",
+ "cosmian_logger",
+ "cosmian_pkcs11_module",
+ "etcetera",
+ "kms_test_server",
+ "p256",
+ "pkcs1",
+ "serde_json",
+ "sha3",
+ "thiserror 2.0.11",
+ "tokio",
+ "tracing",
+ "tracing-error",
+ "tracing-journald",
+ "tracing-subscriber",
+ "x509-cert",
+ "zeroize",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1436,8 +1461,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_kms_client"
-version = "4.23.0"
+name = "cosmian_kms_cli"
+version = "4.22.1"
 dependencies = [
  "cosmian_crypto_core 10.1.0",
  "cosmian_http_client",
