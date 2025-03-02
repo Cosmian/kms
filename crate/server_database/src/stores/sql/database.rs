@@ -22,6 +22,26 @@ where
     /// Convert a database row to an object with metadata
     fn db_row_to_owm(&self, row: &DB::Row) -> DbResult<ObjectWithMetadata>;
 
+    /// Get the 'binder' used in the SQL queries for this database dialect
+    /// e.g. for `Postgres` or `SQLite`, it's `$1`, for `MySQL`, it's `?`
+    /// Default is the `Postgres` style
+    /// # Arguments
+    /// * `param_number` - the number of the parameter
+    /// # Returns
+    /// The binder
+    /// # Example
+    /// ```
+    /// use crate::stores::sql::database::SqlDatabase;
+    /// let binder = SqlDatabase::binder(1);
+    /// assert_eq!(binder, "$1");
+    /// ```
+    fn binder(&self, param_number: usize) -> String {
+        if std::any::type_name::<DB>() == "sqlx::mysql::MySql" {
+            return "?".to_string();
+        }
+        format!("${param_number}")
+    }
+
     /// Get the SQL query by name using the loader
     /// # Errors
     /// If the query can't be found
