@@ -3,7 +3,6 @@ use std::sync::Arc;
 use actix_web::{
     get,
     http::{header, StatusCode},
-    post,
     web::{Data, Json},
     HttpRequest, HttpResponse, HttpResponseBuilder,
 };
@@ -62,16 +61,6 @@ impl actix_web::error::ResponseError for KmsError {
             .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
             .body(message)
     }
-}
-
-/// Add a new group to the KMS = add a new database
-#[post("/new_database")]
-pub(crate) async fn add_new_database(
-    req: HttpRequest,
-    kms: Data<Arc<KMS>>,
-) -> KResult<Json<String>> {
-    info!("GET /new_database {}", kms.get_user(&req));
-    Ok(Json(kms.add_new_database().await?))
 }
 
 /// Get the KMS version

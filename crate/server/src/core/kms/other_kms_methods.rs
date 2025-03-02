@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use actix_web::HttpRequest;
 use base64::{
@@ -12,101 +12,20 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
     requests::create_symmetric_key_kmip_object,
 };
-use cosmian_kms_crypto::crypto::{
-    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-};
+use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH;
 use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
-use cosmian_kms_server_database::{CachedUnwrappedObject, MainDbParams, SqlCipherSessionParams};
+use cosmian_kms_server_database::CachedUnwrappedObject;
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace};
-use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
     core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_key, KMS},
     error::KmsError,
-    kms_bail,
     result::{KResult, KResultHelper},
 };
 
 impl KMS {
-    /// Adds a new encrypted `SQLite` database to the KMS server.
-    ///
-    /// # Returns
-    ///
-    /// Returns a base64-encoded string that represents the token associated with the new database.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the KMS server does not allow this operation or if an error occurs while
-    /// generating the new database or key.
-    pub(crate) async fn add_new_database(&self) -> KResult<String> {
-        if !self.is_using_sqlite_enc() {
-            kms_bail!(KmsError::InvalidRequest(
-                "add_new_database: not an encrypted sqlite: this server does not allow this \
-                 operation"
-                    .to_owned()
-            ));
-        }
-
-        // Generate a new group id
-        let uid: u128 = loop {
-            let uid = Uuid::new_v4().to_u128_le();
-            if let Some(database) = self.database.filename(uid).await {
-                if !database.exists() {
-                    // Create an empty file (to book the group id)
-                    fs::File::create(database)?;
-                    break uid
-                }
-            }
-        };
-
-        // Encode ExtraDatabaseParams
-        let params = SqlCipherSessionParams {
-            group_id: uid,
-            key: Secret::new_random()?,
-        };
-
-        let token = b64.encode(serde_json::to_vec(&params)?);
-
-        // Create a fake query to initialize the database
-        // Note: if we don't proceed like that, the password will be set at the first query of the user
-        // which let him put the password he wants.
-        self.database
-            .find(None, None, "", true, Some(Arc::new(params)))
-            .await?;
-
-        Ok(token)
-    }
-
-    /// Get the `SqliteEnc` database secrets from the request
-    /// The secrets are encoded in the `DatabaseSecret` header
-    pub(crate) fn get_sqlite_enc_secrets(
-        &self,
-        req_http: &HttpRequest,
-    ) -> KResult<Option<Arc<dyn SessionParams>>> {
-        if !self.is_using_sqlite_enc() {
-            return Ok(None);
-        }
-        let secrets = req_http
-            .headers()
-            .get("DatabaseSecret")
-            .and_then(|h| h.to_str().ok().map(ToString::to_string))
-            .ok_or_else(|| {
-                KmsError::Unauthorized("Missing DatabaseSecret header in the query".to_owned())
-            })?;
-
-        let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
-            KmsError::Unauthorized(format!("DatabaseSecret header cannot be decoded: {e}"))
-        })?;
-
-        Ok(Some(Arc::new(
-            serde_json::from_slice::<SqlCipherSessionParams>(&secrets).map_err(|e| {
-                KmsError::Unauthorized(format!("DatabaseSecret header cannot be read: {e}"))
-            })?,
-        )))
-    }
-
     /// Unwrap the object (if need be) and return the unwrapped object.
     /// The unwrapped object is cached in memory.
     /// # Arguments
@@ -176,36 +95,6 @@ impl KMS {
             .await;
         //return the result
         result
-    }
-
-    /// Determines if the application is using an encrypted `SQLite` database.
-    ///
-    /// # Arguments
-    ///
-    /// * `kms_server` - A reference-counted pointer to the KMS instance.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - Returns `true` if the application is using an encrypted `SQLite` database, otherwise `false`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// let kms_server = Arc::new(KMS::new(...)); // Initialize your KMS instance as required
-    /// if is_using_sqlite_enc(&kms_server) {
-    ///     println!("Using encrypted SQLite database.");
-    /// } else {
-    ///     println!("Not using encrypted SQLite database.");
-    /// }
-    /// ```
-    pub(crate) const fn is_using_sqlite_enc(&self) -> bool {
-        if let Some(db_params) = &self.params.main_db_params {
-            matches!(db_params, MainDbParams::SqliteEnc(_))
-        } else {
-            false
-        }
     }
 
     /// Create a new symmetric key and the corresponding system tags

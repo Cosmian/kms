@@ -23,11 +23,10 @@ pub(crate) async fn list_owned_objects(
     let span = tracing::span!(tracing::Level::INFO, "list_owned_objects");
     let _enter = span.enter();
 
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/owned {user}");
 
-    let list = kms.list_owned_objects(&user, database_params).await?;
+    let list = kms.list_owned_objects(&user, None).await?;
 
     Ok(Json(list))
 }
@@ -42,13 +41,10 @@ pub(crate) async fn list_access_rights_obtained(
     let span = tracing::span!(tracing::Level::INFO, "list_access_rights_obtained");
     let _enter = span.enter();
 
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/granted {user}");
 
-    let list = kms
-        .list_access_rights_obtained(&user, database_params)
-        .await?;
+    let list = kms.list_access_rights_obtained(&user, None).await?;
 
     Ok(Json(list))
 }
@@ -64,13 +60,10 @@ pub(crate) async fn list_accesses(
     let _enter = span.enter();
 
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
     info!(user = user, "GET /accesses/{object_id} {user}");
 
-    let list = kms
-        .list_accesses(&object_id, &user, database_params)
-        .await?;
+    let list = kms.list_accesses(&object_id, &user, None).await?;
 
     Ok(Json(list))
 }
@@ -86,7 +79,6 @@ pub(crate) async fn grant_access(
     let _enter = span.enter();
 
     let access = access.into_inner();
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
     info!(
         user = user,
@@ -94,7 +86,7 @@ pub(crate) async fn grant_access(
         "POST /access/grant {access:?} {user}"
     );
 
-    kms.grant_access(&access, &user, database_params).await?;
+    kms.grant_access(&access, &user, None).await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id
@@ -116,7 +108,6 @@ pub(crate) async fn revoke_access(
     let _enter = span.enter();
 
     let access = access.into_inner();
-    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(&req);
     info!(
         user = user,
@@ -124,7 +115,7 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke {access:?} {user}"
     );
 
-    kms.revoke_access(&access, &user, database_params).await?;
+    kms.revoke_access(&access, &user, None).await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
         access.unique_identifier, access.operation_types, access.user_id

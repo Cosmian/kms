@@ -18,8 +18,7 @@ mod unwrapped_cache;
 
 pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
 use crate::stores::{
-    CachedSqlCipher, MySqlPool, PgPool, RedisWithFindex, SqlitePool,
-    REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+    MySqlPool, PgPool, RedisWithFindex, SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
 };
 
 /// The `Database` struct represents the core database functionalities, including object management,
@@ -58,10 +57,6 @@ impl Database {
                 let db = Arc::new(
                     SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start).await?,
                 );
-                Self::new(db.clone(), db)
-            }
-            MainDbParams::SqliteEnc(db_path) => {
-                let db = Arc::new(CachedSqlCipher::instantiate(db_path, clear_db_on_start)?);
                 Self::new(db.clone(), db)
             }
             MainDbParams::Postgres(url) => {
