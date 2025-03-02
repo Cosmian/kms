@@ -1,11 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
-use cosmian_kms_crypto::crypto::{
-    secret::Secret, symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-};
-use cosmian_kms_interfaces::{ObjectsStore, SessionParams};
+use cosmian_kms_crypto::crypto::secret::Secret;
+use cosmian_kms_interfaces::ObjectsStore;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use tracing::log::debug;
@@ -24,6 +22,7 @@ use crate::{
         CachedSqlCipher, MySqlPool, PgPool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
         SqlCipherSessionParams, SqlitePool,
         additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
+        MySqlPool, PgPool, RedisWithFindex, SqlitePool, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     },
     tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
 };
@@ -44,13 +43,8 @@ pub(crate) fn get_redis_url() -> String {
     )
 }
 
-fn get_sql_cipher(dir: &Path) -> DbResult<CachedSqlCipher> {
-    let db = CachedSqlCipher::instantiate(dir, true)?;
-    Ok(db)
-}
-
 async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
-    SqlitePool::instantiate(db_file, true).await
+    SqlitePool::instantiate(db_file, false).await
 }
 
 // To run local tests with a Postgres in Docker, run
@@ -99,51 +93,22 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
 }
 
 #[tokio::test]
-pub(crate) async fn test_sql_cipher() -> DbResult<()> {
-    log_init(option_env!("RUST_LOG"));
-    let dir = TempDir::new()?;
-    // SQLCipher uses a directory
-    let dir_path = dir.path().join("test_sqlite_enc.db");
-    if dir_path.exists() {
-        std::fs::remove_dir_all(&dir_path)?;
-    }
-    std::fs::create_dir_all(&dir_path)?;
-
-    // generate a database key
-    let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
-
-    let params: Arc<dyn SessionParams> = Arc::new(SqlCipherSessionParams {
-        group_id: 0,
-        key: db_key.clone(),
-    });
-
-    json_access(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    find_attributes(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    owner(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    permissions(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    tags(&get_sql_cipher(&dir_path)?, Some(params.clone()), true).await?;
-    tx_and_list(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    atomic(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    upsert(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    crud(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    list_uids_for_tags_test(&get_sql_cipher(&dir_path)?, Some(params.clone())).await?;
-    Ok(())
-}
-
-#[tokio::test]
 pub(crate) async fn test_sqlite() -> DbResult<()> {
     // log_init(option_env!("RUST_LOG"));
     log_init(Some(
         "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
          cosmian_kms_interfaces=trace",
     ));
+    let db_path = "src/tests/migrate/kms_4.22.1.sqlite";
+    let db_file = Path::new("/tmp/sqlite.db");
+    std::fs::copy(db_path, db_file)?;
+    json_access(&get_sqlite(db_file).await?, None).await?;
+
     let dir = TempDir::new()?;
     let db_file = dir.path().join("test_sqlite.db");
     if db_file.exists() {
         std::fs::remove_file(&db_file)?;
     }
-
-    json_access(&get_sqlite(&db_file).await?, None).await?;
     // find_attributes(&get_sqlite(&db_file).await?, None).await?;
     // owner(&get_sqlite(&db_file).await?, None).await?;
     // permissions(&get_sqlite(&db_file).await?, None).await?;

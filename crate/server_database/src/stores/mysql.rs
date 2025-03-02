@@ -7,29 +7,30 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
+    KmipOperation,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, DbState, InterfaceError, InterfaceResult, Migrate, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, SessionParams,
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore, SessionParams,
 };
+use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
-    ConnectOptions, Executor, MySql, Pool, Row, Transaction,
     mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
+    ConnectOptions, Executor, MySql, Pool, Row, Transaction,
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    KMS_VERSION_BEFORE_MIGRATION_SUPPORT, db_bail, db_error,
+    db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
-    impl_sql_migrate,
     stores::{
+        locate_query::{query_from_attributes, MySqlPlaceholder},
+        sql::{SqlDatabase, SqlMainStore},
         DBObject, MYSQL_QUERIES,
-        locate_query::{MySqlPlaceholder, query_from_attributes},
     },
 };
 
@@ -90,66 +91,26 @@ impl MySqlPool {
             .connect_with(options)
             .await?;
 
-        let is_new_instance = sqlx::query("SELECT * FROM objects LIMIT 1")
-            .fetch_optional(&pool)
-            .await
-            .is_err();
-
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
-
-        let create_tx = async {
-            sqlx::query(get_mysql_query!("create-table-parameters"))
-                .execute(&mut *tx)
-                .await?;
-
-            sqlx::query(get_mysql_query!("create-table-objects"))
-                .execute(&mut *tx)
-                .await?;
-
-            sqlx::query(get_mysql_query!("create-table-read_access"))
-                .execute(&mut *tx)
-                .await?;
-
-            sqlx::query(get_mysql_query!("create-table-tags"))
-                .execute(&mut *tx)
-                .await?;
-
-            // Old table context used between version 4.13.0 and 4.22.1
-            let _unused = sqlx::query("DROP TABLE context").execute(&mut *tx).await;
-            Ok::<(), DbError>(())
-        };
-        if let Err(e) = create_tx.await {
-            tx.rollback().await.context("transaction failed")?;
-            return Err(DbError::DatabaseError(format!(
-                "tables creation falied: {e}"
-            )))
-        }
-
-        // Commit database tables creation
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("failed to commit the transaction: {e}")))?;
-
+        // Create the tables if they don't exist
         let mysql_pool = Self { pool };
-        if is_new_instance {
-            trace!("New MySQL/MariaDB database instantiated");
-            // just in case
-            clear_database_(&mysql_pool.pool).await?;
-            mysql_pool
-                .set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            mysql_pool.set_db_state(DbState::Ready).await?;
-        } else {
-            // perform any necessary migration now
-            mysql_pool.migrate().await?;
-            if clear_database {
-                clear_database_(&mysql_pool.pool).await?;
-            }
-        }
+
+        // Blanket implementation of SqlMainStore for SqlDatabase
+        mysql_pool.start(clear_database).await?;
         Ok(mysql_pool)
+    }
+}
+
+impl SqlDatabase<MySql> for MySqlPool {
+    fn get_pool(&self) -> &Pool<MySql> {
+        &self.pool
+    }
+
+    fn get_loader(&self) -> &Loader {
+        &MYSQL_QUERIES
+    }
+
+    fn db_row_to_owm(&self, row: &MySqlRow) -> DbResult<ObjectWithMetadata> {
+        my_sql_row_to_owm(row)
     }
 }
 
@@ -834,25 +795,6 @@ fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, StateEnumeratio
     Ok(uids)
 }
 
-async fn clear_database_<'e, E>(executor: E) -> DbResult<()>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    // Erase `objects` table
-    sqlx::query(get_mysql_query!("clean-table-objects"))
-        .execute(executor)
-        .await?;
-    // Erase `read_access` table
-    sqlx::query(get_mysql_query!("clean-table-read_access"))
-        .execute(executor)
-        .await?;
-    // Erase `tags` table
-    sqlx::query(get_mysql_query!("clean-table-tags"))
-        .execute(executor)
-        .await?;
-    Ok(())
-}
-
 pub(crate) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
@@ -900,4 +842,4 @@ pub(crate) async fn atomic_(
     Ok(uids)
 }
 
-impl_sql_migrate!(MySqlPool, get_mysql_query);
+// impl_sql_migrate!(MySqlPool, get_mysql_query);

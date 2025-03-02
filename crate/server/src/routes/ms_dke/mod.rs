@@ -112,12 +112,7 @@ pub(crate) async fn get_key(
     }
 }
 
-async fn internal_get_key(
-    key_tag: &str,
-    req_http: HttpRequest,
-    kms: &Arc<KMS>,
-) -> KResult<KeyData> {
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
     let user = kms.get_user(&req_http);
     let dke_service_url = kms
         .params
@@ -135,7 +130,7 @@ async fn internal_get_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(op, &user, database_params).await?;
+    let resp = kms.get(op, &user, None).await?;
     match resp.object {
         Object::PublicKey(PublicKey { key_block, .. }) => match key_block.key_value.key_material {
             KeyMaterial::TransparentRSAPublicKey {
@@ -221,7 +216,6 @@ async fn internal_decrypt(
     req_http: HttpRequest,
     kms: &Arc<KMS>,
 ) -> KResult<DecryptedData> {
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(&req_http);
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
@@ -236,7 +230,7 @@ async fn internal_decrypt(
         }),
         ..Decrypt::default()
     };
-    let response = kms.decrypt(decrypt_request, &user, database_params).await?;
+    let response = kms.decrypt(decrypt_request, &user, None).await?;
     Ok(DecryptedData {
         value: STANDARD.encode(
             response

@@ -10,8 +10,7 @@ pub use hsm::{
     HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use stores::{
-    AtomicOperation, DbState, Migrate, ObjectWithMetadata, ObjectsStore, PermissionsStore,
-    SessionParams,
+    AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore, SessionParams,
 };
 
 /// Supported cryptographic object types

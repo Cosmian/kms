@@ -1,14 +1,13 @@
-mod cached_sqlcipher;
-mod cached_sqlite_struct;
 pub(crate) mod extra_store_params;
 mod locate_query;
 mod migrate_sql;
 mod mysql;
 mod pgsql;
 mod redis;
+mod sql;
 mod sqlite;
 
-pub(crate) use cached_sqlcipher::CachedSqlCipher;
+// pub(crate) use cached_sqlcipher::CachedSqlCipher;
 use cosmian_kmip::kmip_2_1::kmip_objects::{Object, ObjectType};
 pub use extra_store_params::SqlCipherSessionParams;
 use lazy_static::lazy_static;
