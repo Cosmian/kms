@@ -19,14 +19,13 @@ pub struct MainDBConfig {
     /// - postgresql: `PostgreSQL`. The database url must be provided
     /// - mysql: `MySql` or `MariaDB`. The database url must be provided
     /// - sqlite: `SQLite`. The data will be stored at the `sqlite_path` directory
-    /// - sqlite-enc: `SQLite` encrypted at rest. the data will be stored at the `sqlite_path` directory.
     ///   A key must be supplied on every call
     /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
     ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
-        value_parser(["postgresql", "mysql", "sqlite", "sqlite-enc", "redis-findex"]),
+        value_parser(["postgresql", "mysql", "sqlite",  "redis-findex"]),
         verbatim_doc_comment
     )]
     pub database_type: Option<String>,
@@ -44,7 +43,7 @@ pub struct MainDBConfig {
         long,
         env = "KMS_SQLITE_PATH",
         default_value = DEFAULT_SQLITE_PATH,
-        required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
+        required_if_eq_any([("database_type", "sqlite")])
     )]
     pub sqlite_path: PathBuf,
 
@@ -105,7 +104,6 @@ impl Display for MainDBConfig {
                         .map_or("[INVALID URL]", |url| url.as_str())
                 ),
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
-                "sqlite-enc" => write!(f, "sqlcipher: {}", self.sqlite_path.display()),
                 "redis-findex" => write!(
                     f,
                     "redis-findex: {}, password: [****], label: 0x{}",
@@ -160,10 +158,6 @@ impl MainDBConfig {
                 "sqlite" => {
                     let path = workspace.finalize_directory(&self.sqlite_path)?;
                     MainDbParams::Sqlite(path)
-                }
-                "sqlite-enc" => {
-                    let path = workspace.finalize_directory(&self.sqlite_path)?;
-                    MainDbParams::SqliteEnc(path)
                 }
                 "redis-findex" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")?;

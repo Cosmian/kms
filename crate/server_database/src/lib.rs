@@ -82,6 +82,6 @@ mod error;
 pub use error::DbError;
 mod stores;
 pub use stores::{redis_master_key_from_password, SqlCipherSessionParams};
-
+pub mod migrate;
 #[cfg(test)]
 mod tests;

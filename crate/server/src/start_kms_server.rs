@@ -22,7 +22,7 @@ use crate::{
     middlewares::{extract_peer_certificate, AuthTransformer, JwksManager, JwtConfig, SslAuth},
     result::{KResult, KResultHelper},
     routes::{
-        access, add_new_database, get_version,
+        access, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip, ms_dke,
     },
@@ -325,13 +325,6 @@ pub async fn prepare_kms_server(
             .service(access::grant_access)
             .service(access::revoke_access)
             .service(get_version);
-
-        // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
-        let default_scope = if kms_server.is_using_sqlite_enc() {
-            default_scope.service(add_new_database)
-        } else {
-            default_scope
-        };
 
         app.service(default_scope)
     })
