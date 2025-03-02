@@ -1,13 +1,19 @@
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::kmip_types::Attributes;
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::{
+        Certificate, Object, OpaqueObject, PrivateKey, PublicKey, SecretData, SymmetricKey,
+    },
+    kmip_types::Attributes,
+};
 use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore};
+use serde_json::Value;
 use sqlx::{Executor, IntoArguments, Row};
 use tracing::trace;
 
 use crate::{
     error::{DbResult, DbResultHelper},
     migrate::{DbState, Migrate},
-    stores::{sql::SqlDatabase, DBObject},
+    stores::sql::SqlDatabase,
     DbError,
 };
 
@@ -109,9 +115,10 @@ where
         let mut operations = Vec::with_capacity(rows.len());
         for row in rows {
             let uid = row.get::<String, _>(0);
-            let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+            // Before 4.22.1, serialization to JSON was done with the `DBObject` struct
+            let db_object: Value = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
                 .context("migrate: failed deserializing the object")?;
-            let object = db_object.object;
+            let object = db_object_to_object(&db_object)?;
             trace!(
                 "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
                 object.object_type(),
@@ -140,6 +147,137 @@ where
 
     async fn migrate_from_4_13_0_to_4_22_1(&self) -> DbResult<()> {
         tracing::info!("Migrating from 4.13.0 to 4.22.1");
+
+        let ids = sqlx::query("SELECT id FROM objects")
+            .fetch_all(self.get_pool())
+            .await?
+            .into_iter()
+            .map(|row| row.get::<String, _>(0))
+            .collect::<Vec<String>>();
+
+        let mut tx =
+            self.get_pool().begin().await.map_err(|e| {
+                DbError::DatabaseError(format!("failed to start a transaction: {e}"))
+            })?;
+
+        let tx_future = async {
+            let select_query = format!(
+                "SELECT object FROM objects WHERE id = {binder}",
+                binder = self.binder(1)
+            );
+            let update_query = format!(
+                "UPDATE objects SET object = {binder1} WHERE id = {binder2}",
+                binder1 = self.binder(1),
+                binder2 = self.binder(2)
+            );
+            for id in &ids {
+                trace!("migrate_from_4_13_0_to_4_22_1: migrating object with id={id}");
+                let json_string = sqlx::query(select_query.as_str())
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?
+                    .get::<String, usize>(0);
+                let value: Value = serde_json::from_str(&json_string)
+                    .context("failed deserializing the object")?;
+                let object_string = serde_json::to_string(&db_object_to_object(&value)?)
+                    .context("migration to 4.22.1+ failed: failed to serialize the object")?;
+                sqlx::query(update_query.as_str())
+                    .bind(&object_string)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            Ok::<(), DbError>(())
+        };
+
+        if let Err(e) = tx_future.await {
+            tx.rollback()
+                .await
+                .context("migration to 4.22.1+ failed:: transaction failed")?;
+            return Err(DbError::DatabaseError(format!("{e}")));
+        }
+
+        tx.commit().await.map_err(|e| {
+            DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: failed to commit the transaction: {e}"
+            ))
+        })?;
+
         Ok(())
     }
+}
+
+/// This object was used to serialize the objects in the database
+/// before 4.22.1+
+/// ```Rust
+/// #[derive(Clone)]
+/// #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+/// pub(crate) struct DBObject {
+///     pub(crate) object_type: ObjectType,
+///     pub(crate) object: Object,
+/// }
+/// ```
+fn db_object_to_object(db_object: &Value) -> DbResult<Object> {
+    let object_type = db_object["object_type"].as_str().ok_or_else(|| {
+        DbError::DatabaseError(format!(
+            "migration to 4.22.1+ failed: object_type not found in object: {db_object:?}",
+        ))
+    })?;
+    let content = db_object["object"].clone();
+    // make sure we can actually deserialize and re-serialize the objects
+    Ok(match object_type {
+        "PrivateKey" => {
+            let obj = serde_json::from_value::<PrivateKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize PrivateKey: {e}"
+                ))
+            })?;
+            Object::PrivateKey(obj)
+        }
+        "PublicKey" => {
+            let obj = serde_json::from_value::<PublicKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize PublicKey: {e}"
+                ))
+            })?;
+            Object::PublicKey(obj)
+        }
+        "Certificate" => {
+            let obj = serde_json::from_value::<Certificate>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize Certificate: {e}"
+                ))
+            })?;
+            Object::Certificate(obj)
+        }
+        "SymmetricKey" => {
+            let obj = serde_json::from_value::<SymmetricKey>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize SymmetricKey: {e}"
+                ))
+            })?;
+            Object::SymmetricKey(obj)
+        }
+        "SecretData" => {
+            let obj = serde_json::from_value::<SecretData>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize SecretData: {e}"
+                ))
+            })?;
+            Object::SecretData(obj)
+        }
+        "OpaqueObject" => {
+            let obj = serde_json::from_value::<OpaqueObject>(content).map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "migration to 4.22.1+ failed: failed to deserialize OpaqueObject: {e}"
+                ))
+            })?;
+            Object::OpaqueObject(obj)
+        }
+        x => {
+            return Err(DbError::DatabaseError(format!(
+                "migration to 4.22.1+ failed: unknown object type: {x}"
+            )));
+        }
+    })
 }

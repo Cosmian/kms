@@ -31,7 +31,6 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
-mod serde_json;
 mod tagging_tests;
 
 pub(crate) fn get_redis_url() -> String {

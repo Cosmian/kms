@@ -30,7 +30,7 @@ use crate::{
     stores::{
         locate_query::{query_from_attributes, SqlitePlaceholder},
         sql::{SqlDatabase, SqlMainStore},
-        DBObject, SQLITE_QUERIES,
+        SQLITE_QUERIES,
     },
     DbError,
 };
@@ -58,9 +58,8 @@ macro_rules! get_sqlite_query {
 /// The `ObjectWithMetadata` corresponding to the row
 fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
-    let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
+    let object: Object = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
         .context("failed deserializing the object")?;
-    let object = db_object.object;
     let raw_attributes = row.get::<Value, _>(2);
     let attributes = serde_json::from_value(raw_attributes)?;
     let owner = row.get::<String, _>(3);
@@ -366,11 +365,8 @@ pub(crate) async fn create_(
     tags: &HashSet<String>,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<String> {
-    let object_json = serde_json::to_value(DBObject {
-        object_type: object.object_type(),
-        object: object.clone(),
-    })
-    .context("failed serializing the object to JSON")?;
+    let object_json =
+        serde_json::to_value(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
@@ -435,11 +431,8 @@ pub(crate) async fn update_object_(
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_value(DBObject {
-        object_type: object.object_type(),
-        object: object.clone(),
-    })
-    .context("failed serializing the object to JSON")?;
+    let object_json =
+        serde_json::to_value(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
@@ -515,11 +508,8 @@ pub(crate) async fn upsert_(
         "Upserting in DB: {uid}\n   object: {object}\n   attributes: {attributes:?}\n    tags: \
          {tags:?}\n    state: {state:?}\n    owner: {owner}"
     );
-    let object_json = serde_json::to_value(DBObject {
-        object_type: object.object_type(),
-        object: object.clone(),
-    })
-    .context("failed serializing the object to JSON")?;
+    let object_json =
+        serde_json::to_value(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
