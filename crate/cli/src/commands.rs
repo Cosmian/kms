@@ -119,6 +119,8 @@ impl KmsActions {
     ///
     /// # Errors
     /// - If the configuration file is not found or invalid
+    #[allow(clippy::large_futures)]
+
     pub async fn process(&self, kms_rest_client: &mut KmsClient) -> CliResult<()> {
         match self {
             Self::AccessRights(action) => action.process(kms_rest_client).await,
@@ -143,7 +145,8 @@ impl KmsActions {
 /// Main entry point for the CLI
 /// # Errors
 /// - If the configuration file is not found or invalid
-#[allow(clippy::cognitive_complexity, clippy::print_stdout)]
+#[allow(clippy::large_futures)]
+
 pub async fn ckms_main() -> CliResult<()> {
     log_init(None);
     let cli_opts = KmsCli::parse();

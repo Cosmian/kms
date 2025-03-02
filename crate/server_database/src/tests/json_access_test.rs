@@ -54,7 +54,7 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(StateEnumeration::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(&symmetric_key, obj.object());
 
     // Find with crypto algo attribute
 

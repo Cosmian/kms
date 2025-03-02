@@ -81,6 +81,7 @@ pub trait Migrate<DB> {
     async fn migrate_from_4_12_0_to_4_13_0(&self) -> DbResult<()>;
 
     /// Objects stored in the `objects` table have now migrated from
+    /// an old `DBObject` structure
     /// ```json
     /// {
     ///     "object_type":"PublicKey",
@@ -92,7 +93,7 @@ pub trait Migrate<DB> {
     ///    }
     /// }
     /// ```
-    /// to
+    /// to the serialization og a KMIP 2.1 `Object`:
     ///
     /// ```json
     /// {

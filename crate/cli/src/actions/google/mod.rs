@@ -29,6 +29,8 @@ impl GoogleCommands {
     ///
     /// Returns a `CliResult` indicating the success or failure of the command.
     ///
+    #[allow(clippy::large_futures)]
+
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::KeyPairs(command) => command.process(kms_rest_client).await?,

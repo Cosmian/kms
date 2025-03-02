@@ -176,9 +176,9 @@ impl CreateKeyPairsAction {
         // Sign created public key with the issuer private key
         let attributes = Attributes {
             object_type: Some(ObjectType::Certificate),
-            certificate_attributes: Some(Box::new(CertificateAttributes::parse_subject_line(
+            certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                 &self.subject_name,
-            )?)),
+            )?),
             link: Some(vec![Link {
                 link_type: LinkType::PrivateKeyLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(

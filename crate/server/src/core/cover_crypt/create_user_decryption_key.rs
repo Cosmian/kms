@@ -110,6 +110,8 @@ async fn create_user_decryption_key_(
 #[allow(unused)]
 //TODO: there is noway to distinguish between the creation of a user decryption key pair and a master key pair
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
+#[allow(clippy::large_futures)]
+
 pub(crate) async fn create_user_decryption_key_pair(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,

@@ -12,7 +12,7 @@ pub(crate) trait PlaceholderTrait {
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
     #[allow(dead_code)]
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
-    const JSON_NODE_WRAPPING: &'static str = "'$.object.KeyBlock.KeyWrappingData'";
+    const JSON_NODE_WRAPPING: &'static str = "'$.*.KeyBlock.KeyWrappingData'";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -51,16 +51,28 @@ pub(crate) trait PlaceholderTrait {
         )
     }
 
-    /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
+    // /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
+    // #[must_use]
+    // fn extract_text_from_key_block_path(key_name: &str) -> String {
+    //     format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
+    // }
+
     #[must_use]
-    fn extract_text_from_key_block_path(key_name: &str) -> String {
-        format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
+    fn extract_attribute_path(attribute_name: &str) -> String {
+        // format!("attrs ->> '{attribute_name}'")
+        format!(
+            "{}(attrs, '$.{attribute_name}')",
+            Self::JSON_FN_EXTRACT_TEXT
+        )
     }
 
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     #[must_use]
-    fn extract_text_from_object_type_path() -> String {
-        "object ->> 'object_type'".to_owned()
+    fn extract_object_type() -> String {
+        format!(
+            "(SELECT key FROM {}(objects.object) LIMIT 1)",
+            Self::JSON_FN_EACH_ELEMENT
+        )
     }
 }
 
@@ -99,15 +111,26 @@ impl PlaceholderTrait for MySqlPlaceholder {
         )
     }
 
-    fn extract_text_from_key_block_path(key_name: &str) -> String {
+    // fn extract_text_from_key_block_path(key_name: &str) -> String {
+    //     format!(
+    //         "{}(object, '$.object.KeyBlock.{key_name}')",
+    //         Self::JSON_FN_EXTRACT_TEXT
+    //     )
+    // }
+
+    #[must_use]
+    fn extract_attribute_path(attribute_name: &str) -> String {
         format!(
-            "{}(object, '$.object.KeyBlock.{key_name}')",
+            "{}(attrs, '$.{attribute_name}')",
             Self::JSON_FN_EXTRACT_TEXT
         )
     }
 
-    fn extract_text_from_object_type_path() -> String {
-        format!("{}(object, '$.object_type')", Self::JSON_FN_EXTRACT_TEXT)
+    fn extract_object_type() -> String {
+        format!(
+            "(SELECT key FROM {}(objects.object) LIMIT 1)",
+            Self::JSON_FN_EACH_ELEMENT
+        )
     }
 }
 pub(crate) enum PgSqlPlaceholder {}
@@ -202,7 +225,7 @@ ON objects.id = matched_tags.id"
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
                 "{query} AND {} = '{cryptographic_algorithm}'",
-                P::extract_text_from_key_block_path("CryptographicAlgorithm")
+                P::extract_attribute_path("CryptographicAlgorithm")
             );
         };
 
@@ -210,7 +233,7 @@ ON objects.id = matched_tags.id"
         if let Some(cryptographic_length) = attributes.cryptographic_length {
             query = format!(
                 "{query} AND CAST ({} AS {}) = {cryptographic_length}",
-                P::extract_text_from_key_block_path("CryptographicLength"),
+                P::extract_attribute_path("CryptographicLength"),
                 P::TYPE_INTEGER
             );
         };
@@ -219,16 +242,13 @@ ON objects.id = matched_tags.id"
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
                 "{query} AND {} = '{key_format_type}'",
-                P::extract_text_from_key_block_path("KeyFormatType")
+                P::extract_attribute_path("KeyFormatType")
             );
         };
 
         // ObjectType
         if let Some(object_type) = attributes.object_type {
-            query = format!(
-                "{query} AND {} = '{object_type}'",
-                P::extract_text_from_object_type_path()
-            );
+            query = format!("{query} AND {} = '{object_type}'", P::extract_object_type());
         };
 
         // Link

@@ -938,7 +938,7 @@ pub struct Attributes {
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_attributes: Option<Box<CertificateAttributes>>,
+    pub certificate_attributes: Option<CertificateAttributes>,
 
     /// The Certificate Type attribute is a type of certificate (e.g., X.509).
     /// The Certificate Type value SHALL be set by the server when the certificate

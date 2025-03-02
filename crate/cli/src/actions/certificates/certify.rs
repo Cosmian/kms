@@ -279,14 +279,13 @@ impl CertifyAction {
                 _ => Some(CertificateRequestType::PEM),
             };
         } else if let Some(public_key_to_certify) = &self.public_key_id_to_certify {
-            attributes.certificate_attributes =
-                Some(Box::new(CertificateAttributes::parse_subject_line(
-                    self.subject_name.as_ref().ok_or_else(|| {
-                        CliError::Default(
-                            "subject name is required when certifying a public key".to_owned(),
-                        )
-                    })?,
-                )?));
+            attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
+                self.subject_name.as_ref().ok_or_else(|| {
+                    CliError::Default(
+                        "subject name is required when certifying a public key".to_owned(),
+                    )
+                })?,
+            )?);
             unique_identifier = Some(UniqueIdentifier::TextString(
                 public_key_to_certify.to_string(),
             ));
@@ -295,14 +294,13 @@ impl CertifyAction {
                 certificate_id_to_renew.clone(),
             ));
         } else if self.generate_key_pair {
-            attributes.certificate_attributes =
-                Some(Box::new(CertificateAttributes::parse_subject_line(
-                    self.subject_name.as_ref().ok_or_else(|| {
-                        CliError::Default(
-                            "subject name is required when generating a keypair".to_owned(),
-                        )
-                    })?,
-                )?));
+            attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
+                self.subject_name.as_ref().ok_or_else(|| {
+                    CliError::Default(
+                        "subject name is required when generating a keypair".to_owned(),
+                    )
+                })?,
+            )?);
             match self.algorithm {
                 #[cfg(not(feature = "fips"))]
                 Algorithm::RSA1024 => {

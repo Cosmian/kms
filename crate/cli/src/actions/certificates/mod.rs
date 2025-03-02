@@ -46,6 +46,8 @@ impl CertificatesCommands {
     ///
     /// Returns an error if the query execution on the KMS server fails.
     ///
+    #[allow(clippy::large_futures)]
+
     pub async fn process(&self, client_connector: &KmsClient) -> CliResult<()> {
         match self {
             Self::Certify(action) => action.run(client_connector).await,
