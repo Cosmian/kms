@@ -12,7 +12,6 @@ pub(crate) trait PlaceholderTrait {
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
     #[allow(dead_code)]
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
-    const JSON_NODE_WRAPPING: &'static str = "'$.*.KeyBlock.KeyWrappingData'";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -51,22 +50,26 @@ pub(crate) trait PlaceholderTrait {
         )
     }
 
+    /// Format the JSON path to extract an attribute
+    /// from the `objects.attributes` JSON field
     #[must_use]
-    fn extract_attribute_path(attribute_name: &str) -> String {
-        // format!("attrs ->> '{attribute_name}'")
+    fn format_json_path(attribute_names: &[&str]) -> String {
+        "$.".to_owned() + &*attribute_names.join(".")
+    }
+
+    #[must_use]
+    fn extract_attribute_path(attribute_names: &[&str]) -> String {
         format!(
-            "{}(attrs, '$.{attribute_name}')",
-            Self::JSON_FN_EXTRACT_TEXT
+            "{}(objects.attributes, '{}')",
+            Self::JSON_FN_EXTRACT_TEXT,
+            Self::format_json_path(attribute_names)
         )
     }
 
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     #[must_use]
     fn extract_object_type() -> String {
-        format!(
-            "(SELECT key FROM {}(objects.object) LIMIT 1)",
-            Self::JSON_FN_EACH_ELEMENT
-        )
+        Self::extract_attribute_path(&["ObjectType"])
     }
 }
 
@@ -112,9 +115,16 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
     const JSON_NODE_LINK: &'static str = "'Link'";
-    const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
+    // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
+
+    /// Format the JSON path to extract an attribute
+    /// from the `objects.attributes` JSON field
+    #[must_use]
+    fn format_json_path(attribute_names: &[&str]) -> String {
+        attribute_names.join(",")
+    }
 }
 pub(crate) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
@@ -131,12 +141,15 @@ pub(crate) fn query_from_attributes<P: PlaceholderTrait>(
     user: &str,
     user_must_be_owner: bool,
 ) -> String {
-    let mut query = format!(
-        "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
-         {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
-        P::JSON_FN_EXTRACT_PATH,
-        P::JSON_NODE_WRAPPING
-    );
+    let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
+                     FROM objects"
+        .to_owned();
+    // let mut query = format!(
+    //     "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
+    //      {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
+    //     P::JSON_FN_EXTRACT_PATH,
+    //     P::JSON_NODE_WRAPPING
+    // );
 
     if let Some(attributes) = attributes {
         // tags
@@ -197,7 +210,7 @@ ON objects.id = matched_tags.id"
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
                 "{query} AND {} = '{cryptographic_algorithm}'",
-                P::extract_attribute_path("CryptographicAlgorithm")
+                P::extract_attribute_path(&["CryptographicAlgorithm"])
             );
         };
 
@@ -205,7 +218,7 @@ ON objects.id = matched_tags.id"
         if let Some(cryptographic_length) = attributes.cryptographic_length {
             query = format!(
                 "{query} AND CAST ({} AS {}) = {cryptographic_length}",
-                P::extract_attribute_path("CryptographicLength"),
+                P::extract_attribute_path(&["CryptographicLength"]),
                 P::TYPE_INTEGER
             );
         };
@@ -214,7 +227,7 @@ ON objects.id = matched_tags.id"
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
                 "{query} AND {} = '{key_format_type}'",
-                P::extract_attribute_path("KeyFormatType")
+                P::extract_attribute_path(&["KeyFormatType"])
             );
         };
 

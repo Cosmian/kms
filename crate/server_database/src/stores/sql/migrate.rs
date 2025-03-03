@@ -28,8 +28,8 @@ where
     for<'z> String: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
     for<'z> &'z str: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
     for<'z> Vec<u8>: sqlx::Encode<'z, DB> + sqlx::Decode<'z, DB> + sqlx::Type<DB>,
-    for<'w, 'z> sqlx::types::Json<&'w serde_json::Value>: sqlx::Encode<'z, DB>,
-    sqlx::types::Json<serde_json::Value>: sqlx::Type<DB>,
+    for<'w, 'z> sqlx::types::Json<&'w Value>: sqlx::Encode<'z, DB>,
+    for<'z> sqlx::types::Json<Value>: sqlx::Decode<'z, DB> + sqlx::Type<DB>,
     usize: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
 {
     async fn get_db_state(&self) -> DbResult<Option<DbState>> {
@@ -195,19 +195,19 @@ where
                     .fetch_one(self.get_pool())
                     .await?;
                 // Migrate DBObject --> Object
-                let dbobject_json_string = row.get::<String, usize>(0);
-                if let Ok(_e) = serde_json::from_str::<Object>(&dbobject_json_string) {
+                let dbobject_json = row.get::<Value, _>(0);
+                if let Ok(_e) = serde_json::from_value::<Object>(dbobject_json.clone()) {
                     // already migrated
                     return Ok::<_, DbError>(());
                 }
-                let dbobject_value: Value = serde_json::from_str(&dbobject_json_string)
+                let dbobject_value: Value = serde_json::from_value(dbobject_json)
                     .context("failed deserializing the object")?;
                 let object = db_object_to_object(&dbobject_value)?;
                 let object_json = serde_json::to_value(&object)
                     .context("migration to 4.22.1+ failed: failed to serialize the object")?;
                 // Migrate Attributes --> Attributes
-                let attributes_json_string = row.get::<String, usize>(1);
-                let mut attributes: Attributes = serde_json::from_str(&attributes_json_string)
+                let attributes_json = row.get::<Value, usize>(1);
+                let mut attributes: Attributes = serde_json::from_value(attributes_json)
                     .context("migration to 4.22.1+ failed: failed to deserialize the attributes")?;
                 // update an issue that ObjectType is not always correctly set (e.g. certificates)
                 attributes.object_type = Some(object.object_type());

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS parameters (
 INSERT INTO parameters (name,value) VALUES ($1, $2)
         ON CONFLICT(name)
         DO UPDATE SET value=$2
-        WHERE name=$1;
+        WHERE parameters.name=$1;
 
 -- name: select-parameter
 SELECT value FROM parameters WHERE name=$1;
