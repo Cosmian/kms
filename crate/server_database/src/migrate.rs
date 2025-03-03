@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 use version_compare::{compare, Cmp};
 
 use crate::{error::DbResult, DbError};
@@ -49,13 +49,16 @@ pub trait Migrate<DB> {
         debug!("Database version: {current_db_version}, Current KMS version: {kms_version}");
 
         if lower_equal(&current_db_version, "4.22.1")? {
+            info!("Migrating database from version {current_db_version} to {kms_version}.");
             self.set_db_state(DbState::Upgrading).await?;
             if lower_equal(&current_db_version, KMS_VERSION_BEFORE_MIGRATION_SUPPORT)? {
                 self.migrate_from_4_12_0_to_4_13_0().await?;
             }
-            self.migrate_from_4_13_0_to_4_22_1().await?;
+            self.migrate_to_4_22_2().await?;
             self.set_current_db_version(kms_version).await?;
             self.set_db_state(DbState::Ready).await?;
+        } else {
+            debug!("  ==> database is up to date.");
         }
 
         Ok(())
@@ -104,5 +107,5 @@ pub trait Migrate<DB> {
     ///         }
     ///    }
     /// }
-    async fn migrate_from_4_13_0_to_4_22_1(&self) -> DbResult<()>;
+    async fn migrate_to_4_22_2(&self) -> DbResult<()>;
 }

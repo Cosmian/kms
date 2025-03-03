@@ -3,7 +3,6 @@
 use std::path::Path;
 
 use cosmian_kms_crypto::crypto::secret::Secret;
-use cosmian_kms_interfaces::ObjectsStore;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use tracing::log::debug;
@@ -91,16 +90,19 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     Ok(())
 }
 
+/// Run the tests with a SQLite database.
+/// For additional logging, run the tests with
+/// ```Rust
+/// log_init(Some(
+///     "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
+///      cosmian_kms_interfaces=trace",
+/// ));
+/// ```
 #[tokio::test]
 pub(crate) async fn test_sqlite() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
-    // log_init(Some(
-    //     "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-    //      cosmian_kms_interfaces=trace",
-    // ));
     let dir = TempDir::new()?;
     let db_file = dir.path().join("test_sqlite.db");
-    // let db_file = Path::new("/tmp/sqlite.db");
     if db_file.exists() {
         std::fs::remove_file(&db_file)?;
     }
@@ -114,6 +116,8 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?, None).await?;
     crud(&get_sqlite(&db_file).await?, None).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
+    // restore the default log level
+    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
@@ -150,7 +154,6 @@ pub(crate) async fn test_mysql() -> DbResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
-    // log_init(None);
     log_init(Some(
         "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
          cosmian_kms_interfaces=trace",
@@ -169,9 +172,10 @@ pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
             std::fs::remove_file(&tmp_file_path)?;
         }
         std::fs::copy(sqlite_path, &tmp_file_path)?;
-        let pool = SqlitePool::instantiate(&tmp_file_path, false).await?;
-        let results = pool.find(None, None, "admin", false, None).await?;
-        debug!("   <== Found {} objects", results.len());
+        let _pool_update = SqlitePool::instantiate(&tmp_file_path, false).await?;
+        let _pool_updated = SqlitePool::instantiate(&tmp_file_path, false).await?;
     }
+    // restore the default log level
+    log_init(option_env!("RUST_LOG"));
     Ok(())
 }

@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::kmip_types::{
 
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
-/// This trait contains default naming which are overridden
+/// This trait contains default naming overridden
 /// by implementation if needed
 pub(crate) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
@@ -50,12 +50,6 @@ pub(crate) trait PlaceholderTrait {
             node_value  // `link.link_type` or `uid`
         )
     }
-
-    // /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
-    // #[must_use]
-    // fn extract_text_from_key_block_path(key_name: &str) -> String {
-    //     format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
-    // }
 
     #[must_use]
     fn extract_attribute_path(attribute_name: &str) -> String {
@@ -108,28 +102,6 @@ impl PlaceholderTrait for MySqlPlaceholder {
             Self::JSON_NODE_LINK,
             node_value,
             node_name,
-        )
-    }
-
-    // fn extract_text_from_key_block_path(key_name: &str) -> String {
-    //     format!(
-    //         "{}(object, '$.object.KeyBlock.{key_name}')",
-    //         Self::JSON_FN_EXTRACT_TEXT
-    //     )
-    // }
-
-    #[must_use]
-    fn extract_attribute_path(attribute_name: &str) -> String {
-        format!(
-            "{}(attrs, '$.{attribute_name}')",
-            Self::JSON_FN_EXTRACT_TEXT
-        )
-    }
-
-    fn extract_object_type() -> String {
-        format!(
-            "(SELECT key FROM {}(objects.object) LIMIT 1)",
-            Self::JSON_FN_EACH_ELEMENT
         )
     }
 }
