@@ -146,3 +146,36 @@ jobs:
           find /usr/local/openssl
           chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
           ./$KMS_PATH/cosmian_kms --info
+
+      - name: Get IP Addresses
+        id: ip
+        uses: candidob/get-runner-ip@v1.0.0
+
+      - name: Utimaco HSM tests
+        if: inputs.distribution == 'ubuntu-24.04'
+        run: |
+            set -ex
+            sudo dpkg --add-architecture i386
+            sudo apt-get update && sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
+
+            # Download the simulator
+            wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
+            echo -n Extracting compressed archive...
+            tar -xvf "*.tar"
+            find .
+            rm "*.tar"
+
+            # Configure the PKCS#11 connection on the KMS server
+            sudo telnet ${{ steps.ip.outputs.ipv4 }} 3001
+            sudo cp Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /lib directory
+            sudo mkdir -p /etc/utimaco
+            sudo chmod 755 /etc/utimaco
+            sudo cp u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/sample/cs_pkcs11_R3.cfg /etc/utimaco/
+            sudo echo -e "...\nLogpath = /tmp\n...\nLogging = 3\n...\nDevice = 3001@${{ steps.ip.outputs.ipv4 }}\n..." > /etc/utimaco/cs_pkcs11_R3.cfg
+            export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
+
+            # Test the PKCS#11 configuration using ./p11tool2 Slot=0 GetSlotInfo
+            cd u.trust_anchor_integration_eval_bundle-6.0.0.0/Software/Linux/Administration
+            ./p11tool2 Slot=0 GetSlotInfo
+
+            cargo test -p utimaco_pkcs11_loader --features utimaco
