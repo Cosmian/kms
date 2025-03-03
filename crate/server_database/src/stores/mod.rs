@@ -1,6 +1,5 @@
 pub(crate) mod extra_store_params;
 mod locate_query;
-mod migrate_sql;
 mod mysql;
 mod pgsql;
 mod redis;

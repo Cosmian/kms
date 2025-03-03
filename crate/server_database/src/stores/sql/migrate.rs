@@ -5,10 +5,10 @@ use cosmian_kmip::kmip_2_1::{
     },
     kmip_types::Attributes,
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore};
+use cosmian_kms_interfaces::ObjectsStore;
 use serde_json::Value;
 use sqlx::{Executor, IntoArguments, Row};
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 
 use crate::{
     error::{DbResult, DbResultHelper},
@@ -106,106 +106,129 @@ where
             .await
             .map_err(DbError::from)?;
 
-        // Select all objects and extract the KMIP attributes to be stored in the new column
-        let rows = sqlx::query("SELECT * FROM objects")
+        // Fill the `attributes` column with the object attributes
+        let uids = sqlx::query("SELECT id FROM objects")
             .fetch_all(self.get_pool())
-            .await
-            .map_err(DbError::from)?;
+            .await?
+            .into_iter()
+            .map(|row| row.get::<String, _>(0))
+            .collect::<Vec<String>>();
+        trace!("migrate_from_4_12_0_to_4_13_0: uids={}", uids.len());
 
-        let mut operations = Vec::with_capacity(rows.len());
-        for row in rows {
-            let uid = row.get::<String, _>(0);
-            // Before 4.22.1, serialization to JSON was done with the `DBObject` struct
-            let db_object: Value = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
-                .context("migrate: failed deserializing the object")?;
-            let object = db_object_to_object(&db_object)?;
-            trace!(
-                "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
-                object.object_type(),
-                uid
-            );
-            let attributes = match object.attributes() {
-                Ok(attrs) => attrs.clone(),
-                Err(_error) => {
-                    // For example, a Certificate object has no KMIP-attribute
-                    Attributes::default()
-                }
+        let select_query = format!(
+            "SELECT object FROM objects WHERE id = {binder}",
+            binder = self.binder(1)
+        );
+        let update_query = self.get_query("update-object-with-object")?;
+        for uid in &uids {
+            trace!("migrate_from_4_12_0_to_4_13_0: migrating object with id={uid}");
+            let op_fut = async {
+                let row = sqlx::query(select_query.as_str())
+                    .bind(uid)
+                    .fetch_one(self.get_pool())
+                    .await?;
+
+                // Before 4.22.1, serialization to JSON was done with the `DBObject` struct
+                let db_object: Value = serde_json::from_slice(&row.get::<Vec<u8>, _>(0))
+                    .context("migrate_from_4_12_0_to_4_13_0 failed deserializing the object")?;
+                let object = db_object_to_object(&db_object)?;
+                let object_json = serde_json::to_value(&object).context(
+                    "migrate_from_4_12_0_to_4_13_0 failed: failed to serialize the object",
+                )?;
+                trace!(
+                    "migrate_from_4_12_0_to_4_13_0: object (type: {})={:?}",
+                    object.object_type(),
+                    uid
+                );
+                let mut attributes = match object.attributes() {
+                    Ok(attrs) => attrs.clone(),
+                    Err(_error) => {
+                        // For example, a Certificate object has no KMIP-attribute
+                        Attributes::default()
+                    }
+                };
+                attributes.set_object_type(object.object_type());
+                trace!("migrate_from_4_12_0_to_4_13_0: attributes={:?}", attributes);
+                let attributes_json = serde_json::to_value(&attributes).context(
+                    "migrate_from_4_12_0_to_4_13_0: failed serializing the attributes to JSON",
+                )?;
+                // Update the object and attributes in the database
+                sqlx::query(update_query)
+                    .bind(object_json)
+                    .bind(attributes_json)
+                    .bind(uid.to_owned())
+                    .execute(self.get_pool())
+                    .await?;
+                Ok::<_, DbError>(())
             };
-            let tags = self.retrieve_tags(&uid, None).await?;
-            operations.push(AtomicOperation::UpdateObject((
-                uid,
-                object,
-                attributes,
-                Some(tags),
-            )));
+            if let Err(e) = op_fut.await {
+                error!("migrate_from_4_12_0_to_4_13_0: failed migrating {uid}: {e}");
+            }
         }
-
-        self.atomic("this user is not used to update objects", &operations, None)
-            .await?;
+        info!(
+            "Migration from 4.12.0 to 4.13.0 completed: {} objects migrated",
+            uids.len()
+        );
         Ok(())
     }
 
-    async fn migrate_from_4_13_0_to_4_22_1(&self) -> DbResult<()> {
-        tracing::debug!("Migrating from 4.13.0 to 4.22.1");
+    async fn migrate_to_4_22_2(&self) -> DbResult<()> {
+        tracing::debug!("Migrating to 4.22.1+");
 
-        let ids = sqlx::query("SELECT id FROM objects")
+        let uids = sqlx::query("SELECT id FROM objects")
             .fetch_all(self.get_pool())
             .await?
             .into_iter()
             .map(|row| row.get::<String, _>(0))
             .collect::<Vec<String>>();
 
-        let mut tx =
-            self.get_pool().begin().await.map_err(|e| {
-                DbError::DatabaseError(format!("failed to start a transaction: {e}"))
-            })?;
-
-        let tx_future = async {
-            let select_query = format!(
-                "SELECT object FROM objects WHERE id = {binder}",
-                binder = self.binder(1)
-            );
-            let update_query = format!(
-                "UPDATE objects SET object = {binder1} WHERE id = {binder2}",
-                binder1 = self.binder(1),
-                binder2 = self.binder(2)
-            );
-            for id in &ids {
-                trace!("migrate_from_4_13_0_to_4_22_1: migrating object with id={id}");
-                let json_string = sqlx::query(select_query.as_str())
-                    .bind(id)
-                    .fetch_one(&mut *tx)
-                    .await?
-                    .get::<String, usize>(0);
-                let value: Value = serde_json::from_str(&json_string)
-                    .context("failed deserializing the object")?;
-                let object_string = serde_json::to_string(&db_object_to_object(&value)?)
-                    .context("migration to 4.22.1+ failed: failed to serialize the object")?;
-                sqlx::query(update_query.as_str())
-                    .bind(&object_string)
-                    .bind(id)
-                    .execute(&mut *tx)
+        let select_query = format!(
+            "SELECT object, attributes FROM objects WHERE id = {binder}",
+            binder = self.binder(1)
+        );
+        let update_query = self.get_query("update-object-with-object")?;
+        for uid in &uids {
+            trace!("migrate to 4_22_1+: migrating object with id={uid}");
+            let op_fut = async {
+                let row = sqlx::query(select_query.as_str())
+                    .bind(uid)
+                    .fetch_one(self.get_pool())
                     .await?;
+                // Migrate DBObject --> Object
+                let dbobject_json_string = row.get::<String, usize>(0);
+                if let Ok(_e) = serde_json::from_str::<Object>(&dbobject_json_string) {
+                    // already migrated
+                    return Ok::<_, DbError>(());
+                }
+                let dbobject_value: Value = serde_json::from_str(&dbobject_json_string)
+                    .context("failed deserializing the object")?;
+                let object = db_object_to_object(&dbobject_value)?;
+                let object_json = serde_json::to_value(&object)
+                    .context("migration to 4.22.1+ failed: failed to serialize the object")?;
+                // Migrate Attributes --> Attributes
+                let attributes_json_string = row.get::<String, usize>(1);
+                let mut attributes: Attributes = serde_json::from_str(&attributes_json_string)
+                    .context("migration to 4.22.1+ failed: failed to deserialize the attributes")?;
+                // update an issue that ObjectType is not always correctly set (e.g. certificates)
+                attributes.object_type = Some(object.object_type());
+                let attributes_json = serde_json::to_value(attributes)
+                    .context("migration to 4.22.1+ failed: serializing the attributes to JSON")?;
+                // Update the object and attributes in the database
+                sqlx::query(update_query)
+                    .bind(object_json)
+                    .bind(attributes_json)
+                    .bind(uid.to_owned())
+                    .execute(self.get_pool())
+                    .await?;
+                Ok::<_, DbError>(())
+            };
+            if let Err(e) = op_fut.await {
+                error!("migration to 4.22.1+ failed migrating {uid}: {e}");
             }
-            Ok::<(), DbError>(())
-        };
-
-        if let Err(e) = tx_future.await {
-            tx.rollback()
-                .await
-                .context("migration to 4.22.1+ failed:: transaction failed")?;
-            return Err(DbError::DatabaseError(format!("{e}")));
         }
-
-        tx.commit().await.map_err(|e| {
-            DbError::DatabaseError(format!(
-                "migration to 4.22.1+ failed: failed to commit the transaction: {e}"
-            ))
-        })?;
-
         info!(
-            "Migration from 4.13.0 to 4.22.1 completed: {} objects migrated",
-            ids.len()
+            "Migration to 4.22.1+ completed: {} objects migrated",
+            uids.len()
         );
         Ok(())
     }
