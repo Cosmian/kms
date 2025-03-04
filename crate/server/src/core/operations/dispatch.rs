@@ -13,8 +13,6 @@ use cosmian_kms_interfaces::SessionParams;
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 /// Dispatch operation depending on the TTLV tag
-#[allow(clippy::large_stack_frames)]
-#[allow(clippy::large_futures)]
 pub(crate) async fn dispatch(
     kms: &KMS,
     ttlv: TTLV,
@@ -94,7 +92,6 @@ pub(crate) async fn dispatch(
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            #[allow(clippy::large_futures)]
             let resp = kms.rekey_keypair(req, user, database_params).await?;
             Operation::ReKeyKeyPairResponse(resp)
         }

@@ -1,5 +1,3 @@
-#![allow(clippy::large_stack_frames)]
-
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::{
@@ -33,8 +31,6 @@ use crate::{
 /// - `DisableAttribute`: Disable attributes in the policy.
 /// - `AddAttribute`: Add new attributes to the policy.
 /// - `RenameAttribute`: Rename attributes in the policy.
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -175,8 +171,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 
 /// Updates the key-pair associated to the MSK which ID is given using the given mutator, and
 /// replaces the stored key-pair with the mutated one.
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn update_master_keys(
     server: &KMS,
     owner: &str,
@@ -196,8 +190,6 @@ pub(crate) async fn update_master_keys(
 
     Ok((msk_obj, mpk_obj))
 }
-
-#[allow(clippy::large_futures)]
 
 async fn get_master_keys_and_policy(
     kmip_server: &KMS,
@@ -247,8 +239,6 @@ async fn get_master_keys_and_policy(
 }
 
 /// Import the updated master keys in place of the old ones in the KMS
-#[allow(clippy::large_futures)]
-
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
@@ -284,8 +274,6 @@ async fn import_rekeyed_master_keys(
 }
 
 /// Updates user secret keys for actions like rekeying or pruning.
-#[allow(clippy::large_futures)]
-
 async fn update_all_active_usk(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
@@ -326,8 +314,6 @@ async fn update_all_active_usk(
 }
 
 /// Refresh an individual user secret key with a given handler to a master secret key
-#[allow(clippy::large_futures)]
-
 async fn update_usk(
     handler: &UserDecryptionKeysHandler,
     user_decryption_key_uid: &str,

@@ -91,8 +91,6 @@ pub(crate) async fn version(req_http: HttpRequest, kms: Data<Arc<KMS>>) -> KResu
 }
 
 #[get("/{key_name}")]
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn get_key(
     req_http: HttpRequest,
     path: Path<String>,
@@ -114,8 +112,6 @@ pub(crate) async fn get_key(
         Err(e) => HttpResponse::from_error(e),
     }
 }
-
-#[allow(clippy::large_futures)]
 
 async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResult<KeyData> {
     let user = kms.get_user(&req_http);

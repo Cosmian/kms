@@ -32,7 +32,6 @@ pub(crate) async fn kmip_2_1(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    #[allow(clippy::large_futures)]
     let ttlv = handle_ttlv(&kms, ttlv, &user, None).await?;
     Ok(Json(ttlv))
 }
@@ -55,7 +54,6 @@ async fn handle_ttlv(
         let resp = kms.message(req, user, database_params).await?;
         Ok(to_ttlv(&resp)?)
     } else {
-        #[allow(clippy::large_futures)]
         let operation = dispatch(kms, ttlv, user, database_params).await?;
         Ok(to_ttlv(&operation)?)
     }

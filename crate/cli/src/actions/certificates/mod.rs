@@ -46,15 +46,14 @@ impl CertificatesCommands {
     ///
     /// Returns an error if the query execution on the KMS server fails.
     ///
-    #[allow(clippy::large_futures)]
-
     pub async fn process(&self, client_connector: &KmsClient) -> CliResult<()> {
         match self {
             Self::Certify(action) => action.run(client_connector).await,
             Self::Decrypt(action) => action.run(client_connector).await,
             Self::Encrypt(action) => action.run(client_connector).await,
             Self::Export(action) => action.run(client_connector).await,
-            Self::Import(action) => action.run(client_connector).await,
+            // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+            Self::Import(action) => Box::pin(action.run(client_connector)).await,
             Self::Revoke(action) => action.run(client_connector).await,
             Self::Destroy(action) => action.run(client_connector).await,
             Self::Validate(action) => action.run(client_connector).await,
