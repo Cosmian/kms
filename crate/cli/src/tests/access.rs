@@ -125,7 +125,7 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> CliResult<String> {
 
 #[tokio::test]
 pub(crate) async fn test_ownership_and_grant() -> CliResult<()> {
-    log_init(Some("debug,hyper=info,reqwest=info"));
+    log_init(option_env!("RUST_LOG"));
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.owner_client_conf_path)?;
