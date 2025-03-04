@@ -294,8 +294,6 @@ pub(crate) fn build_private_key_from_der_bytes(
 }
 
 #[tokio::test]
-#[allow(clippy::large_futures)]
-
 async fn test_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(None);
 

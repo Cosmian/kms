@@ -101,13 +101,11 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     assert!(res.is_err());
     debug!("OK: Validate root/leaf2 certificates - missing intermediate");
 
-    Result::Ok(())
+    Ok(())
 }
 
 #[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
@@ -151,7 +149,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             object_type: Some(ObjectType::Certificate),
             ..Attributes::default()
         },
-        object: cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(Certificate {
+        object: Object::Certificate(Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: intermediate_cert.clone(),
         }),
@@ -180,7 +178,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root - valid");
 
     // Root and intermediate valid certificates. Good structure.
@@ -193,7 +191,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate certificates - valid");
 
     // Root and intermediate valid certificates. Leaf revoked. Test returns invalid.
@@ -229,7 +227,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf2 certificates - valid");
 
     // Root and intermediate valid certificates. Leaf valid. Test returns valid. Testing deduplicating unique identifiers.
@@ -244,7 +242,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf2 certificates - valid");
 
     // Root and intermediate valid certificates. Leaf valid. Date provided is future to the expiration of the certificates. Test returns invalid.
@@ -276,7 +274,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     assert!(res.is_err());
 
     debug!("OK: Validate root/leaf2 certificates - invalid (missing intermediate)");
-    // Root certificate not provided. Intermediate and leaf are valid certificates. Return is Invalid.
+    // Root certificate isn't provided. Intermediate and leaf are valid certificates. Return is Invalid.
     let request = Validate {
         certificate: Some([leaf2_cert.clone()].to_vec()),
         unique_identifier: Some([res_intermediate.unique_identifier.clone()].to_vec()),
@@ -286,7 +284,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     assert!(res.is_err());
     debug!("OK: Validate root/leaf2 certificates - invalid (missing root)");
 
-    Result::Ok(())
+    Ok(())
 }
 
 //same tests but certs imported in kms.

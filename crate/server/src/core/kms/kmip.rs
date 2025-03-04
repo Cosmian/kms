@@ -28,21 +28,20 @@ impl KMS {
     /// to the supplied values rather than any server generated values.
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
-    /// returned by this operations into the ID Placeholder variable.
+    /// returned by this operation into the ID Placeholder variable.
     ///
     /// Cosmian specific: unique identifiers starting with `[` are reserved
     /// for queries on tags. See tagging.
     /// For instance, a request for unique identifier `[tag1]` will
     /// attempt to find a valid single object tagged with `tag1`
-    #[allow(clippy::large_futures)]
-
     pub(crate) async fn import(
         &self,
         request: Import,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ImportResponse> {
-        operations::import(self, request, user, params).await
+        // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+        Box::pin(operations::import(self, request, user, params)).await
     }
 
     /// This request is used to generate a Certificate object for a public key.
@@ -214,8 +213,6 @@ impl KMS {
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operation
     /// into the ID Placeholder variable.
-    #[allow(clippy::large_futures)]
-
     pub(crate) async fn export(
         &self,
         request: Export,
@@ -245,9 +242,7 @@ impl KMS {
     /// as determined by using the private key's Public Key link to get the
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
-    /// then using each certificate's Ce
-    #[allow(clippy::large_futures)]
-
+    /// then using each certificate's Certificate Link to get the next.
     pub(crate) async fn get(
         &self,
         request: Get,
@@ -459,15 +454,13 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    #[allow(clippy::large_futures)]
-
     pub(crate) async fn rekey(
         &self,
         request: ReKey,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ReKeyResponse> {
-        operations::rekey(self, request, user, params).await
+        Box::pin(operations::rekey(self, request, user, params)).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.

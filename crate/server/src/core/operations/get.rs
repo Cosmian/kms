@@ -18,8 +18,6 @@ use crate::{
 /// If the request contains a `KeyWrapType`, the key will be unwrapped.
 /// If both are present, the key will be wrapped.
 /// If none are present, the key will be returned as is.
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn get(
     kms: &KMS,
     request: Get,
@@ -27,7 +25,8 @@ pub(crate) async fn get(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<GetResponse> {
     trace!("Get: {}", serde_json::to_string(&request)?);
-    let response = export_get(kms, request, KmipOperation::Get, user, params)
+    // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
+    let response = Box::pin(export_get(kms, request, KmipOperation::Get, user, params))
         .await
         .map(Into::into)?;
     Ok(response)

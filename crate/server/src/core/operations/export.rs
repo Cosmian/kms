@@ -18,8 +18,6 @@ use crate::{
 /// If the request contains a `KeyWrapType`, the key will be unwrapped.
 /// If both are present, the key will be wrapped.
 /// If none are present, the key will be returned as is.
-#[allow(clippy::large_futures)]
-
 pub(crate) async fn export(
     kms: &KMS,
     request: Export,
@@ -27,5 +25,12 @@ pub(crate) async fn export(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ExportResponse> {
     trace!("Export: {}", serde_json::to_string(&request)?);
-    export_get(kms, request, KmipOperation::Export, user, params).await
+    Box::pin(export_get(
+        kms,
+        request,
+        KmipOperation::Export,
+        user,
+        params,
+    ))
+    .await
 }
