@@ -62,7 +62,6 @@ pub(crate) fn create_cc_master_key_pair(
 #[tokio::test]
 pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
-    // from specs
     create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",

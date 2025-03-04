@@ -25,20 +25,20 @@ use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
 };
-use cosmian_kms_crypto::crypto::cover_crypt::master_keys::AccessStructure;
+
 #[tokio::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let policy = AccessStructure::default();
+    let access_structure = "TEST";
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -218,12 +218,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    let policy = AccessStructure::default();
+    let access_structure = "TEST";
 
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )
@@ -441,11 +441,11 @@ async fn test_abe_json_access() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let policy = AccessStructure::default();
+    let access_structure = "TEST";
 
     // Create CC master key pair
     let master_keypair =
-        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -518,12 +518,12 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let policy = AccessStructure::default();
+    let access_structure = "TEST";
 
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?,
+            build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?,
             owner,
             None,
         )

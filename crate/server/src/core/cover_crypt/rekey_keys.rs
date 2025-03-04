@@ -1,5 +1,4 @@
 #![allow(clippy::large_stack_frames)]
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use std::sync::Arc;
 
 use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
@@ -11,7 +10,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::{deserialize_access_policy, RekeyEditAction},
     master_keys::{
-        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, AccessStructure, KmipKeyUidObject
+        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject
     },
     user_key::UserDecryptionKeysHandler,
 };
@@ -197,8 +196,7 @@ pub(crate) async fn update_master_keys(
 
     let (mut msk, mut mpk) = covercrypt_keys_from_kmip_objects(&msk_obj.1, &mpk_obj.1)?;
     mutator(&mut msk, &mut mpk)?;
-    let access_policy: AccessStructure = serde_json::from_slice(&msk.access_structure.serialize()?.to_vec())?;
-    let (msk_obj, mpk_obj) = kmip_objects_from_covercrypt_keys(&access_policy, &msk, &mpk, msk_obj, mpk_obj)?;
+    let (msk_obj, mpk_obj) = kmip_objects_from_covercrypt_keys(&msk, &mpk, msk_obj, mpk_obj)?;
 
     import_rekeyed_master_keys(server, owner, params, msk_obj.clone(), mpk_obj.clone()).await?;
 

@@ -18,21 +18,20 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
         build_rekey_keypair_request,
     },
 };
-use cosmian_kms_crypto::crypto::cover_crypt::master_keys::AccessStructure;
+
 use crate::{
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
-
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
-    let policy = AccessStructure::default();
+       let access_structure = "TEST";
 
     // create Key Pair
     let create_key_pair =
-        build_create_covercrypt_master_keypair_request(&policy, EMPTY_TAGS, false)?;
+        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false)?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 

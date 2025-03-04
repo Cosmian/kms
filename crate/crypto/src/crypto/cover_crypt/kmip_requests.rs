@@ -9,22 +9,27 @@ use cosmian_kmip::kmip_2_1::{
 };
 use zeroize::Zeroizing;
 
-use super::{attributes::{
-    access_policy_as_vendor_attribute, policy_as_vendor_attribute, rekey_edit_action_as_vendor_attribute, RekeyEditAction
-}, master_keys::AccessStructure};
+use super::attributes::{
+    access_policy_as_vendor_attribute, rekey_edit_action_as_vendor_attribute, RekeyEditAction,
+};
 use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
-    policy: &AccessStructure,
+    access_structure: &str,
     tags: T,
     sensitive: bool,
 ) -> Result<CreateKeyPair, CryptoError> {
+    println!("{access_structure:?}");
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-        vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
+        vendor_attributes: None,
+        link: Some(vec![Link {
+            link_type: LinkType::ChildLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(access_structure.to_owned()),
+        }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive,
         ..Attributes::default()

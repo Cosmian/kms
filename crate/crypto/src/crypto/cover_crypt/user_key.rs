@@ -90,7 +90,7 @@ impl UserDecryptionKeysHandler {
             .cover_crypt
             .generate_user_secret_key(&mut self.master_private_key, &access_policy)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-        println!("UK: {uk:?}");
+
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
         let user_decryption_key_bytes = uk.serialize().map_err(|e| {
             CryptoError::Kmip(format!("cover crypt: failed serializing the user key: {e}"))

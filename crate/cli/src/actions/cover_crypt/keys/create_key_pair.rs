@@ -1,16 +1,14 @@
 use std::path::PathBuf;
-
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
-use cosmian_kms_crypto::crypto::cover_crypt::{
-    kmip_requests::build_create_covercrypt_master_keypair_request, master_keys::AccessStructure,
-};
+use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 
 use crate::{
-    actions::{console, cover_crypt::policy::policy_from_json_file},
-    cli_bail,
+    actions::console,
     error::result::{CliResult, CliResultHelper},
 };
+
+use cosmian_kms_client::read_bytes_from_file;
 /// Create a new master key pair for a given policy and return the key IDs.
 ///
 ///
@@ -62,11 +60,17 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Parse the json policy file
-        let policy = policy_from_json_file(&self.policy_specifications_file)?;
+        // Parse the json access_structure file
+        let buffer = read_bytes_from_file(&self.policy_specifications_file)?;
+        let json = serde_json::from_slice(&buffer)?;
+        let access_structure = serde_json::to_string(&json)?;
+        println!("create mkp action:{:?}", access_structure);
 
-        let create_key_pair =
-            build_create_covercrypt_master_keypair_request(&policy, &self.tags, self.sensitive)?;
+        let create_key_pair = build_create_covercrypt_master_keypair_request(
+            &access_structure,
+            &self.tags,
+            self.sensitive,
+        )?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

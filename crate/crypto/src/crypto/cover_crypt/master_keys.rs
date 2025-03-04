@@ -8,28 +8,12 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier,
     },
 };
-use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use super::attributes::upsert_policy_in_attributes;
-use crate::{
-    crypto::{cover_crypt::attributes::policy_from_attributes, KeyPair},
-    error::CryptoError,
-};
+use crate::{crypto::KeyPair, error::CryptoError};
 
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AccessStructure {
-    name: String,
-    attributes: Vec<String>,
-}
-impl Default for AccessStructure {
-    fn default () -> Self {
-        Self{name: "Department".to_owned(), attributes: vec!["FIN".to_owned(),"RH".to_owned()]}
-    }
-}
 
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
@@ -41,23 +25,17 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let any_attributes = common_attributes
-        .as_ref()
-        .or(private_key_attributes.as_ref())
-        .or(public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
-        })?;
-
     // Now generate a master key using the CoverCrypt Engine
     let (msk, mpk) = cover_crypt
         .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
+    let mut access_structure = String::new();
 
-    // // verify that we can recover the policy
-    let access_structure = policy_from_attributes(any_attributes)?;
+    if let Some(common_attributes) = common_attributes.clone().unwrap().link {
+        access_structure = common_attributes[0].linked_object_identifier.to_string();
+    };
+    println!("AAACCC: {access_structure:?}");
 
-    println!("AC 1 : {access_structure:?}");
 
     // for (name, attributes) in access_structure {
     //     if name.contains("Security") {
@@ -87,9 +65,7 @@ pub fn create_master_keypair(
     // println!("MSK AS : {:?}", msk.access_structure);
 
     // First generate fresh attributes with that policy
-    let private_key_attributes = private_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
+    let private_key_attributes = private_key_attributes.as_ref();
     let sk_bytes = msk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master private key: {e}"
@@ -97,16 +73,13 @@ pub fn create_master_keypair(
     })?;
     let private_key = create_master_private_key_object(
         &sk_bytes,
-        &access_structure,
         private_key_attributes,
         public_key_uid,
     )?;
 
     // Public Key generation
     // First generate fresh attributes with that policy
-    let public_key_attributes = public_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
+    let public_key_attributes = public_key_attributes.as_ref();
     let pk_bytes = mpk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master public key: {e}"
@@ -120,27 +93,25 @@ pub fn create_master_keypair(
 
 fn create_master_private_key_object(
     key: &[u8],
-    access_structure: &AccessStructure,
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, CryptoError> {
-    println!("AC2 :{access_structure:?}");
-
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-    // // add the policy to the attributes
-    upsert_policy_in_attributes(&mut attributes, access_structure)?;
     // link the private key to the public key
-    attributes.link = Some(vec![Link {
-        link_type: LinkType::PublicKeyLink,
-        linked_object_identifier: LinkedObjectIdentifier::TextString(
-            master_public_key_uid.to_owned(),
-        ),
-    }]);
+    attributes.link = Some(vec![
+        Link {
+            link_type: LinkType::PublicKeyLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                master_public_key_uid.to_owned(),
+            ),
+        },
+    ]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
+
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -220,7 +191,6 @@ pub fn covercrypt_keys_from_kmip_objects(
 }
 
 pub fn kmip_objects_from_covercrypt_keys(
-    access_structure: &AccessStructure,
     msk: &MasterSecretKey,
     mpk: &MasterPublicKey,
     msk_obj: KmipKeyUidObject,
@@ -233,7 +203,6 @@ pub fn kmip_objects_from_covercrypt_keys(
     })?;
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
-        access_structure,
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,
     )?;

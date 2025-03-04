@@ -5,56 +5,12 @@ use cosmian_kmip::kmip_2_1::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::master_keys::AccessStructure;
 use crate::error::CryptoError;
 
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
-pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
-/// Convert an policy to a vendor attribute
-pub fn policy_as_vendor_attribute(policy: &AccessStructure) -> Result<VendorAttribute, CryptoError> {
-    let access_struc = serde_json::to_vec(&policy)?;
-    Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
-        attribute_value: access_struc,
-    })
-}
-
-/// Extract an `CoverCrypt` policy from attributes
-pub fn policy_from_attributes(attributes: &Attributes) -> Result<AccessStructure, CryptoError> {
-    println!("ATTRIBUTE 1 : {attributes:?}");
-    attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
-        .map_or_else(
-            || {
-                Err(CryptoError::Kmip(
-                    "the attributes do not contain a CoverCrypt Policy".to_owned(),
-                ))
-            },
-            |bytes| {
-                serde_json::from_slice(bytes).map_err(|e| {
-                    CryptoError::Kmip(format!(
-                        "failed deserializing the CoverCrypt Policy from the attributes: {e}"
-                    ))
-                })
-            },
-        )
-}
-
-/// Add or replace an `CoverCrypt` policy in attributes in place
-pub fn upsert_policy_in_attributes(
-    attributes: &mut Attributes,
-    policy: &AccessStructure,
-) -> Result<(), CryptoError> {
-    let va = policy_as_vendor_attribute(policy)?;
-    println!("ATTRIBUTES 2 {va}");
-    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY);
-    attributes.add_vendor_attribute(va);
-    Ok(())
-}
 
 /// Convert from `CoverCrypt` policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
