@@ -20,7 +20,6 @@ use cosmian_kms_server::{
     config::{ClapConfig, HttpConfig, HttpParams, JwtAuthConfig, MainDBConfig, ServerParams},
     start_kms_server::start_kms_server,
 };
-use cosmian_kms_server_database::SqlCipherSessionParams;
 use cosmian_logger::log_init;
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
@@ -506,21 +505,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
     let mut invalid_conf = correct_conf.clone();
     // and a temp file
     let invalid_conf_path = "/tmp/invalid_conf.toml".to_owned();
-    // Generate a wrong token with valid group id
-    let secrets = b64
-        .decode(
-            correct_conf
-                .http_config
-                .database_secret
-                .as_ref()
-                .expect("missing database secret")
-                .clone(),
-        )
-        .expect("Can't decode token");
-    let mut secrets = serde_json::from_slice::<SqlCipherSessionParams>(&secrets)
-        .expect("Can't deserialize token");
-    secrets.key = db_key; // bad secret
-    let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
+    let token = hex::encode(&*db_key);
     invalid_conf.http_config.database_secret = Some(token);
 
     // write the invalid conf

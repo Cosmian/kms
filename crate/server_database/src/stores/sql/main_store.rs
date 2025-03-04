@@ -5,8 +5,10 @@ use sqlx::{Executor, IntoArguments, Transaction};
 
 use crate::{
     error::{DbResult, DbResultHelper},
-    migrate::{DbState, Migrate},
-    stores::sql::database::{get_query, SqlDatabase},
+    stores::{
+        migrate::{DbState, Migrate},
+        sql::database::{get_query, SqlDatabase},
+    },
     DbError,
 };
 

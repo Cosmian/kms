@@ -2901,6 +2901,7 @@ dependencies = [
  "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
+ "hex",
  "serde_json",
  "tempfile",
  "tokio",

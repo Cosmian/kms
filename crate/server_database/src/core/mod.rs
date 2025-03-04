@@ -78,7 +78,13 @@ impl Database {
                 // `master_key` implements ZeroizeOnDrop so there is no need
                 // to manually zeroize.
                 let db = Arc::new(
-                    RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
+                    RedisWithFindex::instantiate(
+                        url.as_str(),
+                        new_master_key,
+                        label,
+                        clear_db_on_start,
+                    )
+                    .await?,
                 );
                 Self::new(db.clone(), db)
             }

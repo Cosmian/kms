@@ -28,8 +28,11 @@ use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     stores::{
-        locate_query::{query_from_attributes, MySqlPlaceholder},
-        sql::{SqlDatabase, SqlMainStore},
+        sql::{
+            database::SqlDatabase,
+            locate_query::{query_from_attributes, MySqlPlaceholder},
+            main_store::SqlMainStore,
+        },
         MYSQL_QUERIES,
     },
 };
@@ -106,10 +109,6 @@ impl SqlDatabase<MySql> for MySqlPool {
 
     fn get_loader(&self) -> &Loader {
         &MYSQL_QUERIES
-    }
-
-    fn db_row_to_owm(&self, row: &MySqlRow) -> DbResult<ObjectWithMetadata> {
-        my_sql_row_to_owm(row)
     }
 
     fn binder(&self, _param_number: usize) -> String {

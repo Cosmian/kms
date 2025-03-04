@@ -31,7 +31,7 @@ use super::{
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::redis::objects_db::RedisOperation,
+    stores::{migrate::DbState, redis::objects_db::RedisOperation},
 };
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
@@ -63,6 +63,7 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
 
 #[derive(Clone)]
 pub(crate) struct RedisWithFindex {
+    pub(crate) mgr: ConnectionManager,
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
@@ -75,6 +76,7 @@ impl RedisWithFindex {
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
+        clear_database: bool,
     ) -> DbResult<Self> {
         // derive an Findex Key
         let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
@@ -97,13 +99,38 @@ impl RedisWithFindex {
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
         let permissions_db = PermissionsDB::new(findex.clone(), label);
-        Ok(Self {
+
+        if clear_database {
+            redis::cmd("FLUSHDB")
+                .query_async::<_, ()>(&mut mgr.clone())
+                .await?;
+        }
+
+        let count: usize = redis::cmd("DBSIZE")
+            .query_async(&mut mgr.clone())
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
+        trace!("Redis DB size: {count}");
+
+        let redis_with_findex = Self {
+            mgr,
             objects_db,
             permissions_db,
             findex,
             findex_key,
             label: Label::from(label),
-        })
+        };
+
+        if count == 0 {
+            redis_with_findex
+                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            redis_with_findex.set_db_state(DbState::Ready).await?;
+        } else {
+            redis_with_findex.migrate().await?;
+        }
+
+        Ok(redis_with_findex)
     }
 
     /// Prepare an object for upsert
