@@ -7,7 +7,6 @@ use std::{
 };
 
 use actix_server::ServerHandle;
-use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::{
     kms_client_bail, kms_client_error,
     reexport::{cosmian_config_utils::ConfigUtils, cosmian_http_client::HttpClientConfig},
@@ -27,8 +26,8 @@ use tracing::{info, trace};
 
 use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN};
 
-/// In order to run most tests in parallel,
-/// we use that to avoid to try to start N KMS servers (one per test)
+/// To run most tests in parallel,
+/// we use that to avoid it to try to start N KMS servers (one per test)
 /// with a default configuration.
 /// Otherwise, we get: "Address already in use (os error 98)"
 /// for N-1 tests.
@@ -49,23 +48,6 @@ fn sqlite_db_config() -> MainDBConfig {
         database_type: Some("sqlite".to_string()),
         clear_database: true,
         sqlite_path: file_path,
-        ..MainDBConfig::default()
-    }
-}
-
-fn sqlite_enc_db_config() -> MainDBConfig {
-    trace!("TESTS: using sqlite-enc");
-    let tmp_dir = TempDir::new().unwrap();
-    // SQLCipher uses a directory
-    let dir_path = tmp_dir.path().join("test_sqlite_enc.db");
-    if dir_path.exists() {
-        std::fs::remove_dir_all(&dir_path).unwrap();
-    }
-    std::fs::create_dir_all(&dir_path).unwrap();
-    MainDBConfig {
-        database_type: Some("sqlite-enc".to_string()),
-        clear_database: true,
-        sqlite_path: dir_path,
         ..MainDBConfig::default()
     }
 }
@@ -114,14 +96,12 @@ fn redis_findex_db_config() -> MainDBConfig {
 }
 
 fn get_db_config() -> MainDBConfig {
-    env::var_os("KMS_TEST_DB").map_or_else(sqlite_enc_db_config, |v| {
-        match v.to_str().unwrap_or("") {
-            "redis-findex" => redis_findex_db_config(),
-            "mysql" => mysql_db_config(),
-            "sqlite" => sqlite_db_config(),
-            "postgresql" => postgres_db_config(),
-            _ => sqlite_enc_db_config(),
-        }
+    env::var_os("KMS_TEST_DB").map_or_else(sqlite_db_config, |v| match v.to_str().unwrap_or("") {
+        "redis-findex" => redis_findex_db_config(),
+        "mysql" => mysql_db_config(),
+        "sqlite" => sqlite_db_config(),
+        "postgresql" => postgres_db_config(),
+        _ => sqlite_db_config(),
     })
 }
 
@@ -518,7 +498,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server_with_options(
-        sqlite_enc_db_config(),
+        sqlite_db_config(),
         9990,
         AuthenticationOptions {
             use_jwt_token: false,
