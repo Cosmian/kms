@@ -1,10 +1,10 @@
-use cosmian_kms_interfaces::ObjectWithMetadata;
+// use cosmian_kms_interfaces::ObjectWithMetadata;
 use rawsql::Loader;
 use sqlx::{Executor, IntoArguments, Pool};
 
 use crate::{error::DbResult, DbError};
 
-pub trait SqlDatabase<DB>
+pub(crate) trait SqlDatabase<DB>
 where
     DB: sqlx::Database,
     for<'z> &'z mut DB::Connection: Executor<'z, Database = DB>,
@@ -18,9 +18,6 @@ where
 
     /// Get the loader that reads the SQL queries
     fn get_loader(&self) -> &Loader;
-
-    /// Convert a database row to an object with metadata
-    fn db_row_to_owm(&self, row: &DB::Row) -> DbResult<ObjectWithMetadata>;
 
     /// Get the 'binder' used in the SQL queries for this database dialect
     /// e.g. for `Postgres` or `SQLite`, it's `$1`, for `MySQL`, it's `?`

@@ -68,12 +68,16 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new_random()?;
-    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
+    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label", true).await?;
     Ok(redis_findex)
 }
 
 #[tokio::test]
 pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
+    log_init(Some(
+        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
+         cosmian_kms_interfaces=trace",
+    ));
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
@@ -87,6 +91,8 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?, None).await?;
     crud(&get_redis_with_findex().await?, None).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
+    // restore the default log level
+    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 

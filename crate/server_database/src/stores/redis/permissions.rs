@@ -14,8 +14,8 @@ use cosmian_kmip::kmip_2_1::KmipOperation;
 
 use crate::{DbError, error::DbResult};
 
-/// The struct we store for each permission
-/// We store the permission itself as a Location
+/// The struct we store for each permission.
+/// We store the permission itself as a Location.
 /// Keeping the object uid and user id is necessary to be able to query
 /// the database for all permissions for a given object or user because
 /// there is no convenient access to the callback for a search

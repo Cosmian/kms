@@ -12,8 +12,10 @@ use tracing::{error, info, trace};
 
 use crate::{
     error::{DbResult, DbResultHelper},
-    migrate::{DbState, Migrate},
-    stores::sql::SqlDatabase,
+    stores::{
+        migrate::{DbState, Migrate},
+        sql::database::SqlDatabase,
+    },
     DbError,
 };
 

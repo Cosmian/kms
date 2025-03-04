@@ -81,7 +81,6 @@ pub use core::{
 mod error;
 pub use error::DbError;
 mod stores;
-pub use stores::{redis_master_key_from_password, SqlCipherSessionParams};
-pub mod migrate;
+pub use stores::redis_master_key_from_password;
 #[cfg(test)]
 mod tests;
