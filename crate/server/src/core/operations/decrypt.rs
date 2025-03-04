@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
+    KmipOperation,
     extra::BulkData,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
@@ -9,7 +10,6 @@ use cosmian_kmip::kmip_2_1::{
         CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
         PaddingMethod, StateEnumeration, UniqueIdentifier,
     },
-    KmipOperation,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
@@ -17,13 +17,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt;
 use cosmian_kms_crypto::{
     crypto::{
+        DecryptionSystem,
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{decrypt as sym_decrypt, SymCipher},
-        DecryptionSystem,
+        symmetric::symmetric_ciphers::{SymCipher, decrypt as sym_decrypt},
     },
     openssl::kmip_private_key_to_openssl,
 };
@@ -34,8 +34,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
+        uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
     kms_bail,
@@ -92,7 +92,7 @@ pub(crate) async fn decrypt(
                     .iter()
                     .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
                 {
-                    continue
+                    continue;
                 }
             }
             debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
@@ -111,11 +111,11 @@ pub(crate) async fn decrypt(
                 )
             })?;
         if owm.state() != StateEnumeration::Active {
-            continue
+            continue;
         }
         let attributes = owm.object().attributes().cloned().unwrap_or_default();
         if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
-            continue
+            continue;
         }
         //check user permissions - owner can always decrypt
         if owm.owner() != user {
@@ -127,25 +127,25 @@ pub(crate) async fn decrypt(
                 .iter()
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
-                continue
+                continue;
             }
         }
         debug!("Decrypt: user: {user} is authorized to decrypt using: {uid}");
         // user is authorized to decrypt with the key
         if let Object::SymmetricKey { .. } = owm.object() {
             selected_owm = Some(owm);
-            break
+            break;
         }
         if let Object::PrivateKey { .. } = owm.object() {
             // is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access policy that allows decryption?
                 if attributes::access_policy_from_attributes(&attributes).is_err() {
-                    continue
+                    continue;
                 }
             }
             selected_owm = Some(owm);
-            break
+            break;
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
@@ -275,7 +275,7 @@ fn decrypt_bulk(
                 if nonce_ciphertext_tag.len() < sym_cipher.nonce_size() + sym_cipher.tag_size() {
                     return Err(KmsError::InvalidRequest(
                         "Decrypt bulk: invalid nonce/ciphertext/tag length".to_owned(),
-                    ))
+                    ));
                 }
                 let nonce = &nonce_ciphertext_tag
                     .get(0..sym_cipher.nonce_size())
@@ -308,7 +308,7 @@ fn decrypt_bulk(
         other => {
             return Err(KmsError::NotSupported(format!(
                 "decryption with keys of format: {other}"
-            )))
+            )));
         }
     };
 
@@ -459,9 +459,7 @@ fn decrypt_with_rsa(
         default_cryptographic_parameters(cryptographic_parameters);
     trace!(
         "Decrypt with RSA: algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
-        algorithm,
-        padding,
-        hashing_fn
+        algorithm, padding, hashing_fn
     );
 
     Ok(match (algorithm, padding) {

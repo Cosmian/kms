@@ -1,9 +1,7 @@
 use std::convert::TryFrom;
 
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::AccessPolicy, Covercrypt, MasterPublicKey},
-    crypto_core::bytes_ser_de::Serializable,
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{Covercrypt, MasterPublicKey, abe_policy::AccessPolicy};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType, SymmetricKey},
@@ -37,7 +35,8 @@ pub fn wrapped_secret_key(
     let sk = prepare_symmetric_key(
         cover_crypt,
         public_key_response,
-        &AccessPolicy::from_boolean_expression(access_policy)?,
+        &AccessPolicy::from_boolean_expression(access_policy)
+            .map_err(|e| CryptoError::ConversionError(e.to_string()))?,
         cover_crypt_header_uid,
     )?;
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
@@ -132,20 +131,20 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
         {
             return Err(CryptoError::Kmip(
                 "this Secret Key does not contain an CoverCrypt key".to_owned(),
-            ))
+            ));
         }
 
         if sk.key_wrapping_data.is_some() {
             return Err(CryptoError::Kmip(
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_owned(),
-            ))
+            ));
         }
         serde_json::from_slice::<Self>(match &sk.key_value.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => key,
             other => {
                 return Err(CryptoError::Kmip(format!(
                     "Invalid key material for an CoverCrypt secret key: {other}"
-                )))
+                )));
             }
         })
         .map_err(|e| {

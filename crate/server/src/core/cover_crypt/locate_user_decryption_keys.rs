@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
+use cosmian_cover_crypt::abe_policy::Attribute;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,
@@ -13,7 +13,7 @@ use cosmian_kms_crypto::crypto::cover_crypt::attributes::attributes_as_vendor_at
 use cosmian_kms_interfaces::SessionParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{KMS, operations},
     result::KResult,
 };
 

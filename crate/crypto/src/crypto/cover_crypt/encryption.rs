@@ -1,27 +1,25 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        core::SYM_KEY_LENGTH,
-        Covercrypt, EncryptedHeader, MasterPublicKey,
-    },
-    crypto_core::{
-        bytes_ser_de::{Deserializer, Serializable, Serializer},
-        reexport::zeroize::Zeroizing,
-        SymmetricKey,
-    },
+use cloudproof::reexport::crypto_core::{
+    SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::zeroize::Zeroizing,
+};
+use cosmian_cover_crypt::{
+    Covercrypt, EncryptedHeader, MasterPublicKey,
+    abe_policy::{AccessPolicy, Policy},
+    core::SYM_KEY_LENGTH,
 };
 use cosmian_kmip::{
+    DataToEncrypt,
     kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
-    DataToEncrypt,
 };
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::{cover_crypt::attributes::policy_from_attributes, EncryptionSystem},
+    crypto::{EncryptionSystem, cover_crypt::attributes::policy_from_attributes},
     error::CryptoError,
 };
 

@@ -1,7 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
-    crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData},

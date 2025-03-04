@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::SessionParams;
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{KMS, cover_crypt::rekey_keypair_cover_crypt},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -51,18 +51,18 @@ pub(crate) async fn rekey_keypair(
     for owm in owm_s {
         // only active objects
         if owm.state() != StateEnumeration::Active {
-            continue
+            continue;
         }
         // only private keys
         if owm.object().object_type() != ObjectType::PrivateKey {
-            continue
+            continue;
         }
         // if a Covercrypt key, it must be a master secret key
         if let Ok(attributes) = owm.object().attributes() {
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // a master key should have policies in the attributes
                 if policy_from_attributes(attributes).is_err() {
-                    continue
+                    continue;
                 }
             }
         }
@@ -76,7 +76,7 @@ pub(crate) async fn rekey_keypair(
                 action,
                 params,
             ))
-            .await
+            .await;
         } else if let Some(other) = attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {other:?} is not yet supported"

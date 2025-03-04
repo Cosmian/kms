@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::{
+    KeyPair,
     cover_crypt::{
         attributes::{access_policy_from_attributes, policy_from_attributes},
         user_key::UserDecryptionKeysHandler,
     },
-    KeyPair,
 };
 use cosmian_kms_interfaces::SessionParams;
 
@@ -72,7 +72,7 @@ async fn create_user_decryption_key_(
         }
 
         if owm.object().object_type() != ObjectType::PrivateKey {
-            continue
+            continue;
         }
 
         // The master key should have attributes
@@ -99,7 +99,7 @@ async fn create_user_decryption_key_(
 
         return UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
             .create_user_decryption_key_object(&access_policy, Some(create_attributes), owm.id())
-            .map_err(Into::into)
+            .map_err(Into::into);
     }
 
     Err(KmsError::InvalidRequest(format!(

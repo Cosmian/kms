@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::Covercrypt;
 use cosmian_kmip::{
+    KmipError,
     kmip_2_1::{
+        KmipOperation,
         extra::BulkData,
         kmip_objects::{Certificate, Object},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
@@ -10,9 +12,7 @@ use cosmian_kmip::{
             CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
             PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
-        KmipOperation,
     },
-    KmipError,
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
@@ -20,13 +20,13 @@ use cosmian_kms_crypto::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_crypto::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_encrypt;
 use cosmian_kms_crypto::{
     crypto::{
+        EncryptionSystem,
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
         },
-        symmetric::symmetric_ciphers::{encrypt as sym_encrypt, random_nonce, SymCipher},
-        EncryptionSystem,
+        symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
     },
     openssl::kmip_public_key_to_openssl,
 };
@@ -40,8 +40,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        uid_utils::{has_prefix, uids_from_unique_identifier},
         KMS,
+        uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
     kms_bail,
@@ -100,7 +100,7 @@ pub(crate) async fn encrypt(
                     .iter()
                     .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
                 {
-                    continue
+                    continue;
                 }
             }
             debug!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
@@ -114,7 +114,7 @@ pub(crate) async fn encrypt(
                 KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
             })?;
         if owm.state() != StateEnumeration::Active {
-            continue
+            continue;
         }
         //check user permissions - owner can always encrypt
         if owm.owner() != user {
@@ -126,22 +126,22 @@ pub(crate) async fn encrypt(
                 .iter()
                 .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
             {
-                continue
+                continue;
             }
         }
         debug!("Encrypt: user: {user} is authorized to encrypt using: {uid}");
         //TODO check why usage masks are not checked for certificates
         if let Object::Certificate { .. } = owm.object() {
             selected_owm = Some(owm);
-            break
+            break;
         }
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
             let attributes = owm.object().attributes().cloned().unwrap_or_default();
             if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
-                continue
+                continue;
             }
             selected_owm = Some(owm);
-            break
+            break;
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
@@ -362,7 +362,7 @@ fn get_cipher_and_key(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
-        ))
+        ));
     }
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes()?;
@@ -392,7 +392,7 @@ fn get_cipher_and_key(
         other => {
             return Err(KmsError::NotSupported(format!(
                 "symmetric encryption with keys of format: {other}"
-            )))
+            )));
         }
     };
     Ok((key_bytes, aead))
@@ -411,7 +411,7 @@ fn encrypt_with_public_key(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "CryptographicUsageMask not authorized for Encrypt".to_owned(),
-        ))
+        ));
     }
 
     let key_block = owm.object().key_block()?;

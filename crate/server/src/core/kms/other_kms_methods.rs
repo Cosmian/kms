@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_cover_crypt::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_operations::Create,
@@ -15,7 +15,7 @@ use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{cover_crypt::create_user_decryption_key, wrapping::unwrap_key, KMS},
+    core::{KMS, cover_crypt::create_user_decryption_key, wrapping::unwrap_key},
     error::KmsError,
     result::{KResult, KResultHelper},
 };

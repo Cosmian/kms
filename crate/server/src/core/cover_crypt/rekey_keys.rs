@@ -2,18 +2,16 @@
 
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::{
-    abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
-};
+use cosmian_cover_crypt::{Covercrypt, MasterPublicKey, MasterSecretKey, abe_policy::Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType, PrivateKey},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
     kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
-    attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
+    attributes::{RekeyEditAction, deserialize_access_policy, policy_from_attributes},
     master_keys::{
-        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
+        KmipKeyUidObject, covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys,
     },
     user_key::UserDecryptionKeysHandler,
 };
@@ -226,7 +224,7 @@ async fn get_master_keys_and_policy(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Invalid_Object_Type,
             "KmsError::KmipErrorIP Private Key".to_owned(),
-        ))
+        ));
     };
 
     let mpk_uid = key_block

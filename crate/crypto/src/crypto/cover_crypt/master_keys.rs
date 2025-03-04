@@ -1,7 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
-    crypto_core::bytes_ser_de::Serializable,
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
+use cosmian_cover_crypt::{Covercrypt, MasterPublicKey, MasterSecretKey, abe_policy::Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -14,8 +12,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
         KeyPair,
+        cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
     },
     error::CryptoError,
 };

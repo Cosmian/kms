@@ -1060,7 +1060,7 @@ version = "14.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34b957408fa6185ed0a2140da5df66cd37326da478a11a6c1a9ac07650d58121"
 dependencies = [
- "cosmian_cover_crypt",
+ "cosmian_cover_crypt 14.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cosmian_crypto_core",
  "serde_json",
 ]
@@ -1256,6 +1256,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_cover_crypt"
+version = "14.0.0"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=fix/box-kyber-keys#00d471ab3a2e1a334470c748e7b8686dec7dde2d"
+dependencies = [
+ "cosmian_crypto_core",
+ "pqc_kyber",
+ "serde",
+ "serde_json",
+ "tiny-keccak",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_crypto_core"
 version = "9.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1411,6 +1424,7 @@ dependencies = [
  "clap",
  "cloudproof",
  "cosmian_config_utils",
+ "cosmian_cover_crypt 14.0.0 (git+https://github.com/Cosmian/cover_crypt.git?branch=fix/box-kyber-keys)",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_logger",
@@ -1468,6 +1482,7 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "cloudproof",
+ "cosmian_cover_crypt 14.0.0 (git+https://github.com/Cosmian/cover_crypt.git?branch=fix/box-kyber-keys)",
  "cosmian_kmip",
  "cosmian_logger",
  "hex",
@@ -1502,6 +1517,7 @@ name = "cosmian_kms_python"
 version = "4.22.2"
 dependencies = [
  "cloudproof",
+ "cosmian_cover_crypt 14.0.0 (git+https://github.com/Cosmian/cover_crypt.git?branch=fix/box-kyber-keys)",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
@@ -1529,6 +1545,7 @@ dependencies = [
  "clap",
  "cloudproof",
  "cloudproof_findex 5.0.4",
+ "cosmian_cover_crypt 14.0.0 (git+https://github.com/Cosmian/cover_crypt.git?branch=fix/box-kyber-keys)",
  "cosmian_kmip",
  "cosmian_kms_access",
  "cosmian_kms_crypto",

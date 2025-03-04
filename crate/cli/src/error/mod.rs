@@ -4,10 +4,10 @@ use std::{num::TryFromIntError, str::Utf8Error};
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kms_client::{
-    cosmian_kmip::{kmip_2_1::kmip_operations::ErrorReason, ttlv::error::TtlvError, KmipError},
+    KmsClientError,
+    cosmian_kmip::{KmipError, kmip_2_1::kmip_operations::ErrorReason, ttlv::error::TtlvError},
     kmip_1_4::kmip_types::ResultReason,
     reexport::cosmian_http_client::HttpClientError,
-    KmsClientError,
 };
 use cosmian_kms_crypto::CryptoError;
 use hex::FromHexError;
@@ -29,7 +29,7 @@ pub enum CliError {
     Conversion(String),
 
     #[error(transparent)]
-    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
+    CovercryptError(#[from] cosmian_cover_crypt::Error),
 
     // A cryptographic error
     #[error("Cryptographic error: {0}")]

@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::Policy;
+use cosmian_cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -11,8 +11,8 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, policy_as_vendor_attribute,
-    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
+    RekeyEditAction, access_policy_as_vendor_attribute, policy_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute,
 };
 use crate::{crypto::wrap::wrap_key_bytes, error::CryptoError};
 

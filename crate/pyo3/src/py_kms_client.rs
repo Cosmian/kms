@@ -1,7 +1,5 @@
-use cloudproof::reexport::{
-    cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy},
-    crypto_core::bytes_ser_de::Deserializer,
-};
+use cloudproof::reexport::crypto_core::bytes_ser_de::Deserializer;
+use cosmian_cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{CryptographicAlgorithm, RevocationReason},
@@ -10,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     },
 };
 use cosmian_kms_client::{
-    reexport::cosmian_http_client::HttpClientConfig, KmsClient as RustKmsClient, KmsClientConfig,
+    KmsClient as RustKmsClient, KmsClientConfig, reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::RekeyEditAction,

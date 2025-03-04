@@ -1,10 +1,9 @@
-use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        Covercrypt, MasterSecretKey, UserSecretKey,
-    },
-    crypto_core::bytes_ser_de::Serializable,
+use cosmian_cover_crypt::{
+    Covercrypt, MasterSecretKey, UserSecretKey,
+    abe_policy::{AccessPolicy, Policy},
 };
+
+use cloudproof::reexport::crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType, PrivateKey},
@@ -35,14 +34,14 @@ pub(crate) fn unwrap_user_decryption_key_object(
     if key_block.key_format_type != KeyFormatType::CoverCryptSecretKey {
         return Err(CryptoError::Kmip(
             "Expected an CoverCrypt User Decryption Key".to_owned(),
-        ))
+        ));
     }
     let bytes = match &key_block.key_value.key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
             return Err(CryptoError::Kmip(format!(
                 "Invalid Key Material for the CoverCrypt User Decryption Key: {x}"
-            )))
+            )));
         }
     };
     let attributes = key_block.key_value.attributes().map_err(|e| {
@@ -95,7 +94,8 @@ impl UserDecryptionKeysHandler {
         //
         // Generate a fresh user decryption key
         //
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)?;
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
+            .map_err(|e| CryptoError::ConversionError(e.to_string()))?;
 
         let uk = self
             .cover_crypt
