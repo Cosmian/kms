@@ -74,10 +74,7 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
 
 #[tokio::test]
 pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
-    log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-         cosmian_kms_interfaces=trace",
-    ));
+    log_init(option_env!("RUST_LOG"));
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
@@ -91,8 +88,6 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?, None).await?;
     crud(&get_redis_with_findex().await?, None).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
-    // restore the default log level
-    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
@@ -122,17 +117,12 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?, None).await?;
     crud(&get_sqlite(&db_file).await?, None).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
-    // restore the default log level
-    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_postgresql() -> DbResult<()> {
-    log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-         cosmian_kms_interfaces=trace",
-    ));
+    log_init(option_env!("RUST_LOG"));
     json_access(&get_pgsql().await?, None).await?;
     find_attributes(&get_pgsql().await?, None).await?;
     owner(&get_pgsql().await?, None).await?;
@@ -143,17 +133,12 @@ pub(crate) async fn test_postgresql() -> DbResult<()> {
     upsert(&get_pgsql().await?, None).await?;
     crud(&get_pgsql().await?, None).await?;
     list_uids_for_tags_test(&get_pgsql().await?, None).await?;
-    // restore the default log level
-    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_mysql() -> DbResult<()> {
-    log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-         cosmian_kms_interfaces=trace",
-    ));
+    log_init(option_env!("RUST_LOG"));
     json_access(&get_mysql().await?, None).await?;
     find_attributes(&get_mysql().await?, None).await?;
     owner(&get_mysql().await?, None).await?;
@@ -164,17 +149,12 @@ pub(crate) async fn test_mysql() -> DbResult<()> {
     upsert(&get_mysql().await?, None).await?;
     crud(&get_mysql().await?, None).await?;
     list_uids_for_tags_test(&get_mysql().await?, None).await?;
-    // restore the default log level
-    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
 
 #[tokio::test]
 pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
-    log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace,\
-         cosmian_kms_interfaces=trace",
-    ));
+    log_init(option_env!("RUST_LOG"));
     for sqlite_path in [
         "src/tests/migrate/kms_4.12.0.sqlite",
         "src/tests/migrate/kms_4.16.0.sqlite",
@@ -192,7 +172,5 @@ pub(crate) async fn test_migrate_sqlite() -> DbResult<()> {
         let _pool_update = SqlitePool::instantiate(&tmp_file_path, false).await?;
         let _pool_updated = SqlitePool::instantiate(&tmp_file_path, false).await?;
     }
-    // restore the default log level
-    log_init(option_env!("RUST_LOG"));
     Ok(())
 }
