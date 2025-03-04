@@ -1,8 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
-    str::FromStr,
+    path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -18,45 +18,53 @@ use cosmian_kms_interfaces::{
 use rawsql::Loader;
 use serde_json::Value;
 use sqlx::{
-    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
-    ConnectOptions, Executor, Pool, Postgres, Row, Transaction,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
+    ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
     db_bail, db_error,
-    error::{DbError, DbResult, DbResultHelper},
+    error::{DbResult, DbResultHelper},
     stores::{
-        locate_query::{query_from_attributes, PgSqlPlaceholder},
-        sql::{SqlDatabase, SqlMainStore},
-        PGSQL_QUERIES,
+        sql::{
+            database::SqlDatabase,
+            locate_query::{query_from_attributes, SqlitePlaceholder},
+            main_store::SqlMainStore,
+        },
+        SQLITE_QUERIES,
     },
+    DbError,
 };
 
 #[macro_export]
-macro_rules! get_pgsql_query {
+macro_rules! get_sqlite_query {
     ($name:literal) => {
-        PGSQL_QUERIES
+        SQLITE_QUERIES
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
     ($name:expr) => {
-        PGSQL_QUERIES
+        SQLITE_QUERIES
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
 }
 
-/// Convert a row from the database into an `ObjectWithMetadata`
-/// This function is used to convert the result of a `SELECT` query
-/// into an `ObjectWithMetadata`
-fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
+/// Convert a row from the `objects` table into an `ObjectWithMetadata`
+/// This function is used to convert the result of a query into a `ObjectWithMetadata`.
+/// It is used in the `retrieve_` function
+/// # Arguments
+/// * `row` - The row to convert
+/// # Returns
+/// The `ObjectWithMetadata` corresponding to the row
+fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
-    let object: Object = serde_json::from_value(row.get::<Value, _>(1))
+    let object: Object = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
         .context("failed deserializing the object")?;
-    let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
-        .context("failed deserializing the Attributes")?;
+    let raw_attributes = row.get::<Value, _>(2);
+    let attributes = serde_json::from_value(raw_attributes)?;
     let owner = row.get::<String, _>(3);
     let state = StateEnumeration::try_from(row.get::<String, _>(4))?;
     Ok(ObjectWithMetadata::new(
@@ -65,49 +73,52 @@ fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
 }
 
 #[derive(Clone)]
-pub(crate) struct PgPool {
-    pool: Pool<Postgres>,
+pub(crate) struct SqlitePool {
+    pool: Pool<Sqlite>,
 }
 
-impl PgPool {
-    /// Instantiate a new `Postgres` database
+impl SqlitePool {
+    /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
-    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> DbResult<Self> {
-        let options = PgConnectOptions::from_str(connection_url)?
+    pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> DbResult<Self> {
+        trace!("Instantiating SQLite database at path: {path:?}, clear_database: {clear_database}");
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
+            .busy_timeout(Duration::from_secs(120))
+            .create_if_missing(true)
             // disable logging of each query
             .disable_statement_logging();
 
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
+        let pool = SqlitePoolOptions::new()
+            .max_connections(
+                u32::try_from(num_cpus::get())
+                    .expect("this conversion cannot fail (or I want that machine)"),
+            )
             .connect_with(options)
             .await?;
 
-        // Instantiate the pool
-        let pgsql_pool = Self { pool };
-
+        // Create the tables if they don't exist
+        let sqlite_pool = Self { pool };
         // Blanket implementation of SqlMainStore for SqlDatabase
-        pgsql_pool.start(clear_database).await?;
+        sqlite_pool.start(clear_database).await?;
 
-        Ok(pgsql_pool)
+        Ok(sqlite_pool)
     }
 }
 
-impl SqlDatabase<Postgres> for PgPool {
-    fn get_pool(&self) -> &Pool<Postgres> {
+impl SqlDatabase<Sqlite> for SqlitePool {
+    fn get_pool(&self) -> &Pool<Sqlite> {
         &self.pool
     }
 
     fn get_loader(&self) -> &Loader {
-        &PGSQL_QUERIES
-    }
-
-    fn db_row_to_owm(&self, row: &PgRow) -> DbResult<ObjectWithMetadata> {
-        pg_row_to_owm(row)
+        &SQLITE_QUERIES
     }
 }
 
 #[async_trait(?Send)]
-impl ObjectsStore for PgPool {
+impl ObjectsStore for SqlitePool {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
     }
@@ -125,7 +136,7 @@ impl ObjectsStore for PgPool {
             .pool
             .begin()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
         let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
@@ -137,7 +148,7 @@ impl ObjectsStore for PgPool {
         };
         tx.commit()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to commit the transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to commit the transaction: {e}")))?;
         Ok(uid)
     }
 
@@ -169,11 +180,11 @@ impl ObjectsStore for PgPool {
             .pool
             .begin()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
         match update_object_(uid, object, attributes, tags, &mut tx).await {
             Ok(()) => {
                 tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                    InterfaceError::Db(format!("failed to commit the transaction: {e}"))
                 })?;
                 Ok(())
             }
@@ -194,11 +205,11 @@ impl ObjectsStore for PgPool {
             .pool
             .begin()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
         match update_state_(uid, state, &mut tx).await {
             Ok(()) => {
                 tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                    InterfaceError::Db(format!("failed to commit the transaction: {e}"))
                 })?;
                 Ok(())
             }
@@ -220,11 +231,11 @@ impl ObjectsStore for PgPool {
             .pool
             .begin()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
         match delete_(uid, &mut tx).await {
             Ok(()) => {
                 tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                    InterfaceError::Db(format!("failed to commit the transaction: {e}"))
                 })?;
                 Ok(())
             }
@@ -245,17 +256,17 @@ impl ObjectsStore for PgPool {
             .pool
             .begin()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            .map_err(|e| InterfaceError::Db(format!("failed to start a transaction: {e}")))?;
         match atomic_(user, operations, &mut tx).await {
             Ok(v) => {
                 tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                    InterfaceError::Db(format!("failed to commit the transaction: {e}"))
                 })?;
                 Ok(v)
             }
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
+                Err(InterfaceError::Db(format!("{e}")))
             }
         }
     }
@@ -274,7 +285,7 @@ impl ObjectsStore for PgPool {
         tags: &HashSet<String>,
         _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
-        Ok(list_uids_from_tags_(tags, &self.pool).await?)
+        Ok(list_uids_for_tags_(tags, &self.pool).await?)
     }
 
     async fn find(
@@ -297,7 +308,7 @@ impl ObjectsStore for PgPool {
 }
 
 #[async_trait(?Send)]
-impl PermissionsStore for PgPool {
+impl PermissionsStore for SqlitePool {
     async fn list_user_operations_granted(
         &self,
         user: &str,
@@ -351,7 +362,7 @@ pub(crate) async fn create_(
     object: &Object,
     attributes: &Attributes,
     tags: &HashSet<String>,
-    executor: &mut Transaction<'_, Postgres>,
+    executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<String> {
     let object_json =
         serde_json::to_value(object).context("failed serializing the object to JSON")?;
@@ -362,7 +373,7 @@ pub(crate) async fn create_(
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    sqlx::query(get_pgsql_query!("insert-objects"))
+    sqlx::query(get_sqlite_query!("insert-objects"))
         .bind(uid.clone())
         .bind(object_json)
         .bind(attributes_json)
@@ -373,7 +384,7 @@ pub(crate) async fn create_(
 
     // Insert the tags
     for tag in tags {
-        sqlx::query(get_pgsql_query!("insert-tags"))
+        sqlx::query(get_sqlite_query!("insert-tags"))
             .bind(uid.clone())
             .bind(tag)
             .execute(&mut **executor)
@@ -386,23 +397,23 @@ pub(crate) async fn create_(
 
 pub(crate) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let row = sqlx::query(get_pgsql_query!("select-object"))
+    let row: Option<SqliteRow> = sqlx::query(get_sqlite_query!("select-object"))
         .bind(uid)
         .fetch_optional(executor)
         .await?;
     if let Some(row) = row {
-        return Ok(Some(pg_row_to_owm(&row)?));
+        return Ok(Some(sqlite_row_to_owm(&row)?))
     }
     Ok(None)
 }
 
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
+pub(crate) async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let rows: Vec<PgRow> = sqlx::query(get_pgsql_query!("select-tags"))
+    let rows: Vec<SqliteRow> = sqlx::query(get_sqlite_query!("select-tags"))
         .bind(uid)
         .fetch_all(executor)
         .await?;
@@ -417,15 +428,15 @@ pub(crate) async fn update_object_(
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
-    executor: &mut Transaction<'_, Postgres>,
+    executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
     let object_json =
-        serde_json::to_value(object.clone()).context("failed serializing the object to JSON")?;
+        serde_json::to_value(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
 
-    sqlx::query(get_pgsql_query!("update-object-with-object"))
+    sqlx::query(get_sqlite_query!("update-object-with-object"))
         .bind(object_json)
         .bind(attributes_json)
         .bind(uid)
@@ -435,13 +446,12 @@ pub(crate) async fn update_object_(
     // Insert the new tags if any
     if let Some(tags) = tags {
         // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
+        sqlx::query(get_sqlite_query!("delete-tags"))
             .bind(uid)
             .execute(&mut **executor)
             .await?;
-
         for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
+            sqlx::query(get_sqlite_query!("insert-tags"))
                 .bind(uid)
                 .bind(tag)
                 .execute(&mut **executor)
@@ -456,9 +466,9 @@ pub(crate) async fn update_object_(
 pub(crate) async fn update_state_(
     uid: &str,
     state: StateEnumeration,
-    executor: &mut Transaction<'_, Postgres>,
+    executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
-    sqlx::query(get_pgsql_query!("update-object-with-state"))
+    sqlx::query(get_sqlite_query!("update-object-with-state"))
         .bind(state.to_string())
         .bind(uid)
         .execute(&mut **executor)
@@ -467,15 +477,15 @@ pub(crate) async fn update_state_(
     Ok(())
 }
 
-pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>) -> DbResult<()> {
+pub(crate) async fn delete_(uid: &str, executor: &mut Transaction<'_, Sqlite>) -> DbResult<()> {
     // delete the object
-    sqlx::query(get_pgsql_query!("delete-object"))
+    sqlx::query(get_sqlite_query!("delete-object"))
         .bind(uid)
         .execute(&mut **executor)
         .await?;
 
     // delete the tags
-    sqlx::query(get_pgsql_query!("delete-tags"))
+    sqlx::query(get_sqlite_query!("delete-tags"))
         .bind(uid)
         .execute(&mut **executor)
         .await?;
@@ -491,15 +501,19 @@ pub(crate) async fn upsert_(
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
     state: StateEnumeration,
-    executor: &mut Transaction<'_, Postgres>,
+    executor: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<()> {
+    trace!(
+        "Upserting in DB: {uid}\n   object: {object}\n   attributes: {attributes:?}\n    tags: \
+         {tags:?}\n    state: {state:?}\n    owner: {owner}"
+    );
     let object_json =
         serde_json::to_value(object).context("failed serializing the object to JSON")?;
 
     let attributes_json =
         serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
 
-    sqlx::query(get_pgsql_query!("upsert-object"))
+    sqlx::query(get_sqlite_query!("upsert-object"))
         .bind(uid)
         .bind(object_json)
         .bind(attributes_json)
@@ -511,13 +525,13 @@ pub(crate) async fn upsert_(
     // Insert the new tags if present
     if let Some(tags) = tags {
         // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
+        sqlx::query(get_sqlite_query!("delete-tags"))
             .bind(uid)
             .execute(&mut **executor)
             .await?;
         // insert the new ones
         for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
+            sqlx::query(get_sqlite_query!("insert-tags"))
                 .bind(uid)
                 .bind(tag)
                 .execute(&mut **executor)
@@ -529,12 +543,12 @@ pub(crate) async fn upsert_(
     Ok(())
 }
 
-pub(crate) async fn list_uids_from_tags_<'e, E>(
+pub(crate) async fn list_uids_for_tags_<'e, E>(
     tags: &HashSet<String>,
     executor: E,
 ) -> DbResult<HashSet<String>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     let tags_params = tags
         .iter()
@@ -543,11 +557,11 @@ where
         .collect::<Vec<_>>()
         .join(", ");
 
-    let raw_sql = get_pgsql_query!("select-uids-from-tags")
+    let raw_sql = get_sqlite_query!("select-uids-from-tags")
         .replace("@TAGS", &tags_params)
         .replace("@LEN", &format!("${}", tags.len() + 1));
 
-    let mut query = sqlx::query::<Postgres>(&raw_sql);
+    let mut query = sqlx::query::<Sqlite>(&raw_sql);
     for tag in tags {
         query = query.bind(tag);
     }
@@ -555,8 +569,8 @@ where
     query = query.bind(i16::try_from(tags.len())?);
 
     let rows = query.fetch_all(executor).await?;
-    let uids = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-    Ok(uids)
+    let ids = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
+    Ok(ids)
 }
 
 pub(crate) async fn list_accesses_<'e, E>(
@@ -564,11 +578,10 @@ pub(crate) async fn list_accesses_<'e, E>(
     executor: E,
 ) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     debug!("Uid = {}", uid);
-
-    let list = sqlx::query(get_pgsql_query!("select-rows-read_access-with-object-id"))
+    let list = sqlx::query(get_sqlite_query!("select-rows-read_access-with-object-id"))
         .bind(uid)
         .fetch_all(executor)
         .await?;
@@ -590,10 +603,10 @@ pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     executor: E,
 ) -> DbResult<HashMap<String, (String, StateEnumeration, HashSet<KmipOperation>)>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    debug!("Owner = {}", user);
-    let list = sqlx::query(get_pgsql_query!("select-objects-access-obtained"))
+    debug!("user = {}", user);
+    let list = sqlx::query(get_sqlite_query!("select-objects-access-obtained"))
         .bind(user)
         .fetch_all(executor)
         .await?;
@@ -605,10 +618,7 @@ where
             (
                 row.get::<String, _>(1),
                 StateEnumeration::try_from(row.get::<String, _>(2))?,
-                serde_json::from_value(
-                    row.try_get::<Value, _>(3)
-                        .context("failed deserializing the operations")?,
-                )?,
+                serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
             ),
         );
     }
@@ -623,7 +633,7 @@ pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
     executor: E,
 ) -> DbResult<HashSet<KmipOperation>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     let mut user_perms = perms(uid, userid, executor).await?;
     if no_inherited_access || userid == "*" {
@@ -635,19 +645,17 @@ where
 
 async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> DbResult<HashSet<KmipOperation>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("select-user-accesses-for-object"))
+    let row: Option<SqliteRow> = sqlx::query(get_sqlite_query!("select-user-accesses-for-object"))
         .bind(uid)
         .bind(userid)
         .fetch_optional(executor)
         .await?;
 
-    row.map_or(Ok(HashSet::new()), |row| {
-        let perms_value = row
-            .try_get::<Value, _>(0)
-            .context("failed deserializing the permissions")?;
-        serde_json::from_value(perms_value).context("failed deserializing the permissions")
+    row.map_or(Ok(HashSet::<KmipOperation>::new()), |row| {
+        let perms_raw = row.get::<Vec<u8>, _>(0);
+        serde_json::from_slice(&perms_raw).context("failed deserializing the permissions")
     })
 }
 
@@ -658,8 +666,9 @@ pub(crate) async fn insert_access_<'e, E>(
     executor: E,
 ) -> DbResult<()>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
+    debug!("insert_access_ {:?}", operation_types);
     // Retrieve existing permissions if any
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if operation_types.is_subset(&perms) {
@@ -673,13 +682,13 @@ where
         serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
 
     // Upsert the DB
-    sqlx::query(get_pgsql_query!("upsert-row-read_access"))
+    sqlx::query(get_sqlite_query!("upsert-row-read_access"))
         .bind(uid)
         .bind(userid)
         .bind(json)
         .execute(executor)
         .await?;
-    trace!("Insert read access right in DB: {uid} / {userid}");
+    trace!("Insert read access right in DB: {uid} / {userid}: {operation_types:?}");
     Ok(())
 }
 
@@ -690,7 +699,7 @@ pub(crate) async fn remove_access_<'e, E>(
     executor: E,
 ) -> DbResult<()>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     // Retrieve existing permissions if any
     let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
@@ -701,7 +710,7 @@ where
 
     // No remaining permissions, delete the row
     if perms.is_empty() {
-        sqlx::query(get_pgsql_query!("delete-rows-read_access"))
+        sqlx::query(get_sqlite_query!("delete-rows-read_access"))
             .bind(uid)
             .bind(userid)
             .execute(executor)
@@ -714,7 +723,7 @@ where
         serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
 
     // Update the DB
-    sqlx::query(get_pgsql_query!("update-rows-read_access-with-permission"))
+    sqlx::query(get_sqlite_query!("update-rows-read_access-with-permission"))
         .bind(uid)
         .bind(userid)
         .bind(json)
@@ -730,9 +739,9 @@ pub(crate) async fn is_object_owned_by_<'e, E>(
     executor: E,
 ) -> DbResult<bool>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("has-row-objects"))
+    let row: Option<SqliteRow> = sqlx::query(get_sqlite_query!("has-row-objects"))
         .bind(uid)
         .bind(owner)
         .fetch_optional(executor)
@@ -748,9 +757,9 @@ pub(crate) async fn find_<'e, E>(
     executor: E,
 ) -> DbResult<Vec<(String, StateEnumeration, Attributes)>>
 where
-    E: Executor<'e, Database = Postgres> + Copy,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let query = query_from_attributes::<PgSqlPlaceholder>(
+    let query = query_from_attributes::<SqlitePlaceholder>(
         researched_attributes,
         state,
         user,
@@ -764,16 +773,17 @@ where
 }
 
 /// Convert a list of rows into a list of qualified uids
-fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
+fn to_qualified_uids(rows: &[SqliteRow]) -> DbResult<Vec<(String, StateEnumeration, Attributes)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
-        let attrs: Attributes = match row.try_get::<Value, _>(2) {
-            Err(_) => return Err(DbError::DatabaseError("no attributes found".to_owned())),
-            Ok(v) => serde_json::from_value(v)
-                .context("failed deserializing the attributes")
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?,
+        let raw = row.get::<Vec<u8>, _>(2);
+        let attrs = if raw.is_empty() {
+            Attributes::default()
+        } else {
+            let attrs: Attributes =
+                serde_json::from_slice(&raw).context("failed deserializing attributes")?;
+            attrs
         };
-
         uids.push((
             row.get::<String, _>(0),
             StateEnumeration::try_from(row.get::<String, _>(1))?,
@@ -786,7 +796,7 @@ fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, StateEnumeration, 
 pub(crate) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
-    tx: &mut Transaction<'_, Postgres>,
+    tx: &mut Transaction<'_, Sqlite>,
 ) -> DbResult<Vec<String>> {
     let mut uids = Vec::with_capacity(operations.len());
     for operation in operations {

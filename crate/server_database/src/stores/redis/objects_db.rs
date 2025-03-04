@@ -289,18 +289,6 @@ impl ObjectsDB {
         pipeline.query_async::<_, ()>(&mut self.mgr.clone()).await?;
         Ok(res)
     }
-
-    /// Clear all data
-    ///
-    /// # Warning
-    /// This is definitive
-    #[cfg(test)]
-    pub(crate) async fn clear_all(&self) -> DbResult<()> {
-        redis::cmd("FLUSHDB")
-            .query_async::<_, ()>(&mut self.mgr.clone())
-            .await?;
-        Ok(())
-    }
 }
 
 #[async_trait]

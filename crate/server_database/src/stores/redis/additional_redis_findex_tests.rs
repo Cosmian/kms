@@ -55,6 +55,10 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
 
     let db_key = SymmetricKey::new(&mut rng);
     let o_db = ObjectsDB::new(mgr.clone(), &db_key);
+    // clean up
+    redis::cmd("FLUSHDB")
+        .query_async::<_, ()>(&mut mgr.clone())
+        .await?;
 
     // single upsert - get - delete
     let uid = "test_objects_db";
@@ -63,9 +67,6 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     rng.fill_bytes(&mut symmetric_key);
     let object =
         create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES, false)?;
-
-    // clean up
-    o_db.clear_all().await?;
 
     // check that the object is not there
     assert!(o_db.object_get(uid).await?.is_none());

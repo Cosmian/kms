@@ -5,21 +5,21 @@ use version_compare::{compare, Cmp};
 
 use crate::{error::DbResult, DbError};
 
-pub const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
+pub(crate) const KMS_VERSION_BEFORE_MIGRATION_SUPPORT: &str = "4.12.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// The state of the database
-pub enum DbState {
+pub(crate) enum DbState {
     Ready,
     Upgrading,
 }
 
-/// Trait that must implement all object stores (DBs, HSMs, etc.) that store objects
+///The `Migrate` trait defines the methods required to migrate the database to the latest version.
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
 #[async_trait(?Send)]
-pub trait Migrate<DB> {
+pub(crate) trait Migrate<DB> {
     /// Migrate the database to the latest version
     async fn migrate(&self) -> DbResult<()> {
         fn lower_equal(version: &str, target: &str) -> DbResult<bool> {
