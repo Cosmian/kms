@@ -36,7 +36,7 @@ pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::cons
 pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 
-fn sqlite_db_config() -> MainDBConfig {
+fn sqlite_db_config(clear_database: bool) -> MainDBConfig {
     trace!("TESTS: using sqlite");
     let tmp_dir = TempDir::new().unwrap();
     let file_path = tmp_dir.path().join("test_sqlite.db");
@@ -46,39 +46,39 @@ fn sqlite_db_config() -> MainDBConfig {
     }
     MainDBConfig {
         database_type: Some("sqlite".to_string()),
-        clear_database: true,
+        clear_database,
         sqlite_path: file_path,
         ..MainDBConfig::default()
     }
 }
 
-fn mysql_db_config() -> MainDBConfig {
+fn mysql_db_config(clear_database: bool) -> MainDBConfig {
     trace!("TESTS: using mysql");
     let mysql_url = option_env!("KMS_MYSQL_URL")
         .unwrap_or("mysql://kms:kms@localhost:3306/kms")
         .to_string();
     MainDBConfig {
         database_type: Some("mysql".to_string()),
-        clear_database: true,
+        clear_database,
         database_url: Some(mysql_url),
         ..MainDBConfig::default()
     }
 }
 
-fn postgres_db_config() -> MainDBConfig {
+fn postgres_db_config(clear_database: bool) -> MainDBConfig {
     trace!("TESTS: using postgres");
     let postgresql_url = option_env!("KMS_POSTGRES_URL")
         .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
         .to_string();
     MainDBConfig {
         database_type: Some("postgresql".to_string()),
-        clear_database: true,
+        clear_database,
         database_url: Some(postgresql_url),
         ..MainDBConfig::default()
     }
 }
 
-fn redis_findex_db_config() -> MainDBConfig {
+fn redis_findex_db_config(clear_database: bool) -> MainDBConfig {
     trace!("TESTS: using redis-findex");
     let url = if let Ok(var_env) = env::var("REDIS_HOST") {
         format!("redis://{var_env}:6379")
@@ -87,7 +87,7 @@ fn redis_findex_db_config() -> MainDBConfig {
     };
     MainDBConfig {
         database_type: Some("redis-findex".to_string()),
-        clear_database: true,
+        clear_database,
         database_url: Some(url),
         sqlite_path: Default::default(),
         redis_master_password: Some("password".to_string()),
@@ -95,14 +95,17 @@ fn redis_findex_db_config() -> MainDBConfig {
     }
 }
 
-fn get_db_config() -> MainDBConfig {
-    env::var_os("KMS_TEST_DB").map_or_else(sqlite_db_config, |v| match v.to_str().unwrap_or("") {
-        "redis-findex" => redis_findex_db_config(),
-        "mysql" => mysql_db_config(),
-        "sqlite" => sqlite_db_config(),
-        "postgresql" => postgres_db_config(),
-        _ => sqlite_db_config(),
-    })
+fn get_db_config(clear_database: bool) -> MainDBConfig {
+    env::var_os("KMS_TEST_DB").map_or_else(
+        || sqlite_db_config(clear_database),
+        |v| match v.to_str().unwrap_or("") {
+            "redis-findex" => redis_findex_db_config(clear_database),
+            "mysql" => mysql_db_config(clear_database),
+            "sqlite" => sqlite_db_config(clear_database),
+            "postgresql" => postgres_db_config(clear_database),
+            _ => sqlite_db_config(clear_database),
+        },
+    )
 }
 
 /// Start a test KMS server in a thread with the default options:
@@ -111,7 +114,8 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ONCE.get_or_try_init(|| {
         start_test_server_with_options(
-            get_db_config(),
+            // the default start is called once and first - this is the one clearing the database
+            get_db_config(true),
             9990,
             AuthenticationOptions {
                 use_jwt_token: false,
@@ -132,7 +136,8 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| {
             start_test_server_with_options(
-                get_db_config(),
+                // test are run in parallel and we do not want to clear the database
+                get_db_config(false),
                 9991,
                 AuthenticationOptions {
                     use_jwt_token: false,
@@ -155,7 +160,8 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| {
             start_test_server_with_options(
-                get_db_config(),
+                // test are run in parallel and we do not want to clear the database
+                get_db_config(false),
                 9992,
                 AuthenticationOptions {
                     use_jwt_token: false,
@@ -498,7 +504,7 @@ pub fn generate_invalid_conf(correct_conf: &KmsClientConfig) -> String {
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server_with_options(
-        sqlite_db_config(),
+        sqlite_db_config(false),
         9990,
         AuthenticationOptions {
             use_jwt_token: false,
