@@ -25,19 +25,32 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
+    let _any_attributes = common_attributes
+        .as_ref()
+        .or(private_key_attributes.as_ref())
+        .or(public_key_attributes.as_ref())
+        .ok_or_else(|| {
+            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
+        })?;
+
+    let access_structure = common_attributes
+        .as_ref()
+        .expect("LINK")
+        .get_link(LinkType::ChildLink)
+        .expect("klm")
+        .to_string();
+    println!("create keypair: {access_structure:?}");
     // Now generate a master key using the CoverCrypt Engine
     let (msk, mpk) = cover_crypt
         .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
-    let mut access_structure = String::new();
 
-    if let Some(common_attributes) = common_attributes.clone().unwrap().link {
-        access_structure = common_attributes[0].linked_object_identifier.to_string();
-    };
-    println!("AAACCC: {access_structure:?}");
+    let json_struct = serde_json::from_str::<serde_json::Value>(&access_structure)?;
+    //let json_struct: Struct = serde_json::from_str(&access_structure)?;
 
+    println!("create keypair json: {json_struct:?}");
 
-    // for (name, attributes) in access_structure {
+    // for (name, attributes) in json_struct {
     //     if name.contains("Security") {
     //         let n = name.trim_end_matches("::<");
     //         msk.access_structure.add_hierarchy(n.to_owned())?;
@@ -72,6 +85,7 @@ pub fn create_master_keypair(
         ))
     })?;
     let private_key = create_master_private_key_object(
+        &access_structure,
         &sk_bytes,
         private_key_attributes,
         public_key_uid,
@@ -92,6 +106,7 @@ pub fn create_master_keypair(
 }
 
 fn create_master_private_key_object(
+    access_structure: &str,
     key: &[u8],
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
@@ -109,8 +124,15 @@ fn create_master_private_key_object(
                 master_public_key_uid.to_owned(),
             ),
         },
+        Link {
+            link_type: LinkType::ChildLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                access_structure.to_owned(),
+            ),
+        },
     ]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
+    println!("master key: {attributes:?}");
 
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
@@ -201,7 +223,10 @@ pub fn kmip_objects_from_covercrypt_keys(
             "Failed serializing the CoverCrypt Master Private Key: {e}"
         ))
     })?;
+    let ser_access_structure = msk.access_structure.serialize()?;
+    let str_access_structure = &serde_json::to_string(&ser_access_structure)?;
     let updated_master_private_key = create_master_private_key_object(
+        str_access_structure,
         updated_master_private_key_bytes,
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,

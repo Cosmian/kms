@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use cosmian_cover_crypt::{EncryptionHint, MasterPublicKey, QualifiedAttribute};
@@ -10,7 +10,7 @@ use cosmian_kms_client::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, TTLV},
     },
-    read_from_json_file, write_json_object_to_file, ExportObjectParams, KmsClient,
+    read_from_json_file, ExportObjectParams, KmsClient,
 };
 use cosmian_kms_crypto::{
     crypto::cover_crypt::{
@@ -26,7 +26,6 @@ use crate::{actions::console, cli_bail, error::result::CliResult};
 #[derive(Subcommand)]
 pub enum PolicyCommands {
     View(ViewAction),
-    Specs(SpecsAction),
     AddAttribute(AddAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
     DisableAttribute(DisableAttributeAction),
@@ -37,7 +36,6 @@ impl PolicyCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::View(action) => action.run(kms_rest_client).await?,
-            Self::Specs(action) => action.run(kms_rest_client).await?,
             Self::AddAttribute(action) => action.run(kms_rest_client).await?,
             Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
             Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
@@ -45,72 +43,6 @@ impl PolicyCommands {
         }
 
         Ok(())
-    }
-}
-
-/// Recover the Policy from a key store in the KMS or in a TTLV file
-async fn recover_policy(
-    key_id: Option<&str>,
-    key_file: Option<&PathBuf>,
-    unwrap: bool,
-    kms_rest_client: &KmsClient,
-) -> CliResult<()> {
-    // Recover the KMIP Object
-    let _object: Object = if let Some(key_id) = key_id {
-        export_object(
-            kms_rest_client,
-            key_id,
-            ExportObjectParams {
-                unwrap,
-                ..ExportObjectParams::default()
-            },
-        )
-        .await?
-        .1
-    } else if let Some(f) = key_file {
-        let ttlv: TTLV = read_from_json_file(f)?;
-        from_ttlv(&ttlv)?
-    } else {
-        cli_bail!("either a key ID or a key TTLV file must be supplied");
-    };
-    Ok(())
-}
-/// Extract the policy specifications from a public or private master key to a policy specifications file
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
-#[derive(Parser)]
-#[clap(verbatim_doc_comment)]
-pub struct SpecsAction {
-    /// The public or private master key ID if the key is stored in the KMS
-    #[clap(long = "key-id", short = 'i', required_unless_present = "key_file")]
-    key_id: Option<String>,
-
-    /// If `key-id` is not provided, the file containing the public or private master key in JSON TTLV format.
-    #[clap(long = "key-file", short = 'f')]
-    key_file: Option<PathBuf>,
-
-    /// The output policy specifications file.
-    #[clap(
-        required = false,
-        long = "specifications",
-        short = 's',
-        default_value = "policy_specifications.json"
-    )]
-    policy_specs_file: PathBuf,
-}
-impl SpecsAction {
-    pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Recover the policy
-        let policy = recover_policy(
-            self.key_id.as_deref(),
-            self.key_file.as_ref(),
-            true,
-            kms_rest_client,
-        )
-        .await?;
-        // save the policy to the specifications file
-        Ok(write_json_object_to_file(&policy, &self.policy_specs_file)?)
     }
 }
 /// View the policy of an existing public or private master key.

@@ -25,7 +25,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let access_structure = "";
+    let access_structure = "json file content";
 
     let create_key_pair =
         build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;
@@ -81,7 +81,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // create Key Pair
     let mkp_tag = "mkp";
     let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
-    let access_structure = "";
+    let access_structure = "json file content";
 
     let create_key_pair =
         build_create_covercrypt_master_keypair_request(access_structure, [mkp_tag], false)?;

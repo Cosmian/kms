@@ -32,7 +32,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = "TEST";
+    // let access_structure = "{\"Security Level::<\":[\"Protected\",\"Confidential\",\"Top Secret::+\"],\"Department\":[\"R&D\",\"HR\",\"MKG\",\"FIN\"]}";
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
@@ -218,7 +219,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    let access_structure = "TEST";
+    let access_structure = "json file content";
 
     // create Key Pair
     let ckr = kms
@@ -441,7 +442,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = "TEST";
+    let access_structure = "json file content";
 
     // Create CC master key pair
     let master_keypair =
@@ -518,7 +519,7 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = "TEST";
+    let access_structure = "json file content";
 
     // create Key Pair
     let cr = kms

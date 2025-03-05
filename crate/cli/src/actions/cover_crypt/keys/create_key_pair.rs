@@ -1,14 +1,25 @@
 use std::path::PathBuf;
+
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     actions::console,
     error::result::{CliResult, CliResultHelper},
 };
 
-use cosmian_kms_client::read_bytes_from_file;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MainWrapper {
+    main: Main,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Main {
+    axis: String,
+    valur: Vec<String>,
+}
 /// Create a new master key pair for a given policy and return the key IDs.
 ///
 ///
@@ -60,14 +71,10 @@ pub struct CreateMasterKeyPairAction {
 
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
-        // Parse the json access_structure file
-        let buffer = read_bytes_from_file(&self.policy_specifications_file)?;
-        let json = serde_json::from_slice(&buffer)?;
-        let access_structure = serde_json::to_string(&json)?;
-        println!("create mkp action:{:?}", access_structure);
-
+        // Parse the json policy file
+        let mut access_structure = "ras le bol";
         let create_key_pair = build_create_covercrypt_master_keypair_request(
-            &access_structure,
+            access_structure,
             &self.tags,
             self.sensitive,
         )?;

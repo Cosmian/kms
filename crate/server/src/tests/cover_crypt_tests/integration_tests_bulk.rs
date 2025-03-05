@@ -13,7 +13,7 @@ async fn integration_tests_bulk() -> KResult<()> {
     let app = test_utils::test_app(None).await;
 
     // Parse the json access_structure file
-    let access_structure = "TEST";
+    let access_structure = "json file content";
     let request_message = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
