@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
+use crate::kmip_2_1;
+
 /// KMIP 1.4 Credential Type Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum CredentialType {
@@ -18,6 +20,25 @@ pub enum KeyCompressionType {
     ECPublicKeyTypeX962Compressed = 0x2,
     ECPublicKeyTypeX962CompressedPrime = 0x3,
     ECPublicKeyTypeX962CompressedChar2 = 0x4,
+}
+
+impl KeyCompressionType {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::KeyCompressionType {
+        match self {
+            Self::ECPublicKeyTypeUncompressed => {
+                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeUncompressed
+            }
+            Self::ECPublicKeyTypeX962Compressed => {
+                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime
+            }
+            Self::ECPublicKeyTypeX962CompressedPrime => {
+                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime
+            }
+            Self::ECPublicKeyTypeX962CompressedChar2 => {
+                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedChar2
+            }
+        }
+    }
 }
 
 /// KMIP 1.4 Key Format Type Enumeration
@@ -44,6 +65,58 @@ pub enum KeyFormatType {
     TransparentECMQVPublicKey = 0x13,
 }
 
+impl KeyFormatType {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::KeyFormatType {
+        match self {
+            Self::Raw => kmip_2_1::kmip_types::KeyFormatType::Raw,
+            Self::Opaque => kmip_2_1::kmip_types::KeyFormatType::Opaque,
+            Self::PKCS1 => kmip_2_1::kmip_types::KeyFormatType::PKCS1,
+            Self::PKCS8 => kmip_2_1::kmip_types::KeyFormatType::PKCS8,
+            Self::X509 => kmip_2_1::kmip_types::KeyFormatType::X509,
+            Self::ECPrivateKey => kmip_2_1::kmip_types::KeyFormatType::ECPrivateKey,
+            Self::TransparentSymmetricKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentSymmetricKey
+            }
+            Self::TransparentDSAPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey
+            }
+            Self::TransparentDSAPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPublicKey
+            }
+            Self::TransparentRSAPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPrivateKey
+            }
+            Self::TransparentRSAPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPublicKey
+            }
+            Self::TransparentDHPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentDHPrivateKey
+            }
+            Self::TransparentDHPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentDHPublicKey
+            }
+            Self::TransparentECDSAPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
+            }
+            Self::TransparentECDSAPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
+            }
+            Self::TransparentECDHPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
+            }
+            Self::TransparentECDHPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
+            }
+            Self::TransparentECMQVPrivateKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
+            }
+            Self::TransparentECMQVPublicKey => {
+                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
+            }
+        }
+    }
+}
+
 /// KMIP 1.4 Wrapping Method Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum WrappingMethod {
@@ -61,6 +134,15 @@ pub enum CertificateType {
     PGP = 0x2,
 }
 
+impl CertificateType {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::CertificateType {
+        match self {
+            Self::X509 => kmip_2_1::kmip_types::CertificateType::X509,
+            Self::PGP => kmip_2_1::kmip_types::CertificateType::PGP,
+        }
+    }
+}
+
 /// KMIP 1.4 Split Key Method Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum SplitKeyMethod {
@@ -75,6 +157,15 @@ pub enum SplitKeyMethod {
 pub enum SecretDataType {
     Password = 0x1,
     Seed = 0x2,
+}
+
+impl SecretDataType {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::SecretDataType {
+        match self {
+            Self::Password => kmip_2_1::kmip_types::SecretDataType::Password,
+            Self::Seed => kmip_2_1::kmip_types::SecretDataType::Seed,
+        }
+    }
 }
 
 /// KMIP 1.4 Name Type Enumeration

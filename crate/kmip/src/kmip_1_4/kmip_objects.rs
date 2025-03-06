@@ -9,7 +9,7 @@ use strum::{EnumIter, VariantNames};
 
 #[allow(clippy::wildcard_imports)]
 use super::{kmip_data_structures::KeyBlock, kmip_types::*};
-use crate::error::KmipError;
+use crate::{error::KmipError, kmip_2_1};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -248,6 +248,70 @@ impl Object {
             }
         }
         hasher.finish()
+    }
+}
+
+impl Object {
+    fn to_kmip_2_1(&self) -> kmip_2_1::kmip_objects::Object {
+        match self {
+            Self::Certificate(cert) => {
+                let certificate_2_1 = kmip_2_1::kmip_objects::Certificate {
+                    certificate_type: cert.certificate_type.to_kmip_2_1(),
+                    certificate_value: cert.certificate_value.clone(),
+                };
+                kmip_2_1::kmip_objects::Object::Certificate(certificate_2_1)
+            }
+            Self::SecretData(secret) => {
+                let secret_data_2_1 = kmip_2_1::kmip_objects::SecretData {
+                    secret_data_type: secret.secret_data_type.to_kmip_2_1(),
+                    key_block: secret.key_block.to_kmip_2_1(),
+                };
+                kmip_2_1::kmip_objects::Object::SecretData(secret_data_2_1)
+            }
+            Self::SplitKey(split) => {
+                let split_key_2_1 = kmip_2_1::kmip_objects::SplitKey {
+                    split_key_parts: split.split_key_parts,
+                    key_part_identifier: split.key_part_identifier,
+                    split_key_threshold: split.split_key_threshold,
+                    split_key_method: convert_split_key_method(&split.split_key_method),
+                    prime_field_size: None, // Not present in KMIP 1.4
+                    key_block: convert_key_block(&split.key_block),
+                };
+                kmip_2_1::kmip_objects::Object::SplitKey(split_key_2_1)
+            }
+            Self::SymmetricKey(symmetric) => {
+                let symmetric_key_2_1 = kmip_2_1::kmip_objects::SymmetricKey {
+                    key_block: convert_key_block(&symmetric.key_block),
+                };
+                kmip_2_1::kmip_objects::Object::SymmetricKey(symmetric_key_2_1)
+            }
+            Self::PrivateKey(private) => {
+                let private_key_2_1 = kmip_2_1::kmip_objects::PrivateKey {
+                    key_block: convert_key_block(&private.key_block),
+                };
+                kmip_2_1::kmip_objects::Object::PrivateKey(private_key_2_1)
+            }
+            Self::PublicKey(public) => {
+                let public_key_2_1 = kmip_2_1::kmip_objects::PublicKey {
+                    key_block: convert_key_block(&public.key_block),
+                };
+                kmip_2_1::kmip_objects::Object::PublicKey(public_key_2_1)
+            }
+            Self::OpaqueObject(opaque) => {
+                let opaque_object_2_1 = kmip_2_1::kmip_objects::OpaqueObject {
+                    opaque_data_type: convert_opaque_data_type(&opaque.opaque_data_type),
+                    opaque_data_value: opaque.opaque_data_value.clone(),
+                };
+                kmip_2_1::kmip_objects::Object::OpaqueObject(opaque_object_2_1)
+            }
+            Self::PGPKey(pgp) => {
+                let pgp_key_2_1 = kmip_2_1::kmip_objects::PGPKey {
+                    pgp_key_version: pgp.pgp_key_version,
+                    key_block: convert_key_block(&pgp.key_block),
+                };
+                kmip_2_1::kmip_objects::Object::PGPKey(pgp_key_2_1)
+            }
+        }
     }
 }
 
