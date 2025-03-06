@@ -92,6 +92,12 @@ jwks_uri = ["<jwks uri>"]
 # Optional: the server will validate the JWT `aud` claim against this value if set
 jwt_audience = ["<jwt audience>"]
 
+[ui_oidc_auth]
+client_id = "[client id]"
+issuer_url = "[issuer url]"
+logout_url = "[logout url]"
+
+
 [workspace]
 # The root folder where the KMS will store its data
 # A relative path is taken relative to the user HOME directory

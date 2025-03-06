@@ -11,9 +11,11 @@ interface HashMapDisplayProps {
 const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
   // Function to copy Map to clipboard as JSON
   const copyToClipboard = (): void => {
-    const mapObject = Object.fromEntries(data);
-    navigator.clipboard.writeText(JSON.stringify(mapObject, null, 2));
-    message.success('Copied to clipboard');
+    if (data) {
+      const mapObject = Object.fromEntries(data);
+      navigator.clipboard.writeText(JSON.stringify(mapObject, null, 2));
+      message.success('Copied to clipboard');
+    }
   };
 
   // Format a value for display
@@ -107,8 +109,8 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <Card
+    <>
+      {data && <Card
         title={
           <div className="flex justify-between items-center">
             <Title level={4} className="m-0">HashMap Display</Title>
@@ -131,8 +133,8 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
             {renderMapPreview(data)}
           </div>
         </div>
-      </Card>
-    </div>
+      </Card>}
+    </>
   );
 };
 

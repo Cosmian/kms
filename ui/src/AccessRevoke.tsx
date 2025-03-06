@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { postNoTTLVRequest } from './utils'
 
 
@@ -35,13 +36,23 @@ const AccessRevokeForm: React.FC = () => {
     const [form] = Form.useForm<AccessRevokeFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
+
 
     const onFinish = async (values: AccessRevokeFormData) => {
         console.log('Revoke access values:', values);
         setIsLoading(true);
         setRes(undefined);
+
+
         try {
-            const response = await postNoTTLVRequest("/access/revoke", values);
+            const response = await postNoTTLVRequest("/access/revoke", values, idToken, serverUrl);
             setRes(response.success)
         } catch (e) {
             setRes(`Error revoking access: ${e}`)
@@ -111,7 +122,11 @@ const AccessRevokeForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Revoke access response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Revoke access response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

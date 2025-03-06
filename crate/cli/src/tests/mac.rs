@@ -1,7 +1,9 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{
+    reexport::cosmian_kms_ui_utils::create_utils::SymmetricAlgorithm, KMS_CLI_CONF_ENV,
+};
 use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 
@@ -9,7 +11,7 @@ use super::utils::extract_uids::extract_uid;
 use crate::{
     actions::{
         mac::{CHashingAlgorithm, MacAction},
-        symmetric::keys::create_key::{CreateKeyAction, SymmetricAlgorithm},
+        symmetric::keys::create_key::CreateKeyAction,
     },
     error::{result::CliResult, CliError},
     tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},

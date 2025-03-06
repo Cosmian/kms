@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
@@ -31,6 +32,14 @@ const RsaEncryptForm: React.FC = () => {
     const [form] = Form.useForm<RsaEncryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: RsaEncryptFormData) => {
         console.log('Encrypt values:', values);
@@ -43,13 +52,12 @@ const RsaEncryptForm: React.FC = () => {
                 throw Error("Missing key identifier")
             }
             const request = encrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
-                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.enc`;
+                const filename = `${values.fileName}.enc`;
                 downloadFile(data, filename, mimeType);
                 setRes("File has been encrypted")
             }
@@ -165,7 +173,11 @@ const RsaEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="RSA encrypt response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="RSA encrypt response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

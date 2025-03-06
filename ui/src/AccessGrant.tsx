@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { postNoTTLVRequest } from './utils'
 
 
@@ -35,13 +36,22 @@ const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl } = useAuth();
+
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: AccessGrantFormData) => {
         console.log('Grant access values:', values);
         setIsLoading(true);
         setRes(undefined);
         try {
-            const response = await postNoTTLVRequest("/access/grant", values);
+            const response = await postNoTTLVRequest("/access/grant", values, idToken, serverUrl);
             setRes(response.success)
         } catch (e) {
             setRes(`Error granting access: ${e}`)
@@ -110,7 +120,11 @@ const AccessGrantForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Grant access response">{res}</Card>}
+            {res &&
+                <div ref={responseRef}>
+                    <Card title="Grant access response">{res}</Card>
+                </div>
+            }
         </div>
     );
 };

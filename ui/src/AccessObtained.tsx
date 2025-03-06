@@ -1,6 +1,8 @@
 import { Button, Card, Space, Table, Tag } from 'antd'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { getNoTTLVRequest } from './utils'
+
 
 interface AccessRight {
     objectUid: string;
@@ -13,27 +15,35 @@ const AccessObtainedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const { idToken, serverUrl } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
 
     // TODO Update fields name from server response - when auth is OK
     const columns = [
         {
             title: 'Object UID',
-            dataIndex: 'objectUid',
-            key: 'objectUid',
+            dataIndex: 'object_id',
+            key: 'object_id',
         },
         {
             title: 'State',
-            dataIndex: 'objectState',
-            key: 'objectState',
+            dataIndex: 'state',
+            key: 'state',
             render: (state: string) => (
                 <Tag color={state === 'Active' ? 'green' : 'orange'}>{state}</Tag>
             ),
         },
         {
             title: 'Owner',
-            dataIndex: 'owner',
-            key: 'owner',
+            dataIndex: 'owner_id',
+            key: 'owner_id',
         },
         {
             title: 'Granted Operations',
@@ -54,7 +64,7 @@ const AccessObtainedList: React.FC = () => {
         setRes(undefined);
         setAccessRights([])
         try {
-            const response = await getNoTTLVRequest("/access/obtained");
+            const response = await getNoTTLVRequest("/access/obtained", idToken, serverUrl);
             if (response.length) {
                 setAccessRights(response);
             } else {
@@ -102,7 +112,11 @@ const AccessObtainedList: React.FC = () => {
                     />
                 </Card>
             </Space>
-            {res && <Card title="Obtained access response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Obtained access response">{res}</Card>
+                </div>
+            )}
         </div >
     );
 };

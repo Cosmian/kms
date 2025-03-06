@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
-import { downloadFile, sendKmipRequest } from './utils'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
+import { getMimeType, saveDecryptedFile, sendKmipRequest } from './utils'
 import { decrypt_sym_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
 
 
@@ -12,7 +13,7 @@ interface SymmetricDecryptFormData {
     dataEncryptionAlgorithm: 'AesGcm' | 'AesXts' | 'AesGcmSiv' | 'Chacha20Poly1305';
     // keyEncryptionAlgorithm?: 'nist-key-wrap' | 'aes-gcm' | 'rsa-pkcs-v15' | 'rsa-oaep' | 'rsa-aes-key-wrap';
     outputFile?: string;
-    authenticationData?: string;
+    authenticationData?: Uint8Array;
 }
 
 const DATA_ENCRYPTION_ALGORITHMS = [
@@ -34,6 +35,14 @@ const SymmetricDecryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricDecryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: SymmetricDecryptFormData) => {
         console.log('Decrypt values:', values);
@@ -44,16 +53,15 @@ const SymmetricDecryptForm: React.FC = () => {
                 throw Error("Missing key identifier")
             }
             const request = decrypt_sym_ttlv_request(id , values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
-                const mimeType = "application/octet-stream";
-                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.plain`;
-                const decoder = new TextDecoder("utf-8");
-                const text = decoder.decode(new Uint8Array(response.Data));
-                downloadFile(text, filename, mimeType);
-                setRes("File has been decrypted")
+                const name = values.fileName.slice(0, -4);
+                const lastDotIndex = name.lastIndexOf(".");
+                const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
+                const mimeType = getMimeType(fileName);
+                saveDecryptedFile(response.Data, fileName, mimeType);
+                setRes("File has been decrypted");
             }
         } catch (e) {
             setRes(`Error decrypting: ${e}`)
@@ -182,7 +190,11 @@ const SymmetricDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Symmetric keys decrypt response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Symmetric keys decrypt response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

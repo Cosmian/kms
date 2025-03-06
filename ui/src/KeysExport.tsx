@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { export_ttlv_request, parse_export_ttlv_response } from "./wasm/pkg"
 
@@ -58,6 +59,14 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
     const [form] = Form.useForm<KeyExportFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: KeyExportFormData) => {
         console.log('Export key values:', values);
@@ -70,7 +79,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                 throw Error("Missing key identifier")
             }
             const request = export_ttlv_request(id , values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const data = await parse_export_ttlv_response(result_str, values.keyFormat)
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
@@ -246,7 +255,11 @@ const KeyExportForm: React.FC<KeyExportFormProps> = (props: KeyExportFormProps) 
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Key export response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Key export response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

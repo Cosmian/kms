@@ -1,6 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons'
 import { Button, Card, DatePicker, Form, Input, Radio, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from "./wasm/pkg"
 
@@ -16,6 +17,14 @@ const CertificateValidateForm: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
     const [certificateInputType, setCertificateInputType] = useState<'file' | 'text' | 'id'>('file');
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: ValidateCertificateFormData) => {
         console.log('Validate Certificate values:', values);
@@ -32,7 +41,7 @@ const CertificateValidateForm: React.FC = () => {
                 values.uniqueIdentifier,
                 validityTime
             );
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_validate_ttlv_response(result_str);
                 setRes(`Validation Status: ${response.ValidityIndicator}`);
@@ -178,7 +187,11 @@ BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Validation Results">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Validation Results">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

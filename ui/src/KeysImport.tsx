@@ -1,6 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons"
 import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
 
@@ -29,8 +30,6 @@ interface ImportKeyFormData {
     authenticatedAdditionalData?: string;
 }
 
-
-
 type KeyType = 'rsa' | 'ec' | 'symmetric' | 'covercrypt';
 
 interface KeyImportFormProps {
@@ -45,6 +44,14 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
     const [form] = Form.useForm<ImportKeyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: ImportKeyFormData) => {
         console.log('Import key values:', values);
@@ -52,7 +59,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
         setRes(undefined);
         try {
             const request = import_ttlv_request(values.keyId, values.keyFile, values.keyFormat, values.publicKeyId, values.privateKeyId, values.certificateId, values.unwrap, values.replaceExisting, values.tags, values.keyUsage, values.authenticatedAdditionalData);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str)
                 setRes(`File has been imported - imported object id: ${result.UniqueIdentifier}`)
@@ -284,7 +291,11 @@ const KeyImportForm: React.FC<KeyImportFormProps> = (props: KeyImportFormProps) 
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Key import response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Key import response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

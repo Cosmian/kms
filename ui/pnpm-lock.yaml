@@ -17,9 +17,15 @@ importers:
       antd:
         specifier: ^5.23.3
         version: 5.23.3(moment@2.30.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      js-cookie:
+        specifier: ^3.0.5
+        version: 3.0.5
       moment:
         specifier: ^2.30.1
         version: 2.30.1
+      oidc-client-ts:
+        specifier: ^3.1.0
+        version: 3.1.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -32,6 +38,9 @@ importers:
       tailwindcss:
         specifier: ^4.0.0
         version: 4.0.0
+      typescript-cookie:
+        specifier: ^1.0.6
+        version: 1.0.6
       vite-plugin-theme:
         specifier: ^0.8.6
         version: 0.8.6(vite@6.0.11(jiti@2.4.2)(lightningcss@1.29.1))
@@ -981,6 +990,10 @@ packages:
     resolution: {integrity: sha512-rg9zJN+G4n2nfJl5MW3BMygZX56zKPNVEYYqq7adpmMh4Jn2QNEwhvQlFy6jPVdcod7txZtKHWnyZiA3a0zP7A==}
     hasBin: true
 
+  js-cookie@3.0.5:
+    resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
+    engines: {node: '>=14'}
+
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
@@ -999,6 +1012,10 @@ packages:
 
   json2mq@0.2.0:
     resolution: {integrity: sha512-SzoRg7ux5DWTII9J2qkrZrqV1gt+rTaoufMxEzXbS26Uid0NwaJd123HcoB80TgubEppxxIGdNxCx50fEoEWQA==}
+
+  jwt-decode@4.0.0:
+    resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
+    engines: {node: '>=18'}
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -1110,6 +1127,10 @@ packages:
 
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
+
+  oidc-client-ts@3.1.0:
+    resolution: {integrity: sha512-IDopEXjiwjkmJLYZo6BTlvwOtnlSniWZkKZoXforC/oLZHC9wkIxd25Kwtmo5yKFMMVcsp3JY6bhcNJqdYk8+g==}
+    engines: {node: '>=18'}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -1503,6 +1524,10 @@ packages:
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
+
+  typescript-cookie@1.0.6:
+    resolution: {integrity: sha512-s+BZr7/9BUG6Kg7jGGcOY/4XJcP+iZRFdF3q4FPTfRSP83ivLWF94OcH8PrzGmnS8Ab9qP7ENu/ikLwNFsIafA==}
+    engines: {node: '>=14'}
 
   typescript-eslint@8.22.0:
     resolution: {integrity: sha512-Y2rj210FW1Wb6TWXzQc5+P+EWI9/zdS57hLEc0gnyuvdzWo8+Y8brKlbj0muejonhMI/xAZCnZZwjbIfv1CkOw==}
@@ -2454,6 +2479,8 @@ snapshots:
 
   jiti@2.4.2: {}
 
+  js-cookie@3.0.5: {}
+
   js-tokens@4.0.0: {}
 
   js-yaml@4.1.0:
@@ -2469,6 +2496,8 @@ snapshots:
   json2mq@0.2.0:
     dependencies:
       string-convert: 0.2.1
+
+  jwt-decode@4.0.0: {}
 
   keyv@4.5.4:
     dependencies:
@@ -2556,6 +2585,10 @@ snapshots:
   nanoid@3.3.8: {}
 
   natural-compare@1.4.0: {}
+
+  oidc-client-ts@3.1.0:
+    dependencies:
+      jwt-decode: 4.0.0
 
   optionator@0.9.4:
     dependencies:
@@ -3029,6 +3062,8 @@ snapshots:
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
+
+  typescript-cookie@1.0.6: {}
 
   typescript-eslint@8.22.0(eslint@9.19.0(jiti@2.4.2))(typescript@5.6.3):
     dependencies:

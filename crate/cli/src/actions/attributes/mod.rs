@@ -19,7 +19,7 @@ pub enum AttributesCommands {
 }
 
 #[cfg(test)]
-pub use get::CLinkType;
+pub use cosmian_kms_client::reexport::cosmian_kms_ui_utils::attributes_utils::CLinkType;
 #[cfg(test)]
 pub use set::CCryptographicAlgorithm;
 
