@@ -1,8 +1,16 @@
-use serde::{Deserialize, Serialize};
+use num_bigint_dig::BigUint;
+use serde::{
+    de,
+    de::{MapAccess, Visitor},
+    ser::SerializeStruct,
+    Deserialize, Serialize,
+};
 use time::OffsetDateTime;
+use zeroize::Zeroizing;
 
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
+use crate::{kmip_2_1, SafeBigUint};
 
 /// 2.1.1 Attribute Object Structure
 /// An Attribute object is a structure used to hold the name, index and value of a
@@ -70,7 +78,7 @@ pub enum CredentialValue {
 /// A Key Block object is a structure used to encapsulate all of the information that is
 /// closely associated with a cryptographic key. It contains information about the format
 /// of the key, the algorithm it supports, and its cryptographic length.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
     pub key_compression_type: Option<KeyCompressionType>,
@@ -80,13 +88,665 @@ pub struct KeyBlock {
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
 
+impl KeyBlock {
+    pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_data_structures::KeyBlock {
+        crate::kmip_2_1::kmip_data_structures::KeyBlock {
+            key_format_type: self.key_format_type.to_kmip_2_1(),
+            key_compression_type: self.key_compression_type.as_ref().map(|x| x.to_kmip_2_1()),
+            key_value: self.key_value.to_kmip_2_1(),
+            cryptographic_algorithm: self.cryptographic_algorithm,
+            cryptographic_length: self.cryptographic_length,
+            key_wrapping_data: self.key_wrapping_data.clone(),
+        }
+    }
+}
+
 /// 2.1.4 Key Value Object Structure
 /// The Key Value object is a structure used to represent the key material and associated
 /// attributes within a Key Block structure.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyValue {
-    pub key_material: Vec<u8>,
+    pub key_material: KeyMaterial,
     pub attributes: Option<Vec<Attribute>>,
+}
+
+impl KeyValue {
+    pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_data_structures::KeyValue {
+        kmip_2_1::kmip_data_structures::KeyValue {
+            key_material: kmip_2_1::kmip_data_structures::KeyMaterial::self
+                .key_material
+                .clone(),
+            attributes: self.attributes.clone(),
+        }
+    }
+}
+
+/// Private fields are represented using a Zeroizing object: either array of
+/// bytes, or `SafeBigUint` type.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum KeyMaterial {
+    TransparentSymmetricKey {
+        key: Zeroizing<Vec<u8>>,
+    },
+    TransparentDSAPrivateKey {
+        p: Box<BigUint>,
+        q: Box<BigUint>,
+        g: Box<BigUint>,
+        x: Box<SafeBigUint>,
+    },
+    TransparentDSAPublicKey {
+        p: Box<BigUint>,
+        q: Box<BigUint>,
+        g: Box<BigUint>,
+        y: Box<BigUint>,
+    },
+    TransparentRSAPrivateKey {
+        modulus: Box<BigUint>,
+        private_exponent: Option<Box<SafeBigUint>>,
+        public_exponent: Option<Box<BigUint>>,
+        p: Option<Box<SafeBigUint>>,
+        q: Option<Box<SafeBigUint>>,
+        prime_exponent_p: Option<Box<SafeBigUint>>,
+        prime_exponent_q: Option<Box<SafeBigUint>>,
+        crt_coefficient: Option<Box<SafeBigUint>>,
+    },
+    TransparentRSAPublicKey {
+        modulus: Box<BigUint>,
+        public_exponent: Box<BigUint>,
+    },
+    TransparentDHPrivateKey {
+        p: Box<BigUint>,
+        q: Option<Box<BigUint>>,
+        g: Box<BigUint>,
+        j: Option<Box<BigUint>>,
+        x: Box<SafeBigUint>,
+    },
+    TransparentDHPublicKey {
+        p: Box<BigUint>,
+        q: Option<Box<BigUint>>,
+        g: Box<BigUint>,
+        j: Option<Box<BigUint>>,
+        y: Box<BigUint>,
+    },
+    TransparentECDSAPrivateKey {
+        recommended_curve: RecommendedCurve,
+        // big int in big endian format
+        d: Box<SafeBigUint>,
+    },
+    TransparentECDSAPublicKey {
+        recommended_curve: RecommendedCurve,
+        q_string: Vec<u8>,
+    },
+    TransparentECDHPrivateKey {
+        recommended_curve: RecommendedCurve,
+        // big int in big endian format
+        d: Box<SafeBigUint>,
+    },
+    TransparentECDHPublicKey {
+        recommended_curve: RecommendedCurve,
+        q_string: Vec<u8>,
+    },
+    TransparentECMQVPrivateKey {
+        recommended_curve: RecommendedCurve,
+        // big int in big endian format
+        d: Box<SafeBigUint>,
+    },
+    TransparentECMQVPublicKey {
+        recommended_curve: RecommendedCurve,
+        q_string: Vec<u8>,
+    },
+
+    TransparentECPrivateKey {
+        recommended_curve: RecommendedCurve,
+        // big int in big endian format
+        d: Box<SafeBigUint>,
+    },
+    TransparentECPublicKey {
+        recommended_curve: RecommendedCurve,
+        q_string: Vec<u8>,
+    },
+}
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
+enum KeyTypeSer {
+    DH,
+    DSA,
+    RsaPublic,
+    RsaPrivate,
+    ECDSA,
+    ECDH,
+    ECMQV,
+    EC,
+}
+
+impl Serialize for KeyMaterial {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::TransparentSymmetricKey { key } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                st.serialize_field("Key", &**key)?;
+                st.end()
+            }
+            Self::TransparentDHPrivateKey { p, q, g, j, x } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
+                st.serialize_field("P", &**p)?;
+                if let Some(q) = q {
+                    st.serialize_field("Q", &**q)?;
+                };
+                st.serialize_field("G", &**g)?;
+                if let Some(j) = j {
+                    st.serialize_field("J", &**j)?;
+                };
+                st.serialize_field("X", &***x)?;
+                st.end()
+            }
+            Self::TransparentDHPublicKey { p, q, g, j, y } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
+                st.serialize_field("P", &**p)?;
+                if let Some(q) = q {
+                    st.serialize_field("Q", &**q)?;
+                };
+                st.serialize_field("G", &**g)?;
+                if let Some(j) = j {
+                    st.serialize_field("J", &**j)?;
+                };
+                st.serialize_field("Y", &**y)?;
+                st.end()
+            }
+            Self::TransparentDSAPrivateKey { p, q, g, x } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
+                st.serialize_field("P", &**p)?;
+                st.serialize_field("Q", &**q)?;
+                st.serialize_field("G", &**g)?;
+                st.serialize_field("X", &***x)?;
+                st.end()
+            }
+            Self::TransparentDSAPublicKey { p, q, g, y } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
+                st.serialize_field("P", &**p)?;
+                st.serialize_field("Q", &**q)?;
+                st.serialize_field("G", &**g)?;
+                st.serialize_field("Y", &**y)?;
+                st.end()
+            }
+            Self::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPrivate)?;
+                st.serialize_field("Modulus", &**modulus)?;
+                if let Some(private_exponent) = private_exponent {
+                    st.serialize_field("PrivateExponent", &***private_exponent)?;
+                };
+                if let Some(public_exponent) = public_exponent {
+                    st.serialize_field("PublicExponent", &**public_exponent)?;
+                };
+                if let Some(p) = p {
+                    st.serialize_field("P", &***p)?;
+                };
+                if let Some(q) = q {
+                    st.serialize_field("Q", &***q)?;
+                };
+                if let Some(prime_exponent_p) = prime_exponent_p {
+                    st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
+                };
+                if let Some(prime_exponent_q) = prime_exponent_q {
+                    st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
+                };
+                if let Some(crt_coefficient) = crt_coefficient {
+                    st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
+                };
+                st.end()
+            }
+            Self::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPublic)?;
+                st.serialize_field("Modulus", &**modulus)?;
+                st.serialize_field("PublicExponent", &**public_exponent)?;
+                st.end()
+            }
+            Self::TransparentECDSAPrivateKey {
+                recommended_curve,
+                d,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDSA)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("D", &***d)?;
+                st.end()
+            }
+            Self::TransparentECDSAPublicKey {
+                recommended_curve,
+                q_string,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDSA)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("QString", q_string)?;
+                st.end()
+            }
+            Self::TransparentECDHPrivateKey {
+                recommended_curve,
+                d,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDH)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("D", &***d)?;
+                st.end()
+            }
+            Self::TransparentECDHPublicKey {
+                recommended_curve,
+                q_string,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECDH)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("QString", q_string)?;
+                st.end()
+            }
+            Self::TransparentECMQVPrivateKey {
+                recommended_curve,
+                d,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECMQV)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("D", &***d)?;
+                st.end()
+            }
+            Self::TransparentECMQVPublicKey {
+                recommended_curve,
+                q_string,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::ECMQV)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("QString", q_string)?;
+                st.end()
+            }
+            Self::TransparentECPrivateKey {
+                recommended_curve,
+                d,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("D", &***d)?;
+                st.end()
+            }
+            Self::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            } => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
+                st.serialize_field("RecommendedCurve", recommended_curve)?;
+                st.serialize_field("QString", q_string)?;
+                st.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyMaterial {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier)]
+        enum Field {
+            ByteString,
+            D,
+            P,
+            Q,
+            G,
+            J,
+            X,
+            Y,
+            Key,
+            KeyTypeSer,
+            Modulus,
+            PrivateExponent,
+            PublicExponent,
+            PrimeExponentP,
+            PrimeExponentQ,
+            CrtCoefficient,
+            RecommendedCurve,
+            QString,
+        }
+
+        struct KeyMaterialVisitor;
+
+        impl<'de> Visitor<'de> for KeyMaterialVisitor {
+            type Value = KeyMaterial;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct KeyMaterialVisitor")
+            }
+
+            #[allow(clippy::many_single_char_names)]
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
+                let mut key_type_ser: Option<KeyTypeSer> = None;
+                // Here `p` and `q` describes either a public value for DH or
+                // a prime secret factor for RSA. Kept as `BigUint`` and wrapped
+                // as `SafeBigUint` in RSA.
+                let mut p: Option<Box<BigUint>> = None;
+                let mut q: Option<Box<BigUint>> = None;
+                let mut g: Option<Box<BigUint>> = None;
+                let mut j: Option<Box<BigUint>> = None;
+                let mut y: Option<Box<BigUint>> = None;
+                let mut x: Option<Box<SafeBigUint>> = None;
+                let mut key: Option<Zeroizing<Vec<u8>>> = None;
+                let mut modulus: Option<Box<BigUint>> = None;
+                let mut public_exponent: Option<Box<BigUint>> = None;
+                let mut private_exponent: Option<Box<SafeBigUint>> = None;
+                let mut prime_exponent_p: Option<Box<SafeBigUint>> = None;
+                let mut prime_exponent_q: Option<Box<SafeBigUint>> = None;
+                let mut crt_coefficient: Option<Box<SafeBigUint>> = None;
+                let mut recommended_curve: Option<RecommendedCurve> = None;
+                let mut d: Option<Box<SafeBigUint>> = None;
+                let mut q_string: Option<Vec<u8>> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::ByteString => {
+                            if bytestring.is_some() {
+                                return Err(de::Error::duplicate_field("ByteString"))
+                            }
+                            bytestring = Some(map.next_value()?);
+                        }
+                        Field::D => {
+                            if d.is_some() {
+                                return Err(de::Error::duplicate_field("D"))
+                            }
+                            d = Some(Box::new(map.next_value()?));
+                        }
+                        Field::P => {
+                            if p.is_some() {
+                                return Err(de::Error::duplicate_field("P"))
+                            }
+                            p = Some(Box::new(map.next_value()?));
+                        }
+                        Field::Q => {
+                            if q.is_some() {
+                                return Err(de::Error::duplicate_field("Q"))
+                            }
+                            q = Some(Box::new(map.next_value()?));
+                        }
+                        Field::G => {
+                            if g.is_some() {
+                                return Err(de::Error::duplicate_field("G"))
+                            }
+                            g = Some(Box::new(map.next_value()?));
+                        }
+                        Field::J => {
+                            if j.is_some() {
+                                return Err(de::Error::duplicate_field("J"))
+                            }
+                            j = Some(Box::new(map.next_value()?));
+                        }
+                        Field::X => {
+                            if x.is_some() {
+                                return Err(de::Error::duplicate_field("X"))
+                            }
+                            x = Some(Box::new(map.next_value()?));
+                        }
+                        Field::Y => {
+                            if y.is_some() {
+                                return Err(de::Error::duplicate_field("Y"))
+                            }
+                            y = Some(Box::new(map.next_value()?));
+                        }
+                        Field::Key => {
+                            if key.is_some() {
+                                return Err(de::Error::duplicate_field("Key"))
+                            }
+                            key = Some(map.next_value()?);
+                        }
+                        Field::KeyTypeSer => {
+                            if key_type_ser.is_some() {
+                                return Err(de::Error::duplicate_field("KeyTypeSer"))
+                            }
+                            key_type_ser = Some(map.next_value()?);
+                        }
+                        Field::Modulus => {
+                            if modulus.is_some() {
+                                return Err(de::Error::duplicate_field("Modulus"))
+                            }
+                            modulus = Some(Box::new(map.next_value()?));
+                        }
+                        Field::PrivateExponent => {
+                            if private_exponent.is_some() {
+                                return Err(de::Error::duplicate_field("PrivateExponent"))
+                            }
+                            private_exponent = Some(Box::new(map.next_value()?));
+                        }
+                        Field::PublicExponent => {
+                            if public_exponent.is_some() {
+                                return Err(de::Error::duplicate_field("PublicExponent"))
+                            }
+                            public_exponent = Some(Box::new(map.next_value()?));
+                        }
+                        Field::PrimeExponentP => {
+                            if prime_exponent_p.is_some() {
+                                return Err(de::Error::duplicate_field("PrimeExponentP"))
+                            }
+                            prime_exponent_p = Some(Box::new(map.next_value()?));
+                        }
+                        Field::PrimeExponentQ => {
+                            if prime_exponent_q.is_some() {
+                                return Err(de::Error::duplicate_field("PrimeExponentQ"))
+                            }
+                            prime_exponent_q = Some(Box::new(map.next_value()?));
+                        }
+                        Field::CrtCoefficient => {
+                            if crt_coefficient.is_some() {
+                                return Err(de::Error::duplicate_field("CrtCoefficient"))
+                            }
+                            crt_coefficient = Some(Box::new(map.next_value()?));
+                        }
+                        Field::RecommendedCurve => {
+                            if recommended_curve.is_some() {
+                                return Err(de::Error::duplicate_field("RecommendedCurve"))
+                            }
+                            recommended_curve = Some(map.next_value()?);
+                        }
+                        Field::QString => {
+                            if q_string.is_some() {
+                                return Err(de::Error::duplicate_field("QString"))
+                            }
+                            q_string = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                if let Some(key) = key {
+                    Ok(KeyMaterial::TransparentSymmetricKey { key })
+                } else {
+                    Ok(match key_type_ser {
+                        Some(KeyTypeSer::DH) => {
+                            let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
+                            let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
+                            if let Some(x) = x {
+                                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x }
+                            } else {
+                                let y = y.ok_or_else(|| {
+                                    de::Error::missing_field("Y for DH public key")
+                                })?;
+                                KeyMaterial::TransparentDHPublicKey { p, q, g, j, y }
+                            }
+                        }
+                        Some(KeyTypeSer::DSA) => {
+                            let p = p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
+                            let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
+                            let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
+                            if let Some(x) = x {
+                                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x }
+                            } else {
+                                let y = y.ok_or_else(|| {
+                                    de::Error::missing_field("Y for DSA public key")
+                                })?;
+                                KeyMaterial::TransparentDSAPublicKey { p, q, g, y }
+                            }
+                        }
+                        Some(KeyTypeSer::RsaPublic) => {
+                            let modulus = modulus.ok_or_else(|| {
+                                de::Error::missing_field("Modulus for RSA public key")
+                            })?;
+                            let public_exponent = public_exponent.ok_or_else(|| {
+                                de::Error::missing_field("Public exponent for RSA public key")
+                            })?;
+                            KeyMaterial::TransparentRSAPublicKey {
+                                modulus,
+                                public_exponent,
+                            }
+                        }
+                        Some(KeyTypeSer::RsaPrivate) => {
+                            let modulus = modulus.ok_or_else(|| {
+                                de::Error::missing_field("Modulus for RSA private key")
+                            })?;
+                            KeyMaterial::TransparentRSAPrivateKey {
+                                modulus,
+                                public_exponent,
+                                private_exponent,
+                                p: p.map(|p| Box::new(SafeBigUint::from(*p))),
+                                q: q.map(|q| Box::new(SafeBigUint::from(*q))),
+                                prime_exponent_p,
+                                prime_exponent_q,
+                                crt_coefficient,
+                            }
+                        }
+                        Some(KeyTypeSer::ECDSA) => {
+                            let recommended_curve = recommended_curve.ok_or_else(|| {
+                                de::Error::missing_field("RecommendedCurve for EC key")
+                            })?;
+                            if let Some(d) = d {
+                                KeyMaterial::TransparentECDSAPrivateKey {
+                                    recommended_curve,
+                                    d,
+                                }
+                            } else {
+                                let q_string = q_string.ok_or_else(|| {
+                                    de::Error::missing_field("QString for EC public key")
+                                })?;
+                                KeyMaterial::TransparentECDSAPublicKey {
+                                    recommended_curve,
+                                    q_string,
+                                }
+                            }
+                        }
+                        Some(KeyTypeSer::ECDH) => {
+                            let recommended_curve = recommended_curve.ok_or_else(|| {
+                                de::Error::missing_field("RecommendedCurve for EC key")
+                            })?;
+                            if let Some(d) = d {
+                                KeyMaterial::TransparentECDHPrivateKey {
+                                    recommended_curve,
+                                    d,
+                                }
+                            } else {
+                                let q_string = q_string.ok_or_else(|| {
+                                    de::Error::missing_field("QString for EC public key")
+                                })?;
+                                KeyMaterial::TransparentECDHPublicKey {
+                                    recommended_curve,
+                                    q_string,
+                                }
+                            }
+                        }
+                        Some(KeyTypeSer::ECMQV) => {
+                            let recommended_curve = recommended_curve.ok_or_else(|| {
+                                de::Error::missing_field("RecommendedCurve for EC key")
+                            })?;
+                            if let Some(d) = d {
+                                KeyMaterial::TransparentECMQVPrivateKey {
+                                    recommended_curve,
+                                    d,
+                                }
+                            } else {
+                                let q_string = q_string.ok_or_else(|| {
+                                    de::Error::missing_field("QString for EC public key")
+                                })?;
+                                KeyMaterial::TransparentECMQVPublicKey {
+                                    recommended_curve,
+                                    q_string,
+                                }
+                            }
+                        }
+                        Some(KeyTypeSer::EC) => {
+                            let recommended_curve = recommended_curve.ok_or_else(|| {
+                                de::Error::missing_field("RecommendedCurve for EC key")
+                            })?;
+                            if let Some(d) = d {
+                                KeyMaterial::TransparentECPrivateKey {
+                                    recommended_curve,
+                                    d,
+                                }
+                            } else {
+                                let q_string = q_string.ok_or_else(|| {
+                                    de::Error::missing_field("QString for EC public key")
+                                })?;
+                                KeyMaterial::TransparentECPublicKey {
+                                    recommended_curve,
+                                    q_string,
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(de::Error::custom(
+                                "unable to differentiate key material variant",
+                            ))
+                        }
+                    })
+                }
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "bytestring",
+            "p",
+            "q",
+            "g",
+            "j",
+            "x",
+            "y",
+            "key",
+            "modulus",
+            "public_exponent",
+            "private_exponent",
+            "prime_exponent_p",
+            "prime_exponent_q",
+            "crt_coefficient",
+            "recommended_curve",
+            "d",
+            "q_string",
+        ];
+        deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor)
+    }
 }
 
 /// 2.1.5 Key Wrapping Data Object Structure
