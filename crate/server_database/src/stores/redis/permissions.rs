@@ -4,12 +4,12 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     parameters::MASTER_KEY_LENGTH,
     IndexedValue, Keyword, Location,
 };
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::KmipOperation;
 
 use crate::{error::DbResult, DbError};

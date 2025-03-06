@@ -5,11 +5,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
+use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},

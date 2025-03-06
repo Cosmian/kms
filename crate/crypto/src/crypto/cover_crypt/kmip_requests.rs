@@ -20,7 +20,6 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
     tags: T,
     sensitive: bool,
 ) -> Result<CreateKeyPair, CryptoError> {
-    println!("kmip request: {access_structure:?}");
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -28,15 +27,15 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         vendor_attributes: None,
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive,
+        link: Some(vec![Link {
+            link_type: LinkType::ChildLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                access_structure.to_owned(),
+            ),
+        }]),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
-    attributes.set_link(
-        LinkType::ChildLink,
-        LinkedObjectIdentifier::TextString(access_structure.to_owned()),
-    );
-    println!("kmip request attributes: {attributes:?}");
-
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()

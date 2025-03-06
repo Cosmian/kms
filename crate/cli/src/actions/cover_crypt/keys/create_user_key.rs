@@ -70,7 +70,7 @@ impl CreateUserKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Verify boolean expression in self.access_policy
         AccessPolicy::parse(&self.access_policy).with_context(|| "bad access policy syntax")?;
-        
+
         // Create the kmip query
         let create_user_key = build_create_covercrypt_user_decryption_key_request(
             &self.access_policy,

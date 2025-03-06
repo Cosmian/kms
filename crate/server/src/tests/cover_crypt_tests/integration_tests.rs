@@ -27,7 +27,7 @@ use crate::{
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
-    let access_structure = "json file content";
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let create_key_pair =

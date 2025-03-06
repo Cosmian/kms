@@ -180,139 +180,139 @@ async fn test_rekey_prune() -> CliResult<()> {
         &[],
         false,
     )?;
-//     let user_decryption_key = create_user_decryption_key(
-//         &ctx.owner_client_conf_path,
-//         &master_private_key_id,
-//         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-//         &[],
-//         false,
-//     )?;
+    let user_decryption_key = create_user_decryption_key(
+        &ctx.owner_client_conf_path,
+        &master_private_key_id,
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
+        false,
+    )?;
 
-//     encrypt(
-//         &ctx.owner_client_conf_path,
-//         &[input_file.to_str().unwrap()],
-//         &master_public_key_id,
-//         "Department::MKG && Security Level::Top Secret",
-//         Some(output_file_before.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    encrypt(
+        &ctx.owner_client_conf_path,
+        &[input_file.to_str().unwrap()],
+        &master_public_key_id,
+        "Department::MKG && Security Level::Top Secret",
+        Some(output_file_before.to_str().unwrap()),
+        Some("myid"),
+    )?;
 
-//     // the user key should be able to decrypt the file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         &[output_file_before.to_str().unwrap()],
-//         &user_decryption_key,
-//         Some(recovered_file.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    // the user key should be able to decrypt the file
+    decrypt(
+        &ctx.owner_client_conf_path,
+        &[output_file_before.to_str().unwrap()],
+        &user_decryption_key,
+        Some(recovered_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
 
-//     // export the user_decryption_key
-//     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-//     export_key(ExportKeyParams {
-//         cli_conf_path: ctx.owner_client_conf_path.clone(),
-//         sub_command: SUB_COMMAND.to_owned(),
-//         key_id: user_decryption_key.to_string(),
-//         key_file: exported_user_decryption_key_file
-//             .to_str()
-//             .unwrap()
-//             .to_string(),
-//         ..Default::default()
-//     })?;
+    //     // export the user_decryption_key
+    //     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
+    //     export_key(ExportKeyParams {
+    //         cli_conf_path: ctx.owner_client_conf_path.clone(),
+    //         sub_command: SUB_COMMAND.to_owned(),
+    //         key_id: user_decryption_key.to_string(),
+    //         key_file: exported_user_decryption_key_file
+    //             .to_str()
+    //             .unwrap()
+    //             .to_string(),
+    //         ..Default::default()
+    //     })?;
 
-//     // rekey the attributes
-//     rekey(
-//         &ctx.owner_client_conf_path,
-//         &master_private_key_id,
-//         "Department::MKG || Department::FIN",
-//     )
-//     .await?;
+    //     // rekey the attributes
+    //     rekey(
+    //         &ctx.owner_client_conf_path,
+    //         &master_private_key_id,
+    //         "Department::MKG || Department::FIN",
+    //     )
+    //     .await?;
 
-//     // encrypt again after rekeying
-//     encrypt(
-//         &ctx.owner_client_conf_path,
-//         &[input_file.to_str().unwrap()],
-//         &master_public_key_id,
-//         "Department::MKG && Security Level::Confidential",
-//         Some(output_file_after.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    //     // encrypt again after rekeying
+    //     encrypt(
+    //         &ctx.owner_client_conf_path,
+    //         &[input_file.to_str().unwrap()],
+    //         &master_public_key_id,
+    //         "Department::MKG && Security Level::Confidential",
+    //         Some(output_file_after.to_str().unwrap()),
+    //         Some("myid"),
+    //     )?;
 
-//     // the user key should be able to decrypt the new file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         &[output_file_after.to_str().unwrap()],
-//         &user_decryption_key,
-//         Some(recovered_file.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
-//     // ... and the old file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         &[output_file_before.to_str().unwrap()],
-//         &user_decryption_key,
-//         Some(recovered_file.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    //     // the user key should be able to decrypt the new file
+    //     decrypt(
+    //         &ctx.owner_client_conf_path,
+    //         &[output_file_after.to_str().unwrap()],
+    //         &user_decryption_key,
+    //         Some(recovered_file.to_str().unwrap()),
+    //         Some("myid"),
+    //     )?;
+    //     // ... and the old file
+    //     decrypt(
+    //         &ctx.owner_client_conf_path,
+    //         &[output_file_before.to_str().unwrap()],
+    //         &user_decryption_key,
+    //         Some(recovered_file.to_str().unwrap()),
+    //         Some("myid"),
+    //     )?;
 
-//     // import the non rotated user_decryption_key
-//     let old_user_decryption_key = import_key(ImportKeyParams {
-//         cli_conf_path: ctx.owner_client_conf_path.clone(),
-//         sub_command: SUB_COMMAND.to_owned(),
-//         key_file: exported_user_decryption_key_file
-//             .to_string_lossy()
-//             .to_string(),
-//         replace_existing: false,
-//         key_usage_vec: Some(vec![KeyUsage::Unrestricted]),
-//         ..Default::default()
-//     })?;
-//     // the imported user key should not be able to decrypt the new file
-//     assert!(
-//         decrypt(
-//             &ctx.owner_client_conf_path,
-//             &[output_file_after.to_str().unwrap()],
-//             &old_user_decryption_key,
-//             Some(recovered_file.to_str().unwrap()),
-//             Some("myid"),
-//         )
-//         .is_err()
-//     );
-//     // ... but should decrypt the old file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         &[output_file_before.to_str().unwrap()],
-//         &old_user_decryption_key,
-//         Some(recovered_file.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    //     // import the non rotated user_decryption_key
+    //     let old_user_decryption_key = import_key(ImportKeyParams {
+    //         cli_conf_path: ctx.owner_client_conf_path.clone(),
+    //         sub_command: SUB_COMMAND.to_owned(),
+    //         key_file: exported_user_decryption_key_file
+    //             .to_string_lossy()
+    //             .to_string(),
+    //         replace_existing: false,
+    //         key_usage_vec: Some(vec![KeyUsage::Unrestricted]),
+    //         ..Default::default()
+    //     })?;
+    //     // the imported user key should not be able to decrypt the new file
+    //     assert!(
+    //         decrypt(
+    //             &ctx.owner_client_conf_path,
+    //             &[output_file_after.to_str().unwrap()],
+    //             &old_user_decryption_key,
+    //             Some(recovered_file.to_str().unwrap()),
+    //             Some("myid"),
+    //         )
+    //         .is_err()
+    //     );
+    //     // ... but should decrypt the old file
+    //     decrypt(
+    //         &ctx.owner_client_conf_path,
+    //         &[output_file_before.to_str().unwrap()],
+    //         &old_user_decryption_key,
+    //         Some(recovered_file.to_str().unwrap()),
+    //         Some("myid"),
+    //     )?;
 
-//     // prune the attributes
-//     prune(
-//         &ctx.owner_client_conf_path,
-//         &master_private_key_id,
-//         "Department::MKG || Department::FIN",
-//     )
-//     .await?;
+    //     // prune the attributes
+    //     prune(
+    //         &ctx.owner_client_conf_path,
+    //         &master_private_key_id,
+    //         "Department::MKG || Department::FIN",
+    //     )
+    //     .await?;
 
-//     // the user key should be able to decrypt the new file
-//     decrypt(
-//         &ctx.owner_client_conf_path,
-//         &[output_file_after.to_str().unwrap()],
-//         &user_decryption_key,
-//         Some(recovered_file.to_str().unwrap()),
-//         Some("myid"),
-//     )?;
+    //     // the user key should be able to decrypt the new file
+    //     decrypt(
+    //         &ctx.owner_client_conf_path,
+    //         &[output_file_after.to_str().unwrap()],
+    //         &user_decryption_key,
+    //         Some(recovered_file.to_str().unwrap()),
+    //         Some("myid"),
+    //     )?;
 
-//     // but no longer the old file
-//     assert!(
-//         decrypt(
-//             &ctx.owner_client_conf_path,
-//             &[output_file_before.to_str().unwrap()],
-//             &user_decryption_key,
-//             Some(recovered_file.to_str().unwrap()),
-//             Some("myid"),
-//         )
-//         .is_err()
-//     );
+    //     // but no longer the old file
+    //     assert!(
+    //         decrypt(
+    //             &ctx.owner_client_conf_path,
+    //             &[output_file_before.to_str().unwrap()],
+    //             &user_decryption_key,
+    //             Some(recovered_file.to_str().unwrap()),
+    //             Some("myid"),
+    //         )
+    //         .is_err()
+    //     );
 
     Ok(())
 }

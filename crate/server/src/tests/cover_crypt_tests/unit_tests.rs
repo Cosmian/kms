@@ -32,7 +32,6 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    // let access_structure = "{\"Security Level::<\":[\"Protected\",\"Confidential\",\"Top Secret::+\"],\"Department\":[\"R&D\",\"HR\",\"MKG\",\"FIN\"]}";
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // create Key Pair
@@ -132,7 +131,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let _update_response = kms.import(request, owner, None).await?;
 
     // User decryption key
-    let access_policy = "(Department::MKG || Department::FIN) && Level::confidential";
+    let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
@@ -207,7 +206,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
 #[test]
 pub(crate) fn access_policy_serialization() -> KResult<()> {
-    let access_policy = "(Department::MKG || Department::FIN) && Level::confidential";
+    let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let _json = serde_json::to_string(&access_policy)?;
     Ok(())
 }
@@ -219,7 +218,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
-    let access_structure = "json file content";
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let ckr = kms
@@ -241,7 +240,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // encrypt a resource MKG + confidential
     let confidential_authentication_data = b"cc the uid confidential".to_vec();
     let confidential_mkg_data = b"Confidential MKG Data";
-    let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
+    let confidential_mkg_policy_attributes = "Security Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
             encrypt_request(
@@ -442,7 +441,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = "json file content";
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // Create CC master key pair
     let master_keypair =
@@ -519,7 +518,7 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
-    let access_structure = "json file content";
+    let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#;
 
     // create Key Pair
     let cr = kms

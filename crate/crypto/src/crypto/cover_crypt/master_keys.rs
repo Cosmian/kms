@@ -1,4 +1,6 @@
-use cosmian_cover_crypt::{api::Covercrypt, MasterPublicKey, MasterSecretKey};
+use cosmian_cover_crypt::{
+    api::Covercrypt, EncryptionHint, MasterPublicKey, MasterSecretKey, QualifiedAttribute,
+};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -8,6 +10,7 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier,
     },
 };
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::{crypto::KeyPair, error::CryptoError};
@@ -15,6 +18,11 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PolicySpecs {
+    pub security_level: Vec<String>,
+    pub department: Vec<String>,
+}
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
@@ -25,57 +33,59 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let _any_attributes = common_attributes
-        .as_ref()
-        .or(private_key_attributes.as_ref())
-        .or(public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
-        })?;
-
     let access_structure = common_attributes
         .as_ref()
-        .expect("LINK")
+        .ok_or_else(|| CryptoError::Kmip("Missing attributes".to_owned()))?
         .get_link(LinkType::ChildLink)
-        .expect("klm")
+        .ok_or_else(|| CryptoError::Kmip("Missing link".to_owned()))?
         .to_string();
-    println!("create keypair: {access_structure:?}");
+
     // Now generate a master key using the CoverCrypt Engine
-    let (msk, mpk) = cover_crypt
+    let (mut msk, _mpk) = cover_crypt
         .setup()
         .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
-    let json_struct = serde_json::from_str::<serde_json::Value>(&access_structure)?;
-    //let json_struct: Struct = serde_json::from_str(&access_structure)?;
+    let mut json_access_structure = serde_json::from_str::<serde_json::Value>(&access_structure)?;
 
-    println!("create keypair json: {json_struct:?}");
+    for (key, value) in json_access_structure
+        .as_object_mut()
+        .ok_or_else(|| CryptoError::Kmip("Wrong JSON object".to_owned()))?
+    {
+        if key.contains("::<") {
+            let trim_key_name = key.trim_end_matches("::<");
+            msk.access_structure
+                .add_hierarchy(trim_key_name.to_owned())?;
+        } else {
+            msk.access_structure.add_anarchy(key.clone())?;
+        }
 
-    // for (name, attributes) in json_struct {
-    //     if name.contains("Security") {
-    //         let n = name.trim_end_matches("::<");
-    //         msk.access_structure.add_hierarchy(n.to_owned())?;
-    //     } else {
-    //         msk.access_structure.add_anarchy(name.clone())?;
-    //     }
+        let string_values = serde_json::from_value::<Vec<String>>(value.clone())?;
 
-    //     for attr in attributes {
-    //         msk.access_structure.add_attribute(
-    //             QualifiedAttribute {
-    //                 dimension: name.clone(),
-    //                 name: attr.trim_end_matches("::+").to_owned(),
-    //             },
-    //             if attr.contains("::+") {
-    //                 EncryptionHint::Hybridized
-    //             } else {
-    //                 EncryptionHint::Classic
-    //             },
-    //             None,
-    //         )?;
-    //     }
-    // }
+        for value in 0..string_values.len() {
+            msk.access_structure.add_attribute(
+                QualifiedAttribute {
+                    dimension: key.trim_end_matches("::<").to_owned(),
+                    name: string_values
+                        .get(value)
+                        .ok_or_else(|| CryptoError::Kmip("Name not found".to_owned()))?
+                        .trim_end_matches("::+")
+                        .to_owned(),
+                },
+                if string_values
+                    .get(value)
+                    .ok_or_else(|| CryptoError::Kmip("Value not found".to_owned()))?
+                    .contains("::+")
+                {
+                    EncryptionHint::Hybridized
+                } else {
+                    EncryptionHint::Classic
+                },
+                None,
+            )?;
+        }
+    }
 
-    // let mpk = cover_crypt.update_msk(&mut msk)?;
-    // println!("MSK AS : {:?}", msk.access_structure);
+    let mpk = cover_crypt.update_msk(&mut msk)?;
 
     // First generate fresh attributes with that policy
     let private_key_attributes = private_key_attributes.as_ref();
@@ -90,7 +100,6 @@ pub fn create_master_keypair(
         private_key_attributes,
         public_key_uid,
     )?;
-
     // Public Key generation
     // First generate fresh attributes with that policy
     let public_key_attributes = public_key_attributes.as_ref();
@@ -101,12 +110,11 @@ pub fn create_master_keypair(
     })?;
     let public_key =
         create_master_public_key_object(&pk_bytes, public_key_attributes, private_key_uid)?;
-
     Ok(KeyPair((private_key, public_key)))
 }
 
 fn create_master_private_key_object(
-    access_structure: &str,
+    _access_structure: &str,
     key: &[u8],
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
@@ -117,22 +125,13 @@ fn create_master_private_key_object(
     // Covercrypt keys are set to have unrestricted usage.
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
     // link the private key to the public key
-    attributes.link = Some(vec![
-        Link {
-            link_type: LinkType::PublicKeyLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_public_key_uid.to_owned(),
-            ),
-        },
-        Link {
-            link_type: LinkType::ChildLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                access_structure.to_owned(),
-            ),
-        },
-    ]);
+    attributes.link = Some(vec![Link {
+        link_type: LinkType::PublicKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString(
+            master_public_key_uid.to_owned(),
+        ),
+    }]);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
-    println!("master key: {attributes:?}");
 
     Ok(Object::PrivateKey {
         key_block: KeyBlock {

@@ -4,13 +4,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
-};
 use cloudproof_findex::{
     implementations::redis::{FindexRedisError, RemovedLocationsFinder},
     Keyword, Location,
+};
+use cosmian_crypto_core::{
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::{
     kmip_2_1::{

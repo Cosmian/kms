@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{read_bytes_from_file, KmsClient};
 use cosmian_kms_crypto::crypto::cover_crypt::kmip_requests::build_create_covercrypt_master_keypair_request;
 use serde::{Deserialize, Serialize};
 
@@ -72,9 +72,11 @@ pub struct CreateMasterKeyPairAction {
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Parse the json policy file
-        let mut access_structure = "ras le bol";
+        let read_file = read_bytes_from_file(&self.policy_specifications_file)?;
+        let obj = serde_json::from_slice::<serde_json::Value>(&read_file)?;
+        let access_structure = serde_json::to_string(&obj)?;
         let create_key_pair = build_create_covercrypt_master_keypair_request(
-            access_structure,
+            access_structure.as_str(),
             &self.tags,
             self.sensitive,
         )?;

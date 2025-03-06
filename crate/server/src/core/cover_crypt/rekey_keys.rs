@@ -10,7 +10,7 @@ use cosmian_kmip::kmip_2_1::{
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::{deserialize_access_policy, RekeyEditAction},
     master_keys::{
-        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject
+        covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
     },
     user_key::UserDecryptionKeysHandler,
 };
