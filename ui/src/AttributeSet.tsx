@@ -1,6 +1,7 @@
 import { Button, Card, DatePicker, Form, Input, Select, Space, Typography } from 'antd'
 import moment from 'moment'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import HashMapDisplay from './HashMapDisplay'
 import { sendKmipRequest } from './utils'
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from './wasm/pkg/cosmian_kms_ui_utils'
@@ -62,9 +63,17 @@ interface AttributeSetFormData {
 
 const AttributeSetForm: React.FC = () => {
   const [form] = Form.useForm<AttributeSetFormData>();
-  const [res, setRes] = useState<Map<any, any>>(new Map());
+  const [res, setRes] = useState<Map<any, any> | string>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
+  const { idToken, serverUrl  } = useAuth();
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      if (res && responseRef.current) {
+          responseRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+  }, [res]);
 
   const onAttributeNameChange = (value: string) => {
     setSelectedAttributeName(value);
@@ -97,7 +106,7 @@ const AttributeSetForm: React.FC = () => {
         attributeValue = Math.floor(date.valueOf() / 1000).toString();
       }
       const request = set_attribute_ttlv_request(id, values.attribute_name, attributeValue);
-      const result_str = await sendKmipRequest(request);
+      const result_str = await sendKmipRequest(request, idToken, serverUrl);
 
       if (result_str) {
         const response = parse_set_attribute_ttlv_response(result_str);
@@ -284,8 +293,7 @@ const AttributeSetForm: React.FC = () => {
           </Form.Item>
         </Space>
       </Form>
-
-      {res && res.size ? <HashMapDisplay data={res} /> : <div>{res}</div>}
+      {res && typeof(res) !== "string" && res.size ? <div ref={responseRef}><HashMapDisplay data={res} /></div> : <div ref={responseRef}>{res}</div>}
     </div>
   );
 };

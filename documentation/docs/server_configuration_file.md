@@ -39,6 +39,12 @@ jwt_issuer_uri = ["[jwt issuer uri]"]
 jwks_uri = ["[jwks uri]"]
 jwt_audience = ["[jwt audience]"]
 
+[ui_oidc_auth]
+client_id = "[client id]"
+issuer_url = "[issuer url]"
+logout_url = "[logout url]"
+
+
 [workspace]
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"

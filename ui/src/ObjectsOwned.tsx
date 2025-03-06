@@ -1,18 +1,21 @@
-import { Button, Card, Space, Table } from 'antd'
+import { Button, Card, Space, Table, Tag } from 'antd'
 import React, { useEffect, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { getNoTTLVRequest } from './utils'
 
 interface OwnedObject {
-    uid: string;
-    type: string;
+    object_id: string;
     state: string;
-    createdAt: string;
+    attributes: {
+        ObjectType: string
+    };
 }
 
 const ObjectsOwnedList: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [objects, setObjects] = useState<OwnedObject[]>([]);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const { idToken, serverUrl } = useAuth();
 
     const columns = [
         {
@@ -23,14 +26,17 @@ const ObjectsOwnedList: React.FC = () => {
         {
             title: 'Type',
             key: 'attributes.ObjectType',
-            render: (_, record) => record.attributes?.ObjectType || 'N/A'
+            render: (record: OwnedObject) => record.attributes?.ObjectType || 'N/A'
 
         },
         {
             title: 'State',
             dataIndex: 'state',
             key: 'state',
-        }
+            render: (state: string) => (
+                <Tag color={state === 'Active' ? 'green' : 'orange'}>{state}</Tag>
+            ),
+        },
     ];
 
     const fetchOwnedObjects = async () => {
@@ -38,7 +44,7 @@ const ObjectsOwnedList: React.FC = () => {
         setRes(undefined);
         setObjects([])
         try {
-            const response = await getNoTTLVRequest("/access/owned");
+            const response = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
             if (response.length) {
                 setObjects(response);
             } else {

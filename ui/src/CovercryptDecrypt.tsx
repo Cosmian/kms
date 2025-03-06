@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
-import { downloadFile, sendKmipRequest } from './utils'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
+import { getMimeType, saveDecryptedFile, sendKmipRequest } from './utils'
 import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg"
 
 interface CCDecryptFormData {
@@ -8,13 +9,21 @@ interface CCDecryptFormData {
     fileName: string;
     keyId?: string;
     tags?: string[];
-    authenticationData?: string;
+    authenticationData?: Uint8Array;
   }
 
 const CCDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CCDecryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: CCDecryptFormData) => {
         console.log('Decrypt values:', values);
@@ -34,15 +43,16 @@ const CCDecryptForm: React.FC = () => {
                 values.authenticationData
             );
 
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str)
                 const data = new Uint8Array(response.Data)
-                const mimeType = "application/octet-stream";
-                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.plain`;
                 const filteredData = data.filter(byte => byte !== 0); // TODO: check why 0 byte at the beginning of the byte result
-                downloadFile(filteredData, filename, mimeType);
+                const name = values.fileName.slice(0, -4);
+                const lastDotIndex = name.lastIndexOf(".");
+                const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
+                const mimeType = getMimeType(fileName);
+                saveDecryptedFile(filteredData, fileName, mimeType);
                 setRes("File has been decrypted")
             }
         } catch (e) {
@@ -150,7 +160,11 @@ const CCDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Covercrypt decrypt response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Covercrypt decrypt response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

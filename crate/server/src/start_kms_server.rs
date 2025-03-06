@@ -1,12 +1,18 @@
-use std::sync::{mpsc, Arc};
+use std::{
+    env,
+    sync::{mpsc, Arc},
+};
 
 use actix_cors::Cors;
+use actix_files::Files;
 use actix_identity::IdentityMiddleware;
+use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
+    cookie::{time::Duration, Key},
     dev::ServerHandle,
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
-    App, HttpServer,
+    App, HttpRequest, HttpResponse, HttpServer,
 };
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
@@ -25,8 +31,14 @@ use crate::{
         access, add_new_database, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip, ms_dke,
+        ui_auth::configure_auth_routes,
     },
 };
+
+// use oauth2::{
+//     basic::BasicClient, AuthUrl, ClientId,
+//     RedirectUrl, TokenUrl,
+// };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
@@ -179,6 +191,28 @@ async fn start_https_kms_server(
 }
 
 /**
+ * This function handles a request to an inner path of the static UI and redirect
+ * it to the index.html file, so that the routing renders the appropiate component
+ */
+fn spa_index_handler(req: &HttpRequest) -> actix_web::HttpResponse {
+    let index_path = match env::current_dir() {
+        Ok(dir) => dir.join("ui/dist/index.html"),
+        Err(e) => {
+            log::error!("Failed to get current directory: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    match actix_files::NamedFile::open(index_path) {
+        Ok(file) => file.into_response(req),
+        Err(e) => {
+            log::error!("Failed to open index.html: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+/**
  * This function prepares a server for the application. It creates an `HttpServer` instance,
  * configures the routes for the application, and sets the request timeout. The server can be
  * configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
@@ -268,11 +302,37 @@ pub async fn prepare_kms_server(
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Generate key for actix session cookie encryption and elements for UI exposure
+    let secret_key: Key = Key::generate();
+    let current_dir = env::current_dir()?;
+    let kms_url = format!(
+        "http{}://{}:{}",
+        if kms_server.params.http_params.is_running_https() {
+            "s"
+        } else {
+            ""
+        },
+        &kms_server.params.hostname,
+        &kms_server.params.port
+    );
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
             .wrap(IdentityMiddleware::default())
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                    .cookie_path("/".to_owned())
+                    .cookie_http_only(false)
+                    .cookie_name("auth_session".to_owned())
+                    .cookie_same_site(actix_web::cookie::SameSite::None)
+                    .cookie_secure(true)
+                    .session_lifecycle(
+                        PersistentSession::default().session_ttl(Duration::hours(24)),
+                    )
+                    .build(),
+            )
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
@@ -306,6 +366,72 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
+        let dist_path: std::path::PathBuf = current_dir.join("ui/dist");
+        let oidc_config = kms_server.params.ui_oidc_auth.clone();
+
+        let auth_type: Option<String> = if jwt_configurations.is_some() {
+            Some("JWT".to_owned())
+        } else if use_cert_auth {
+            Some("CERT".to_owned())
+        } else {
+            None
+        };
+
+        let kms_url_data = web::Data::new(kms_url.clone());
+
+        let auth_routes = web::scope("/ui")
+            .app_data(web::Data::new(oidc_config))
+            .app_data(kms_url_data)
+            .app_data(web::Data::new(auth_type))
+            .wrap(Cors::permissive())
+            .configure(configure_auth_routes)
+            .route(
+                "/login",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/locate",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/sym{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/rsa{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/ec{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/cc{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/certificates{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/attributes{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .route(
+                "/access-rights{_:.*}",
+                web::get().to(|req: HttpRequest| async move { spa_index_handler(&req) }),
+            )
+            .service(
+                Files::new("/", dist_path)
+                    .index_file("index.html")
+                    .use_last_modified(true)
+                    .use_etag(true)
+                    .prefer_utf8(true),
+            );
+
+        // Add the auth_routes to the main app
+        app = app.service(auth_routes);
+
         // The default scope serves from the root / the KMIP, permissions, and tee endpoints
         let default_scope = web::scope("")
             .wrap(AuthTransformer::new(
@@ -332,7 +458,6 @@ pub async fn prepare_kms_server(
         } else {
             default_scope
         };
-
         app.service(default_scope)
     })
     .client_disconnect_timeout(std::time::Duration::from_secs(30)) // default: 5s

@@ -1,6 +1,7 @@
 import { WarningFilled } from '@ant-design/icons'
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "./wasm/pkg/cosmian_kms_ui_utils"
 
@@ -25,15 +26,22 @@ const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
     const [form] = Form.useForm<DestroyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const isKeyType = props.objectType !== 'certificate';
     const objectTypeLabel = isKeyType ? 'key' : 'certificate';
 
     const onFinish = async (values: DestroyFormData) => {
+        console.log(`Destroy ${objectTypeLabel} values:`, values);
         setIsLoading(true);
         setRes(undefined);
-        console.log(`Destroy ${objectTypeLabel} values:`, values);
-
         const id = values.objectId ? values.objectId : values.tags ? JSON.stringify(values.tags) : undefined;
         if (id == undefined) {
             setRes(`Missing ${objectTypeLabel} identifier.`);
@@ -42,7 +50,7 @@ const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
 
         try {
             const request = destroy_ttlv_request(id, values.remove);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: DestroyResponse = await parse_destroy_ttlv_response(result_str);
                 setRes(`${result.UniqueIdentifier} has been destroyed.`);
@@ -155,7 +163,11 @@ const DestroyForm: React.FC<DestroyFormProps> = (props: DestroyFormProps) => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title={`${isKeyType ? 'Key' : 'Certificate'} destroy response`}>{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                   <Card title={`${isKeyType ? 'Key' : 'Certificate'} destroy response`}>{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

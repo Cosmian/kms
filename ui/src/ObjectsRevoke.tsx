@@ -1,6 +1,7 @@
 import { WarningFilled } from '@ant-design/icons'
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { parse_revoke_ttlv_response, revoke_ttlv_request } from "./wasm/pkg/cosmian_kms_ui_utils"
 
@@ -24,6 +25,14 @@ const RevokeForm: React.FC<RevokeFormProps> = (props: RevokeFormProps) => {
     const [form] = Form.useForm<RevokeFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: RevokeFormData) => {
         console.log('Revoke values:', values);
@@ -37,7 +46,7 @@ const RevokeForm: React.FC<RevokeFormProps> = (props: RevokeFormProps) => {
 
         try {
             const request = revoke_ttlv_request(id, values.revocationReason)
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: RevokeResponse = await parse_revoke_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been revoked.`)
@@ -149,7 +158,11 @@ const RevokeForm: React.FC<RevokeFormProps> = (props: RevokeFormProps) => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title={`${isKeyType ? 'Key' : 'Certificate'} revoke response`}>{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title={`${isKeyType ? 'Key' : 'Certificate'} revoke response`}>{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

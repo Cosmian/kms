@@ -1,6 +1,6 @@
-#[cfg(test)]
-pub(crate) use certify::Algorithm;
 use clap::Subcommand;
+#[cfg(test)]
+pub(crate) use cosmian_kms_client::reexport::cosmian_kms_ui_utils::certificate_utils::Algorithm;
 use cosmian_kms_client::KmsClient;
 
 use self::{

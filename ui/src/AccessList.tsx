@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Space, Table } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { getNoTTLVRequest } from './utils'
 
 
@@ -17,6 +18,14 @@ const AccessListForm: React.FC = () => {
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const { idToken, serverUrl } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: AccessListFormData) => {
         console.log('List access values:', values);
@@ -24,7 +33,7 @@ const AccessListForm: React.FC = () => {
         setRes(undefined);
         setAccessRights([])
         try {
-            const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`);
+            const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`, idToken, serverUrl);
             if (response.length) {
                 setAccessRights(response);
             } else {
@@ -91,17 +100,22 @@ const AccessListForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="List access response">{res}</Card>}
+            {res &&
+                <div ref={responseRef}>
+                    <Card title="List access response">{res}</Card>
+                </div>
+            }
 
             {accessRights.length > 0 && (
-                <div className="mt-8">
-                    <h2 className="text-lg font-semibold mb-4">Access Rights</h2>
-                    <Table
-                        dataSource={accessRights}
-                        columns={columns}
-                        rowKey="user_id"
-                        pagination={false}
-                    />
+                <div className="mt-8" ref={responseRef}>
+                    <Card title="Access Rights">
+                        <Table
+                            dataSource={accessRights}
+                            columns={columns}
+                            rowKey="user_id"
+                            pagination={false}
+                        />
+                    </Card>
                 </div>
             )}
         </div>

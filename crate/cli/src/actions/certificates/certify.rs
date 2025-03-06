@@ -177,7 +177,7 @@ impl CertifyAction {
         let certificate_signing_request_bytes = self
             .certificate_signing_request
             .as_ref()
-            .map(|csr| read_bytes_from_file(csr))
+            .map(read_bytes_from_file)
             .transpose()?;
 
         let certificate_extensions_bytes = self

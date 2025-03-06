@@ -16,6 +16,7 @@ pub mod access;
 pub mod google_cse;
 pub mod kmip;
 pub mod ms_dke;
+pub mod ui_auth;
 
 impl actix_web::error::ResponseError for KmsError {
     fn status_code(&self) -> StatusCode {

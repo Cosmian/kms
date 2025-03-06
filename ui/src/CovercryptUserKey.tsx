@@ -1,12 +1,13 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { create_covercrypt_user_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
     accessPolicy: string;
-    tags?: string[];
+    tags: string[];
     sensitive: boolean;
 }
 
@@ -19,6 +20,14 @@ const CovercryptUserKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptUserKeyFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: CovercryptUserKeyFormData) => {
         console.log('Create user key values:', values);
@@ -26,7 +35,7 @@ const CovercryptUserKeyForm: React.FC = () => {
         setRes(undefined);
         try {
             const request = create_covercrypt_user_key_ttlv_request(values.masterPrivateKeyId, values.accessPolicy, values.tags, values.sensitive);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been created.`)
@@ -134,7 +143,11 @@ const CovercryptUserKeyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Covercrypt User key creation response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Covercrypt User key creation response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

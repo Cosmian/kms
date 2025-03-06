@@ -15,7 +15,7 @@ use strum::EnumString;
 use crate::error::UtilsError;
 
 /// The algorithm to use for the keypair generation
-#[derive(ValueEnum, Clone, Copy, EnumString)]
+#[derive(ValueEnum, Clone, Copy, EnumString, Debug)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Algorithm {
     #[cfg(not(feature = "fips"))]

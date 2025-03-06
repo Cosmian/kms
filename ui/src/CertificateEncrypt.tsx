@@ -1,7 +1,9 @@
 import { Button, Card, Form, Input, Radio, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { encrypt_certificate_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
+
 
 interface CertificateEncryptFormData {
   inputFile: Uint8Array;
@@ -9,14 +11,22 @@ interface CertificateEncryptFormData {
   certificateId?: string;
   tags?: string[];
   outputFile?: string;
-  authenticationData?: string;
-  encryptionAlgorithm: string;
+  authenticationData?: Uint8Array;
+  encryptionAlgorithm: 'CkmRsaPkcs' | 'CkmRsaPkcsOaep' | 'CkmRsaAesKeyWrap';
 }
 
 const CertificateEncryptForm: React.FC = () => {
   const [form] = Form.useForm<CertificateEncryptFormData>();
   const [res, setRes] = useState<undefined | string>(undefined);
   const [isLoading, setIsLoading] = useState(false);
+  const { idToken, serverUrl  } = useAuth();
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      if (res && responseRef.current) {
+          responseRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+  }, [res]);
 
   const onFinish = async (values: CertificateEncryptFormData) => {
     console.log('Certificate Encrypt values:', values);
@@ -34,19 +44,17 @@ const CertificateEncryptForm: React.FC = () => {
         values.authenticationData,
         values.encryptionAlgorithm
       );
-      const result_str = await sendKmipRequest(request);
+      const result_str = await sendKmipRequest(request, idToken, serverUrl);
       if (result_str) {
         const response = await parse_encrypt_ttlv_response(result_str)
         const data = new Uint8Array(response.Data)
         const mimeType = "application/octet-stream";
 
-        // Handle output file naming
         let filename;
         if (values.outputFile) {
           filename = values.outputFile;
         } else {
-          const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-          filename = `${name}.enc`;
+          filename = `${values.fileName}.enc`;
         }
 
         downloadFile(data, filename, mimeType);
@@ -181,7 +189,11 @@ const CertificateEncryptForm: React.FC = () => {
           </Form.Item>
         </Space>
       </Form>
-      {res && <Card title="Certificate encrypt response">{res}</Card>}
+      {res && (
+          <div ref={responseRef}>
+              <Card title="Certificate encrypt response">{res}</Card>
+          </div>
+      )}
     </div>
   );
 };

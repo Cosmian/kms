@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { export_certificate_ttlv_request, parse_export_certificate_ttlv_response } from "./wasm/pkg"
 
@@ -31,6 +32,14 @@ const CertificateExportForm: React.FC = () => {
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedFormat, setSelectedFormat] = useState<CertificateExportFormat>('JsonTtlv');
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const handleFormatChange = (value: CertificateExportFormat) => {
         setSelectedFormat(value);
@@ -51,7 +60,7 @@ const CertificateExportForm: React.FC = () => {
                 values.outputFormat,
                 values.pkcs12Password,
             );
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const data = await parse_export_certificate_ttlv_response(result_str, values.outputFormat);
                 const filename = `certificate_${id}.${exportFileExtension[values.outputFormat]}`;
@@ -171,7 +180,11 @@ const CertificateExportForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Certificate export response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Certificate export response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

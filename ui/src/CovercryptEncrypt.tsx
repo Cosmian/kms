@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { encrypt_cc_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
@@ -9,13 +10,21 @@ interface CCEncryptFormData {
     encryptionPolicy: string;
     keyId?: string;
     tags?: string[];
-    authenticationData?: string;
+    authenticationData?: Uint8Array;
 }
 
 const CCEncryptForm: React.FC = () => {
     const [form] = Form.useForm<CCEncryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: CCEncryptFormData) => {
         console.log('Encrypt values:', values);
@@ -35,13 +44,12 @@ const CCEncryptForm: React.FC = () => {
                 values.authenticationData
             );
 
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str)
                 const data = new Uint8Array(response.Data)
                 const mimeType = "application/octet-stream";
-                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.enc`;
+                const filename = `${values.fileName}.enc`;
                 downloadFile(data, filename, mimeType);
                 setRes("File has been encrypted")
             }
@@ -164,7 +172,11 @@ const CCEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Covercrypt encrypt response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Covercrypt encrypt response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

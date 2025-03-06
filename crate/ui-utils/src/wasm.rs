@@ -1,7 +1,10 @@
 use std::str::FromStr;
 
 use base64::Engine as _;
-use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Policy};
+use cloudproof::reexport::cover_crypt::{
+    self,
+    abe_policy::{AccessPolicy, Policy},
+};
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
@@ -650,7 +653,9 @@ pub fn create_covercrypt_master_keypair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let policy_specs: HashMap<String, Vec<String>> =
         serde_json::from_slice(policy).map_err(|e| JsValue::from(e.to_string()))?;
-    let policy: Policy = policy_specs.try_into().unwrap(); // TODO map_error properly - with the right Error Try_from type
+    let policy: Policy = policy_specs
+        .try_into()
+        .map_err(|e: cover_crypt::Error| JsValue::from(e.to_string()))?; // TODO map_error properly - with the right Error Try_from type
     // let policy = Policy::parse_and_convert(policy.as_slice()).map_err(|e| JsValue::from(e.to_string()))?; // for bianary
     let request = build_create_covercrypt_master_keypair_request(&policy, tags, sensitive)
         .map_err(|e| {

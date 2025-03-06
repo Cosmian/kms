@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
 
@@ -20,6 +21,15 @@ const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
+
 
     const onFinish = async (values: ECKeyCreateFormData) => {
         console.log('Create EC key pair values:', values);
@@ -27,7 +37,7 @@ const ECKeyCreateForm: React.FC = () => {
         setRes(undefined);
         try {
             const request = create_ec_key_pair_ttlv_request(values.privateKeyId, values.tags, values.curve, values.sensitive);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
@@ -127,7 +137,11 @@ const ECKeyCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="EC key pair creation response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="EC key pair creation response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

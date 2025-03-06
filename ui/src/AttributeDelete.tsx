@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import HashMapDisplay from './HashMapDisplay'
 import { sendKmipRequest } from './utils'
 import { delete_attribute_ttlv_request, parse_delete_attribute_ttlv_response } from './wasm/pkg/cosmian_kms_ui_utils'
@@ -32,11 +33,18 @@ const DeleteAttribute: React.FC = () => {
   const [form] = Form.useForm<AttributeDeleteFormData>();
   const [res, setRes] = useState<Map<any, any> | string>(new Map());
   const [isLoading, setIsLoading] = useState(false);
+  const { serverUrl, idToken } = useAuth();
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      if (res && responseRef.current) {
+          responseRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+  }, [res]);
 
   const onFinish = async (values: AttributeDeleteFormData) => {
     console.log('Delete attribute values:', values);
     setIsLoading(true);
-
     const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
     try {
       if (id == undefined) {
@@ -50,7 +58,7 @@ const DeleteAttribute: React.FC = () => {
       }
 
       const request = delete_attribute_ttlv_request(id, values.attribute_name);
-      const result_str = await sendKmipRequest(request);
+      const result_str = await sendKmipRequest(request, idToken, serverUrl);
 
       if (result_str) {
         const response = parse_delete_attribute_ttlv_response(result_str);
@@ -144,7 +152,7 @@ const DeleteAttribute: React.FC = () => {
         </Space>
       </Form>
 
-      {res instanceof Map && res.size ? <HashMapDisplay data={res} /> : <div>{res}</div>}
+      {res instanceof Map && res.size ? <div ref={responseRef}><HashMapDisplay data={res} /></div> : <div ref={responseRef}>{res}</div>}
     </div>
   );
 };

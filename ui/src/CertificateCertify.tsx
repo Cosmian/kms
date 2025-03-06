@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { certify_ttlv_request, parse_certify_ttlv_response } from "./wasm/pkg"
 
@@ -17,7 +18,7 @@ interface CertificateCertifyFormData {
     issuerCertificateId?: string;
     numberOfDays: number;
     certificateExtensions?: Uint8Array;
-    tags?: string[];
+    tags: string[];
 }
 
 const ALGORITHM_OPTIONS = [
@@ -35,6 +36,14 @@ const CertificateCertifyForm: React.FC = () => {
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const [certifyMethod, setCertifyMethod] = useState<string>('csr');
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onCertifyMethodChange = (e: any) => {
         setCertifyMethod(e.target.value);
@@ -66,7 +75,7 @@ const CertificateCertifyForm: React.FC = () => {
                 values.certificateExtensions,
                 values.tags
             );
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_certify_ttlv_response(result_str);
                 setRes(`Certificate successfully created with ID: ${response.UniqueIdentifier}`);
@@ -310,7 +319,11 @@ const CertificateCertifyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Certificate Response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Certificate Response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

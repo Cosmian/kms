@@ -1,6 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons"
 import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { import_certificate_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg"
 
@@ -39,6 +40,14 @@ const CertificateImportForm: React.FC = () => {
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedFormat, setSelectedFormat] = useState<CertificateInputFormat>('JsonTtlv');
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: ImportCertificateFormData) => {
         console.log('Import certificate values:', values);
@@ -58,7 +67,7 @@ const CertificateImportForm: React.FC = () => {
                     values.tags,
                     values.keyUsage
                 );
-                const result_str = await sendKmipRequest(request);
+                const result_str = await sendKmipRequest(request, idToken, serverUrl);
                 if (result_str) {
                     const result: CertificateImportResponse = await parse_import_ttlv_response(result_str);
                     setRes(`Certificate has been imported - imported object id: ${result.UniqueIdentifier}`);
@@ -263,7 +272,11 @@ const CertificateImportForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Certificate import response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Certificate import response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

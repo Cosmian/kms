@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import HashMapDisplay from './HashMapDisplay'
 import { sendKmipRequest } from './utils'
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from './wasm/pkg/cosmian_kms_ui_utils'
@@ -50,14 +51,22 @@ const KMIP_TAGS = [
 interface AttributeGetFormData {
   id?: string;
   tags?: string[];
-  attribute_tags?: string[];
-  attribute_link_types?: string[];
+  attribute_tags: string[];
+  attribute_link_types: string[];
 }
 
 const AttributeGetForm: React.FC = () => {
   const [form] = Form.useForm<AttributeGetFormData>();
-  const [res, setRes] = useState<Map<any, any>>(new Map());
+  const [res, setRes] = useState<Map<any, any> | string>(new Map());
   const [isLoading, setIsLoading] = useState(false);
+  const { idToken, serverUrl}= useAuth();
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      if (res && responseRef.current) {
+          responseRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+  }, [res]);
 
   const onFinish = async (values: AttributeGetFormData) => {
     console.log('Get attributes values:', values);
@@ -70,7 +79,7 @@ const AttributeGetForm: React.FC = () => {
         throw Error("Missing object identifier")
       }
       const request = get_attributes_ttlv_request(id, values.attribute_tags);
-      const result_str = await sendKmipRequest(request);
+      const result_str = await sendKmipRequest(request, idToken, serverUrl);
       if (result_str) {
         const response = parse_get_attributes_ttlv_response(result_str, values.attribute_tags, values.attribute_link_types)
         setRes(response)
@@ -186,7 +195,7 @@ const AttributeGetForm: React.FC = () => {
         </Space>
       </Form>
 
-      {res && (res.size ? <HashMapDisplay data={res} /> : <div>Empty result. {res}</div>)}
+      {res && (typeof(res) !== "string" && res.size ? <div ref={responseRef}><HashMapDisplay data={res} /></div> : <div ref={responseRef}>Empty result. {res}</div>)}
     </div>
   );
 };

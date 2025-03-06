@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg"
 
@@ -19,6 +20,14 @@ const RsaKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<RsaKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: RsaKeyCreateFormData) => {
         console.log('Create key values:', values);
@@ -26,7 +35,7 @@ const RsaKeyCreateForm: React.FC = () => {
         setRes(undefined);
         try {
             const request = create_rsa_key_pair_ttlv_request(values.privateKeyId, values.tags, values.sizeInBits, values.sensitive);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str)
                 setRes(`Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`)
@@ -121,7 +130,11 @@ const RsaKeyCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="RSA keys creation response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="RSA keys creation response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

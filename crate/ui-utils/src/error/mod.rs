@@ -25,6 +25,9 @@ pub enum UtilsError {
 
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    CovercryptError(#[from] cloudproof::reexport::cover_crypt::Error),
 }
 
 impl From<Vec<u8>> for UtilsError {

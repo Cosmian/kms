@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Upload } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { downloadFile, sendKmipRequest } from './utils'
 import { encrypt_sym_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg"
 
@@ -11,14 +12,22 @@ interface SymmetricEncryptFormData {
     dataEncryptionAlgorithm: 'AesGcm' | 'AesGcmSiv' | 'Chacha20Poly1305' | 'AesXts';
     // keyEncryptionAlgorithm?: 'rsa-oaep' | 'rsa-oaep-256' | 'rsa-oaep-384' | 'rsa-oaep-512';
     outputFile?: string;
-    nonce?: string;
-    authenticationData?: string;
+    nonce?: Uint8Array;
+    authenticationData?: Uint8Array;
 }
 
 const SymmetricEncryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricEncryptFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
     // const [isClientSide, setIsClientSide] = useState(false);
 
     const onFinish = async (values: SymmetricEncryptFormData) => {
@@ -32,7 +41,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 throw Error("Missing key identifier")
             }
             const request = encrypt_sym_ttlv_request(id , undefined, values.inputFile, undefined, values.nonce, values.authenticationData, values.dataEncryptionAlgorithm);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const  { IvCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str)
                 const combinedData = new Uint8Array(IvCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);
@@ -40,8 +49,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 combinedData.set(Data, IvCounterNonce.length);
                 combinedData.set(AuthenticatedEncryptionTag, IvCounterNonce.length + Data.length);
                 const mimeType = "application/octet-stream";
-                const name = values.fileName.substring(0, values.fileName.lastIndexOf(".")) || values.fileName;
-                const filename = `${name}.enc`;
+                const filename = `${values.fileName}.enc`;
                 downloadFile(combinedData, filename, mimeType);
                 setRes("File has been encrypted")
             }
@@ -190,7 +198,11 @@ const SymmetricEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Symmetric keys encrypt response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Symmetric keys encrypt response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

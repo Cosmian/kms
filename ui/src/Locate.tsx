@@ -1,5 +1,6 @@
 import { Button, Card, Form, Input, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg"
 
@@ -45,6 +46,14 @@ const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
+    const { idToken, serverUrl  } = useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: LocateFormData) => {
         console.log('Locate values:', values);
@@ -61,7 +70,7 @@ const LocateForm: React.FC = () => {
                 values.privateKeyId,
                 values.certificateId
             );
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_locate_ttlv_response(result_str)
                 const objects = response.UniqueIdentifier && response.UniqueIdentifier.length > 0 ? response.UniqueIdentifier.join(" - ") : "";
@@ -194,7 +203,11 @@ const LocateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && <Card title="Locate response">{res}</Card>}
+            {res && (
+                <div ref={responseRef}>
+                    <Card title="Locate response">{res}</Card>
+                </div>
+            )}
         </div>
     );
 };

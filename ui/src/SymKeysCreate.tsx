@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from 'antd'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAuth } from "./AuthContext"
 import { sendKmipRequest } from './utils'
 import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg"
 
@@ -23,6 +24,14 @@ const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    const { idToken, serverUrl}= useAuth();
+    const responseRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (res && responseRef.current) {
+            responseRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [res]);
 
     const onFinish = async (values: SymKeyCreateFormData) => {
         console.log('Create symmetric key values:', values);
@@ -30,7 +39,7 @@ const SymKeyCreateForm: React.FC = () => {
         setRes(undefined);
         try {
             const request = create_sym_key_ttlv_request(values.keyId, values.tags, values.numberOfBits, values.algorithm, values.sensitive, values.wrappingKeyId);
-            const result_str = await sendKmipRequest(request);
+            const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await parse_create_ttlv_response(result_str)
                 setRes(`${result.UniqueIdentifier} has been created.`)
@@ -160,8 +169,12 @@ const SymKeyCreateForm: React.FC = () => {
                         </Button>
                     </Form.Item>
                 </Space>
-                {res && <Card title="Symmetric keys creation response">{res}</Card>}
-                </Form>
+                {res && (
+                    <div ref={responseRef}>
+                        <Card title="Symmetric keys creation response">{res}</Card>
+                    </div>
+                )}
+            </Form>
         </div>
     );
 };
