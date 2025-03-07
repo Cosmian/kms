@@ -48,12 +48,12 @@ pub fn create_symmetric_key_kmip_object(
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes.to_vec()),
                 },
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },

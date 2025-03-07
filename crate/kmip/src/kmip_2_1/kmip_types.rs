@@ -71,8 +71,11 @@ pub enum SecretDataType {
 )]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
+    #[serde(rename = "Polynomial Sharing GF (2^16)")]
     PolynomialSharingGf216 = 0x0000_0002,
+    #[serde(rename = "Polynomial Sharing Prime Field")]
     PolynomialSharingPrimeField = 0x0000_0003,
+    #[serde(rename = "Polynomial Sharing GF (2^8)")]
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
@@ -1425,11 +1428,17 @@ pub enum BlockCipherMode {
     CMAC = 0x0000_0007,
     CCM = 0x0000_0008,
     GCM = 0x0000_0009,
+    #[serde(rename = "CBC-MAC")]
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
+    AESKeyWrapPadding = 0x0000_000C,
+    #[serde(rename = "X9.102 AESKW")]
     X9102AESKW = 0x0000_000E,
+    #[serde(rename = "X9.102 TDKW")]
     X9102TDKW = 0x0000_000F,
+    #[serde(rename = "X9.102 AKW1")]
     X9102AKW1 = 0x0000_0010,
+    #[serde(rename = "X9.102 AKW2")]
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
@@ -1444,16 +1453,20 @@ pub enum BlockCipherMode {
     KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, strum::IntoStaticStr,
 )]
 pub enum PaddingMethod {
-    None = 0x0000_0001,
-    OAEP = 0x0000_0002,
-    PKCS5 = 0x0000_0003,
-    SSL3 = 0x0000_0004,
-    Zeros = 0x0000_0005,
-    ANSIX923 = 0x0000_0006,
-    ISO10126 = 0x0000_0007,
-    PKCS1v15 = 0x0000_0008,
-    X931 = 0x0000_0009,
-    PSS = 0x0000_000A,
+    None = 0x1,
+    OAEP = 0x2,
+    PKCS5 = 0x3,
+    SSL3 = 0x4,
+    Zeros = 0x5,
+    #[serde(rename = "ANSI X9.23")]
+    ANSI_X923 = 0x6,
+    #[serde(rename = "ISO 10126")]
+    ISO10126 = 0x7,
+    #[serde(rename = "PKCS1 v1.5")]
+    PKCS1v15 = 0x8,
+    #[serde(rename = "X9.31")]
+    X931 = 0x9,
+    PSS = 0xA,
 }
 
 #[allow(non_camel_case_types)]
@@ -1607,24 +1620,24 @@ pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_iv: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub iv_length: Option<u64>,
+    pub iv_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag_length: Option<u64>,
+    pub tag_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fixed_field_length: Option<u64>,
+    pub fixed_field_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub invocation_field_length: Option<u64>,
+    pub invocation_field_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub counter_length: Option<u64>,
+    pub counter_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_counter_value: Option<u64>,
+    pub initial_counter_value: Option<i32>,
     /// if omitted, defaults to the block size of the Mask Generator Hashing
     /// Algorithm Cosmian extension: In AES: used as the number of
     /// additional data at the end of the submitted data that become part of
     /// the MAC calculation. These additional data are removed
     /// from the encrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub salt_length: Option<u64>,
+    pub salt_length: Option<i32>,
     /// if omitted defaults to MGF1
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_generator: Option<MaskGenerator>,
@@ -1634,7 +1647,7 @@ pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p_source: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trailer_field: Option<u64>,
+    pub trailer_field: Option<i32>,
 }
 
 /// Contains the Unique Identifier value of the encryption key and
@@ -2433,7 +2446,7 @@ impl ValidityIndicator {
     }
 }
 
-/// AlternativeName structure for compact identification of objects using various name types
+/// `AlternativeName` structure for compact identification of objects using various name types
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AlternativeName {
@@ -2443,7 +2456,7 @@ pub struct AlternativeName {
     pub alternative_name_value: String,
 }
 
-/// AlternativeNameType enumeration
+/// `AlternativeNameType` enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum AlternativeNameType {
     UninterpretedTextString = 0x1,
@@ -2455,7 +2468,7 @@ pub enum AlternativeNameType {
     IPAddress = 0x7,
 }
 
-/// ApplicationSpecificInformation structure for storing application-specific data
+/// `ApplicationSpecificInformation` structure for storing application-specific data
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ApplicationSpecificInformation {
@@ -2466,7 +2479,7 @@ pub struct ApplicationSpecificInformation {
     pub application_data: Option<String>,
 }
 
-/// KeyValueLocationType enumeration indicates where a key value is stored
+/// `KeyValueLocationType` enumeration indicates where a key value is stored
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum KeyValueLocationType {
     Unspecified = 0x1,
@@ -2475,7 +2488,7 @@ pub enum KeyValueLocationType {
     OnPremiseOffPremise = 0x4,
 }
 
-/// NistKeyType enumeration used with NIST SP 800-56 and SP 800-108 operations
+/// `NistKeyType` enumeration used with NIST SP 800-56 and SP 800-108 operations
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum NistKeyType {
     AESP1 = 0x1,
@@ -2495,7 +2508,7 @@ pub enum NistKeyType {
     HMACSHA512 = 0xF,
 }
 
-/// ProtectionLevel enumeration indicates the level of protection required for an object
+/// `ProtectionLevel` enumeration indicates the level of protection required for an object
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum ProtectionLevel {
     Software = 0x1,
@@ -2503,7 +2516,7 @@ pub enum ProtectionLevel {
     Hybrid = 0x3,
 }
 
-/// RandomNumberGenerator structure contains details of the random number generation
+/// `RandomNumberGenerator` structure contains details of the random number generation
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RandomNumberGenerator {
@@ -2524,7 +2537,7 @@ pub struct RandomNumberGenerator {
     pub prediction_resistance: Option<bool>,
 }
 
-/// RNGParameters structure contains parameters for the random number generator
+/// `RNGParameters` structure contains parameters for the random number generator
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGParameters {
@@ -2547,7 +2560,7 @@ pub enum State {
     DestroyedCompromised = 0x6,
 }
 
-/// UsageLimits structure for limiting the usage of a managed cryptographic object
+/// `UsageLimits` structure for limiting the usage of a managed cryptographic object
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct UsageLimits {
@@ -2559,7 +2572,7 @@ pub struct UsageLimits {
     pub usage_limits_total: i64,
 }
 
-/// UsageLimitsUnit enumeration defines the unit for usage limits
+/// `UsageLimitsUnit` enumeration defines the unit for usage limits
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum UsageLimitsUnit {
     Byte = 0x1,
@@ -2576,7 +2589,7 @@ pub struct Name {
     pub name_type: NameType,
 }
 
-/// NameType enumeration defines the type of name used to identify managed objects
+/// `NameType` enumeration defines the type of name used to identify managed objects
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum NameType {
     UninterpretedTextString = 0x1,
@@ -2586,7 +2599,7 @@ pub enum NameType {
     DistinguishedName = 0x5,
 }
 
-/// X509CertificateIdentifier structure for identifying X.509 certificates
+/// `X509CertificateIdentifier` structure for identifying X.509 certificates
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct X509CertificateIdentifier {
