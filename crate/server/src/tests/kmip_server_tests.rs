@@ -3,12 +3,13 @@ use std::sync::Arc;
 use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
     kmip_operations::{Get, Import},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
-        LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, LinkType,
+        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
     },
     requests::{
         create_ec_key_pair_request, get_ec_private_key_request, get_ec_public_key_request,
@@ -81,7 +82,11 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         KeyFormatType::TransparentECPrivateKey
     );
     //check link to public key
-    let attr = sk_key_block.key_value.attributes()?;
+    let attr = sk_key_block
+        .key_value
+        .as_ref()
+        .expect("key_value should not be empty for a private key")
+        .attributes()?;
     assert_eq!(
         attr.link
             .as_ref()
@@ -134,7 +139,11 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         KeyFormatType::TransparentECPublicKey
     );
     // check link to secret key
-    let attr = pk_key_block.key_value.attributes()?;
+    let attr = pk_key_block
+        .key_value
+        .as_ref()
+        .expect("key_value should not be empty for a public key")
+        .attributes()?;
     assert_eq!(
         attr.link
             .as_ref()
@@ -210,10 +219,10 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material,
                 attributes: None,
-            },
+            }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
             key_wrapping_data: Some(KeyWrappingData {

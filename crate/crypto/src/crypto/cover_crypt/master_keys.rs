@@ -5,7 +5,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier,
     },
 };
@@ -90,10 +90,10 @@ pub fn create_msk_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(msk_bytes),
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },
@@ -125,10 +125,10 @@ fn create_mpk_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(key),
+            key_value: Some(KeyValue {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },

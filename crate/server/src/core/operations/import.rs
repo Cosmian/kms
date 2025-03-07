@@ -3,11 +3,12 @@ use std::{collections::HashSet, sync::Arc};
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip_2_1::kmip_types::CryptographicUsageMask;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
     kmip_operations::{Import, ImportResponse},
     kmip_types::{
-        Attributes, CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType,
-        KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
+        CertificateAttributes, CertificateType, CryptographicAlgorithm, KeyFormatType, KeyWrapType,
+        LinkType, LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
     },
 };
 use cosmian_kms_crypto::openssl::{
@@ -53,11 +54,15 @@ pub(crate) async fn import(
     // process the request based on the object type
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
-            process_symmetric_key(kms, request, owner, params.clone()).await?
+            Box::pin(process_symmetric_key(kms, request, owner, params.clone())).await?
         }
         ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => process_public_key(kms, request, owner, params.clone()).await?,
-        ObjectType::PrivateKey => process_private_key(kms, request, owner, params.clone()).await?,
+        ObjectType::PublicKey => {
+            Box::pin(process_public_key(kms, request, owner, params.clone())).await?
+        }
+        ObjectType::PrivateKey => {
+            Box::pin(process_private_key(kms, request, owner, params.clone())).await?
+        }
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -108,7 +113,9 @@ pub(crate) async fn process_symmetric_key(
         unwrap_key(object_key_block, kms, owner, params).await?;
     }
     // Replace attributes in object structure.
-    object_key_block.key_value.attributes = Some(attributes.clone());
+    if let Some(key_value) = object_key_block.key_value.as_mut() {
+        key_value.attributes = Some(attributes.clone());
+    }
 
     let uid = match request.unique_identifier.to_string() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
@@ -247,7 +254,8 @@ async fn process_public_key(
         object
             .key_block_mut()?
             .key_value
-            .attributes
+            .as_mut()
+            .and_then(|kv| kv.attributes.clone())
             .get_or_insert(Attributes::default()),
         &attributes,
     );
@@ -311,7 +319,8 @@ async fn process_private_key(
             &mut attributes,
             object_key_block
                 .key_value
-                .attributes
+                .as_ref()
+                .and_then(|kv| kv.attributes.clone())
                 .get_or_insert(Attributes::default()),
         );
 
@@ -396,7 +405,8 @@ fn private_key_from_openssl(
         request_attributes,
         sk_key_block
             .key_value
-            .attributes
+            .as_mut()
+            .and_then(|kv| kv.attributes.clone())
             .get_or_insert(Attributes::default()),
     );
 
@@ -538,7 +548,8 @@ fn process_pkcs12(
     private_key
         .key_block_mut()?
         .key_value
-        .attributes
+        .as_mut()
+        .and_then(|kv| kv.attributes.clone())
         .get_or_insert(Attributes::default())
         .set_link(
             //Note: it is unclear what link type should be used here according to KMIP

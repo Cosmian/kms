@@ -76,11 +76,11 @@ pub(crate) async fn test_redis_with_findex() -> DbResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
-    json_access(&get_redis_with_findex().await?, None).await?;
+    Box::pin(json_access(&get_redis_with_findex().await?, None)).await?;
     find_attributes(&get_redis_with_findex().await?, None).await?;
     owner(&get_redis_with_findex().await?, None).await?;
     permissions(&get_redis_with_findex().await?, None).await?;
-    tags(&get_redis_with_findex().await?, None, false).await?;
+    Box::pin(tags(&get_redis_with_findex().await?, None, false)).await?;
     tx_and_list(&get_redis_with_findex().await?, None).await?;
     atomic(&get_redis_with_findex().await?, None).await?;
     upsert(&get_redis_with_findex().await?, None).await?;
@@ -105,11 +105,11 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
     if db_file.exists() {
         std::fs::remove_file(&db_file)?;
     }
-    json_access(&get_sqlite(&db_file).await?, None).await?;
+    Box::pin(json_access(&get_sqlite(&db_file).await?, None)).await?;
     find_attributes(&get_sqlite(&db_file).await?, None).await?;
     owner(&get_sqlite(&db_file).await?, None).await?;
     permissions(&get_sqlite(&db_file).await?, None).await?;
-    tags(&get_sqlite(&db_file).await?, None, true).await?;
+    Box::pin(tags(&get_sqlite(&db_file).await?, None, true)).await?;
     tx_and_list(&get_sqlite(&db_file).await?, None).await?;
     atomic(&get_sqlite(&db_file).await?, None).await?;
     upsert(&get_sqlite(&db_file).await?, None).await?;
@@ -121,11 +121,11 @@ pub(crate) async fn test_sqlite() -> DbResult<()> {
 #[tokio::test]
 pub(crate) async fn test_postgresql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
-    json_access(&get_pgsql().await?, None).await?;
+    Box::pin(json_access(&get_pgsql().await?, None)).await?;
     find_attributes(&get_pgsql().await?, None).await?;
     owner(&get_pgsql().await?, None).await?;
     permissions(&get_pgsql().await?, None).await?;
-    tags(&get_pgsql().await?, None, true).await?;
+    Box::pin(tags(&get_pgsql().await?, None, true)).await?;
     tx_and_list(&get_pgsql().await?, None).await?;
     atomic(&get_pgsql().await?, None).await?;
     upsert(&get_pgsql().await?, None).await?;
@@ -137,11 +137,11 @@ pub(crate) async fn test_postgresql() -> DbResult<()> {
 #[tokio::test]
 pub(crate) async fn test_mysql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
-    json_access(&get_mysql().await?, None).await?;
+    Box::pin(json_access(&get_mysql().await?, None)).await?;
     find_attributes(&get_mysql().await?, None).await?;
     owner(&get_mysql().await?, None).await?;
     permissions(&get_mysql().await?, None).await?;
-    tags(&get_mysql().await?, None, true).await?;
+    Box::pin(tags(&get_mysql().await?, None, true)).await?;
     tx_and_list(&get_mysql().await?, None).await?;
     atomic(&get_mysql().await?, None).await?;
     upsert(&get_mysql().await?, None).await?;

@@ -130,14 +130,19 @@ pub fn update_key_block_with_wrapped_key(
     // wrap the key based on the encoding
     match key_wrapping_specification.get_encoding() {
         EncodingOption::TTLVEncoding => {
-            object_key_block.key_value = KeyValue {
+            object_key_block.key_value = Some(KeyValue {
                 key_material: KeyMaterial::ByteString(wrapped_key.into()),
                 // not clear whether this should be filled or not
-                attributes: object_key_block.key_value.attributes.clone(),
-            };
+                attributes: object_key_block
+                    .key_value
+                    .as_mut()
+                    .and_then(|kv| kv.attributes.clone()),
+            });
         }
         EncodingOption::NoEncoding => {
-            object_key_block.key_value.key_material = KeyMaterial::ByteString(wrapped_key.into());
+            if let Some(key_value) = &mut object_key_block.key_value {
+                key_value.key_material = KeyMaterial::ByteString(wrapped_key.into());
+            }
         }
     }
     object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());

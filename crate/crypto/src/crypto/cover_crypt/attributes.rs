@@ -1,8 +1,7 @@
 use cosmian_cover_crypt::{AccessPolicy, AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_types::{Attributes, VendorAttribute},
+    extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttribute,
 };
 use serde::{Deserialize, Serialize};
 

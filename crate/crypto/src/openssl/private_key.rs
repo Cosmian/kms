@@ -1,10 +1,11 @@
 use cosmian_kmip::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
+            KeyFormatType, RecommendedCurve,
         },
     },
     SafeBigUint,
@@ -73,7 +74,14 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
             ec_key.check_key()?;
             PKey::from_ec_key(ec_key)?
         }
-        KeyFormatType::TransparentRSAPrivateKey => match &key_block.key_value.key_material {
+        KeyFormatType::TransparentRSAPrivateKey => match &key_block
+            .key_value
+            .as_ref()
+            .ok_or_else(|| {
+                CryptoError::Default("Missing key value in Transparent RSA Private Key".into())
+            })?
+            .key_material
+        {
             KeyMaterial::TransparentRSAPrivateKey {
                 modulus,
                 private_exponent,
@@ -133,7 +141,14 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 "Invalid Transparent RSA private key material: TransparentRSAPrivateKey expected"
             ),
         },
-        KeyFormatType::TransparentECPrivateKey => match &key_block.key_value.key_material {
+        KeyFormatType::TransparentECPrivateKey => match &key_block
+            .key_value
+            .as_ref()
+            .ok_or_else(|| {
+                CryptoError::Default("Missing key value in Transparent EC Private Key".into())
+            })?
+            .key_material
+        {
             KeyMaterial::TransparentECPrivateKey {
                 d,
                 recommended_curve,
@@ -256,7 +271,7 @@ pub fn openssl_private_key_to_kmip(
                 .map(|iqmp| BigUint::from_bytes_be(iqmp.to_vec().as_slice()));
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentRSAPrivateKey {
                         modulus: Box::new(modulus),
                         private_exponent: Some(Box::new(SafeBigUint::from(private_exponent))),
@@ -278,7 +293,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -344,7 +359,7 @@ pub fn openssl_private_key_to_kmip(
             let cryptographic_length = Some(i32::try_from(private_key.bits())?);
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::TransparentECPrivateKey {
                         recommended_curve,
                         d: Box::new(SafeBigUint::from(d)),
@@ -368,7 +383,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -386,7 +401,7 @@ pub fn openssl_private_key_to_kmip(
 
             KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
@@ -398,7 +413,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm,
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -412,7 +427,7 @@ pub fn openssl_private_key_to_kmip(
                 .context("the private key is not an openssl EC key")?;
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         ec_key.private_key_to_der()?,
                     )),
@@ -424,7 +439,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -437,7 +452,7 @@ pub fn openssl_private_key_to_kmip(
                 .context("the private key is not an openssl RSA key")?;
             KeyBlock {
                 key_format_type,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
@@ -449,7 +464,7 @@ pub fn openssl_private_key_to_kmip(
                         cryptographic_usage_mask,
                         ..Attributes::default()
                     }),
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -510,10 +525,10 @@ mod tests {
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue {
                     key_material: KeyMaterial::ByteString(key_value),
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -568,10 +583,10 @@ mod tests {
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue {
                     key_material: KeyMaterial::ByteString(key_value),
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -613,7 +628,7 @@ mod tests {
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue {
                     key_material:
                         KeyMaterial::TransparentRSAPrivateKey {
                             modulus,
@@ -626,7 +641,7 @@ mod tests {
                             crt_coefficient,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {
@@ -686,14 +701,14 @@ mod tests {
         };
         let KeyBlock {
             key_value:
-                KeyValue {
+                Some(KeyValue {
                     key_material:
                         KeyMaterial::TransparentECPrivateKey {
                             d,
                             recommended_curve,
                         },
                     ..
-                },
+                }),
             ..
         } = key_block
         else {

@@ -7,9 +7,10 @@ use base64::{
 };
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::Object,
     kmip_operations::Create,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType},
     requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH;

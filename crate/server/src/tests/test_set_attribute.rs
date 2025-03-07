@@ -30,10 +30,11 @@ use cosmian_crypto_core::{
     CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attribute,
     kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
     kmip_types::{
-        Attribute, AttributeReference, CryptographicAlgorithm, Link, LinkType,
-        LinkedObjectIdentifier, Tag, UniqueIdentifier,
+        AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag,
+        UniqueIdentifier,
     },
     requests::create_symmetric_key_kmip_object,
 };

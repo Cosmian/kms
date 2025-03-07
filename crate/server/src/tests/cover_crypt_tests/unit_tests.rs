@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_objects::{Object, ObjectType},
+    kmip_attributes::Attributes,
+    kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},

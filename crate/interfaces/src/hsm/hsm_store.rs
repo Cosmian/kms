@@ -7,11 +7,11 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            StateEnumeration,
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
         },
     },
     SafeBigUint,
@@ -331,10 +331,10 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentSymmetricKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     cryptographic_length: Some(
                         8 * i32::try_from(bytes.len()).map_err(|e| {
@@ -399,10 +399,10 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPrivateKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
                         8 * i32::try_from(km.modulus.len()).map_err(|e| {
@@ -451,10 +451,10 @@ fn to_object_with_metadata(
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentRSAPublicKey,
                     key_compression_type: None,
-                    key_value: KeyValue {
+                    key_value: Some(KeyValue {
                         key_material: kmip_key_material,
                         attributes: Some(attributes.clone()),
-                    },
+                    }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
                         i32::try_from(km.modulus.len()).map_err(|e| {

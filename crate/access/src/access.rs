@@ -4,6 +4,8 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
+    kmip_types::{StateEnumeration, UniqueIdentifier},
     KmipOperation,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
