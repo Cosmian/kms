@@ -8,11 +8,12 @@ use strum::Display;
 use zeroize::Zeroizing;
 
 use super::{
+    kmip_attributes::{Attribute, Attributes},
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
     kmip_types::{
-        Attribute, AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
-        KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
+        AttributeReference, CertificateRequestType, CryptographicParameters, KeyCompressionType,
+        KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
         ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
         UniqueIdentifier, ValidityIndicator,
     },

@@ -5,18 +5,20 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
 #[allow(clippy::wildcard_imports)]
 use super::kmip_types::*;
-use crate::{kmip_2_1, SafeBigUint};
+use crate::{
+    kmip_1_4::kmip_attributes::{Attribute, Attributes},
+    kmip_2_1, SafeBigUint,
+};
 
 /// 2.1.2 Credential Object Structure
 /// A Credential is a structure used to convey information used to authenticate a client
 /// or server to the other party in a KMIP message. It contains credential type and
 /// credential value fields.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Credential {
     pub credential_type: CredentialType,
     pub credential_value: CredentialValue,
@@ -25,7 +27,7 @@ pub struct Credential {
 /// Credential Value variants
 /// The Credential Value type contains specific authentication credential values based
 /// on the credential type.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum CredentialValue {
     UsernameAndPassword {
         username: String,
@@ -53,10 +55,14 @@ pub enum CredentialValue {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
-    pub key_value: KeyValue,
-    pub cryptographic_algorithm: CryptographicAlgorithm,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_value: Option<KeyValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
     pub cryptographic_length: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
 
@@ -66,11 +72,18 @@ impl KeyBlock {
             key_format_type: self.key_format_type.to_kmip_2_1(),
             key_compression_type: self.key_compression_type.as_ref().map(|x| x.to_kmip_2_1()),
             key_value: self.key_value.to_kmip_2_1(),
-            cryptographic_algorithm: self.cryptographic_algorithm,
-            cryptographic_length: self.cryptographic_length,
-            key_wrapping_data: self.key_wrapping_data.clone(),
+            cryptographic_algorithm: self
+                .cryptographic_algorithm
+                .as_ref()
+                .map(|x| x.to_kmip_2_1()),
+            cryptographic_length: self.cryptographic_length.clone(),
+            key_wrapping_data: self.key_wrapping_data.as_ref().map(|x| x.to_kmip_2_1()),
         }
     }
+}
+
+fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
+    val.as_ref().map_or(true, |v| *v == T::default())
 }
 
 /// 2.1.4 Key Value Object Structure
@@ -79,14 +92,15 @@ impl KeyBlock {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
-    pub attributes: Option<Vec<Attribute>>,
+    #[serde(skip_serializing_if = "attributes_is_default_or_none")]
+    pub attributes: Option<Attributes>,
 }
 
 impl KeyValue {
     pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyValue {
         kmip_2_1::kmip_data_structures::KeyValue {
             key_material: self.key_material.to_kmip_2_1(),
-            attributes: self.attributes.clone(),
+            attributes: self.attributes.to_kmip_2_1(),
         }
     }
 }
@@ -95,6 +109,7 @@ impl KeyValue {
 /// bytes, or `SafeBigUint` type.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyMaterial {
+    ByteString(Zeroizing<Vec<u8>>),
     TransparentSymmetricKey {
         key: Zeroizing<Vec<u8>>,
     },
@@ -196,6 +211,11 @@ impl Serialize for KeyMaterial {
         S: serde::Serializer,
     {
         match self {
+            Self::ByteString(bytes) => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                st.serialize_field("ByteString", &**bytes)?;
+                st.end()
+            }
             Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
                 st.serialize_field("Key", &**key)?;
@@ -722,6 +742,9 @@ impl<'de> Deserialize<'de> for KeyMaterial {
 impl KeyMaterial {
     pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyMaterial {
         match self {
+            Self::ByteString(bytes) => kmip_2_1::kmip_data_structures::KeyMaterial::ByteString {
+                bytes: bytes.clone(),
+            },
             Self::TransparentSymmetricKey { key } => {
                 kmip_2_1::kmip_data_structures::KeyMaterial::TransparentSymmetricKey {
                     key: key.clone(),
@@ -852,7 +875,7 @@ impl KeyMaterial {
 /// wrapping of a key value. It includes the wrapping method, encryption key information,
 /// MAC/signature information, initialization vector/counter/nonce if applicable, and
 /// encoding information.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
     pub encryption_key_information: Option<EncryptionKeyInformation>,
@@ -865,7 +888,7 @@ pub struct KeyWrappingData {
 /// Encryption Key Information Structure
 /// The Encryption Key Information is a structure containing a unique identifier and
 /// optional parameters used to encrypt the key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -874,7 +897,7 @@ pub struct EncryptionKeyInformation {
 /// MAC/Signature Key Information Structure
 /// The MAC/Signature Key Information is a structure containing a unique identifier and
 /// optional parameters used to generate a MAC or signature over the key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -885,7 +908,7 @@ pub struct MacSignatureKeyInformation {
 /// should be wrapped. It includes the wrapping method, encryption key information,
 /// MAC/signature information, attribute names to be included in the wrapped data and
 /// encoding options.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyWrappingSpecification {
     pub wrapping_method: WrappingMethod,
     pub encryption_key_information: Option<EncryptionKeyInformation>,
@@ -895,7 +918,7 @@ pub struct KeyWrappingSpecification {
 }
 
 /// Cryptographic Parameters Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CryptographicParameters {
     pub block_cipher_mode: Option<BlockCipherMode>,
     pub padding_method: Option<PaddingMethod>,
@@ -920,13 +943,13 @@ pub struct CryptographicParameters {
 /// 2.1.7.1 Transparent Symmetric Key Structure
 /// The Transparent Symmetric Key structure is used to carry the key data for a
 /// symmetric key in raw form.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentSymmetricKey {
     pub key: Vec<u8>,
 }
 
 /// 2.1.7.2 Transparent DSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentDsaPrivateKey {
     pub p: Vec<u8>,
     pub q: Vec<u8>,
@@ -935,7 +958,7 @@ pub struct TransparentDsaPrivateKey {
 }
 
 /// 2.1.7.3 Transparent DSA Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentDsaPublicKey {
     pub p: Vec<u8>,
     pub q: Vec<u8>,
@@ -944,7 +967,7 @@ pub struct TransparentDsaPublicKey {
 }
 
 /// 2.1.7.4 Transparent RSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentRsaPrivateKey {
     pub modulus: Vec<u8>,
     pub private_exponent: Vec<u8>,
@@ -958,14 +981,14 @@ pub struct TransparentRsaPrivateKey {
 }
 
 /// 2.1.7.5 Transparent RSA Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentRsaPublicKey {
     pub modulus: Vec<u8>,
     pub public_exponent: Vec<u8>,
 }
 
 /// 2.1.7.6 Transparent DH Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentDhPrivateKey {
     pub p: Vec<u8>,
     pub g: Vec<u8>,
@@ -975,7 +998,7 @@ pub struct TransparentDhPrivateKey {
 }
 
 /// 2.1.7.7 Transparent DH Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentDhPublicKey {
     pub p: Vec<u8>,
     pub g: Vec<u8>,
@@ -985,56 +1008,56 @@ pub struct TransparentDhPublicKey {
 }
 
 /// 2.1.7.8 Transparent ECDSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcdsaPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
 }
 
 /// 2.1.7.9 Transparent ECDSA Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcdsaPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
 }
 
 /// 2.1.7.10 Transparent ECDH Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcdhPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
 }
 
 /// 2.1.7.11 Transparent ECDH Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcdhPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
 }
 
 /// 2.1.7.12 Transparent ECMQV Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcmqvPrivateKey {
     pub recommended_curve: RecommendedCurve,
     pub d: Vec<u8>,
 }
 
 /// 2.1.7.13 Transparent ECMQV Public Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TransparentEcmqvPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
 }
 
 /// 2.1.8 Template-Attribute Structures
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TemplateAttribute {
     pub name: Option<String>,
     pub attributes: Vec<Attribute>,
 }
 
 /// 2.1.9 Extension Information Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ExtensionInformation {
     pub extension_name: String,
     pub extension_tag: Option<i32>,
@@ -1042,34 +1065,34 @@ pub struct ExtensionInformation {
 }
 
 /// 2.1.10-23 Additional Structures
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Data(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct DataLength(pub i32);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct SignatureData(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct MacData(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Nonce(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CorrelationValue(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct InitIndicator(pub bool);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct FinalIndicator(pub bool);
 
 /// RNG Parameters provides information about random number generation. It contains
 /// details about the RNG algorithm, cryptographic algorithms, hash algorithms, DRBG
 /// algorithms and associated parameters.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct RngParameters {
     pub rng_algorithm: RNGAlgorithm,
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1082,7 +1105,7 @@ pub struct RngParameters {
 }
 
 /// Profile Information contains details about supported KMIP profiles.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ProfileInformation {
     pub profile_name: ProfileName,
     pub server_uri: Option<String>,
@@ -1092,7 +1115,7 @@ pub struct ProfileInformation {
 /// Validation Information contains details about the validation of a cryptographic
 /// module, including the validation authority, version information and validation
 /// profiles.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ValidationInformation {
     pub validation_authority_type: ValidationAuthorityType,
     pub validation_authority_country: Option<String>,
@@ -1109,7 +1132,7 @@ pub struct ValidationInformation {
 
 /// Capability Information indicates various capabilities supported by a KMIP server.
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CapabilityInformation {
     pub streaming_capability: bool,
     pub asynchronous_capability: bool,
@@ -1122,14 +1145,14 @@ pub struct CapabilityInformation {
     pub rng_mode: Option<RNGMode>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthenticatedEncryptionAdditionalData(pub Vec<u8>);
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthenticatedEncryptionTag(pub Vec<u8>);
 
 /// Derivation Parameters defines the parameters for a key derivation process
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct DerivationParameters {
     /// The type of derivation method to be used
     pub cryptographic_parameters: Option<CryptographicParameters>,
