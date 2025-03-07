@@ -162,9 +162,9 @@ jobs:
             # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
             wget "http://35.187.181.78/SecurityServerEvaluation-6.0.0.0.tar.gz"
             echo -n Extracting compressed archive...
-            tar -xvf "*.tar.gz"
+            tar -xvf SecurityServerEvaluation-6.0.0.0.tar.gz
             find .
-            rm "*.tar"
+            rm SecurityServerEvaluation-6.0.0.0.tar.gz
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet ${{ steps.ip.outputs.ipv4 }} 3001
