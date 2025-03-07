@@ -739,8 +739,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
     }
 }
 
-impl KeyMaterial {
-    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyMaterial {
+impl Into<kmip_2_1::kmip_data_structures::KeyMaterial> for KeyMaterial {
+    fn into(self) -> kmip_2_1::kmip_data_structures::KeyMaterial {
         match self {
             Self::ByteString(bytes) => kmip_2_1::kmip_data_structures::KeyMaterial::ByteString {
                 bytes: bytes.clone(),
@@ -938,6 +938,31 @@ pub struct CryptographicParameters {
     pub mask_generator_hashing_algorithm: Option<HashingAlgorithm>,
     pub p_source: Option<Vec<u8>>,
     pub trailer_field: Option<i32>,
+}
+
+impl Into<kmip_2_1::kmip_types::CryptographicParameters> for CryptographicParameters {
+    fn into(self) -> kmip_2_1::kmip_types::CryptographicParameters {
+        kmip_2_1::kmip_types::CryptographicParameters {
+            block_cipher_mode: self.block_cipher_mode,
+            padding_method: self.padding_method,
+            hashing_algorithm: self.hashing_algorithm,
+            key_role_type: self.key_role_type,
+            digital_signature_algorithm: self.digital_signature_algorithm,
+            cryptographic_algorithm: self.cryptographic_algorithm,
+            random_iv: self.random_iv,
+            iv_length: self.iv_length,
+            tag_length: self.tag_length,
+            fixed_field_length: self.fixed_field_length,
+            invocation_field_length: self.invocation_field_length,
+            counter_length: self.counter_length,
+            initial_counter_value: self.initial_counter_value,
+            salt_length: self.salt_length,
+            mask_generator: self.mask_generator,
+            mask_generator_hashing_algorithm: self.mask_generator_hashing_algorithm,
+            p_source: self.p_source,
+            trailer_field: self.trailer_field,
+        }
+    }
 }
 
 /// 2.1.7.1 Transparent Symmetric Key Structure

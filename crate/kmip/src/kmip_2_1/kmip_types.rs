@@ -253,7 +253,7 @@ pub enum CryptographicAlgorithm {
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicDomainParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub q_length: Option<i32>,
+    pub qlength: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
 }
@@ -261,7 +261,7 @@ pub struct CryptographicDomainParameters {
 impl Default for CryptographicDomainParameters {
     fn default() -> Self {
         Self {
-            q_length: Some(256),
+            qlength: Some(256),
             recommended_curve: Some(RecommendedCurve::default()),
         }
     }
@@ -336,6 +336,7 @@ pub enum RecommendedCurve {
     BRAINPOOLP256T1 = 0x0000_003E,
     BRAINPOOLP320R1 = 0x0000_003F,
     BRAINPOOLP320T1 = 0x0000_0040,
+    BRAINPOOLP384R1 = 0x0000_0041,
     BRAINPOOLP384T1 = 0x0000_0042,
     BRAINPOOLP512R1 = 0x0000_0043,
     BRAINPOOLP512T1 = 0x0000_0044,
@@ -373,7 +374,7 @@ pub enum KeyCompressionType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct CryptographicUsageMask(u32);
+pub struct CryptographicUsageMask(pub(crate) u32);
 
 bitflags::bitflags! {
 #[allow(clippy::indexing_slicing)]
@@ -796,7 +797,7 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
 #[derive(
     KmipEnumSerialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, strum::IntoStaticStr,
 )]
-pub enum RevocationReasonEnumeration {
+pub enum RevocationReasonCode {
     Unspecified = 0x0000_0001,
     KeyCompromise = 0x0000_0002,
     CACompromise = 0x0000_0003,
@@ -816,12 +817,10 @@ pub enum RevocationReasonEnumeration {
 /// why the object was revoked (e.g., "Laptop stolen", or "Machine
 /// decommissioned").
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(untagged)]
-pub enum RevocationReason {
-    /// Unique Identifier Enumeration
-    Enumeration(RevocationReasonEnumeration),
-    /// Revocation Message
-    TextString(String),
+pub struct RevocationReason {
+    pub revocation_reason_code: RevocationReasonCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revocation_message: Option<String>,
 }
 
 /// The Link attribute is a structure used to create a link from one Managed
@@ -1465,19 +1464,31 @@ pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
     MD5 = 0x0000_0003,
+    #[serde(rename = "SHA-1")]
     SHA1 = 0x0000_0004,
+    #[serde(rename = "SHA-224")]
     SHA224 = 0x0000_0005,
+    #[serde(rename = "SHA-256")]
     SHA256 = 0x0000_0006,
+    #[serde(rename = "SHA-384")]
     SHA384 = 0x0000_0007,
+    #[serde(rename = "SHA-512")]
     SHA512 = 0x0000_0008,
-    RIPEMD_160 = 0x0000_0009,
+    #[serde(rename = "RIPEMD-160")]
+    RIPEMD160 = 0x0000_0009,
     Tiger = 0x0000_000A,
     Whirlpool = 0x0000_000B,
+    #[serde(rename = "SHA-512/224")]
     SHA512224 = 0x0000_000C,
+    #[serde(rename = "SHA-512/256")]
     SHA512256 = 0x0000_000D,
+    #[serde(rename = "SHA3-224")]
     SHA3224 = 0x0000_000E,
+    #[serde(rename = "SHA3-256")]
     SHA3256 = 0x0000_000F,
+    #[serde(rename = "SHA3-384")]
     SHA3384 = 0x0000_0010,
+    #[serde(rename = "SHA3-512")]
     SHA3512 = 0x0000_0011,
 }
 
@@ -2427,9 +2438,9 @@ impl ValidityIndicator {
 #[serde(rename_all = "PascalCase")]
 pub struct AlternativeName {
     /// Type of the alternative name
-    pub name_type: AlternativeNameType,
+    pub alternative_name_type: AlternativeNameType,
     /// Value of the alternative name
-    pub name_value: String,
+    pub alternative_name_value: String,
 }
 
 /// AlternativeNameType enumeration
@@ -2451,7 +2462,8 @@ pub struct ApplicationSpecificInformation {
     /// The application namespace
     pub application_namespace: String,
     /// The application data
-    pub application_data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application_data: Option<String>,
 }
 
 /// KeyValueLocationType enumeration indicates where a key value is stored
@@ -2495,11 +2507,21 @@ pub enum ProtectionLevel {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RandomNumberGenerator {
-    /// The RNG algorithm
     pub rng_algorithm: RNGAlgorithm,
-    /// The RNG parameters
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rng_parameters: Option<RNGParameters>,
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drbg_algorithm: Option<DRBGAlgorithm>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fips186_variation: Option<FIPS186Variation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prediction_resistance: Option<bool>,
 }
 
 /// RNGParameters structure contains parameters for the random number generator
@@ -2569,9 +2591,9 @@ pub enum NameType {
 #[serde(rename_all = "PascalCase")]
 pub struct X509CertificateIdentifier {
     /// The Certificate Issuer
-    pub issuer: String,
+    pub issuer_distinguished_name: Vec<u8>,
     /// The Certificate Serial Number
-    pub serial_number: String,
+    pub cxertificate_serial_number: Vec<u8>,
 }
 
 /// RNG Algorithm Enumeration
@@ -2591,7 +2613,28 @@ pub enum RNGAlgorithm {
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum DRBGAlgorithm {
     Unspecified = 0x1,
-    HashDRBG = 0x2,
-    HMACDRBG = 0x3,
-    CTRDRBG = 0x4,
+    #[serde(rename = "Dual-EC")]
+    DualEC = 0x2,
+    Hash = 0x3,
+    HMAC = 0x4,
+    CTR = 0x5,
+}
+
+/// KMIP 2.1 FIPS186 Variation Enumeration
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
+pub enum FIPS186Variation {
+    Unspecified = 0x1,
+    #[serde(rename = "GP x-Original")]
+    GPXOriginal = 0x2,
+    #[serde(rename = "GP x-Change Notice")]
+    GPXChangeNotice = 0x3,
+    #[serde(rename = "x-Original")]
+    XOriginal = 0x4,
+    #[serde(rename = "x-Change Notice")]
+    XChangeNotice = 0x5,
+    #[serde(rename = "k-Original")]
+    KOriginal = 0x6,
+    #[serde(rename = "k-Change Notice")]
+    KChangeNotice = 0x7,
 }

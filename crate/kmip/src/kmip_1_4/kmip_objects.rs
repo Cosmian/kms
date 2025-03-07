@@ -18,11 +18,29 @@ pub struct Certificate {
     pub certificate_value: Vec<u8>,
 }
 
+impl Into<kmip_2_1::kmip_objects::Certificate> for Certificate {
+    fn into(self) -> kmip_2_1::kmip_objects::Certificate {
+        kmip_2_1::kmip_objects::Certificate {
+            certificate_type: self.certificate_type.clone().into(),
+            certificate_value: self.certificate_value,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SecretData {
     pub secret_data_type: SecretDataType,
     pub key_block: KeyBlock,
+}
+
+impl Into<kmip_2_1::kmip_objects::SecretData> for SecretData {
+    fn into(self) -> kmip_2_1::kmip_objects::SecretData {
+        kmip_2_1::kmip_objects::SecretData {
+            secret_data_type: self.secret_data_type.clone().into(),
+            key_block: self.key_block.clone().into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -251,66 +269,21 @@ impl Object {
     }
 }
 
-impl Object {
-    fn to_kmip_2_1(&self) -> kmip_2_1::kmip_objects::Object {
+impl Into<kmip_2_1::kmip_objects::Object> for Object {
+    fn into(self) -> kmip_2_1::kmip_objects::Object {
         match self {
-            Self::Certificate(cert) => {
-                let certificate_2_1 = kmip_2_1::kmip_objects::Certificate {
-                    certificate_type: cert.certificate_type.to_kmip_2_1(),
-                    certificate_value: cert.certificate_value.clone(),
-                };
-                kmip_2_1::kmip_objects::Object::Certificate(certificate_2_1)
-            }
-            Self::SecretData(secret) => {
-                let secret_data_2_1 = kmip_2_1::kmip_objects::SecretData {
-                    secret_data_type: secret.secret_data_type.to_kmip_2_1(),
-                    key_block: secret.key_block.to_kmip_2_1(),
-                };
-                kmip_2_1::kmip_objects::Object::SecretData(secret_data_2_1)
-            }
-            Self::SplitKey(split) => {
-                let split_key_2_1 = kmip_2_1::kmip_objects::SplitKey {
-                    split_key_parts: split.split_key_parts,
-                    key_part_identifier: split.key_part_identifier,
-                    split_key_threshold: split.split_key_threshold,
-                    split_key_method: convert_split_key_method(&split.split_key_method),
-                    prime_field_size: None, // Not present in KMIP 1.4
-                    key_block: convert_key_block(&split.key_block),
-                };
-                kmip_2_1::kmip_objects::Object::SplitKey(split_key_2_1)
-            }
+            Self::Certificate(cert) => kmip_2_1::kmip_objects::Object::Certificate(cert.into()),
+            Self::SecretData(secret) => kmip_2_1::kmip_objects::Object::SecretData(secret.into()),
+            Self::SplitKey(split) => kmip_2_1::kmip_objects::Object::SplitKey(split.into()),
             Self::SymmetricKey(symmetric) => {
-                let symmetric_key_2_1 = kmip_2_1::kmip_objects::SymmetricKey {
-                    key_block: convert_key_block(&symmetric.key_block),
-                };
-                kmip_2_1::kmip_objects::Object::SymmetricKey(symmetric_key_2_1)
+                kmip_2_1::kmip_objects::Object::SymmetricKey(symmetric.into())
             }
-            Self::PrivateKey(private) => {
-                let private_key_2_1 = kmip_2_1::kmip_objects::PrivateKey {
-                    key_block: convert_key_block(&private.key_block),
-                };
-                kmip_2_1::kmip_objects::Object::PrivateKey(private_key_2_1)
-            }
-            Self::PublicKey(public) => {
-                let public_key_2_1 = kmip_2_1::kmip_objects::PublicKey {
-                    key_block: convert_key_block(&public.key_block),
-                };
-                kmip_2_1::kmip_objects::Object::PublicKey(public_key_2_1)
-            }
+            Self::PrivateKey(private) => kmip_2_1::kmip_objects::Object::PrivateKey(private.into()),
+            Self::PublicKey(public) => kmip_2_1::kmip_objects::Object::PublicKey(public.into()),
             Self::OpaqueObject(opaque) => {
-                let opaque_object_2_1 = kmip_2_1::kmip_objects::OpaqueObject {
-                    opaque_data_type: convert_opaque_data_type(&opaque.opaque_data_type),
-                    opaque_data_value: opaque.opaque_data_value.clone(),
-                };
-                kmip_2_1::kmip_objects::Object::OpaqueObject(opaque_object_2_1)
+                kmip_2_1::kmip_objects::Object::OpaqueObject(opaque.into())
             }
-            Self::PGPKey(pgp) => {
-                let pgp_key_2_1 = kmip_2_1::kmip_objects::PGPKey {
-                    pgp_key_version: pgp.pgp_key_version,
-                    key_block: convert_key_block(&pgp.key_block),
-                };
-                kmip_2_1::kmip_objects::Object::PGPKey(pgp_key_2_1)
-            }
+            Self::PGPKey(pgp) => kmip_2_1::kmip_objects::Object::PGPKey(pgp.into()),
         }
     }
 }
@@ -325,7 +298,8 @@ pub enum ObjectType {
     PublicKey = 0x03,
     PrivateKey = 0x04,
     SplitKey = 0x05,
-    Template = 0x06,
+    // Unsupported in KMIP 2.1 and deactivated in KMIP 1.4
+    // Template = 0x06,
     SecretData = 0x07,
     OpaqueObject = 0x08,
     PGPKey = 0x09,
@@ -339,7 +313,7 @@ impl From<ObjectType> for u32 {
             ObjectType::PublicKey => 0x03,
             ObjectType::PrivateKey => 0x04,
             ObjectType::SplitKey => 0x05,
-            ObjectType::Template => 0x06,
+            // ObjectType::Template => 0x06,
             ObjectType::SecretData => 0x07,
             ObjectType::OpaqueObject => 0x08,
             ObjectType::PGPKey => 0x09,

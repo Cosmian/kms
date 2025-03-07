@@ -10,6 +10,7 @@ use crate::{
             RandomNumberGenerator, RevocationReason, State, UsageLimits, X509CertificateIdentifier,
         },
     },
+    kmip_2_1,
     kmip_2_1::kmip_types::VendorAttribute,
 };
 
@@ -191,7 +192,7 @@ pub struct Attributes {
     /// its name as defined in Section 2.1.1.
     /// Note: Cosmian implementation: we map it to a 2.1 VendorAttribute
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custome_attribute: Option<VendorAttribute>,
+    pub custom_attribute: Option<Vec<VendorAttribute>>,
 
     /// The Last Change Date attribute specifies the date and time of the last change.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -233,8 +234,8 @@ pub struct Attributes {
     pub comment: Option<String>,
 
     /// The Sensitive attribute indicates whether the object is sensitive.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sensitive: Option<bool>,
+    #[serde(default)]
+    pub sensitive: bool,
 
     /// The Always Sensitive attribute indicates whether the object has always
     /// been sensitive.
@@ -251,65 +252,63 @@ pub struct Attributes {
     pub never_extractable: Option<bool>,
 }
 
-impl Attributes {
-    pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_attributes::Attributes {
-        crate::kmip_2_1::kmip_attributes::Attributes {
-            unique_identifier: self.unique_identifier.as_ref().map(|s| s.to_kmip_2_1()),
-            name: self
-                .name
-                .as_ref()
-                .map(|v| v.iter().map(|n| n.to_kmip_2_1()).collect()),
-            never_extractable: self.never_extractable.clone(),
-            object_type: self.object_type.clone(),
-            cryptographic_algorithm: self.cryptographic_algorithm.clone(),
-            cryptographic_length: self.cryptographic_length.clone(),
-            cryptographic_parameters: self.cryptographic_parameters.clone(),
-            cryptographic_domain_parameters: self.cryptographic_domain_parameters.clone(),
-            certificate_type: self.certificate_type.clone(),
-            certificate_length: self.certificate_length.clone(),
-            x_509_certificate_identifier: self.x_509_certificate_identifier.clone(),
-            x_509_certificate_subject: self.x_509_certificate_subject.clone(),
-            x_509_certificate_issuer: self.x_509_certificate_issuer.clone(),
-            digital_signature_algorithm: self.digital_signature_algorithm.clone(),
-            cryptographic_usage_mask: self.cryptographic_usage_mask.clone(),
-            lease_time: self.lease_time.clone(),
-            usage_limits: self.usage_limits.clone(),
-            state: self.state.clone(),
-            initial_date: self.initial_date.clone(),
-            activation_date: self.activation_date.clone(),
-            process_start_date: self.process_start_date.clone(),
-            protect_stop_date: self.protect_stop_date.clone(),
+impl Into<kmip_2_1::kmip_attributes::Attributes> for Attributes {
+    fn into(self) -> kmip_2_1::kmip_attributes::Attributes {
+        kmip_2_1::kmip_attributes::Attributes {
+            unique_identifier: self.unique_identifier.map(|unique_identifier| {
+                kmip_2_1::kmip_types::UniqueIdentifier::TextString(unique_identifier)
+            }),
+            name: self.name.map(|n| n.into_iter().map(Into::into).collect()),
+            never_extractable: self.never_extractable.into(),
+            object_type: self.object_type.map(Into::into),
+            cryptographic_algorithm: self.cryptographic_algorithm.map(Into::into),
+            cryptographic_length: self.cryptographic_length.map(Into::into),
+            cryptographic_parameters: self.cryptographic_parameters.map(Into::into),
+            cryptographic_domain_parameters: self.cryptographic_domain_parameters.map(Into::into),
+            certificate_type: self.certificate_type.map(Into::into),
+            certificate_length: self.certificate_length.map(Into::into),
+            x_509_certificate_identifier: self.x_509_certificate_identifier.map(Into::into),
+            x_509_certificate_subject: self.x_509_certificate_subject.map(Into::into),
+            x_509_certificate_issuer: self.x_509_certificate_issuer.map(Into::into),
+            digital_signature_algorithm: self.digital_signature_algorithm.map(Into::into),
+            cryptographic_usage_mask: self.cryptographic_usage_mask.map(Into::into),
+            lease_time: self.lease_time.map(Into::into),
+            usage_limits: self.usage_limits.map(Into::into),
+            state: self.state.map(Into::into),
+            initial_date: self.initial_date.map(Into::into),
+            activation_date: self.activation_date.map(Into::into),
+            process_start_date: self.process_start_date.map(Into::into),
+            protect_stop_date: self.protect_stop_date.map(Into::into),
             protection_level: None,
             protection_period: None,
             protection_storage_masks: None,
-            deactivation_date: self.deactivation_date.clone(),
-            destroy_date: self.destroy_date.clone(),
-            compromise_occurrence_date: self.compromise_occurrence_date.clone(),
-            compromise_date: self.compromise_date.clone(),
-            revocation_reason: self.revocation_reason.clone(),
+            deactivation_date: self.deactivation_date.map(Into::into),
+            destroy_date: self.destroy_date.map(Into::into),
+            compromise_occurrence_date: self.compromise_occurrence_date.map(Into::into),
+            compromise_date: self.compromise_date.map(Into::into),
+            revocation_reason: self.revocation_reason.map(Into::into),
             rotate_date: None,
             rotate_generation: None,
             rotate_interval: None,
             rotate_latest: None,
             rotate_name: None,
-            rotate_offset: None,
-            sensitive: false,
-            archive_date: self.archive_date.clone(),
+            archive_date: self.archive_date.map(Into::into),
             attribute_index: None,
-            object_group: self.object_group.clone(),
-            fresh: self.fresh.clone(),
-            link: self.link.clone(),
-            application_specific_information: self.application_specific_information.clone(),
-            contact_information: self.contact_information.clone(),
-            last_change_date: self.last_change_date.clone(),
-            alternative_name: self.alternative_name.clone(),
-            key_value_present: self.key_value_present.clone(),
-            key_value_location: self.key_value_location.clone(),
-            original_creation_date: self.original_creation_date.clone(),
-            random_number_generator: self.random_number_generator.clone(),
-            description: self.description.clone(),
-            comment: self.comment.clone(),
-            always_sensitive: None,
+            object_group: self.object_group.map(Into::into),
+            fresh: self.fresh.map(Into::into),
+            link: self.link.map(|n| n.into_iter().map(Into::into).collect()),
+            application_specific_information: self.application_specific_information.map(Into::into),
+            contact_information: self.contact_information.map(Into::into),
+            last_change_date: self.last_change_date.map(Into::into),
+            alternative_name: self.alternative_name.map(Into::into),
+            key_value_present: self.key_value_present.map(Into::into),
+            key_value_location: self.key_value_location.map(Into::into),
+            original_creation_date: self.original_creation_date.map(Into::into),
+            random_number_generator: self.random_number_generator.map(Into::into),
+            description: self.description.map(Into::into),
+            comment: self.comment.map(Into::into),
+            sensitive: self.sensitive,
+            always_sensitive: self.always_sensitive.map(Into::into),
             certificate_attributes: None,
             critical: None,
             extractable: None,
@@ -319,8 +318,11 @@ impl Attributes {
             opaque_data_type: None,
             pkcs_12_friendly_name: None,
             quantum_safe: None,
+            rotate_offset: None,
             short_unique_identifier: None,
-            vendor_attributes: None,
+            vendor_attributes: self
+                .custom_attribute
+                .map(|n| n.into_iter().map(Into::into).collect()),
         }
     }
 }
