@@ -946,6 +946,37 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activation_date: Option<u64>, // epoch millis
 
+    /// The Alternative Name attribute is a variable length text string that is associated
+    /// with the unique identifier of the object. It may be used as an alternative name to
+    /// identify the object, instead of using its unique identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternative_name: Option<Vec<AlternativeName>>,
+
+    /// The Always Sensitive attribute is a Boolean that indicates whether the key material
+    /// of a Symmetric Key, Private Key, or Secret Data object has always been considered
+    /// sensitive. This attribute SHOULD only be used for Managed Objects with the Sensitive
+    /// attribute set to True.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub always_sensitive: Option<bool>,
+
+    /// The Application Specific Information attribute is a structure used to store data specific
+    /// to the application(s) using the Managed Object. It consists of the following fields:
+    /// - Application Namespace - Text String
+    /// - Application Data - Text String
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application_specific_information: Option<ApplicationSpecificInformation>,
+
+    /// The Archive Date attribute contains the date and time when the Managed Object was
+    /// transferred to the Archive state in the Object States table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archive_date: Option<i64>,
+
+    /// The Attribute Index attribute is used to identify distinct instances of multi-instance attributes.
+    /// The combination of the attribute name and the Attribute Index SHALL be unique
+    /// within an instance of a managed object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute_index: Option<i32>,
+
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -964,6 +995,31 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_length: Option<i32>,
 
+    /// The Comment attribute is a text string that MAY be used to provide additional
+    /// information about the object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+
+    /// The Compromise Date attribute contains the date and time when the Managed Object
+    /// entered the Compromised state in the Object States table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compromise_date: Option<i64>,
+
+    /// The Compromise Occurrence Date attribute contains the date and time when the
+    /// Managed Object was first believed to be compromised.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compromise_occurrence_date: Option<i64>,
+
+    /// The Contact Information attribute is a text string that MAY be used to identify
+    /// or provide information about the Contact for the Managed Object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contact_information: Option<String>,
+
+    /// The Critical attribute is a Boolean value that indicates whether the Cryptographic
+    /// Usage Mask attribute should be always provided for the object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critical: Option<bool>,
+
     /// The Cryptographic Algorithm of an object. The Cryptographic Algorithm of
     /// a Certificate object identifies the algorithm for the public key
     /// contained within the Certificate. The digital signature algorithm used
@@ -973,15 +1029,6 @@ pub struct Attributes {
     /// deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
-
-    /// For keys, Cryptographic Length is the length in bits of the clear-text
-    /// cryptographic key material of the Managed Cryptographic Object. For
-    /// certificates, Cryptographic Length is the length in bits of the public
-    /// key contained within the Certificate. This attribute SHALL be set by the
-    /// server when the object is created or registered, and then SHALL NOT
-    /// be changed or deleted before the object is destroyed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_length: Option<i32>,
 
     /// The Cryptographic Domain Parameters attribute is a structure that
     /// contains fields that MAY need to be specified in the Create Key Pair
@@ -994,6 +1041,15 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_domain_parameters: Option<CryptographicDomainParameters>,
 
+    /// For keys, Cryptographic Length is the length in bits of the clear-text
+    /// cryptographic key material of the Managed Cryptographic Object. For
+    /// certificates, Cryptographic Length is the length in bits of the public
+    /// key contained within the Certificate. This attribute SHALL be set by the
+    /// server when the object is created or registered, and then SHALL NOT
+    /// be changed or deleted before the object is destroyed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i32>,
+
     /// See `CryptographicParameters`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
@@ -1004,6 +1060,41 @@ pub struct Attributes {
     /// SHALL NOT be performed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
+
+    /// The Deactivation Date attribute contains the date and time when the
+    /// Managed Object SHALL NOT be used for any purpose, except for deletion,
+    /// destruction, or re-activation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deactivation_date: Option<i64>,
+
+    /// The Description attribute is a string containing a description of the object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// The Destroy Date attribute contains the date and time when the Managed Object
+    /// was destroyed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destroy_date: Option<i64>,
+
+    /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
+    /// that is used with the signing key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,
+
+    /// The Extractable attribute is a Boolean that indicates whether the Managed Object
+    /// may be extracted from the cryptographic device on which it is stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extractable: Option<bool>,
+
+    /// The Fresh attribute indicates if the key value has remained unchanged
+    /// since its initial generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fresh: Option<bool>,
+
+    /// The Initial Date attribute contains the date and time when the Managed Object
+    /// was first created or registered at the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_date: Option<i64>,
 
     /// 4.26 The Key Format Type attribute is a required attribute of a
     /// Cryptographic Object. It is set by the server, but a particular Key
@@ -1018,6 +1109,26 @@ pub struct Attributes {
     /// non-default value is specified).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+
+    // The Key Value Location attribute identifies whether the key value is stored
+    /// on the KMIP server or stored on an external repository.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_value_location: Option<KeyValueLocationType>,
+
+    /// The Key Value Present attribute is a Boolean that indicates whether a key value
+    /// is present in the key block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_value_present: Option<bool>,
+
+    /// The Last Change Date attribute contains the date and time of the last change
+    /// to the Managed Object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_change_date: Option<i64>,
+
+    /// The Lease Time attribute is the length of time in seconds that the object MAY
+    /// be retained by the client.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_time: Option<i64>,
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1045,6 +1156,33 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<Vec<Link>>,
 
+    /// The Name attribute is a structure used to identify and locate the object.
+    /// The Name attribute MUST contain the Name Value. The Name Value member is
+    /// either a Text String or Enumeration.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Vec<Name>,
+
+    /// The Never Extractable attribute is a Boolean that indicates whether the key material
+    /// of a Symmetric Key, Private Key, or Secret Data object has never been extractable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub never_extractable: Option<bool>,
+
+    /// The NIST Key Type attribute is used to identify the key type used with the
+    /// NIST SP 800-56 and SP 800-108 operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nist_key_type: Option<NistKeyType>,
+
+    /// The Object Group attribute is a Text String that MAY be used to identify a group
+    /// of objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_group: Option<String>,
+
+    /// The Object Group Member attribute is an enumeration that indicates how the
+    /// object is a member of an object group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_group_member: Option<ObjectGroupMember>,
+
     /// The Object Typeof a Managed Object (e.g., public key, private key,
     /// symmetric key, etc.) SHALL be set by the server when the object is
     /// created or registered and then SHALL NOT be changed or deleted before
@@ -1052,11 +1190,109 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_type: Option<ObjectType>,
 
+    /// The Opaque Data Type attribute is an enumeration that indicates the type of opaque
+    /// data contained in the value of the opaque data attribute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opaque_data_type: Option<OpaqueDataType>,
+
+    /// The Original Creation Date attribute contains the date and time the object
+    /// was created by the client that first created it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_creation_date: Option<i64>,
+
+    /// The PKCS#12 Friendly Name attribute is a string used to identify the key
+    /// material stored within a PKCS#12 object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pkcs_12_friendly_name: Option<String>,
+
+    /// The Process Start Date attribute is the date and time that a managed object
+    /// is considered to enter the processing state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_start_date: Option<i64>,
+
+    /// The Protect Stop Date attribute is the date and time that a managed object
+    /// is considered to enter the protected state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protect_stop_date: Option<i64>,
+
+    /// The Protection Level attribute indicates the level of protection required for a object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_level: Option<ProtectionLevel>,
+
+    /// The Protection Period attribute is the length of time in seconds that the
+    /// object MAY be protected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_period: Option<i64>,
+
+    /// The Protection Storage Masks attribute contains a list of masks that define
+    /// storage protections required for an object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+
+    /// The Quantum Safe attribute is a Boolean that indicates whether the key is
+    /// quantum safe or not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantum_safe: Option<bool>,
+
+    /// The Random Number Generator attribute is a structure that contains the details
+    /// of the random number generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub random_number_generator: Option<RandomNumberGenerator>,
+
+    /// The Revocation Reason attribute is a structure used to indicate why the
+    /// Managed Object was revoked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revocation_reason: Option<RevocationReason>,
+
+    /// The Rotate Date attribute specifies the date and time for the last rotation
+    /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
+    /// the server when the Rotate operation successfully completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_date: Option<i64>,
+
+    /// The Rotate Generation attribute specifies the generation of the last rotation
+    /// of a Managed Cryptographic Object. The Rotate Generation attribute SHALL be set
+    /// by the server when the Rotate operation successfully completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_generation: Option<i32>,
+
+    /// The Rotate Interval attribute specifies the interval between rotations of a
+    /// Managed Cryptographic Object, measured in seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_interval: Option<i32>,
+
+    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
+    /// rotation time should be recalculated based on the Rotation Interval and
+    /// the Initial Date.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_latest: Option<bool>,
+
+    /// The Rotate Name attribute specifies the name of the rotation. This attribute
+    /// SHALL be used to specify the algorithm and/or template to be used for the
+    /// rotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_name: Option<String>,
+
+    /// The Rotate Offset attribute specifies the time offset between the Creation
+    /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
+    /// seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_offset: Option<i32>,
+
     /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
     // wrapped by another key. The server SHALL set the value to False if the value is not provided by the
     // client.
     #[serde(default)]
     pub sensitive: bool,
+
+    /// The Short Unique Identifier attribute is used for compact identification of objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_unique_identifier: Option<String>,
+
+    /// The State attribute indicates the current state of a Managed Object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<State>,
 
     /// The Unique Identifier is generated by the key management system
     /// to uniquely identify a Managed Object. It is only REQUIRED to be unique
@@ -1068,6 +1304,11 @@ pub struct Attributes {
     /// before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+
+    /// The Usage Limits attribute is a mechanism for limiting the usage of a
+    /// Managed Cryptographic Object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits: Option<UsageLimits>,
 
     /// A vendor specific Attribute is a structure used for sending and
     /// receiving a Managed Object attribute. The Vendor Identification and
@@ -1084,6 +1325,22 @@ pub struct Attributes {
     /// deleted by the client.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_attributes: Option<Vec<VendorAttribute>>,
+
+    /// The X.509 Certificate Identifier attribute is the X.509 certificate identifier
+    /// stored in the Issuer and Serial Number attributes from the X.509 Certificate
+    /// Issuer and the X.509 Certificate Serial Number.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_509_certificate_identifier: Option<X509CertificateIdentifier>,
+
+    /// The X.509 Certificate Issuer attribute is the Distinguished Name of the
+    /// Certificate Authority that issued the certificate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_509_certificate_issuer: Option<String>,
+
+    /// The X.509 Certificate Subject attribute is the Distinguished Name of the
+    /// entity associated with the public key contained in the certificate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x_509_certificate_subject: Option<String>,
 }
 
 impl Attributes {
@@ -3060,4 +3317,176 @@ impl ValidityIndicator {
             Self::Invalid
         }
     }
+}
+
+/// AlternativeName structure for compact identification of objects using various name types
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct AlternativeName {
+    /// Type of the alternative name
+    pub name_type: AlternativeNameType,
+    /// Value of the alternative name
+    pub name_value: String,
+}
+
+/// AlternativeNameType enumeration
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum AlternativeNameType {
+    UninterpretedTextString = 0x1,
+    URI = 0x2,
+    ObjectSerialNumber = 0x3,
+    EmailAddress = 0x4,
+    DNSName = 0x5,
+    X500DirectoryName = 0x6,
+    IPAddress = 0x7,
+}
+
+/// ApplicationSpecificInformation structure for storing application-specific data
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ApplicationSpecificInformation {
+    /// The application namespace
+    pub application_namespace: String,
+    /// The application data
+    pub application_data: String,
+}
+
+/// KeyValueLocationType enumeration indicates where a key value is stored
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum KeyValueLocationType {
+    Unspecified = 0x1,
+    OnPremise = 0x2,
+    OffPremise = 0x3,
+    OnPremiseOffPremise = 0x4,
+}
+
+/// NistKeyType enumeration used with NIST SP 800-56 and SP 800-108 operations
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum NistKeyType {
+    AESP1 = 0x1,
+    AESP2 = 0x2,
+    AESP3 = 0x3,
+    AESP4 = 0x4,
+    AESP5 = 0x5,
+    TDES2 = 0x6,
+    TDES3 = 0x7,
+    DESRW128 = 0x8,
+    DESRW192 = 0x9,
+    DESRW256 = 0xA,
+    HMACSHA1 = 0xB,
+    HMACSHA224 = 0xC,
+    HMACSHA256 = 0xD,
+    HMACSHA384 = 0xE,
+    HMACSHA512 = 0xF,
+}
+
+/// ProtectionLevel enumeration indicates the level of protection required for an object
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum ProtectionLevel {
+    Software = 0x1,
+    Hardware = 0x2,
+    Hybrid = 0x3,
+}
+
+/// RandomNumberGenerator structure contains details of the random number generation
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct RandomNumberGenerator {
+    /// The RNG algorithm
+    pub rng_algorithm: RNGAlgorithm,
+    /// The RNG parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rng_parameters: Option<RNGParameters>,
+}
+
+/// RNGParameters structure contains parameters for the random number generator
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGParameters {
+    /// DRBG algorithm
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drbg_algorithm: Option<DRBGAlgorithm>,
+    /// DRBG mechanism
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drbg_mechanism: Option<String>,
+}
+
+/// State enumeration indicates the current state of a managed object
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum State {
+    PreActive = 0x1,
+    Active = 0x2,
+    Deactivated = 0x3,
+    Compromised = 0x4,
+    Destroyed = 0x5,
+    DestroyedCompromised = 0x6,
+}
+
+/// UsageLimits structure for limiting the usage of a managed cryptographic object
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct UsageLimits {
+    /// The usage limits unit
+    pub usage_limits_unit: UsageLimitsUnit,
+    /// The usage limits count
+    pub usage_limits_count: i64,
+    /// The usage limits total
+    pub usage_limits_total: i64,
+}
+
+/// UsageLimitsUnit enumeration defines the unit for usage limits
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum UsageLimitsUnit {
+    Byte = 0x1,
+    Object = 0x2,
+}
+
+/// Name structure for identifying Managed Objects
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Name {
+    /// The Name Value
+    pub name_value: String,
+    /// The Name Type
+    pub name_type: NameType,
+}
+
+/// NameType enumeration defines the type of name used to identify managed objects
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum NameType {
+    UninterpretedTextString = 0x1,
+    URI = 0x2,
+    DNS = 0x3,
+    EmailAddress = 0x4,
+    DistinguishedName = 0x5,
+}
+
+/// X509CertificateIdentifier structure for identifying X.509 certificates
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct X509CertificateIdentifier {
+    /// The Certificate Issuer
+    pub issuer: String,
+    /// The Certificate Serial Number
+    pub serial_number: String,
+}
+
+/// RNG Algorithm Enumeration
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum RNGAlgorithm {
+    Unspecified = 0x1,
+    FIPS186_2 = 0x2,
+    DRBG = 0x3,
+    NRBG = 0x4,
+    ANSI_X931 = 0x5,
+    ANSI_X962 = 0x6,
+}
+
+/// DRBG Algorithm Enumeration
+#[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+pub enum DRBGAlgorithm {
+    Unspecified = 0x1,
+    HashDRBG = 0x2,
+    HMACDRBG = 0x3,
+    CTRDRBG = 0x4,
 }
