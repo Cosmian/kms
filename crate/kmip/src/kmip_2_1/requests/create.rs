@@ -3,12 +3,12 @@ use zeroize::Zeroizing;
 use crate::{
     KmipError,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, SymmetricKey},
         kmip_operations::Create,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
         },
     },
 };

@@ -8,11 +8,12 @@ use crate::kmip_2_1_bail;
 use crate::{
     KmipError,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::CreateKeyPair,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicUsageMask, KeyFormatType, RecommendedCurve, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
+            KeyFormatType, RecommendedCurve, UniqueIdentifier,
         },
     },
 };

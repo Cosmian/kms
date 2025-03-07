@@ -13,7 +13,7 @@ use serde::{
 };
 use strum::{EnumIter, VariantNames};
 
-use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
+use super::{kmip_attributes::Attributes, kmip_data_structures::KeyWrappingData};
 use crate::{
     error::{KmipError, result::KmipResult},
     kmip_2_1::{
