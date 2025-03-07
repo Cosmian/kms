@@ -1,7 +1,8 @@
 use crate::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
-    kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
+    kmip_types::{KeyWrapType, UniqueIdentifier},
 };
 
 /// Build an ` Import ` request for a generic Object

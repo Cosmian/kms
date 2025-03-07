@@ -7,6 +7,7 @@ use zeroize::Zeroizing;
 use crate::{
     error::{result::KmipResult, KmipError},
     kmip_2_1::{
+        kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
             Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
@@ -18,10 +19,9 @@ use crate::{
             LocateResponse, Operation, SetAttribute,
         },
         kmip_types::{
-            AsynchronousIndicator, AttestationType, Attribute, Attributes,
-            BatchErrorContinuationOption, Credential, CryptographicAlgorithm,
-            CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+            AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
+            CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
     },

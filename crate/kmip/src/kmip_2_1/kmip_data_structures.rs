@@ -15,11 +15,11 @@ use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
     error::KmipError,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_operations::ErrorReason,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
-            KeyCompressionType, KeyFormatType, MacSignatureKeyInformation, RecommendedCurve,
-            WrappingMethod,
+            CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyCompressionType,
+            KeyFormatType, MacSignatureKeyInformation, RecommendedCurve, WrappingMethod,
         },
     },
     pad_be_bytes, SafeBigUint,

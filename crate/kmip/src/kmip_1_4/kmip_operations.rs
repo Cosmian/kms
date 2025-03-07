@@ -9,6 +9,7 @@ use super::{
     kmip_objects::{Object, ObjectType},
     kmip_types::*,
 };
+use crate::kmip_1_4::kmip_attributes::{Attribute, Attributes};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Direction {
@@ -195,7 +196,7 @@ pub struct ReCertifyResponse {
 /// This operation requests that the server search for one or more Managed Objects.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Locate {
-    pub attributes: Vec<Attribute>,
+    pub attributes: Attributes,
     pub storage_status_mask: Option<StorageStatusMask>,
     pub object_group_member: Option<ObjectGroupMember>,
 }
@@ -257,7 +258,7 @@ pub struct GetAttributes {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct GetAttributesResponse {
     pub unique_identifier: String,
-    pub attributes: Vec<Attribute>,
+    pub attributes: Attributes,
 }
 
 /// 4.13 Get Attribute List
