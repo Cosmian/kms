@@ -6,7 +6,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{ErrorReason, Revoke, RevokeResponse},
     kmip_types::{
-        KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
+        KeyFormatType, LinkType, RevocationReason, RevocationReasonCode, StateEnumeration,
         UniqueIdentifier,
     },
 };
@@ -272,13 +272,12 @@ async fn revoke_key_core(
 ) -> KResult<()> {
     let state = match revocation_reason {
         RevocationReason::Enumeration(e) => match e {
-            RevocationReasonEnumeration::Unspecified
-            | RevocationReasonEnumeration::AffiliationChanged
-            | RevocationReasonEnumeration::Superseded
-            | RevocationReasonEnumeration::CessationOfOperation
-            | RevocationReasonEnumeration::PrivilegeWithdrawn => StateEnumeration::Deactivated,
-            RevocationReasonEnumeration::KeyCompromise
-            | RevocationReasonEnumeration::CACompromise => {
+            RevocationReasonCode::Unspecified
+            | RevocationReasonCode::AffiliationChanged
+            | RevocationReasonCode::Superseded
+            | RevocationReasonCode::CessationOfOperation
+            | RevocationReasonCode::PrivilegeWithdrawn => StateEnumeration::Deactivated,
+            RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
                 if compromise_occurrence_date.is_none() {
                     kms_bail!(KmsError::InvalidRequest(
                         "A compromise date must be supplied in case of compromised object"
