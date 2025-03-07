@@ -156,7 +156,7 @@ jobs:
         run: |
             set -ex
             sudo dpkg --add-architecture i386
-            sudo apt-get update && sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
+            sudo apt-get update && sudo apt-get install libc6:i386 libstdc++6:i386
 
             # Download the simulator
             # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"

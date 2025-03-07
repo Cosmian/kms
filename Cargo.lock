@@ -1407,6 +1407,7 @@ dependencies = [
  "assert_cmd",
  "base64 0.22.1",
  "clap",
+ "cloudproof",
  "cosmian_config_utils",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
@@ -1440,8 +1441,8 @@ dependencies = [
 name = "cosmian_kms_client"
 version = "4.22.1"
 dependencies = [
+ "cloudproof",
  "cosmian_config_utils",
- "cosmian_crypto_core 10.0.0",
  "cosmian_http_client",
  "cosmian_kmip",
  "cosmian_kms_access",
@@ -1569,8 +1570,8 @@ version = "4.22.1"
 dependencies = [
  "async-trait",
  "clap",
- "cloudproof_findex",
- "cosmian_crypto_core 10.0.0",
+ "cloudproof",
+ "cloudproof_findex 5.0.4",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
@@ -3669,6 +3670,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pqc_kyber"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32b79004a05337e54e8ffc0ec7470e40fa26eca6fe182968ec2b803247f2283c"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "predicates"
 version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3915,6 +3925,16 @@ checksum = "b08f3c9802962f7e1b25113931d94f43ed9725bebc59db9d0c3e9a23b67e15ff"
 dependencies = [
  "getrandom 0.3.1",
  "zerocopy 0.8.14",
+]
+
+[[package]]
+name = "rand_distr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
+dependencies = [
+ "num-traits",
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -4717,6 +4737,12 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stringprep"
