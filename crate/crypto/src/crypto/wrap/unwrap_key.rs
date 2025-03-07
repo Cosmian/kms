@@ -1,9 +1,10 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::Object,
     kmip_types::{
-        Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask,
-        EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+        BlockCipherMode, CryptographicAlgorithm, CryptographicUsageMask, EncodingOption,
+        KeyFormatType, PaddingMethod, WrappingMethod,
     },
 };
 use openssl::pkey::{Id, PKey, Private};
@@ -156,7 +157,7 @@ pub fn update_key_block_with_unwrapped_key(
         }
     };
     // update the object with the unwrapped key value, and remove the wrapping data
-    object_key_block.key_value = key_value;
+    object_key_block.key_value = Some(key_value);
     object_key_block.key_wrapping_data = None;
     // we assume that the key_block KeyFormatType is valid
     Ok(())

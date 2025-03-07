@@ -3,8 +3,9 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::{Certificate, Object},
-        kmip_types::{Attributes, KeyFormatType, LinkType},
+        kmip_types::{KeyFormatType, LinkType},
     },
     read_from_json_file, read_object_from_json_ttlv_file,
     ttlv::{kmip_ttlv_deserializer::from_ttlv, TTLV},

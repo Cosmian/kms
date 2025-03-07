@@ -6,10 +6,9 @@ use clap::{
 };
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_operations::Locate,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier},
     },
     kmip_2_1::kmip_objects::ObjectType,
     KmsClient,

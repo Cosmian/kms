@@ -271,8 +271,18 @@ fn test_import_export_wrap_private_key(
         })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
         assert!(
-            re_exported_key.key_block()?.key_value.key_material
-                == private_key.key_block()?.key_value.key_material
+            re_exported_key
+                .key_block()?
+                .key_value
+                .as_ref()
+                .expect("The key value of the re-exported key should be present")
+                .key_material
+                == private_key
+                    .key_block()?
+                    .key_value
+                    .as_ref()
+                    .expect("The key value of the original key should be present")
+                    .key_material
         );
         assert_eq!(
             re_exported_key

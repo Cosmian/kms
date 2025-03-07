@@ -6,11 +6,12 @@ use std::{
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::Certify,
         kmip_types::{
-            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
+            CertificateAttributes, CertificateRequestType, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
         },
     },
     kmip_2_1::kmip_types::{

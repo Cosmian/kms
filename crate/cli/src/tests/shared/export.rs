@@ -500,7 +500,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
     let KeyMaterial::TransparentECPrivateKey {
         d,
         recommended_curve,
-    } = &kv.key_material
+    } = &kv.as_ref().expect("Invalid key value type").key_material
     else {
         panic!("Invalid key value type");
     };
@@ -558,7 +558,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
     let KeyMaterial::TransparentECPublicKey {
         q_string,
         recommended_curve,
-    } = &kv.key_material
+    } = &kv.as_ref().expect("Invalid key value type").key_material
     else {
         panic!("Invalid key value type")
     };

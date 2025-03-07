@@ -5,12 +5,13 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 };
 use cosmian_kmip::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, RecommendedCurve,
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+            CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            RecommendedCurve,
         },
     },
     SafeBigUint,
@@ -142,7 +143,7 @@ pub fn to_ec_public_key(
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentECPublicKey {
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
@@ -170,7 +171,7 @@ pub fn to_ec_public_key(
                     }]),
                     ..Attributes::default()
                 }),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },
@@ -209,7 +210,7 @@ pub fn to_ec_private_key(
             cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: curve,
                     d: Box::new(SafeBigUint::from_bytes_be(bytes)),
@@ -238,7 +239,7 @@ pub fn to_ec_private_key(
                     sensitive,
                     ..Attributes::default()
                 }),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },
@@ -582,7 +583,7 @@ mod tests {
         let KeyMaterial::TransparentECPublicKey {
             q_string: original_public_key_bytes,
             ..
-        } = &original_public_key_value.key_material
+        } = &original_public_key_value.as_ref().unwrap().key_material
         else {
             panic!("Not a transparent public key")
         };
@@ -597,10 +598,11 @@ mod tests {
         //
         let original_private_key_value =
             &wrap_key_pair.private_key().key_block().unwrap().key_value;
-        let mut original_private_key_bytes = match &original_private_key_value.key_material {
-            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
-            _ => panic!("Not a transparent private key"),
-        };
+        let mut original_private_key_bytes =
+            match &original_private_key_value.as_ref().unwrap().key_material {
+                KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
+                _ => panic!("Not a transparent private key"),
+            };
         pad_be_bytes(&mut original_private_key_bytes, X25519_PRIVATE_KEY_LENGTH);
         // try to convert to openssl
         let p_key =
@@ -701,7 +703,10 @@ mod tests {
         let KeyMaterial::TransparentECPublicKey {
             q_string: original_public_key_bytes,
             ..
-        } = &original_public_key_value.key_material
+        } = &original_public_key_value
+            .as_ref()
+            .expect("failed to get key material from public key in test_x448_conversions")
+            .key_material
         else {
             panic!("Not a transparent public key")
         };
@@ -716,7 +721,11 @@ mod tests {
         //
         let original_private_key_value =
             &wrap_key_pair.private_key().key_block().unwrap().key_value;
-        let mut original_private_key_bytes = match &original_private_key_value.key_material {
+        let mut original_private_key_bytes = match &original_private_key_value
+            .as_ref()
+            .expect("failed to get key material from private key in test_x448_conversions")
+            .key_material
+        {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
             _ => panic!("Not a transparent private key"),
         };

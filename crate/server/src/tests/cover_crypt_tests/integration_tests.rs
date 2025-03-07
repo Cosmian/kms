@@ -8,7 +8,8 @@ use cosmian_kmip::kmip_2_1::{
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
+        CryptographicAlgorithm, CryptographicParameters, RevocationReason, RevocationReasonCode,
+        UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},
 };
@@ -228,7 +229,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
                 unique_identifier: Some(UniqueIdentifier::TextString(
                     user_decryption_key_identifier_1.to_owned(),
                 )),
-                revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
+                revocation_reason: RevocationReason {
+                    revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                    revocation_message: Some("Revocation test".to_owned()),
+                },
                 compromise_occurrence_date: None,
             },
         )

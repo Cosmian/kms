@@ -262,22 +262,26 @@ impl BenchAction {
             }
             .run(kms_rest_client)
             .await?;
-            let kk = CreateKeyAction {
-                number_of_bits: Some(256),
-                wrapping_key_id: Some(pk.to_string()),
-                tags: vec!["bench".to_owned()],
-                ..Default::default()
-            }
-            .run(kms_rest_client)
+            let kk = Box::pin(
+                CreateKeyAction {
+                    number_of_bits: Some(256),
+                    wrapping_key_id: Some(pk.to_string()),
+                    tags: vec!["bench".to_owned()],
+                    ..Default::default()
+                }
+                .run(kms_rest_client),
+            )
             .await?;
             return Ok((kk, Some((sk, pk))));
         }
-        let kk = CreateKeyAction {
-            number_of_bits: Some(256),
-            tags: vec!["bench".to_owned()],
-            ..Default::default()
-        }
-        .run(kms_rest_client)
+        let kk = Box::pin(
+            CreateKeyAction {
+                number_of_bits: Some(256),
+                tags: vec!["bench".to_owned()],
+                ..Default::default()
+            }
+            .run(kms_rest_client),
+        )
         .await?;
         Ok((kk, None))
     }

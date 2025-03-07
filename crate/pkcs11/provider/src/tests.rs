@@ -94,10 +94,10 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
                 attributes: None,
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also, it should not be specified if the cryptographic length is not specified.

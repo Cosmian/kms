@@ -14,8 +14,9 @@ use cloudproof_findex::{
 };
 use cosmian_kmip::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
-        kmip_types::{Attributes, StateEnumeration},
+        kmip_types::StateEnumeration,
     },
     KmipResultHelper,
 };

@@ -2,8 +2,9 @@ use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
     kmip_2_1::{
+        kmip_attributes::Attribute,
         kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
-        kmip_types::{Attribute, AttributeReference, Tag},
+        kmip_types::{AttributeReference, Tag},
     },
     KmsClient,
 };

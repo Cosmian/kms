@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::{
         Certificate, Object, OpaqueObject, PrivateKey, PublicKey, SecretData, SymmetricKey,
     },
-    kmip_types::Attributes,
 };
 use cosmian_kms_interfaces::ObjectsStore;
 use serde_json::Value;

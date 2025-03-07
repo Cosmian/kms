@@ -4,10 +4,10 @@ use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
     kmip_2_1::{
+        kmip_attributes::Attribute,
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
-            self, Attribute, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            VendorAttribute,
+            self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
         },
     },
     KmsClient,
@@ -157,7 +157,7 @@ pub struct SetOrDeleteAttributes {
 
     /// Set the activation date of the key. Epoch time (or Unix time) in milliseconds.
     #[clap(long, short = 'd')]
-    pub(crate) activation_date: Option<u64>,
+    pub(crate) activation_date: Option<i64>,
 
     /// The cryptographic algorithm used by the key.
     #[clap(long, short = 'a')]

@@ -1,8 +1,9 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::Object,
     kmip_operations::{Decrypt, GetAttributes, Locate},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
+        CryptographicAlgorithm, CryptographicParameters, KeyFormatType, PaddingMethod,
         RecommendedCurve, UniqueIdentifier,
     },
 };

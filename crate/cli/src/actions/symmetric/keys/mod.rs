@@ -32,7 +32,7 @@ impl KeysCommands {
     pub(crate) async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::Create(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::ReKey(action) => {
                 action.run(kms_rest_client).await?;
@@ -41,7 +41,7 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Import(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::Wrap(action) => {
                 action.run(kms_rest_client).await?;

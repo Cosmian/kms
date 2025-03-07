@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_operations::Locate,
     kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         StateEnumeration,
     },
 };

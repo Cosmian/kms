@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attribute,
     kmip_objects::ObjectType,
     kmip_operations::{SetAttribute, SetAttributeResponse},
-    kmip_types::{Attribute, UniqueIdentifier},
+    kmip_types::UniqueIdentifier,
     KmipOperation,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};

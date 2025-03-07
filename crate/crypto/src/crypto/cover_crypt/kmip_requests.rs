@@ -1,11 +1,12 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
-        Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType,
+        LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
     },
 };
 use zeroize::Zeroizing;
@@ -128,10 +129,10 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(attributes),
-                },
+                }),
                 cryptographic_length,
                 key_wrapping_data: if is_wrapped {
                     Some(KeyWrappingData {
@@ -203,10 +204,10 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(attributes),
-                },
+                }),
                 cryptographic_length,
                 key_wrapping_data: if is_wrapped {
                     Some(KeyWrappingData {
@@ -259,10 +260,10 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptPublicKey,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(public_key.to_vec())),
                     attributes: Some(attributes),
-                },
+                }),
                 cryptographic_length,
                 key_wrapping_data: None,
             },

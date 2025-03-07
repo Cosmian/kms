@@ -10,11 +10,12 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask};
 use cosmian_kmip::kmip_2_1::{
     extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+    kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
     kmip_types::{
-        Attributes, CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        StateEnumeration, UniqueIdentifier,
+        CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier, StateEnumeration,
+        UniqueIdentifier,
     },
     KmipOperation,
 };

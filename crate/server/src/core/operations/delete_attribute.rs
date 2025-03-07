@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attribute,
     kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
-    kmip_types::{Attribute, AttributeReference, Tag, UniqueIdentifier},
+    kmip_types::{AttributeReference, Tag, UniqueIdentifier},
     KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;

@@ -1,7 +1,6 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{self, AccessPolicy, EncryptionHint, Policy};
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_types::{Attributes, VendorAttribute},
+    extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttribute,
 };
 use serde::{Deserialize, Serialize};
 

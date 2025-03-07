@@ -4,8 +4,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, UniqueIdentifier},
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::UniqueIdentifier,
 };
 use cosmian_kms_crypto::openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions};
 use cosmian_kms_interfaces::ObjectWithMetadata;

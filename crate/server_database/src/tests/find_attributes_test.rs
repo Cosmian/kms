@@ -5,10 +5,10 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_types::{
-        Attributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+        CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     },
     requests::create_symmetric_key_kmip_object,
 };

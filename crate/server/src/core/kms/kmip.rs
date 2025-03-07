@@ -73,7 +73,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CertifyResponse> {
-        operations::certify(self, request, user, params).await
+        Box::pin(operations::certify(self, request, user, params)).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -90,7 +90,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CreateResponse> {
-        operations::create(self, request, user, params).await
+        Box::pin(operations::create(self, request, user, params)).await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -114,7 +114,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, user, params).await
+        Box::pin(operations::create_key_pair(self, request, user, params)).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -141,7 +141,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DecryptResponse> {
-        operations::decrypt(self, request, user, params).await
+        Box::pin(operations::decrypt(self, request, user, params)).await
     }
 
     /// This operation is used to indicate to the server that the key material
@@ -192,7 +192,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<EncryptResponse> {
-        operations::encrypt(self, request, user, params).await
+        Box::pin(operations::encrypt(self, request, user, params)).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -411,7 +411,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, user, params).await
+        Box::pin(operations::rekey_keypair(self, request, user, params)).await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.

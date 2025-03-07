@@ -3,11 +3,10 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        },
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier},
     },
     import_object,
     kmip_2_1::kmip_objects::{PrivateKey, PublicKey, SymmetricKey},
@@ -263,10 +262,10 @@ pub(crate) fn build_private_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also it should not be specified if the cryptographic length is not specified.
@@ -288,10 +287,10 @@ fn build_public_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also it should not be specified if the cryptographic length is not specified.
@@ -312,10 +311,10 @@ fn build_symmetric_key_from_bytes(
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
                 attributes: Some(Attributes::default()),
-            },
+            }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),
             key_wrapping_data: None,

@@ -3,9 +3,10 @@
 use std::{fs, path, sync::Arc};
 
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::{Certificate, Object, ObjectType},
     kmip_operations::{Import, Validate},
-    kmip_types::{Attributes, CertificateType, UniqueIdentifier, ValidityIndicator},
+    kmip_types::{CertificateType, UniqueIdentifier, ValidityIndicator},
 };
 use tracing::debug;
 

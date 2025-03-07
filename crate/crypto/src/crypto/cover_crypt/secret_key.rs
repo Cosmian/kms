@@ -5,12 +5,11 @@ use cloudproof::reexport::{
     crypto_core::bytes_ser_de::Serializable,
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType, SymmetricKey},
     kmip_operations::GetResponse,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, WrappingMethod,
-    },
+    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, WrappingMethod},
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
@@ -65,7 +64,7 @@ pub fn wrapped_secret_key(
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value,
+            key_value: Some(key_value),
             cryptographic_length,
             key_wrapping_data: Some(key_wrapping_data),
         },
@@ -140,14 +139,23 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_owned(),
             ))
         }
-        serde_json::from_slice::<Self>(match &sk.key_value.key_material {
-            KeyMaterial::TransparentSymmetricKey { key } => key,
-            other => {
-                return Err(CryptoError::Kmip(format!(
-                    "Invalid key material for an CoverCrypt secret key: {other}"
-                )))
-            }
-        })
+        serde_json::from_slice::<Self>(
+            match &sk
+                .key_value
+                .as_ref()
+                .ok_or_else(|| {
+                    CryptoError::Default("the Secret Key does not have a Key Value".to_owned())
+                })?
+                .key_material
+            {
+                KeyMaterial::TransparentSymmetricKey { key } => key,
+                other => {
+                    return Err(CryptoError::Kmip(format!(
+                        "Invalid key material for an CoverCrypt secret key: {other}"
+                    )))
+                }
+            },
+        )
         .map_err(|e| {
             CryptoError::Kmip(format!(
                 "failed deserializing the CoverCrypt Secret Key from the Key Material {e}"

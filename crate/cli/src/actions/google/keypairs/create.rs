@@ -4,10 +4,11 @@ use cosmian_kms_client::{
     export_object,
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
         kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
         kmip_types::{
-            Attributes, BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
+            BlockCipherMode, CertificateAttributes, CryptographicAlgorithm,
             CryptographicParameters, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier, VendorAttribute,
         },

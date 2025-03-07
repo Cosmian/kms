@@ -31,7 +31,7 @@ impl KeysCommands {
         match self {
             Self::Create(action) => action.run(kms_rest_client).await?,
             Self::Export(action) => action.run(kms_rest_client).await?,
-            Self::Import(action) => action.run(kms_rest_client).await?,
+            Self::Import(action) => Box::pin(action.run(kms_rest_client)).await?,
             Self::Wrap(action) => action.run(kms_rest_client).await?,
             Self::Unwrap(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,

@@ -2,9 +2,10 @@ use tracing::trace;
 
 use crate::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
         kmip_operations::Import,
-        kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
+        kmip_types::{KeyWrapType, UniqueIdentifier},
     },
     KmsClient, KmsClientError,
 };

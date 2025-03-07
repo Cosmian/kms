@@ -4,10 +4,9 @@ use clap::{Parser, ValueEnum};
 use cloudproof::reexport::crypto_core::reexport::x509_cert;
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::Object,
-        kmip_types::{
-            Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        },
+        kmip_types::{CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier},
     },
     import_object,
     kmip_2_1::kmip_objects,
@@ -156,14 +155,13 @@ impl ImportCertificateAction {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
                 let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
-                let certificate_id = self
-                    .import_chain(
-                        kms_rest_client,
-                        vec![object],
-                        self.replace_existing,
-                        leaf_certificate_attributes,
-                    )
-                    .await?;
+                let certificate_id = Box::pin(self.import_chain(
+                    kms_rest_client,
+                    vec![object],
+                    self.replace_existing,
+                    leaf_certificate_attributes,
+                ))
+                .await?;
                 (
                     "The certificate in the JSON TTLV was successfully imported!".to_owned(),
                     Some(certificate_id),
@@ -180,14 +178,13 @@ impl ImportCertificateAction {
                     certificate_type: CertificateType::X509,
                     certificate_value: certificate.to_der()?,
                 });
-                let certificate_id = self
-                    .import_chain(
-                        kms_rest_client,
-                        vec![object],
-                        self.replace_existing,
-                        leaf_certificate_attributes,
-                    )
-                    .await?;
+                let certificate_id = Box::pin(self.import_chain(
+                    kms_rest_client,
+                    vec![object],
+                    self.replace_existing,
+                    leaf_certificate_attributes,
+                ))
+                .await?;
                 (
                     "The certificate in the PEM file was successfully imported!".to_owned(),
                     Some(certificate_id),
@@ -204,14 +201,13 @@ impl ImportCertificateAction {
                     certificate_type: CertificateType::X509,
                     certificate_value: certificate.to_der()?,
                 });
-                let certificate_id = self
-                    .import_chain(
-                        kms_rest_client,
-                        vec![object],
-                        self.replace_existing,
-                        leaf_certificate_attributes,
-                    )
-                    .await?;
+                let certificate_id = Box::pin(self.import_chain(
+                    kms_rest_client,
+                    vec![object],
+                    self.replace_existing,
+                    leaf_certificate_attributes,
+                ))
+                .await?;
                 (
                     "The certificate in the DER file was successfully imported!".to_owned(),
                     Some(certificate_id),
@@ -219,7 +215,7 @@ impl ImportCertificateAction {
             }
             CertificateInputFormat::Pkcs12 => {
                 debug!("CLI: import certificate as PKCS12 file");
-                let private_key_id = self.import_pkcs12(kms_rest_client).await?;
+                let private_key_id = Box::pin(self.import_pkcs12(kms_rest_client)).await?;
                 (
                     "The certificate(s) and private key were successfully imported! The private \
                      key has id:"
@@ -232,14 +228,13 @@ impl ImportCertificateAction {
                 let pem_stack = read_bytes_from_file(&self.get_certificate_file()?)?;
                 let objects = build_chain_from_stack(&pem_stack)?;
                 // import the full chain
-                let leaf_certificate_id = self
-                    .import_chain(
-                        kms_rest_client,
-                        objects,
-                        self.replace_existing,
-                        leaf_certificate_attributes,
-                    )
-                    .await?;
+                let leaf_certificate_id = Box::pin(self.import_chain(
+                    kms_rest_client,
+                    objects,
+                    self.replace_existing,
+                    leaf_certificate_attributes,
+                ))
+                .await?;
                 (
                     "The certificate chain in the PEM file was successfully imported!".to_owned(),
                     Some(leaf_certificate_id),
@@ -262,7 +257,7 @@ impl ImportCertificateAction {
                     })?;
                 // import the certificates
                 let objects = build_chain_from_stack(&ccadb_bytes)?;
-                self.import_chain(kms_rest_client, objects, self.replace_existing, None)
+                Box::pin(self.import_chain(kms_rest_client, objects, self.replace_existing, None))
                     .await?;
 
                 ("The list of Mozilla CCADB certificates".to_owned(), None)

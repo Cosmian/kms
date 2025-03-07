@@ -7,9 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
-    KmipOperation,
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration, KmipOperation,
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,

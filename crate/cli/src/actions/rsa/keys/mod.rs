@@ -51,7 +51,7 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Import(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::Wrap(action) => {
                 action.run(kms_rest_client).await?;

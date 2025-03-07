@@ -1,5 +1,6 @@
-use cosmian_kmip::kmip_2_1::kmip_types::{
-    Attributes, LinkedObjectIdentifier::TextString, StateEnumeration,
+use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
+    kmip_types::{LinkedObjectIdentifier::TextString, StateEnumeration},
 };
 
 /// Handle different placeholders naming (bind parameter or

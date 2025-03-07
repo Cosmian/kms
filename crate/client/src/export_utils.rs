@@ -6,12 +6,11 @@ use cosmian_kmip::kmip_2_1::{
 use crate::{
     batch_utils::batch_operations,
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::Object,
         kmip_operations::{Export, Get},
-        kmip_types::{
-            Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
-        },
+        kmip_types::{EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod},
     },
     error::result::{KmsClientResult, KmsClientResultHelper},
     KmsClient, KmsClientError,

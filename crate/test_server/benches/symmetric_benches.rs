@@ -2,10 +2,11 @@
 use cosmian_kms_client::{
     reexport::cosmian_kmip::kmip_2_1::{
         extra::BulkData,
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, Decrypt, Encrypt},
         kmip_types::{
-            Attributes, BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
+            BlockCipherMode, CryptographicAlgorithm, CryptographicParameters,
             CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
         },
     },

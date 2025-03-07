@@ -3,10 +3,11 @@ use cloudproof::reexport::{
     crypto_core::bytes_ser_de::Serializable,
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+        CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier,
     },
 };
@@ -112,10 +113,10 @@ fn create_master_private_key_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },
@@ -153,10 +154,10 @@ fn create_master_public_key_object(
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
-            },
+            }),
             cryptographic_length,
             key_wrapping_data: None,
         },

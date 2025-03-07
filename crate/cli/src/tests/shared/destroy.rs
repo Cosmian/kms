@@ -80,7 +80,9 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str, remove: bool) -> CliResul
     } else {
         assert!(export_res.is_ok());
         let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
-        match &object.key_block()?.key_value.key_material {
+        match &object.key_block()?.key_value.as_ref().expect(
+            "Key value should be present in the key block",
+        ).key_material {
             cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(
                 v,
             ) => {

@@ -54,7 +54,7 @@ fn get_and_check_attributes(
     trace!("get_and_check_attributes: {get_attributes:?}");
 
     if let Some(activation_date) = requested_attributes.activation_date {
-        let date: u64 = serde_json::from_value(
+        let date: i64 = serde_json::from_value(
             get_attributes
                 .get(&Tag::ActivationDate.to_string())
                 .unwrap()

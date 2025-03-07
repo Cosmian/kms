@@ -11,9 +11,7 @@ use cloudproof_findex::{
     Label, Location,
 };
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
-    KmipOperation,
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration, KmipOperation,
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use cosmian_kms_interfaces::{
