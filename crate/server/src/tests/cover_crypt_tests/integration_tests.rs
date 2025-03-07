@@ -6,7 +6,8 @@ use cosmian_kmip::kmip_2_1::{
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, RevocationReason, UniqueIdentifier,
+        CryptographicAlgorithm, CryptographicParameters, RevocationReason, RevocationReasonCode,
+        UniqueIdentifier,
     },
     requests::{decrypt_request, encrypt_request},
 };

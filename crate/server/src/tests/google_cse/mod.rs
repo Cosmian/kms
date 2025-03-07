@@ -13,13 +13,14 @@ use base64::{engine::general_purpose, Engine};
 use cosmian_kmip::{
     kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Certify, Get, Import, ImportResponse},
         kmip_types::{
-            Attributes, BlockCipherMode, CertificateAttributes, CryptographicParameters,
-            EncodingOption, EncryptionKeyInformation, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, WrappingMethod,
+            BlockCipherMode, CertificateAttributes, CryptographicParameters, EncodingOption,
+            EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier, VendorAttribute, WrappingMethod,
         },
         requests::create_rsa_key_pair_request,
         KmipOperation,
@@ -279,10 +280,10 @@ pub(crate) fn build_private_key_from_der_bytes(
         key_block: KeyBlock {
             key_format_type,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(bytes),
                 attributes: Some(Attributes::default()),
-            },
+            }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
             // Also it should not be specified if the cryptographic length is not specified.

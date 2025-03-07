@@ -3,9 +3,10 @@ use std::sync::Arc;
 use cosmian_cover_crypt::{MasterSecretKey, api::Covercrypt};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, Import},
-    kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
+    kmip_operations::{Create, CreateKeyPair, Get},
+    kmip_types::{KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::cover_crypt::{
     attributes::access_policy_from_attributes, master_keys::create_msk_object,

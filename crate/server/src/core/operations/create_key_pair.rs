@@ -2,8 +2,9 @@ use std::{collections::HashSet, sync::Arc};
 
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
-    kmip_types::{Attributes, CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
+    kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_crypto::crypto::elliptic_curves::operation::{

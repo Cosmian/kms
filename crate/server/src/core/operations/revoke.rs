@@ -270,24 +270,20 @@ async fn revoke_key_core(
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    let state = match revocation_reason {
-        RevocationReason::Enumeration(e) => match e {
-            RevocationReasonCode::Unspecified
-            | RevocationReasonCode::AffiliationChanged
-            | RevocationReasonCode::Superseded
-            | RevocationReasonCode::CessationOfOperation
-            | RevocationReasonCode::PrivilegeWithdrawn => StateEnumeration::Deactivated,
-            RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
-                if compromise_occurrence_date.is_none() {
-                    kms_bail!(KmsError::InvalidRequest(
-                        "A compromise date must be supplied in case of compromised object"
-                            .to_owned()
-                    ))
-                }
-                StateEnumeration::Compromised
+    let state = match revocation_reason.revocation_reason_code {
+        RevocationReasonCode::Unspecified
+        | RevocationReasonCode::AffiliationChanged
+        | RevocationReasonCode::Superseded
+        | RevocationReasonCode::CessationOfOperation
+        | RevocationReasonCode::PrivilegeWithdrawn => StateEnumeration::Deactivated,
+        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
+            if compromise_occurrence_date.is_none() {
+                kms_bail!(KmsError::InvalidRequest(
+                    "A compromise date must be supplied in case of compromised object".to_owned()
+                ))
             }
-        },
-        RevocationReason::TextString(_) => StateEnumeration::Deactivated,
+            StateEnumeration::Compromised
+        }
     };
     kms.database
         .update_state(unique_identifier, state, params)

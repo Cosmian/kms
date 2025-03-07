@@ -3,7 +3,7 @@ use cosmian_kmip::kmip_2_1::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip_types::{RevocationReason, UniqueIdentifier},
+    kmip_types::{RevocationReason, RevocationReasonCode, UniqueIdentifier},
     requests::{decrypt_request, encrypt_request},
 };
 use cosmian_kms_client_utils::cover_crypt_utils::{
@@ -218,11 +218,17 @@ async fn integration_tests_with_tags() -> KResult<()> {
     assert_eq!(data, &*decrypted_data);
 
     // Revoke key of user 1
-    let _revoke_response: RevokeResponse = test_utils::post(&app, &Revoke {
-        unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
-        revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
-        compromise_occurrence_date: None,
-    })
+    let _revoke_response: RevokeResponse = test_utils::post(
+        &app,
+        &Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::AffiliationChanged,
+                revocation_message: Some("Revocation test".to_owned()),
+            },
+            compromise_occurrence_date: None,
+        },
+    )
     .await?;
 
     //

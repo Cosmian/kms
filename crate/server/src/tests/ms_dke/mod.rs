@@ -2,12 +2,13 @@
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType, PublicKey},
     kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
-        KeyFormatType, PaddingMethod, UniqueIdentifier,
+        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
+        PaddingMethod, UniqueIdentifier,
     },
 };
 
@@ -69,10 +70,10 @@ async fn decrypt_data_test() -> KResult<()> {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
                 key_compression_type: None,
-                key_value: KeyValue {
+                key_value: Some(KeyValue {
                     key_material: KeyMaterial::ByteString(pem.contents().to_vec().into()),
                     attributes: None,
-                },
+                }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: None,
                 key_wrapping_data: None,

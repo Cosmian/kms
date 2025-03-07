@@ -5,10 +5,9 @@ use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
-    },
+    kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration},
     requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};

@@ -69,8 +69,13 @@ pub(crate) async fn rekey(
             attributes: new_object.attributes()?.clone(),
             object: new_object,
         };
-        let (uid, operations) =
-            process_symmetric_key(kms, import_request, owner, params.clone()).await?;
+        let (uid, operations) = Box::pin(process_symmetric_key(
+            kms,
+            import_request,
+            owner,
+            params.clone(),
+        ))
+        .await?;
 
         // execute the operations
         kms.database

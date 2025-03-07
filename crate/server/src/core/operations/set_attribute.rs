@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
+    kmip_attributes::Attribute,
     kmip_objects::ObjectType,
     kmip_operations::{SetAttribute, SetAttributeResponse},
-    kmip_types::{Attribute, UniqueIdentifier},
+    kmip_types::UniqueIdentifier,
+    KmipOperation,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
 use tracing::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{retrieve_object_utils::retrieve_object_for_operation, KMS},
     error::KmsError,
     result::{KResult, KResultHelper},
 };

@@ -3,13 +3,13 @@ use std::sync::Arc;
 use cosmian_kmip::{
     KmipError,
     kmip_2_1::{
-        KmipOperation,
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            Attributes, CertificateType, CryptographicAlgorithm, CryptographicUsageMask,
-            KeyFormatType, KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
+            CertificateType, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            KeyWrapType, LinkType, StateEnumeration, UniqueIdentifier,
         },
     },
 };
@@ -95,10 +95,10 @@ pub(crate) async fn export_get(
                     || owm.state() == StateEnumeration::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
-                key_block.key_value = KeyValue {
+                key_block.key_value = Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
-                };
+                });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
                 process_public_key(
@@ -120,10 +120,10 @@ pub(crate) async fn export_get(
                     || owm.state() == StateEnumeration::Destroyed_Compromised)
             {
                 let key_block = owm.object_mut().key_block_mut()?;
-                key_block.key_value = KeyValue {
+                key_block.key_value = Some(KeyValue {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
-                };
+                });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
                 process_symmetric_key(
@@ -173,7 +173,8 @@ pub(crate) async fn export_get(
                     )
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
-                    owm = post_process_pkcs7(kms, operation_type, user, params, owm).await?;
+                    owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
+                        .await?;
                 }
                 #[cfg(feature = "fips")]
                 let is_wrong_format = *key_format_type != KeyFormatType::X509
@@ -234,10 +235,10 @@ async fn post_process_private_key(
             || owm.state() == StateEnumeration::Destroyed_Compromised)
     {
         let key_block = owm.object_mut().key_block_mut()?;
-        key_block.key_value = KeyValue {
+        key_block.key_value = Some(KeyValue {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
             attributes: None,
-        };
+        });
         key_block.key_format_type = KeyFormatType::Opaque;
     } else {
         post_process_active_private_key(
@@ -320,7 +321,8 @@ async fn post_process_active_private_key(
         &mut attributes,
         key_block
             .key_value
-            .attributes
+            .as_mut()
+            .and_then(|kv| kv.attributes.clone())
             .get_or_insert(Attributes::default()),
     );
 
@@ -344,8 +346,10 @@ async fn post_process_active_private_key(
         )?;
         // add the attributes back
         let key_block = object.key_block_mut()?;
+        if let Some(key_value) = key_block.key_value.as_mut() {
+            key_value.attributes = Some(attributes);
+        }
 
-        key_block.key_value.attributes = Some(attributes);
         // wrap the key
         wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
         // reassign the wrapped key
@@ -400,7 +404,9 @@ async fn post_process_active_private_key(
     }
     // add the attributes back
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
-    key_block.key_value.attributes = Some(attributes);
+    if let Some(key_value) = key_block.key_value.as_mut() {
+        key_value.attributes = Some(attributes);
+    }
     Ok(())
 }
 
@@ -458,7 +464,8 @@ async fn process_public_key(
         &mut attributes,
         key_block
             .key_value
-            .attributes
+            .as_mut()
+            .and_then(|kv| kv.attributes.clone())
             .get_or_insert(Attributes::default()),
     );
 
@@ -481,7 +488,9 @@ async fn process_public_key(
         )?;
         // add the attributes back
         let key_block = object.key_block_mut()?;
-        key_block.key_value.attributes = Some(attributes);
+        if let Some(key_value) = key_block.key_value.as_mut() {
+            key_value.attributes = Some(attributes);
+        }
 
         // wrap the key
         wrap_key(
@@ -524,7 +533,9 @@ async fn process_public_key(
 
     // add the attributes back
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
-    key_block.key_value.attributes = Some(attributes);
+    if let Some(key_value) = key_block.key_value.as_mut() {
+        key_value.attributes = Some(attributes);
+    }
 
     Ok(())
 }
@@ -664,7 +675,14 @@ async fn process_symmetric_key(
 
     // we have an unwrapped key, convert it to the pivotal format first,
     // which is getting the key bytes
-    let key_bytes = match key_block.key_value.key_material {
+    let key_bytes = match key_block
+        .key_value
+        .as_mut()
+        .ok_or_else(|| {
+            KmsError::Default("export: missing key value for a symmetric key".to_owned())
+        })?
+        .key_material
+    {
         KeyMaterial::ByteString(ref mut key_bytes) => key_bytes.clone(),
         KeyMaterial::TransparentSymmetricKey { ref mut key } => key.clone(),
         _ => kms_bail!("export: unsupported key material"),
@@ -679,10 +697,13 @@ async fn process_symmetric_key(
             )
         }
         // generate a key block in the default format, which is Raw
-        key_block.key_value = KeyValue {
+        key_block.key_value = Some(KeyValue {
             key_material: KeyMaterial::ByteString(key_bytes),
-            attributes: key_block.key_value.attributes.clone(),
-        };
+            attributes: key_block
+                .key_value
+                .as_ref()
+                .and_then(|kv| kv.attributes.clone()),
+        });
         key_block.key_format_type = KeyFormatType::Raw;
         key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         // wrap the key
@@ -693,17 +714,23 @@ async fn process_symmetric_key(
     // The key  is not wrapped => export to desired format
     match key_format_type {
         Some(KeyFormatType::TransparentSymmetricKey) => {
-            key_block.key_value = KeyValue {
+            key_block.key_value = Some(KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: key_bytes },
-                attributes: key_block.key_value.attributes.clone(),
-            };
+                attributes: key_block
+                    .key_value
+                    .as_ref()
+                    .and_then(|kv| kv.attributes.clone()),
+            });
             key_block.key_format_type = KeyFormatType::TransparentSymmetricKey;
         }
         None | Some(KeyFormatType::Raw) => {
-            key_block.key_value = KeyValue {
+            key_block.key_value = Some(KeyValue {
                 key_material: KeyMaterial::ByteString(key_bytes),
-                attributes: key_block.key_value.attributes.clone(),
-            };
+                attributes: key_block
+                    .key_value
+                    .as_ref()
+                    .and_then(|kv| kv.attributes.clone()),
+            });
             key_block.key_format_type = KeyFormatType::Raw;
             key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         }
@@ -805,11 +832,11 @@ async fn build_pkcs12_for_private_key(
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs12.to_der()?)),
                 // attributes are added later
                 attributes: None,
-            },
+            }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,

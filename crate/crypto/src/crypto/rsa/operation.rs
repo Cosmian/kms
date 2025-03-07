@@ -5,11 +5,12 @@ use cosmian_kmip::kmip_2_1::extra::fips::{
 use cosmian_kmip::{
     SafeBigUint,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
-            KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
+            Link, LinkType, LinkedObjectIdentifier,
         },
     },
 };
@@ -87,7 +88,7 @@ pub fn to_rsa_public_key(
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPublicKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentRSAPublicKey {
                     modulus: Box::new(BigUint::from_bytes_be(&private_key.n().to_vec())),
                     public_exponent: Box::new(BigUint::from_bytes_be(&private_key.e().to_vec())),
@@ -112,7 +113,7 @@ pub fn to_rsa_public_key(
                     }]),
                     ..Attributes::default()
                 }),
-            },
+            }),
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
@@ -142,7 +143,7 @@ pub fn to_rsa_private_key(
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             key_format_type: KeyFormatType::TransparentRSAPrivateKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: Box::new(BigUint::from_bytes_be(&private_key.n().to_vec())),
                     private_exponent: Some(Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(
@@ -188,7 +189,7 @@ pub fn to_rsa_private_key(
                     sensitive,
                     ..Attributes::default()
                 }),
-            },
+            }),
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },

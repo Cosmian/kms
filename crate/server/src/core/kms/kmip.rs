@@ -75,7 +75,7 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CertifyResponse> {
-        operations::certify(self, request, user, params, privileged_users).await
+        Box::pin(operations::certify(self, request, user, params)).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -125,7 +125,7 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, user, params, privileged_users).await
+        Box::pin(operations::create_key_pair(self, request, user, params)).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -152,7 +152,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DecryptResponse> {
-        operations::decrypt(self, request, user, params).await
+        Box::pin(operations::decrypt(self, request, user, params)).await
     }
 
     /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
@@ -213,7 +213,7 @@ impl KMS {
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<EncryptResponse> {
-        operations::encrypt(self, request, user, params).await
+        Box::pin(operations::encrypt(self, request, user, params)).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -454,7 +454,7 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, user, params, privileged_users).await
+        Box::pin(operations::rekey_keypair(self, request, user, params)).await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.

@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+    kmip_attributes::Attributes,
     kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
-        AttributeReference, Attributes, KeyFormatType, LinkType, Tag, UniqueIdentifier,
-        VendorAttribute, VendorAttributeReference,
+        AttributeReference, KeyFormatType, LinkType, Tag, UniqueIdentifier, VendorAttribute,
+        VendorAttributeReference,
     },
 };
 use cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
@@ -62,7 +63,11 @@ pub(crate) async fn get_attributes(
             owm.attributes().to_owned()
         }
         Object::PrivateKey(PrivateKey { key_block }) => {
-            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            let mut attributes = key_block
+                .key_value
+                .as_ref()
+                .and_then(|kv| kv.attributes.clone())
+                .unwrap_or_default();
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
@@ -86,7 +91,11 @@ pub(crate) async fn get_attributes(
             }
         }
         Object::PublicKey(PublicKey { key_block }) => {
-            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            let mut attributes = key_block
+                .key_value
+                .as_ref()
+                .and_then(|kv| kv.attributes.clone())
+                .unwrap_or_default();
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
@@ -110,7 +119,11 @@ pub(crate) async fn get_attributes(
             }
         }
         Object::SymmetricKey(SymmetricKey { key_block }) => {
-            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            let mut attributes = key_block
+                .key_value
+                .as_ref()
+                .and_then(|kv| kv.attributes.clone())
+                .unwrap_or_default();
             attributes.object_type = Some(object_type);
             attributes.link.clone_from(&owm.attributes().link);
             attributes

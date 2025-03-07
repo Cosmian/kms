@@ -5,8 +5,7 @@ use std::{
 };
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration,
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore, SessionParams};
 

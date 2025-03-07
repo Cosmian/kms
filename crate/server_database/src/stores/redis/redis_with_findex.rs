@@ -6,14 +6,12 @@ use std::{
 
 use async_trait::async_trait;
 use cloudproof_findex::{
-    IndexedValue, Keyword, Label, Location, implementations::redis::FindexRedis,
-    parameters::MASTER_KEY_LENGTH,
+    implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
+    Label, Location,
 };
-use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey, kdf256};
+use cosmian_crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration, KmipOperation,
 };
 use cosmian_kms_crypto::crypto::{password_derivation::derive_key_from_password, secret::Secret};
 use cosmian_kms_interfaces::{
@@ -25,7 +23,7 @@ use tracing::trace;
 use uuid::Uuid;
 
 use super::{
-    objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
+    objects_db::{keywords_from_attributes, ObjectsDB, RedisDbObject, DB_KEY_LENGTH},
     permissions::PermissionsDB,
 };
 use crate::{

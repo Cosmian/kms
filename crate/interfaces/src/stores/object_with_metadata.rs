@@ -1,8 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
+    kmip_attributes::Attributes, kmip_objects::Object, kmip_types::StateEnumeration,
 };
 
 /// An object with its metadata such as owner, permissions and state

@@ -15,8 +15,9 @@ use cosmian_crypto_core::{
 use cosmian_kmip::{
     KmipResultHelper,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
-        kmip_types::{Attributes, StateEnumeration},
+        kmip_types::StateEnumeration,
     },
 };
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};

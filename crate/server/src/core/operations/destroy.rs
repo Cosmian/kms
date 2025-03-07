@@ -2,11 +2,12 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_recursion::async_recursion;
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+    kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+    KmipOperation,
 };
 use cosmian_kms_interfaces::SessionParams;
 use tracing::{debug, trace};
@@ -276,10 +277,13 @@ async fn update_as_destroyed(
         Attributes::default()
     } else {
         let key_block = object.key_block_mut()?;
-        key_block.key_value = KeyValue {
+        key_block.key_value = Some(KeyValue {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes: key_block.key_value.attributes.clone(),
-        };
+            attributes: key_block
+                .key_value
+                .as_ref()
+                .and_then(|f| f.attributes.clone()),
+        });
         key_block.attributes()?.clone()
     };
 

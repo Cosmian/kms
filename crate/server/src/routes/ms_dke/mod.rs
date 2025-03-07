@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, log::trace};
 use url::Url;
 
-use crate::{core::KMS, kms_bail, kms_error, result::KResult};
+use crate::{core::KMS, error::KmsError, kms_bail, kms_error, result::KResult};
 
 #[derive(Serialize, Debug)]
 pub enum KeyType {
@@ -132,7 +132,16 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
     };
     let resp = kms.get(op, &user, None).await?;
     match resp.object {
-        Object::PublicKey(PublicKey { key_block, .. }) => match key_block.key_value.key_material {
+        Object::PublicKey(PublicKey { key_block, .. }) => match &key_block
+            .key_value
+            .as_ref()
+            .ok_or_else(|| {
+                KmsError::Default(
+                    "MS DKE: The public key block does not contain the key value".to_owned(),
+                )
+            })?
+            .key_material
+        {
             KeyMaterial::TransparentRSAPublicKey {
                 modulus,
                 public_exponent,
@@ -153,7 +162,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMS>) -> KResu
                     key: DkePublicKey {
                         key_type: KeyType::RSA,
                         modulus: STANDARD.encode(modulus.to_bytes_be()),
-                        exponent: big_uint_to_u32(&public_exponent),
+                        exponent: big_uint_to_u32(public_exponent),
                         algorithm: Algorithm::Rs256,
                         key_id: dke_service_url.to_string(),
                     },
