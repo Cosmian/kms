@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 pub mod extra;
-pub(crate) mod kmip_attributes;
+pub mod kmip_attributes;
 pub mod kmip_data_structures;
 pub mod kmip_messages;
 pub mod kmip_objects;

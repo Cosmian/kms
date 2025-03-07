@@ -190,7 +190,7 @@ pub struct Attributes {
     /// The tag type Custom Attribute is not able to identify the particular attribute;
     /// hence such an attribute SHALL only appear in an Attribute Structure with
     /// its name as defined in Section 2.1.1.
-    /// Note: Cosmian implementation: we map it to a 2.1 VendorAttribute
+    /// Note: Cosmian implementation: we map it to a 2.1 `VendorAttribute`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_attribute: Option<Vec<VendorAttribute>>,
 
@@ -252,63 +252,63 @@ pub struct Attributes {
     pub never_extractable: Option<bool>,
 }
 
-impl Into<kmip_2_1::kmip_attributes::Attributes> for Attributes {
-    fn into(self) -> kmip_2_1::kmip_attributes::Attributes {
-        kmip_2_1::kmip_attributes::Attributes {
-            unique_identifier: self.unique_identifier.map(|unique_identifier| {
+impl From<Attributes> for kmip_2_1::kmip_attributes::Attributes {
+    fn from(val: Attributes) -> Self {
+        Self {
+            unique_identifier: val.unique_identifier.map(|unique_identifier| {
                 kmip_2_1::kmip_types::UniqueIdentifier::TextString(unique_identifier)
             }),
-            name: self.name.map(|n| n.into_iter().map(Into::into).collect()),
-            never_extractable: self.never_extractable.into(),
-            object_type: self.object_type.map(Into::into),
-            cryptographic_algorithm: self.cryptographic_algorithm.map(Into::into),
-            cryptographic_length: self.cryptographic_length.map(Into::into),
-            cryptographic_parameters: self.cryptographic_parameters.map(Into::into),
-            cryptographic_domain_parameters: self.cryptographic_domain_parameters.map(Into::into),
-            certificate_type: self.certificate_type.map(Into::into),
-            certificate_length: self.certificate_length.map(Into::into),
-            x_509_certificate_identifier: self.x_509_certificate_identifier.map(Into::into),
-            x_509_certificate_subject: self.x_509_certificate_subject.map(Into::into),
-            x_509_certificate_issuer: self.x_509_certificate_issuer.map(Into::into),
-            digital_signature_algorithm: self.digital_signature_algorithm.map(Into::into),
-            cryptographic_usage_mask: self.cryptographic_usage_mask.map(Into::into),
-            lease_time: self.lease_time.map(Into::into),
-            usage_limits: self.usage_limits.map(Into::into),
-            state: self.state.map(Into::into),
-            initial_date: self.initial_date.map(Into::into),
-            activation_date: self.activation_date.map(Into::into),
-            process_start_date: self.process_start_date.map(Into::into),
-            protect_stop_date: self.protect_stop_date.map(Into::into),
+            name: val.name.map(|n| n.into_iter().map(Into::into).collect()),
+            never_extractable: val.never_extractable,
+            object_type: val.object_type.map(Into::into),
+            cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
+            cryptographic_length: val.cryptographic_length.map(Into::into),
+            cryptographic_parameters: val.cryptographic_parameters.map(Into::into),
+            cryptographic_domain_parameters: val.cryptographic_domain_parameters.map(Into::into),
+            certificate_type: val.certificate_type.map(Into::into),
+            certificate_length: val.certificate_length.map(Into::into),
+            x_509_certificate_identifier: val.x_509_certificate_identifier.map(Into::into),
+            x_509_certificate_subject: val.x_509_certificate_subject.map(Into::into),
+            x_509_certificate_issuer: val.x_509_certificate_issuer.map(Into::into),
+            digital_signature_algorithm: val.digital_signature_algorithm.map(Into::into),
+            cryptographic_usage_mask: val.cryptographic_usage_mask.map(Into::into),
+            lease_time: val.lease_time.map(Into::into),
+            usage_limits: val.usage_limits.map(Into::into),
+            state: val.state.map(Into::into),
+            initial_date: val.initial_date.map(Into::into),
+            activation_date: val.activation_date.map(Into::into),
+            process_start_date: val.process_start_date.map(Into::into),
+            protect_stop_date: val.protect_stop_date.map(Into::into),
             protection_level: None,
             protection_period: None,
             protection_storage_masks: None,
-            deactivation_date: self.deactivation_date.map(Into::into),
-            destroy_date: self.destroy_date.map(Into::into),
-            compromise_occurrence_date: self.compromise_occurrence_date.map(Into::into),
-            compromise_date: self.compromise_date.map(Into::into),
-            revocation_reason: self.revocation_reason.map(Into::into),
+            deactivation_date: val.deactivation_date.map(Into::into),
+            destroy_date: val.destroy_date.map(Into::into),
+            compromise_occurrence_date: val.compromise_occurrence_date.map(Into::into),
+            compromise_date: val.compromise_date.map(Into::into),
+            revocation_reason: val.revocation_reason.map(Into::into),
             rotate_date: None,
             rotate_generation: None,
             rotate_interval: None,
             rotate_latest: None,
             rotate_name: None,
-            archive_date: self.archive_date.map(Into::into),
+            archive_date: val.archive_date.map(Into::into),
             attribute_index: None,
-            object_group: self.object_group.map(Into::into),
-            fresh: self.fresh.map(Into::into),
-            link: self.link.map(|n| n.into_iter().map(Into::into).collect()),
-            application_specific_information: self.application_specific_information.map(Into::into),
-            contact_information: self.contact_information.map(Into::into),
-            last_change_date: self.last_change_date.map(Into::into),
-            alternative_name: self.alternative_name.map(Into::into),
-            key_value_present: self.key_value_present.map(Into::into),
-            key_value_location: self.key_value_location.map(Into::into),
-            original_creation_date: self.original_creation_date.map(Into::into),
-            random_number_generator: self.random_number_generator.map(Into::into),
-            description: self.description.map(Into::into),
-            comment: self.comment.map(Into::into),
-            sensitive: self.sensitive,
-            always_sensitive: self.always_sensitive.map(Into::into),
+            object_group: val.object_group.map(Into::into),
+            fresh: val.fresh.map(Into::into),
+            link: val.link.map(|n| n.into_iter().map(Into::into).collect()),
+            application_specific_information: val.application_specific_information.map(Into::into),
+            contact_information: val.contact_information.map(Into::into),
+            last_change_date: val.last_change_date.map(Into::into),
+            alternative_name: val.alternative_name.map(Into::into),
+            key_value_present: val.key_value_present.map(Into::into),
+            key_value_location: val.key_value_location.map(Into::into),
+            original_creation_date: val.original_creation_date.map(Into::into),
+            random_number_generator: val.random_number_generator.map(Into::into),
+            description: val.description.map(Into::into),
+            comment: val.comment.map(Into::into),
+            sensitive: val.sensitive,
+            always_sensitive: val.always_sensitive.map(Into::into),
             certificate_attributes: None,
             critical: None,
             extractable: None,
@@ -320,14 +320,15 @@ impl Into<kmip_2_1::kmip_attributes::Attributes> for Attributes {
             quantum_safe: None,
             rotate_offset: None,
             short_unique_identifier: None,
-            vendor_attributes: self
+            vendor_attributes: val
                 .custom_attribute
                 .map(|n| n.into_iter().map(Into::into).collect()),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Attribute {
     UniqueIdentifier(String),
     Name(Vec<Name>),

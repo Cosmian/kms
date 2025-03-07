@@ -61,23 +61,21 @@ pub struct KeyBlock {
     pub key_value: Option<KeyValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
-    pub cryptographic_length: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
 
-impl KeyBlock {
-    pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_data_structures::KeyBlock {
-        kmip_2_1::kmip_data_structures::KeyBlock {
-            key_format_type: self.key_format_type.to_kmip_2_1(),
-            key_compression_type: self.key_compression_type.as_ref().map(|x| x.to_kmip_2_1()),
-            key_value: self.key_value.to_kmip_2_1(),
-            cryptographic_algorithm: self
-                .cryptographic_algorithm
-                .as_ref()
-                .map(|x| x.to_kmip_2_1()),
-            cryptographic_length: self.cryptographic_length.clone(),
-            key_wrapping_data: self.key_wrapping_data.as_ref().map(|x| x.to_kmip_2_1()),
+impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
+    fn from(val: KeyBlock) -> Self {
+        Self {
+            key_format_type: val.key_format_type.into(),
+            key_compression_type: val.key_compression_type.map(Into::into),
+            key_value: val.key_value.map(Into::into),
+            cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
+            cryptographic_length: val.cryptographic_length.map(Into::into),
+            key_wrapping_data: val.key_wrapping_data.map(Into::into),
         }
     }
 }
@@ -96,11 +94,11 @@ pub struct KeyValue {
     pub attributes: Option<Attributes>,
 }
 
-impl KeyValue {
-    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyValue {
-        kmip_2_1::kmip_data_structures::KeyValue {
-            key_material: self.key_material.to_kmip_2_1(),
-            attributes: self.attributes.to_kmip_2_1(),
+impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
+    fn from(val: KeyValue) -> Self {
+        Self {
+            key_material: val.key_material.into(),
+            attributes: val.attributes.map(Into::into),
         }
     }
 }
@@ -739,52 +737,24 @@ impl<'de> Deserialize<'de> for KeyMaterial {
     }
 }
 
-impl Into<kmip_2_1::kmip_data_structures::KeyMaterial> for KeyMaterial {
-    fn into(self) -> kmip_2_1::kmip_data_structures::KeyMaterial {
-        match self {
-            Self::ByteString(bytes) => kmip_2_1::kmip_data_structures::KeyMaterial::ByteString {
-                bytes: bytes.clone(),
-            },
-            Self::TransparentSymmetricKey { key } => {
-                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentSymmetricKey {
-                    key: key.clone(),
-                }
+impl From<KeyMaterial> for kmip_2_1::kmip_data_structures::KeyMaterial {
+    fn from(val: KeyMaterial) -> Self {
+        match val {
+            KeyMaterial::ByteString(bytes) => Self::ByteString(bytes),
+            KeyMaterial::TransparentSymmetricKey { key } => Self::TransparentSymmetricKey { key },
+            KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x } => {
+                Self::TransparentDHPrivateKey { p, q, g, j, x }
             }
-            Self::TransparentDHPrivateKey { p, q, g, j, x } => {
-                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPrivateKey {
-                    p: p.clone(),
-                    q: q.clone(),
-                    g: g.clone(),
-                    j: j.clone(),
-                    x: x.clone(),
-                }
+            KeyMaterial::TransparentDHPublicKey { p, q, g, j, y } => {
+                Self::TransparentDHPublicKey { p, q, g, j, y }
             }
-            Self::TransparentDHPublicKey { p, q, g, j, y } => {
-                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPublicKey {
-                    p: p.clone(),
-                    q: q.clone(),
-                    g: g.clone(),
-                    j: j.clone(),
-                    y: y.clone(),
-                }
+            KeyMaterial::TransparentDSAPrivateKey { p, q, g, x } => {
+                Self::TransparentDSAPrivateKey { p, q, g, x }
             }
-            Self::TransparentDSAPrivateKey { p, q, g, x } => {
-                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPrivateKey {
-                    p: p.clone(),
-                    q: q.clone(),
-                    g: g.clone(),
-                    x: x.clone(),
-                }
+            KeyMaterial::TransparentDSAPublicKey { p, q, g, y } => {
+                Self::TransparentDSAPublicKey { p, q, g, y }
             }
-            Self::TransparentDSAPublicKey { p, q, g, y } => {
-                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPublicKey {
-                    p: p.clone(),
-                    q: q.clone(),
-                    g: g.clone(),
-                    y: y.clone(),
-                }
-            }
-            Self::TransparentRSAPrivateKey {
+            KeyMaterial::TransparentRSAPrivateKey {
                 modulus,
                 private_exponent,
                 public_exponent,
@@ -793,78 +763,60 @@ impl Into<kmip_2_1::kmip_data_structures::KeyMaterial> for KeyMaterial {
                 prime_exponent_p,
                 prime_exponent_q,
                 crt_coefficient,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPrivateKey {
-                modulus: modulus.clone(),
-                private_exponent: private_exponent.clone(),
-                public_exponent: public_exponent.clone(),
-                p: p.clone(),
-                q: q.clone(),
-                prime_exponent_p: prime_exponent_p.clone(),
-                prime_exponent_q: prime_exponent_q.clone(),
-                crt_coefficient: crt_coefficient.clone(),
+            } => Self::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
             },
-            Self::TransparentRSAPublicKey {
+            KeyMaterial::TransparentRSAPublicKey {
                 modulus,
                 public_exponent,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPublicKey {
-                modulus: modulus.clone(),
-                public_exponent: public_exponent.clone(),
+            } => Self::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
             },
-            Self::TransparentECDSAPrivateKey {
+            KeyMaterial::TransparentECMQVPrivateKey {
                 recommended_curve,
                 d,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                d: d.clone(),
-            },
-            Self::TransparentECDSAPublicKey {
-                recommended_curve,
-                q_string,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                q_string: q_string.clone(),
-            },
-            Self::TransparentECDHPrivateKey {
+            }
+            | KeyMaterial::TransparentECPrivateKey {
                 recommended_curve,
                 d,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                d: d.clone(),
-            },
-            Self::TransparentECDHPublicKey {
-                recommended_curve,
-                q_string,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                q_string: q_string.clone(),
-            },
-            Self::TransparentECMQVPrivateKey {
+            }
+            | KeyMaterial::TransparentECDSAPrivateKey {
                 recommended_curve,
                 d,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                d: d.clone(),
-            },
-            Self::TransparentECMQVPublicKey {
-                recommended_curve,
-                q_string,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                q_string: q_string.clone(),
-            },
-            Self::TransparentECPrivateKey {
+            }
+            | KeyMaterial::TransparentECDHPrivateKey {
                 recommended_curve,
                 d,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                d: d.clone(),
+            } => Self::TransparentECPrivateKey {
+                recommended_curve: recommended_curve.into(),
+                d,
             },
-            Self::TransparentECPublicKey {
+            KeyMaterial::TransparentECDSAPublicKey {
                 recommended_curve,
                 q_string,
-            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
-                recommended_curve: *recommended_curve.to_kmip_2_1(),
-                q_string: q_string.clone(),
+            }
+            | KeyMaterial::TransparentECMQVPublicKey {
+                recommended_curve,
+                q_string,
+            }
+            | KeyMaterial::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            }
+            | KeyMaterial::TransparentECDHPublicKey {
+                recommended_curve,
+                q_string,
+            } => Self::TransparentECPublicKey {
+                recommended_curve: recommended_curve.into(),
+                q_string,
             },
         }
     }
@@ -885,6 +837,19 @@ pub struct KeyWrappingData {
     pub encoding_option: Option<EncodingOption>,
 }
 
+impl From<KeyWrappingData> for kmip_2_1::kmip_data_structures::KeyWrappingData {
+    fn from(val: KeyWrappingData) -> Self {
+        Self {
+            wrapping_method: val.wrapping_method.into(),
+            encryption_key_information: val.encryption_key_information.map(Into::into),
+            mac_signature_key_information: val.mac_signature_key_information.map(Into::into),
+            mac_signature: val.mac_signature,
+            iv_counter_nonce: val.iv_counter_nonce,
+            encoding_option: val.encoding_option.map(Into::into),
+        }
+    }
+}
+
 /// Encryption Key Information Structure
 /// The Encryption Key Information is a structure containing a unique identifier and
 /// optional parameters used to encrypt the key.
@@ -894,6 +859,17 @@ pub struct EncryptionKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
+impl From<EncryptionKeyInformation> for kmip_2_1::kmip_types::EncryptionKeyInformation {
+    fn from(val: EncryptionKeyInformation) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                val.unique_identifier,
+            ),
+            cryptographic_parameters: val.cryptographic_parameters.map(Into::into),
+        }
+    }
+}
+
 /// MAC/Signature Key Information Structure
 /// The MAC/Signature Key Information is a structure containing a unique identifier and
 /// optional parameters used to generate a MAC or signature over the key.
@@ -901,6 +877,17 @@ pub struct EncryptionKeyInformation {
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: String,
     pub cryptographic_parameters: Option<CryptographicParameters>,
+}
+
+impl From<MacSignatureKeyInformation> for kmip_2_1::kmip_types::MacSignatureKeyInformation {
+    fn from(val: MacSignatureKeyInformation) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                val.unique_identifier,
+            ),
+            cryptographic_parameters: val.cryptographic_parameters.map(Into::into),
+        }
+    }
 }
 
 /// 2.1.6 Key Wrapping Specification Object Structure
@@ -940,27 +927,27 @@ pub struct CryptographicParameters {
     pub trailer_field: Option<i32>,
 }
 
-impl Into<kmip_2_1::kmip_types::CryptographicParameters> for CryptographicParameters {
-    fn into(self) -> kmip_2_1::kmip_types::CryptographicParameters {
-        kmip_2_1::kmip_types::CryptographicParameters {
-            block_cipher_mode: self.block_cipher_mode,
-            padding_method: self.padding_method,
-            hashing_algorithm: self.hashing_algorithm,
-            key_role_type: self.key_role_type,
-            digital_signature_algorithm: self.digital_signature_algorithm,
-            cryptographic_algorithm: self.cryptographic_algorithm,
-            random_iv: self.random_iv,
-            iv_length: self.iv_length,
-            tag_length: self.tag_length,
-            fixed_field_length: self.fixed_field_length,
-            invocation_field_length: self.invocation_field_length,
-            counter_length: self.counter_length,
-            initial_counter_value: self.initial_counter_value,
-            salt_length: self.salt_length,
-            mask_generator: self.mask_generator,
-            mask_generator_hashing_algorithm: self.mask_generator_hashing_algorithm,
-            p_source: self.p_source,
-            trailer_field: self.trailer_field,
+impl From<CryptographicParameters> for kmip_2_1::kmip_types::CryptographicParameters {
+    fn from(val: CryptographicParameters) -> Self {
+        Self {
+            block_cipher_mode: val.block_cipher_mode.map(Into::into),
+            padding_method: val.padding_method.map(Into::into),
+            hashing_algorithm: val.hashing_algorithm.map(Into::into),
+            key_role_type: val.key_role_type.map(Into::into),
+            digital_signature_algorithm: val.digital_signature_algorithm.map(Into::into),
+            cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
+            random_iv: val.random_iv.map(Into::into),
+            iv_length: val.iv_length.map(Into::into),
+            tag_length: val.tag_length.map(Into::into),
+            fixed_field_length: val.fixed_field_length.map(Into::into),
+            invocation_field_length: val.invocation_field_length.map(Into::into),
+            counter_length: val.counter_length.map(Into::into),
+            initial_counter_value: val.initial_counter_value.map(Into::into),
+            salt_length: val.salt_length.map(Into::into),
+            mask_generator: val.mask_generator.map(Into::into),
+            mask_generator_hashing_algorithm: val.mask_generator_hashing_algorithm.map(Into::into),
+            p_source: val.p_source.map(Into::into),
+            trailer_field: val.trailer_field.map(Into::into),
         }
     }
 }

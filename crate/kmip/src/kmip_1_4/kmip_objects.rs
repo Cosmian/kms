@@ -1,9 +1,6 @@
-use std::{
-    convert::TryFrom,
-    fmt::Display,
-    hash::{DefaultHasher, Hash, Hasher},
-};
+use std::{convert::TryFrom, fmt::Display};
 
+use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, VariantNames};
 
@@ -18,11 +15,11 @@ pub struct Certificate {
     pub certificate_value: Vec<u8>,
 }
 
-impl Into<kmip_2_1::kmip_objects::Certificate> for Certificate {
-    fn into(self) -> kmip_2_1::kmip_objects::Certificate {
-        kmip_2_1::kmip_objects::Certificate {
-            certificate_type: self.certificate_type.clone().into(),
-            certificate_value: self.certificate_value,
+impl From<Certificate> for kmip_2_1::kmip_objects::Certificate {
+    fn from(val: Certificate) -> Self {
+        Self {
+            certificate_type: val.certificate_type.clone().into(),
+            certificate_value: val.certificate_value,
         }
     }
 }
@@ -34,11 +31,11 @@ pub struct SecretData {
     pub key_block: KeyBlock,
 }
 
-impl Into<kmip_2_1::kmip_objects::SecretData> for SecretData {
-    fn into(self) -> kmip_2_1::kmip_objects::SecretData {
-        kmip_2_1::kmip_objects::SecretData {
-            secret_data_type: self.secret_data_type.clone().into(),
-            key_block: self.key_block.clone().into(),
+impl From<SecretData> for kmip_2_1::kmip_objects::SecretData {
+    fn from(val: SecretData) -> Self {
+        Self {
+            secret_data_type: val.secret_data_type.clone().into(),
+            key_block: val.key_block.into(),
         }
     }
 }
@@ -46,11 +43,26 @@ impl Into<kmip_2_1::kmip_objects::SecretData> for SecretData {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SplitKey {
-    pub split_key_parts: u32,
-    pub key_part_identifier: u32,
-    pub split_key_threshold: u32,
+    pub split_key_parts: i32,
+    pub key_part_identifier: i32,
+    pub split_key_threshold: i32,
     pub split_key_method: SplitKeyMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prime_field_size: Option<BigInt>,
     pub key_block: KeyBlock,
+}
+
+impl From<SplitKey> for kmip_2_1::kmip_objects::SplitKey {
+    fn from(val: SplitKey) -> Self {
+        Self {
+            split_key_parts: val.split_key_parts,
+            key_part_identifier: val.key_part_identifier,
+            split_key_threshold: val.split_key_threshold,
+            split_key_method: val.split_key_method.into(),
+            key_block: val.key_block.clone().into(),
+            prime_field_size: val.prime_field_size,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -59,10 +71,26 @@ pub struct SymmetricKey {
     pub key_block: KeyBlock,
 }
 
+impl From<SymmetricKey> for kmip_2_1::kmip_objects::SymmetricKey {
+    fn from(val: SymmetricKey) -> Self {
+        Self {
+            key_block: val.key_block.into(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct PrivateKey {
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
+}
+
+impl From<PrivateKey> for kmip_2_1::kmip_objects::PrivateKey {
+    fn from(val: PrivateKey) -> Self {
+        Self {
+            key_block: val.key_block.into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -71,10 +99,27 @@ pub struct PublicKey {
     pub key_block: KeyBlock,
 }
 
+impl From<PublicKey> for kmip_2_1::kmip_objects::PublicKey {
+    fn from(val: PublicKey) -> Self {
+        Self {
+            key_block: val.key_block.into(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct OpaqueObject {
     pub opaque_data_type: OpaqueDataType,
     pub opaque_data_value: Vec<u8>,
+}
+
+impl From<OpaqueObject> for kmip_2_1::kmip_objects::OpaqueObject {
+    fn from(val: OpaqueObject) -> Self {
+        Self {
+            opaque_data_type: val.opaque_data_type.into(),
+            opaque_data_value: val.opaque_data_value,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -83,6 +128,15 @@ pub struct PGPKey {
     pub pgp_key_version: u32,
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
+}
+
+impl From<PGPKey> for kmip_2_1::kmip_objects::PGPKey {
+    fn from(val: PGPKey) -> Self {
+        Self {
+            pgp_key_version: val.pgp_key_version,
+            key_block: val.key_block.into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, VariantNames)]
@@ -126,12 +180,14 @@ impl Display for Object {
                 split_key_threshold,
                 split_key_method,
                 key_block,
+                prime_field_size,
             }) => {
                 write!(
                     f,
                     "SplitKey(split_key_parts: {split_key_parts}, key_part_identifier: \
                      {key_part_identifier}, split_key_threshold: {split_key_threshold}, \
-                     split_key_method: {split_key_method:?}, key_block: {key_block:?})"
+                     split_key_method: {split_key_method:?}, key_block: {key_block:?}, prime \
+                     field size: {prime_field_size:?})"
                 )
             }
             Self::SymmetricKey(SymmetricKey { key_block }) => {
@@ -212,78 +268,19 @@ impl Object {
             )),
         }
     }
-
-    /// Gets a hash value for the object
-    #[must_use]
-    pub fn hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        match self {
-            Self::Certificate(Certificate {
-                certificate_type,
-                certificate_value,
-            }) => {
-                certificate_type.hash(&mut hasher);
-                certificate_value.hash(&mut hasher);
-            }
-            Self::SecretData(SecretData {
-                secret_data_type,
-                key_block,
-            }) => {
-                secret_data_type.hash(&mut hasher);
-                key_block.hash(&mut hasher);
-            }
-            Self::SplitKey(SplitKey {
-                split_key_parts,
-                key_part_identifier,
-                split_key_threshold,
-                split_key_method,
-                key_block,
-            }) => {
-                split_key_parts.hash(&mut hasher);
-                key_part_identifier.hash(&mut hasher);
-                split_key_threshold.hash(&mut hasher);
-                split_key_method.hash(&mut hasher);
-                key_block.hash(&mut hasher);
-            }
-            Self::SymmetricKey(SymmetricKey { key_block })
-            | Self::PrivateKey(PrivateKey { key_block })
-            | Self::PublicKey(PublicKey { key_block }) => {
-                key_block.hash(&mut hasher);
-            }
-            Self::OpaqueObject(OpaqueObject {
-                opaque_data_type,
-                opaque_data_value,
-            }) => {
-                opaque_data_type.hash(&mut hasher);
-                opaque_data_value.hash(&mut hasher);
-            }
-            Self::PGPKey(PGPKey {
-                pgp_key_version,
-                key_block,
-            }) => {
-                pgp_key_version.hash(&mut hasher);
-                key_block.hash(&mut hasher);
-            }
-        }
-        hasher.finish()
-    }
 }
 
-impl Into<kmip_2_1::kmip_objects::Object> for Object {
-    fn into(self) -> kmip_2_1::kmip_objects::Object {
-        match self {
-            Self::Certificate(cert) => kmip_2_1::kmip_objects::Object::Certificate(cert.into()),
-            Self::SecretData(secret) => kmip_2_1::kmip_objects::Object::SecretData(secret.into()),
-            Self::SplitKey(split) => kmip_2_1::kmip_objects::Object::SplitKey(split.into()),
-            Self::SymmetricKey(symmetric) => {
-                kmip_2_1::kmip_objects::Object::SymmetricKey(symmetric.into())
-            }
-            Self::PrivateKey(private) => kmip_2_1::kmip_objects::Object::PrivateKey(private.into()),
-            Self::PublicKey(public) => kmip_2_1::kmip_objects::Object::PublicKey(public.into()),
-            Self::OpaqueObject(opaque) => {
-                kmip_2_1::kmip_objects::Object::OpaqueObject(opaque.into())
-            }
-            Self::PGPKey(pgp) => kmip_2_1::kmip_objects::Object::PGPKey(pgp.into()),
+impl From<Object> for kmip_2_1::kmip_objects::Object {
+    fn from(val: Object) -> Self {
+        match val {
+            Object::Certificate(cert) => Self::Certificate(cert.into()),
+            Object::SecretData(secret) => Self::SecretData(secret.into()),
+            Object::SplitKey(split) => Self::SplitKey(split.into()),
+            Object::SymmetricKey(symmetric) => Self::SymmetricKey(symmetric.into()),
+            Object::PrivateKey(private) => Self::PrivateKey(private.into()),
+            Object::PublicKey(public) => Self::PublicKey(public.into()),
+            Object::OpaqueObject(opaque) => Self::OpaqueObject(opaque.into()),
+            Object::PGPKey(pgp) => Self::PGPKey(pgp.into()),
         }
     }
 }
@@ -331,7 +328,10 @@ impl TryFrom<u32> for ObjectType {
             0x03 => Ok(Self::PublicKey),
             0x04 => Ok(Self::PrivateKey),
             0x05 => Ok(Self::SplitKey),
-            0x06 => Ok(Self::Template),
+            0x06 => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                "Template is not supported in this version of KMIP 1.4".to_owned(),
+            )),
             0x07 => Ok(Self::SecretData),
             0x08 => Ok(Self::OpaqueObject),
             0x09 => Ok(Self::PGPKey),
@@ -351,7 +351,6 @@ impl Display for ObjectType {
             Self::PublicKey => write!(f, "Public Key"),
             Self::PrivateKey => write!(f, "Private Key"),
             Self::SplitKey => write!(f, "Split Key"),
-            Self::Template => write!(f, "Template"),
             Self::SecretData => write!(f, "Secret Data"),
             Self::OpaqueObject => write!(f, "Opaque Object"),
             Self::PGPKey => write!(f, "PGP Key"),
@@ -371,7 +370,6 @@ mod tests {
         assert_eq!(ObjectType::PublicKey.to_string(), "Public Key");
         assert_eq!(ObjectType::PrivateKey.to_string(), "Private Key");
         assert_eq!(ObjectType::SplitKey.to_string(), "Split Key");
-        assert_eq!(ObjectType::Template.to_string(), "Template");
         assert_eq!(ObjectType::SecretData.to_string(), "Secret Data");
         assert_eq!(ObjectType::OpaqueObject.to_string(), "Opaque Object");
         assert_eq!(ObjectType::PGPKey.to_string(), "PGP Key");
@@ -387,7 +385,6 @@ mod tests {
         assert_eq!(ObjectType::try_from(0x03).unwrap(), ObjectType::PublicKey);
         assert_eq!(ObjectType::try_from(0x04).unwrap(), ObjectType::PrivateKey);
         assert_eq!(ObjectType::try_from(0x05).unwrap(), ObjectType::SplitKey);
-        assert_eq!(ObjectType::try_from(0x06).unwrap(), ObjectType::Template);
         assert_eq!(ObjectType::try_from(0x07).unwrap(), ObjectType::SecretData);
         assert_eq!(
             ObjectType::try_from(0x08).unwrap(),
@@ -404,7 +401,6 @@ mod tests {
         assert_eq!(u32::from(ObjectType::PublicKey), 0x03);
         assert_eq!(u32::from(ObjectType::PrivateKey), 0x04);
         assert_eq!(u32::from(ObjectType::SplitKey), 0x05);
-        assert_eq!(u32::from(ObjectType::Template), 0x06);
         assert_eq!(u32::from(ObjectType::SecretData), 0x07);
         assert_eq!(u32::from(ObjectType::OpaqueObject), 0x08);
         assert_eq!(u32::from(ObjectType::PGPKey), 0x09);

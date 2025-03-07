@@ -37,7 +37,8 @@ pub struct KeyBlock {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
     /// Byte String: for wrapped Key Value; Structure: for plaintext Key Value
-    pub key_value: KeyValue,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_value: Option<KeyValue>,
     /// MAY be omitted only if this information is available from the Key Value.
     /// Does not apply to Secret Data  or Opaque.
     /// If present, the Cryptographic Length SHALL also be present.
@@ -57,7 +58,7 @@ impl Display for KeyBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {}, \
+            "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {:?}, \
              cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: {:?} }}",
             self.key_format_type,
             self.key_compression_type,
@@ -79,7 +80,14 @@ impl KeyBlock {
     /// For a Transparent EC Public key it is the raw bytes of Q string (the EC point)
     /// Other keys are not supported.
     pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
-        match &self.key_value.key_material {
+        let key_value = self.key_value.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmip21Value(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its key value".to_owned(),
+            )
+        })?;
+
+        match &key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(v.clone()),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
             KeyMaterial::TransparentECPrivateKey {
@@ -123,17 +131,37 @@ impl KeyBlock {
         let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmip21Value(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
-        Ok((key, self.key_value.attributes.as_ref()))
+        let attributes = self
+            .key_value
+            .as_ref()
+            .and_then(|kv| kv.attributes.as_ref());
+        Ok((key, attributes))
     }
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        self.key_value.attributes()
+        self.key_value
+            .as_ref()
+            .ok_or_else(|| {
+                KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "key is missing its key value".to_owned(),
+                )
+            })?
+            .attributes()
     }
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        self.key_value.attributes_mut()
+        self.key_value
+            .as_mut()
+            .ok_or_else(|| {
+                KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "key is missing its key value".to_owned(),
+                )
+            })?
+            .attributes_mut()
     }
 
     /// Returns the identifier of a linked object of a certain type, if it exists in the attributes
@@ -153,7 +181,16 @@ impl KeyBlock {
     /// is no such link.
     pub fn get_linked_object_id(&self, link_type: LinkType) -> Result<Option<String>, KmipError> {
         // Retrieve the attributes of this object
-        let attributes = self.key_value.attributes()?;
+        let attributes = self
+            .key_value
+            .as_ref()
+            .ok_or_else(|| {
+                KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "key is missing its key value".to_owned(),
+                )
+            })?
+            .attributes()?;
 
         // Retrieve the links attribute from the object attributes, if it exists
         let Some(links) = &attributes.link else {
@@ -189,8 +226,8 @@ impl KeyBlock {
     pub fn cryptographic_algorithm(&self) -> Option<&CryptographicAlgorithm> {
         self.cryptographic_algorithm.as_ref().or_else(|| {
             self.key_value
-                .attributes
                 .as_ref()
+                .and_then(|kv| kv.attributes.as_ref())
                 .and_then(|attributes| attributes.cryptographic_algorithm.as_ref())
         })
     }
@@ -311,9 +348,9 @@ pub struct KeyWrappingData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mac_or_signature_key_information: Option<MacSignatureKeyInformation>,
+    pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mac_or_signature: Option<Vec<u8>>,
+    pub mac_signature: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "IVCounterNonce")]
     pub iv_counter_nonce: Option<Vec<u8>>,
     /// Specifies the encoding of the Key Value Byte String. If not present, the
@@ -336,8 +373,8 @@ impl Default for KeyWrappingData {
         Self {
             wrapping_method: WrappingMethod::Encrypt,
             encryption_key_information: None,
-            mac_or_signature_key_information: None,
-            mac_or_signature: None,
+            mac_signature_key_information: None,
+            mac_signature: None,
             iv_counter_nonce: None,
             encoding_option: Some(EncodingOption::NoEncoding),
         }
@@ -410,7 +447,7 @@ impl KeyWrappingSpecification {
         KeyWrappingData {
             wrapping_method: self.wrapping_method,
             encryption_key_information: self.encryption_key_information.clone(),
-            mac_or_signature_key_information: self.mac_or_signature_key_information.clone(),
+            mac_signature_key_information: self.mac_or_signature_key_information.clone(),
             encoding_option: Some(self.get_encoding()),
             ..KeyWrappingData::default()
         }
