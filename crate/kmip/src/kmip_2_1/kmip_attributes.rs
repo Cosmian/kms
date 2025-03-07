@@ -674,7 +674,7 @@ impl Attributes {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Attribute {
-    ActivationDate(u64),
+    ActivationDate(i64),
     CryptographicAlgorithm(CryptographicAlgorithm),
     CryptographicLength(i32),
     CryptographicParameters(CryptographicParameters),
@@ -801,7 +801,7 @@ impl<'de> Deserialize<'de> for Attribute {
             where
                 V: MapAccess<'de>,
             {
-                let mut activation_date: Option<u64> = None;
+                let mut activation_date: Option<i64> = None;
                 let mut cryptographic_algorithm: Option<CryptographicAlgorithm> = None;
                 let mut cryptographic_length: Option<i32> = None;
                 let mut cryptographic_parameters: Option<CryptographicParameters> = None;
