@@ -10,6 +10,8 @@ on:
       debug_or_release:
         required: true
         type: string
+  workflow_dispatch:
+
 
 jobs:
   rhel9:
