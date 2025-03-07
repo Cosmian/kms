@@ -12,34 +12,6 @@ use zeroize::Zeroizing;
 use super::kmip_types::*;
 use crate::{kmip_2_1, SafeBigUint};
 
-/// 2.1.1 Attribute Object Structure
-/// An Attribute object is a structure used to hold the name, index and value of a
-/// managed object (Object, Template-Attribute or Attribute). The Attribute structure
-/// consists of an Attribute Name, Index and Value fields.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct Attribute {
-    pub attribute_name: String,
-    pub attribute_index: Option<i32>,
-    pub attribute_value: AttributeValue,
-}
-
-/// Attribute Value variants
-/// The Attribute Value type is a variant used to represent the different possible
-/// value types that can be contained within an Attribute structure.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub enum AttributeValue {
-    Integer(i32),
-    LongInteger(i64),
-    BigInteger(Vec<u8>),
-    Enumeration(i32),
-    Boolean(bool),
-    TextString(String),
-    ByteString(Vec<u8>),
-    DateTime(OffsetDateTime),
-    Interval(i32),
-    Structure(Vec<Attribute>),
-}
-
 /// 2.1.2 Credential Object Structure
 /// A Credential is a structure used to convey information used to authenticate a client
 /// or server to the other party in a KMIP message. It contains credential type and
@@ -90,7 +62,7 @@ pub struct KeyBlock {
 
 impl KeyBlock {
     pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_data_structures::KeyBlock {
-        crate::kmip_2_1::kmip_data_structures::KeyBlock {
+        kmip_2_1::kmip_data_structures::KeyBlock {
             key_format_type: self.key_format_type.to_kmip_2_1(),
             key_compression_type: self.key_compression_type.as_ref().map(|x| x.to_kmip_2_1()),
             key_value: self.key_value.to_kmip_2_1(),
@@ -111,11 +83,9 @@ pub struct KeyValue {
 }
 
 impl KeyValue {
-    pub fn to_kmip_2_1(&self) -> crate::kmip_2_1::kmip_data_structures::KeyValue {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyValue {
         kmip_2_1::kmip_data_structures::KeyValue {
-            key_material: kmip_2_1::kmip_data_structures::KeyMaterial::self
-                .key_material
-                .clone(),
+            key_material: self.key_material.to_kmip_2_1(),
             attributes: self.attributes.clone(),
         }
     }
@@ -746,6 +716,134 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             "q_string",
         ];
         deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor)
+    }
+}
+
+impl KeyMaterial {
+    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_data_structures::KeyMaterial {
+        match self {
+            Self::TransparentSymmetricKey { key } => {
+                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentSymmetricKey {
+                    key: key.clone(),
+                }
+            }
+            Self::TransparentDHPrivateKey { p, q, g, j, x } => {
+                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPrivateKey {
+                    p: p.clone(),
+                    q: q.clone(),
+                    g: g.clone(),
+                    j: j.clone(),
+                    x: x.clone(),
+                }
+            }
+            Self::TransparentDHPublicKey { p, q, g, j, y } => {
+                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDHPublicKey {
+                    p: p.clone(),
+                    q: q.clone(),
+                    g: g.clone(),
+                    j: j.clone(),
+                    y: y.clone(),
+                }
+            }
+            Self::TransparentDSAPrivateKey { p, q, g, x } => {
+                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPrivateKey {
+                    p: p.clone(),
+                    q: q.clone(),
+                    g: g.clone(),
+                    x: x.clone(),
+                }
+            }
+            Self::TransparentDSAPublicKey { p, q, g, y } => {
+                kmip_2_1::kmip_data_structures::KeyMaterial::TransparentDSAPublicKey {
+                    p: p.clone(),
+                    q: q.clone(),
+                    g: g.clone(),
+                    y: y.clone(),
+                }
+            }
+            Self::TransparentRSAPrivateKey {
+                modulus,
+                private_exponent,
+                public_exponent,
+                p,
+                q,
+                prime_exponent_p,
+                prime_exponent_q,
+                crt_coefficient,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPrivateKey {
+                modulus: modulus.clone(),
+                private_exponent: private_exponent.clone(),
+                public_exponent: public_exponent.clone(),
+                p: p.clone(),
+                q: q.clone(),
+                prime_exponent_p: prime_exponent_p.clone(),
+                prime_exponent_q: prime_exponent_q.clone(),
+                crt_coefficient: crt_coefficient.clone(),
+            },
+            Self::TransparentRSAPublicKey {
+                modulus,
+                public_exponent,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentRSAPublicKey {
+                modulus: modulus.clone(),
+                public_exponent: public_exponent.clone(),
+            },
+            Self::TransparentECDSAPrivateKey {
+                recommended_curve,
+                d,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                d: d.clone(),
+            },
+            Self::TransparentECDSAPublicKey {
+                recommended_curve,
+                q_string,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                q_string: q_string.clone(),
+            },
+            Self::TransparentECDHPrivateKey {
+                recommended_curve,
+                d,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                d: d.clone(),
+            },
+            Self::TransparentECDHPublicKey {
+                recommended_curve,
+                q_string,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                q_string: q_string.clone(),
+            },
+            Self::TransparentECMQVPrivateKey {
+                recommended_curve,
+                d,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                d: d.clone(),
+            },
+            Self::TransparentECMQVPublicKey {
+                recommended_curve,
+                q_string,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                q_string: q_string.clone(),
+            },
+            Self::TransparentECPrivateKey {
+                recommended_curve,
+                d,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPrivateKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                d: d.clone(),
+            },
+            Self::TransparentECPublicKey {
+                recommended_curve,
+                q_string,
+            } => kmip_2_1::kmip_data_structures::KeyMaterial::TransparentECPublicKey {
+                recommended_curve: *recommended_curve.to_kmip_2_1(),
+                q_string: q_string.clone(),
+            },
+        }
     }
 }
 
