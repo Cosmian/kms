@@ -159,7 +159,7 @@ pub fn to_ec_public_key(
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length,
+                        qlength: q_length,
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
@@ -226,7 +226,7 @@ pub fn to_ec_private_key(
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length,
+                        qlength: q_length,
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {

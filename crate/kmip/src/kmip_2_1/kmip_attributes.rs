@@ -63,13 +63,13 @@ pub struct Attributes {
     /// transition from Pre-Active has occurred, then this attribute SHALL
     /// NOT be changed or deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub activation_date: Option<u64>, // epoch millis
+    pub activation_date: Option<i64>, // epoch millis
 
     /// The Alternative Name attribute is a variable length text string that is associated
     /// with the unique identifier of the object. It may be used as an alternative name to
     /// identify the object, instead of using its unique identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub alternative_name: Option<Vec<AlternativeName>>,
+    pub alternative_name: Option<AlternativeName>,
 
     /// The Always Sensitive attribute is a Boolean that indicates whether the key material
     /// of a Symmetric Key, Private Key, or Secret Data object has always been considered
@@ -280,7 +280,7 @@ pub struct Attributes {
     /// either a Text String or Enumeration.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Vec<Name>,
+    pub name: Option<Vec<Name>>,
 
     /// The Never Extractable attribute is a Boolean that indicates whether the key material
     /// of a Symmetric Key, Private Key, or Secret Data object has never been extractable.
