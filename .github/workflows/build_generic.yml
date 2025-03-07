@@ -159,9 +159,10 @@ jobs:
             sudo apt-get update && sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
 
             # Download the simulator
-            wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
+            # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
+            wget "http://35.187.181.78/SecurityServerEvaluation-6.0.0.0.tar.gz"
             echo -n Extracting compressed archive...
-            tar -xvf "*.tar"
+            tar -xvf "*.tar.gz"
             find .
             rm "*.tar"
 
