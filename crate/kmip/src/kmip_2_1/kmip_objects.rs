@@ -6,7 +6,7 @@ use std::{
 };
 
 use kmip_derive::KmipEnumSerialize;
-use num_bigint_dig::BigUint;
+use num_bigint_dig::BigInt;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
@@ -118,13 +118,13 @@ pub struct SecretData {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SplitKey {
-    pub split_key_parts: u32,
-    pub key_part_identifier: u32,
-    pub split_key_threshold: u32,
+    pub split_key_parts: i32,
+    pub key_part_identifier: i32,
+    pub split_key_threshold: i32,
     pub split_key_method: SplitKeyMethod,
     /// REQUIRED only if Split Key Method is Polynomial Sharing Prime Field.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prime_field_size: Option<BigUint>,
+    pub prime_field_size: Option<BigInt>,
     pub key_block: KeyBlock,
 }
 

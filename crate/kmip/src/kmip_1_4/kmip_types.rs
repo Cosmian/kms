@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
-use crate::kmip_2_1;
+use crate::kmip_2_1::{self, kmip_types::UniqueIdentifier};
 
 /// KMIP 1.4 Credential Type Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
@@ -22,20 +22,16 @@ pub enum KeyCompressionType {
     ECPublicKeyTypeX962CompressedChar2 = 0x4,
 }
 
-impl KeyCompressionType {
-    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::KeyCompressionType {
-        match self {
-            Self::ECPublicKeyTypeUncompressed => {
-                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeUncompressed
+impl From<KeyCompressionType> for kmip_2_1::kmip_types::KeyCompressionType {
+    fn from(val: KeyCompressionType) -> Self {
+        match val {
+            KeyCompressionType::ECPublicKeyTypeUncompressed => Self::ECPublicKeyTypeUncompressed,
+            KeyCompressionType::ECPublicKeyTypeX962Compressed
+            | KeyCompressionType::ECPublicKeyTypeX962CompressedPrime => {
+                Self::ECPublicKeyTypeX962CompressedPrime
             }
-            Self::ECPublicKeyTypeX962Compressed => {
-                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime
-            }
-            Self::ECPublicKeyTypeX962CompressedPrime => {
-                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime
-            }
-            Self::ECPublicKeyTypeX962CompressedChar2 => {
-                kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedChar2
+            KeyCompressionType::ECPublicKeyTypeX962CompressedChar2 => {
+                Self::ECPublicKeyTypeX962CompressedChar2
             }
         }
     }
@@ -65,54 +61,28 @@ pub enum KeyFormatType {
     TransparentECMQVPublicKey = 0x13,
 }
 
-impl KeyFormatType {
-    pub fn to_kmip_2_1(&self) -> kmip_2_1::kmip_types::KeyFormatType {
-        match self {
-            Self::Raw => kmip_2_1::kmip_types::KeyFormatType::Raw,
-            Self::Opaque => kmip_2_1::kmip_types::KeyFormatType::Opaque,
-            Self::PKCS1 => kmip_2_1::kmip_types::KeyFormatType::PKCS1,
-            Self::PKCS8 => kmip_2_1::kmip_types::KeyFormatType::PKCS8,
-            Self::X509 => kmip_2_1::kmip_types::KeyFormatType::X509,
-            Self::ECPrivateKey => kmip_2_1::kmip_types::KeyFormatType::ECPrivateKey,
-            Self::TransparentSymmetricKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentSymmetricKey
-            }
-            Self::TransparentDSAPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey
-            }
-            Self::TransparentDSAPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPublicKey
-            }
-            Self::TransparentRSAPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPrivateKey
-            }
-            Self::TransparentRSAPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentRSAPublicKey
-            }
-            Self::TransparentDHPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentDHPrivateKey
-            }
-            Self::TransparentDHPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentDHPublicKey
-            }
-            Self::TransparentECDSAPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
-            }
-            Self::TransparentECDSAPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
-            }
-            Self::TransparentECDHPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
-            }
-            Self::TransparentECDHPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
-            }
-            Self::TransparentECMQVPrivateKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
-            }
-            Self::TransparentECMQVPublicKey => {
-                kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
-            }
+impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
+    fn from(val: KeyFormatType) -> Self {
+        match val {
+            KeyFormatType::Raw => Self::Raw,
+            KeyFormatType::Opaque => Self::Opaque,
+            KeyFormatType::PKCS1 => Self::PKCS1,
+            KeyFormatType::PKCS8 => Self::PKCS8,
+            KeyFormatType::X509 => Self::X509,
+            KeyFormatType::ECPrivateKey => Self::ECPrivateKey,
+            KeyFormatType::TransparentSymmetricKey => Self::TransparentSymmetricKey,
+            KeyFormatType::TransparentDSAPrivateKey => Self::TransparentDSAPrivateKey,
+            KeyFormatType::TransparentDSAPublicKey => Self::TransparentDSAPublicKey,
+            KeyFormatType::TransparentRSAPrivateKey => Self::TransparentRSAPrivateKey,
+            KeyFormatType::TransparentRSAPublicKey => Self::TransparentRSAPublicKey,
+            KeyFormatType::TransparentDHPrivateKey => Self::TransparentDHPrivateKey,
+            KeyFormatType::TransparentDHPublicKey => Self::TransparentDHPublicKey,
+            KeyFormatType::TransparentECDSAPublicKey
+            | KeyFormatType::TransparentECMQVPublicKey
+            | KeyFormatType::TransparentECDHPublicKey => Self::TransparentECPublicKey,
+            KeyFormatType::TransparentECDHPrivateKey
+            | KeyFormatType::TransparentECMQVPrivateKey
+            | KeyFormatType::TransparentECDSAPrivateKey => Self::TransparentECPrivateKey,
         }
     }
 }
@@ -127,6 +97,18 @@ pub enum WrappingMethod {
     TR31 = 0x5,
 }
 
+impl From<WrappingMethod> for kmip_2_1::kmip_types::WrappingMethod {
+    fn from(val: WrappingMethod) -> Self {
+        match val {
+            WrappingMethod::Encrypt => Self::Encrypt,
+            WrappingMethod::MACSign => Self::MACSign,
+            WrappingMethod::EncryptThenMACSign => Self::EncryptThenMACSign,
+            WrappingMethod::MACSignThenEncrypt => Self::MACSignThenEncrypt,
+            WrappingMethod::TR31 => Self::TR31,
+        }
+    }
+}
+
 /// KMIP 1.4 Certificate Type Enumeration  
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum CertificateType {
@@ -134,11 +116,11 @@ pub enum CertificateType {
     PGP = 0x2,
 }
 
-impl Into<kmip_2_1::kmip_types::CertificateType> for CertificateType {
-    fn into(self) -> kmip_2_1::kmip_types::CertificateType {
-        match self {
-            Self::X509 => kmip_2_1::kmip_types::CertificateType::X509,
-            Self::PGP => kmip_2_1::kmip_types::CertificateType::PGP,
+impl From<CertificateType> for kmip_2_1::kmip_types::CertificateType {
+    fn from(val: CertificateType) -> Self {
+        match val {
+            CertificateType::X509 => Self::X509,
+            CertificateType::PGP => Self::PGP,
         }
     }
 }
@@ -146,10 +128,24 @@ impl Into<kmip_2_1::kmip_types::CertificateType> for CertificateType {
 /// KMIP 1.4 Split Key Method Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum SplitKeyMethod {
-    XOR = 0x1,
-    PolynomialSharingGF2_16 = 0x2,
-    PolynomialSharingPrimeField = 0x3,
-    PolynomialSharingGF2_8 = 0x4,
+    XOR = 0x0000_0001,
+    #[serde(rename = "Polynomial Sharing GF (2^16)")]
+    PolynomialSharingGf216 = 0x0000_0002,
+    #[serde(rename = "Polynomial Sharing Prime Field")]
+    PolynomialSharingPrimeField = 0x0000_0003,
+    #[serde(rename = "Polynomial Sharing GF (2^8)")]
+    PolynomialSharingGf28 = 0x0000_0004,
+}
+
+impl From<SplitKeyMethod> for kmip_2_1::kmip_types::SplitKeyMethod {
+    fn from(val: SplitKeyMethod) -> Self {
+        match val {
+            SplitKeyMethod::XOR => Self::XOR,
+            SplitKeyMethod::PolynomialSharingGf216 => Self::PolynomialSharingGf216,
+            SplitKeyMethod::PolynomialSharingPrimeField => Self::PolynomialSharingPrimeField,
+            SplitKeyMethod::PolynomialSharingGf28 => Self::PolynomialSharingGf28,
+        }
+    }
 }
 
 /// KMIP 1.4 Secret Data Type Enumeration
@@ -159,11 +155,11 @@ pub enum SecretDataType {
     Seed = 0x2,
 }
 
-impl Into<kmip_2_1::kmip_types::SecretDataType> for SecretDataType {
-    fn into(self) -> kmip_2_1::kmip_types::SecretDataType {
-        match self {
-            Self::Password => kmip_2_1::kmip_types::SecretDataType::Password,
-            Self::Seed => kmip_2_1::kmip_types::SecretDataType::Seed,
+impl From<SecretDataType> for kmip_2_1::kmip_types::SecretDataType {
+    fn from(val: SecretDataType) -> Self {
+        match val {
+            SecretDataType::Password => Self::Password,
+            SecretDataType::Seed => Self::Seed,
         }
     }
 }
@@ -175,13 +171,11 @@ pub enum NameType {
     URI = 0x2,
 }
 
-impl Into<kmip_2_1::kmip_types::NameType> for NameType {
-    fn into(self) -> kmip_2_1::kmip_types::NameType {
-        match self {
-            Self::UninterpretedTextString => {
-                kmip_2_1::kmip_types::NameType::UninterpretedTextString
-            }
-            Self::URI => kmip_2_1::kmip_types::NameType::URI,
+impl From<NameType> for kmip_2_1::kmip_types::NameType {
+    fn from(val: NameType) -> Self {
+        match val {
+            NameType::UninterpretedTextString => Self::UninterpretedTextString,
+            NameType::URI => Self::URI,
         }
     }
 }
@@ -201,17 +195,17 @@ pub enum ObjectType {
     PGPKey = 0x9,
 }
 
-impl Into<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
-    fn into(self) -> kmip_2_1::kmip_objects::ObjectType {
-        match self {
-            Self::Certificate => kmip_2_1::kmip_objects::ObjectType::Certificate,
-            Self::SymmetricKey => kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
-            Self::PublicKey => kmip_2_1::kmip_objects::ObjectType::PublicKey,
-            Self::PrivateKey => kmip_2_1::kmip_objects::ObjectType::PrivateKey,
-            Self::SplitKey => kmip_2_1::kmip_objects::ObjectType::SplitKey,
-            Self::SecretData => kmip_2_1::kmip_objects::ObjectType::SecretData,
-            Self::OpaqueObject => kmip_2_1::kmip_objects::ObjectType::OpaqueObject,
-            Self::PGPKey => kmip_2_1::kmip_objects::ObjectType::PGPKey,
+impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
+    fn from(val: ObjectType) -> Self {
+        match val {
+            ObjectType::Certificate => Self::Certificate,
+            ObjectType::SymmetricKey => Self::SymmetricKey,
+            ObjectType::PublicKey => Self::PublicKey,
+            ObjectType::PrivateKey => Self::PrivateKey,
+            ObjectType::SplitKey => Self::SplitKey,
+            ObjectType::SecretData => Self::SecretData,
+            ObjectType::OpaqueObject => Self::OpaqueObject,
+            ObjectType::PGPKey => Self::PGPKey,
         }
     }
 }
@@ -261,76 +255,109 @@ pub enum CryptographicAlgorithm {
     SHAKE256 = 0x28,
 }
 
-impl Into<kmip_2_1::kmip_types::CryptographicAlgorithm> for CryptographicAlgorithm {
-    fn into(self) -> kmip_2_1::kmip_types::CryptographicAlgorithm {
-        match self {
-            Self::DES => kmip_2_1::kmip_types::CryptographicAlgorithm::DES,
-            Self::ThreeES => kmip_2_1::kmip_types::CryptographicAlgorithm::DES,
-            Self::AES => kmip_2_1::kmip_types::CryptographicAlgorithm::AES,
-            Self::RSA => kmip_2_1::kmip_types::CryptographicAlgorithm::RSA,
-            Self::DSA => kmip_2_1::kmip_types::CryptographicAlgorithm::DSA,
-            Self::ECDSA => kmip_2_1::kmip_types::CryptographicAlgorithm::ECDSA,
-            Self::HMACSHA1 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA1,
-            Self::HMACSHA224 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA224,
-            Self::HMACSHA256 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA256,
-            Self::HMACSHA384 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA384,
-            Self::HMACSHA512 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA512,
-            Self::HMACMD5 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACMD5,
-            Self::DH => kmip_2_1::kmip_types::CryptographicAlgorithm::DH,
-            Self::ECDH => kmip_2_1::kmip_types::CryptographicAlgorithm::ECDH,
-            Self::ECMQV => kmip_2_1::kmip_types::CryptographicAlgorithm::ECMQV,
-            Self::Blowfish => kmip_2_1::kmip_types::CryptographicAlgorithm::Blowfish,
-            Self::Camellia => kmip_2_1::kmip_types::CryptographicAlgorithm::Camellia,
-            Self::CAST5 => kmip_2_1::kmip_types::CryptographicAlgorithm::CAST5,
-            Self::IDEA => kmip_2_1::kmip_types::CryptographicAlgorithm::IDEA,
-            Self::MARS => kmip_2_1::kmip_types::CryptographicAlgorithm::MARS,
-            Self::RC2 => kmip_2_1::kmip_types::CryptographicAlgorithm::RC2,
-            Self::RC4 => kmip_2_1::kmip_types::CryptographicAlgorithm::RC4,
-            Self::RC5 => kmip_2_1::kmip_types::CryptographicAlgorithm::RC5,
-            Self::SKIPJACK => kmip_2_1::kmip_types::CryptographicAlgorithm::SKIPJACK,
-            Self::Twofish => kmip_2_1::kmip_types::CryptographicAlgorithm::Twofish,
-            Self::EC => kmip_2_1::kmip_types::CryptographicAlgorithm::EC,
-            Self::OneTimePad => kmip_2_1::kmip_types::CryptographicAlgorithm::OneTimePad,
-            Self::ChaCha20 => kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20,
-            Self::Poly1305 => kmip_2_1::kmip_types::CryptographicAlgorithm::Poly1305,
-            Self::ChaCha20Poly1305 => {
-                kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20Poly1305
-            }
-            Self::SHA3224 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3224,
-            Self::SHA3256 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3256,
-            Self::SHA3384 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3384,
-            Self::SHA3512 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3512,
-            Self::HMACSHA3224 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3224,
-            Self::HMACSHA3256 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3256,
-            Self::HMACSHA3384 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3384,
-            Self::HMACSHA3512 => kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3512,
-            Self::SHAKE128 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE128,
-            Self::SHAKE256 => kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE256,
+impl From<CryptographicAlgorithm> for kmip_2_1::kmip_types::CryptographicAlgorithm {
+    fn from(val: CryptographicAlgorithm) -> Self {
+        match val {
+            CryptographicAlgorithm::DES | CryptographicAlgorithm::ThreeES => Self::DES,
+            CryptographicAlgorithm::AES => Self::AES,
+            CryptographicAlgorithm::RSA => Self::RSA,
+            CryptographicAlgorithm::DSA => Self::DSA,
+            CryptographicAlgorithm::ECDSA => Self::ECDSA,
+            CryptographicAlgorithm::HMACSHA1 => Self::HMACSHA1,
+            CryptographicAlgorithm::HMACSHA224 => Self::HMACSHA224,
+            CryptographicAlgorithm::HMACSHA256 => Self::HMACSHA256,
+            CryptographicAlgorithm::HMACSHA384 => Self::HMACSHA384,
+            CryptographicAlgorithm::HMACSHA512 => Self::HMACSHA512,
+            CryptographicAlgorithm::HMACMD5 => Self::HMACMD5,
+            CryptographicAlgorithm::DH => Self::DH,
+            CryptographicAlgorithm::ECDH => Self::ECDH,
+            CryptographicAlgorithm::ECMQV => Self::ECMQV,
+            CryptographicAlgorithm::Blowfish => Self::Blowfish,
+            CryptographicAlgorithm::Camellia => Self::Camellia,
+            CryptographicAlgorithm::CAST5 => Self::CAST5,
+            CryptographicAlgorithm::IDEA => Self::IDEA,
+            CryptographicAlgorithm::MARS => Self::MARS,
+            CryptographicAlgorithm::RC2 => Self::RC2,
+            CryptographicAlgorithm::RC4 => Self::RC4,
+            CryptographicAlgorithm::RC5 => Self::RC5,
+            CryptographicAlgorithm::SKIPJACK => Self::SKIPJACK,
+            CryptographicAlgorithm::Twofish => Self::Twofish,
+            CryptographicAlgorithm::EC => Self::EC,
+            CryptographicAlgorithm::OneTimePad => Self::OneTimePad,
+            CryptographicAlgorithm::ChaCha20 => Self::ChaCha20,
+            CryptographicAlgorithm::Poly1305 => Self::Poly1305,
+            CryptographicAlgorithm::ChaCha20Poly1305 => Self::ChaCha20Poly1305,
+            CryptographicAlgorithm::SHA3224 => Self::SHA3224,
+            CryptographicAlgorithm::SHA3256 => Self::SHA3256,
+            CryptographicAlgorithm::SHA3384 => Self::SHA3384,
+            CryptographicAlgorithm::SHA3512 => Self::SHA3512,
+            CryptographicAlgorithm::HMACSHA3224 => Self::HMACSHA3224,
+            CryptographicAlgorithm::HMACSHA3256 => Self::HMACSHA3256,
+            CryptographicAlgorithm::HMACSHA3384 => Self::HMACSHA3384,
+            CryptographicAlgorithm::HMACSHA3512 => Self::HMACSHA3512,
+            CryptographicAlgorithm::SHAKE128 => Self::SHAKE128,
+            CryptographicAlgorithm::SHAKE256 => Self::SHAKE256,
         }
     }
 }
 
 /// KMIP 1.4 Block Cipher Mode Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
+#[repr(u32)]
 pub enum BlockCipherMode {
-    CBC = 0x1,
-    ECB = 0x2,
-    PCBC = 0x3,
-    CFB = 0x4,
-    OFB = 0x5,
-    CTR = 0x6,
-    CMAC = 0x7,
-    CCM = 0x8,
-    GCM = 0x9,
-    CBC_MAC = 0xA,
-    XTS = 0xB,
-    AESKeyWrapPadding = 0xC,
-    NISTKeyWrap = 0xD,
-    X9102AESKW = 0xE,
-    X9102TDKW = 0xF,
-    X9102AKW1 = 0x10,
-    X9102AKW2 = 0x11,
-    AEAD = 0x12,
+    CBC = 0x0000_0001,
+    ECB = 0x0000_0002,
+    PCBC = 0x0000_0003,
+    CFB = 0x0000_0004,
+    OFB = 0x0000_0005,
+    CTR = 0x0000_0006,
+    CMAC = 0x0000_0007,
+    CCM = 0x0000_0008,
+    GCM = 0x0000_0009,
+    #[serde(rename = "CBC-MAC")]
+    CBCMAC = 0x0000_000A,
+    XTS = 0x0000_000B,
+    AESKeyWrapPadding = 0x0000_000C,
+    #[serde(rename = "X9.102 AESKW")]
+    X9102AESKW = 0x0000_000E,
+    #[serde(rename = "X9.102 TDKW")]
+    X9102TDKW = 0x0000_000F,
+    #[serde(rename = "X9.102 AKW1")]
+    X9102AKW1 = 0x0000_0010,
+    #[serde(rename = "X9.102 AKW2")]
+    X9102AKW2 = 0x0000_0011,
+    AEAD = 0x0000_0012,
+    // Extensions - 8XXXXXXX
+    // NISTKeyWrap refers to rfc5649
+    NISTKeyWrap = 0x8000_0001,
+    // AES GCM SIV
+    GCMSIV = 0x8000_0002,
+}
+
+impl From<BlockCipherMode> for kmip_2_1::kmip_types::BlockCipherMode {
+    fn from(val: BlockCipherMode) -> Self {
+        match val {
+            BlockCipherMode::CBC => Self::CBC,
+            BlockCipherMode::ECB => Self::ECB,
+            BlockCipherMode::PCBC => Self::PCBC,
+            BlockCipherMode::CFB => Self::CFB,
+            BlockCipherMode::OFB => Self::OFB,
+            BlockCipherMode::CTR => Self::CTR,
+            BlockCipherMode::CMAC => Self::CMAC,
+            BlockCipherMode::CCM => Self::CCM,
+            BlockCipherMode::GCM => Self::GCM,
+            BlockCipherMode::CBCMAC => Self::CBCMAC,
+            BlockCipherMode::XTS => Self::XTS,
+            BlockCipherMode::AESKeyWrapPadding => Self::AESKeyWrapPadding,
+            BlockCipherMode::NISTKeyWrap => Self::NISTKeyWrap,
+            BlockCipherMode::X9102AESKW => Self::X9102AESKW,
+            BlockCipherMode::X9102TDKW => Self::X9102TDKW,
+            BlockCipherMode::X9102AKW1 => Self::X9102AKW1,
+            BlockCipherMode::X9102AKW2 => Self::X9102AKW2,
+            BlockCipherMode::AEAD => Self::AEAD,
+            BlockCipherMode::GCMSIV => Self::GCMSIV,
+        }
+    }
 }
 
 /// KMIP 1.4 Padding Method Enumeration
@@ -341,13 +368,31 @@ pub enum PaddingMethod {
     PKCS5 = 0x3,
     SSL3 = 0x4,
     Zeros = 0x5,
-    #[allow(non_camel_case_types)]
+    #[serde(rename = "ANSI X9.23")]
     ANSI_X923 = 0x6,
-    #[allow(non_camel_case_types)]
-    ISO_10126 = 0x7,
+    #[serde(rename = "ISO 10126")]
+    ISO10126 = 0x7,
+    #[serde(rename = "PKCS1 v1.5")]
     PKCS1v15 = 0x8,
+    #[serde(rename = "X9.31")]
     X931 = 0x9,
     PSS = 0xA,
+}
+impl From<PaddingMethod> for kmip_2_1::kmip_types::PaddingMethod {
+    fn from(val: PaddingMethod) -> Self {
+        match val {
+            PaddingMethod::None => Self::None,
+            PaddingMethod::OAEP => Self::OAEP,
+            PaddingMethod::PKCS5 => Self::PKCS5,
+            PaddingMethod::SSL3 => Self::SSL3,
+            PaddingMethod::Zeros => Self::Zeros,
+            PaddingMethod::ANSI_X923 => Self::ANSI_X923,
+            PaddingMethod::ISO10126 => Self::ISO10126,
+            PaddingMethod::PKCS1v15 => Self::PKCS1v15,
+            PaddingMethod::X931 => Self::X931,
+            PaddingMethod::PSS => Self::PSS,
+        }
+    }
 }
 
 /// KMIP 1.4 Hashing Algorithm Enumeration
@@ -384,26 +429,26 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
-impl Into<kmip_2_1::kmip_types::HashingAlgorithm> for HashingAlgorithm {
-    fn into(self) -> kmip_2_1::kmip_types::HashingAlgorithm {
-        match self {
-            Self::MD2 => kmip_2_1::kmip_types::HashingAlgorithm::MD2,
-            Self::MD4 => kmip_2_1::kmip_types::HashingAlgorithm::MD4,
-            Self::MD5 => kmip_2_1::kmip_types::HashingAlgorithm::MD5,
-            Self::SHA1 => kmip_2_1::kmip_types::HashingAlgorithm::SHA1,
-            Self::SHA224 => kmip_2_1::kmip_types::HashingAlgorithm::SHA224,
-            Self::SHA256 => kmip_2_1::kmip_types::HashingAlgorithm::SHA256,
-            Self::SHA384 => kmip_2_1::kmip_types::HashingAlgorithm::SHA384,
-            Self::SHA512 => kmip_2_1::kmip_types::HashingAlgorithm::SHA512,
-            Self::RIPEMD160 => kmip_2_1::kmip_types::HashingAlgorithm::RIPEMD160,
-            Self::Tiger => kmip_2_1::kmip_types::HashingAlgorithm::Tiger,
-            Self::Whirlpool => kmip_2_1::kmip_types::HashingAlgorithm::Whirlpool,
-            Self::SHA512224 => kmip_2_1::kmip_types::HashingAlgorithm::SHA512224,
-            Self::SHA512256 => kmip_2_1::kmip_types::HashingAlgorithm::SHA512256,
-            Self::SHA3224 => kmip_2_1::kmip_types::HashingAlgorithm::SHA3224,
-            Self::SHA3256 => kmip_2_1::kmip_types::HashingAlgorithm::SHA3256,
-            Self::SHA3384 => kmip_2_1::kmip_types::HashingAlgorithm::SHA3384,
-            Self::SHA3512 => kmip_2_1::kmip_types::HashingAlgorithm::SHA3512,
+impl From<HashingAlgorithm> for kmip_2_1::kmip_types::HashingAlgorithm {
+    fn from(val: HashingAlgorithm) -> Self {
+        match val {
+            HashingAlgorithm::MD2 => Self::MD2,
+            HashingAlgorithm::MD4 => Self::MD4,
+            HashingAlgorithm::MD5 => Self::MD5,
+            HashingAlgorithm::SHA1 => Self::SHA1,
+            HashingAlgorithm::SHA224 => Self::SHA224,
+            HashingAlgorithm::SHA256 => Self::SHA256,
+            HashingAlgorithm::SHA384 => Self::SHA384,
+            HashingAlgorithm::SHA512 => Self::SHA512,
+            HashingAlgorithm::RIPEMD160 => Self::RIPEMD160,
+            HashingAlgorithm::Tiger => Self::Tiger,
+            HashingAlgorithm::Whirlpool => Self::Whirlpool,
+            HashingAlgorithm::SHA512224 => Self::SHA512224,
+            HashingAlgorithm::SHA512256 => Self::SHA512256,
+            HashingAlgorithm::SHA3224 => Self::SHA3224,
+            HashingAlgorithm::SHA3256 => Self::SHA3256,
+            HashingAlgorithm::SHA3384 => Self::SHA3384,
+            HashingAlgorithm::SHA3512 => Self::SHA3512,
         }
     }
 }
@@ -437,6 +482,37 @@ pub enum KeyRoleType {
     TRKBK = 0x18,
 }
 
+impl From<KeyRoleType> for kmip_2_1::kmip_types::KeyRoleType {
+    fn from(val: KeyRoleType) -> Self {
+        match val {
+            KeyRoleType::BDK => Self::BDK,
+            KeyRoleType::CVK => Self::CVK,
+            KeyRoleType::DEK => Self::DEK,
+            KeyRoleType::MKAC => Self::MKAC,
+            KeyRoleType::MKSMC => Self::MKSMC,
+            KeyRoleType::MKSMI => Self::MKSMI,
+            KeyRoleType::MKDAC => Self::MKDAC,
+            KeyRoleType::MKDN => Self::MKDN,
+            KeyRoleType::MKCP => Self::MKCP,
+            KeyRoleType::MKOTH => Self::MKOTH,
+            KeyRoleType::KEK => Self::KEK,
+            KeyRoleType::MAC16609 => Self::MAC16609,
+            KeyRoleType::MAC97971 => Self::MAC97971,
+            KeyRoleType::MAC97972 => Self::MAC97972,
+            KeyRoleType::MAC97973 => Self::MAC97973,
+            KeyRoleType::MAC97974 => Self::MAC97974,
+            KeyRoleType::MAC97975 => Self::MAC97975,
+            KeyRoleType::ZPK => Self::ZPK,
+            KeyRoleType::PVKIBM => Self::PVKIBM,
+            KeyRoleType::PVKPVV => Self::PVKPVV,
+            KeyRoleType::PVKOTH => Self::PVKOTH,
+            KeyRoleType::DUKPT => Self::DUKPT,
+            KeyRoleType::IV => Self::IV,
+            KeyRoleType::TRKBK => Self::TRKBK,
+        }
+    }
+}
+
 /// KMIP 1.4 State Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum State {
@@ -449,15 +525,14 @@ pub enum State {
     Destroyed_Compromised = 0x6,
 }
 
-impl Into<kmip_2_1::kmip_types::State> for State {
-    fn into(self) -> kmip_2_1::kmip_types::State {
-        match self {
-            Self::PreActive => kmip_2_1::kmip_types::State::PreActive,
-            Self::Active => kmip_2_1::kmip_types::State::Active,
-            Self::Deactivated => kmip_2_1::kmip_types::State::Deactivated,
-            Self::Compromised => kmip_2_1::kmip_types::State::Compromised,
-            Self::Destroyed => kmip_2_1::kmip_types::State::Destroyed,
-            Self::Destroyed_Compromised => kmip_2_1::kmip_types::State::Destroyed,
+impl From<State> for kmip_2_1::kmip_types::State {
+    fn from(val: State) -> Self {
+        match val {
+            State::PreActive => Self::PreActive,
+            State::Active => Self::Active,
+            State::Deactivated => Self::Deactivated,
+            State::Compromised => Self::Compromised,
+            State::Destroyed | State::Destroyed_Compromised => Self::Destroyed,
         }
     }
 }
@@ -474,22 +549,16 @@ pub enum RevocationReasonCode {
     PrivilegeWithdrawn = 0x7,
 }
 
-impl Into<kmip_2_1::kmip_types::RevocationReasonCode> for RevocationReasonCode {
-    fn into(self) -> kmip_2_1::kmip_types::RevocationReasonCode {
-        match self {
-            Self::Unspecified => kmip_2_1::kmip_types::RevocationReasonCode::Unspecified,
-            Self::KeyCompromise => kmip_2_1::kmip_types::RevocationReasonCode::KeyCompromise,
-            Self::CACompromise => kmip_2_1::kmip_types::RevocationReasonCode::CACompromise,
-            Self::AffiliationChanged => {
-                kmip_2_1::kmip_types::RevocationReasonCode::AffiliationChanged
-            }
-            Self::Superseded => kmip_2_1::kmip_types::RevocationReasonCode::Superseded,
-            Self::CessationOfOperation => {
-                kmip_2_1::kmip_types::RevocationReasonCode::CessationOfOperation
-            }
-            Self::PrivilegeWithdrawn => {
-                kmip_2_1::kmip_types::RevocationReasonCode::PrivilegeWithdrawn
-            }
+impl From<RevocationReasonCode> for kmip_2_1::kmip_types::RevocationReasonCode {
+    fn from(val: RevocationReasonCode) -> Self {
+        match val {
+            RevocationReasonCode::Unspecified => Self::Unspecified,
+            RevocationReasonCode::KeyCompromise => Self::KeyCompromise,
+            RevocationReasonCode::CACompromise => Self::CACompromise,
+            RevocationReasonCode::AffiliationChanged => Self::AffiliationChanged,
+            RevocationReasonCode::Superseded => Self::Superseded,
+            RevocationReasonCode::CessationOfOperation => Self::CessationOfOperation,
+            RevocationReasonCode::PrivilegeWithdrawn => Self::PrivilegeWithdrawn,
         }
     }
 }
@@ -511,22 +580,20 @@ pub enum LinkType {
     NextLink = 0x10B,
 }
 
-impl Into<kmip_2_1::kmip_types::LinkType> for LinkType {
-    fn into(self) -> kmip_2_1::kmip_types::LinkType {
-        match self {
-            Self::CertificateLink => kmip_2_1::kmip_types::LinkType::CertificateLink,
-            Self::PublicKeyLink => kmip_2_1::kmip_types::LinkType::PublicKeyLink,
-            Self::PrivateKeyLink => kmip_2_1::kmip_types::LinkType::PrivateKeyLink,
-            Self::DerivationBaseObjectLink => {
-                kmip_2_1::kmip_types::LinkType::DerivationBaseObjectLink
-            }
-            Self::DerivedKeyLink => kmip_2_1::kmip_types::LinkType::DerivedKeyLink,
-            Self::ReplacementObjectLink => kmip_2_1::kmip_types::LinkType::ReplacementObjectLink,
-            Self::ReplacedObjectLink => kmip_2_1::kmip_types::LinkType::ReplacedObjectLink,
-            Self::ParentLink => kmip_2_1::kmip_types::LinkType::ParentLink,
-            Self::ChildLink => kmip_2_1::kmip_types::LinkType::ChildLink,
-            Self::PreviousLink => kmip_2_1::kmip_types::LinkType::PreviousLink,
-            Self::NextLink => kmip_2_1::kmip_types::LinkType::NextLink,
+impl From<LinkType> for kmip_2_1::kmip_types::LinkType {
+    fn from(val: LinkType) -> Self {
+        match val {
+            LinkType::CertificateLink => Self::CertificateLink,
+            LinkType::PublicKeyLink => Self::PublicKeyLink,
+            LinkType::PrivateKeyLink => Self::PrivateKeyLink,
+            LinkType::DerivationBaseObjectLink => Self::DerivationBaseObjectLink,
+            LinkType::DerivedKeyLink => Self::DerivedKeyLink,
+            LinkType::ReplacementObjectLink => Self::ReplacementObjectLink,
+            LinkType::ReplacedObjectLink => Self::ReplacedObjectLink,
+            LinkType::ParentLink => Self::ParentLink,
+            LinkType::ChildLink => Self::ChildLink,
+            LinkType::PreviousLink => Self::PreviousLink,
+            LinkType::NextLink => Self::NextLink,
         }
     }
 }
@@ -696,11 +763,11 @@ pub enum UsageLimitsUnit {
     Object = 0x2,
 }
 
-impl Into<kmip_2_1::kmip_types::UsageLimitsUnit> for UsageLimitsUnit {
-    fn into(self) -> kmip_2_1::kmip_types::UsageLimitsUnit {
-        match self {
-            Self::Byte => kmip_2_1::kmip_types::UsageLimitsUnit::Byte,
-            Self::Object => kmip_2_1::kmip_types::UsageLimitsUnit::Object,
+impl From<UsageLimitsUnit> for kmip_2_1::kmip_types::UsageLimitsUnit {
+    fn from(val: UsageLimitsUnit) -> Self {
+        match val {
+            UsageLimitsUnit::Byte => Self::Byte,
+            UsageLimitsUnit::Object => Self::Object,
         }
     }
 }
@@ -710,6 +777,15 @@ impl Into<kmip_2_1::kmip_types::UsageLimitsUnit> for UsageLimitsUnit {
 pub enum EncodingOption {
     NoEncoding = 0x1,
     TTLVEncoding = 0x2,
+}
+
+impl From<EncodingOption> for kmip_2_1::kmip_types::EncodingOption {
+    fn from(val: EncodingOption) -> Self {
+        match val {
+            EncodingOption::NoEncoding => Self::NoEncoding,
+            EncodingOption::TTLVEncoding => Self::TTLVEncoding,
+        }
+    }
 }
 
 /// KMIP 1.4 Object Group Member Enumeration
@@ -731,20 +807,16 @@ pub enum AlternativeNameType {
     IPAddress = 0x7,
 }
 
-impl Into<kmip_2_1::kmip_types::AlternativeNameType> for AlternativeNameType {
-    fn into(self) -> kmip_2_1::kmip_types::AlternativeNameType {
-        match self {
-            Self::UninterpretedTextString => {
-                kmip_2_1::kmip_types::AlternativeNameType::UninterpretedTextString
-            }
-            Self::URI => kmip_2_1::kmip_types::AlternativeNameType::URI,
-            Self::ObjectSerialNumber => {
-                kmip_2_1::kmip_types::AlternativeNameType::ObjectSerialNumber
-            }
-            Self::EmailAddress => kmip_2_1::kmip_types::AlternativeNameType::EmailAddress,
-            Self::DNSName => kmip_2_1::kmip_types::AlternativeNameType::DNSName,
-            Self::X500DirectoryName => kmip_2_1::kmip_types::AlternativeNameType::X500DirectoryName,
-            Self::IPAddress => kmip_2_1::kmip_types::AlternativeNameType::IPAddress,
+impl From<AlternativeNameType> for kmip_2_1::kmip_types::AlternativeNameType {
+    fn from(val: AlternativeNameType) -> Self {
+        match val {
+            AlternativeNameType::UninterpretedTextString => Self::UninterpretedTextString,
+            AlternativeNameType::URI => Self::URI,
+            AlternativeNameType::ObjectSerialNumber => Self::ObjectSerialNumber,
+            AlternativeNameType::EmailAddress => Self::EmailAddress,
+            AlternativeNameType::DNSName => Self::DNSName,
+            AlternativeNameType::X500DirectoryName => Self::X500DirectoryName,
+            AlternativeNameType::IPAddress => Self::IPAddress,
         }
     }
 }
@@ -758,15 +830,13 @@ pub enum KeyValueLocationType {
     OnPremiseOffPremise = 0x4,
 }
 
-impl Into<kmip_2_1::kmip_types::KeyValueLocationType> for KeyValueLocationType {
-    fn into(self) -> kmip_2_1::kmip_types::KeyValueLocationType {
-        match self {
-            Self::Unspecified => kmip_2_1::kmip_types::KeyValueLocationType::Unspecified,
-            Self::OnPremise => kmip_2_1::kmip_types::KeyValueLocationType::OnPremise,
-            Self::OffPremise => kmip_2_1::kmip_types::KeyValueLocationType::OffPremise,
-            Self::OnPremiseOffPremise => {
-                kmip_2_1::kmip_types::KeyValueLocationType::OnPremiseOffPremise
-            }
+impl From<KeyValueLocationType> for kmip_2_1::kmip_types::KeyValueLocationType {
+    fn from(val: KeyValueLocationType) -> Self {
+        match val {
+            KeyValueLocationType::Unspecified => Self::Unspecified,
+            KeyValueLocationType::OnPremise => Self::OnPremise,
+            KeyValueLocationType::OffPremise => Self::OffPremise,
+            KeyValueLocationType::OnPremiseOffPremise => Self::OnPremiseOffPremise,
         }
     }
 }
@@ -792,15 +862,15 @@ pub enum RNGAlgorithm {
     ANSI_X962 = 0x6,
 }
 
-impl Into<kmip_2_1::kmip_types::RNGAlgorithm> for RNGAlgorithm {
-    fn into(self) -> kmip_2_1::kmip_types::RNGAlgorithm {
-        match self {
-            Self::Unspecified => kmip_2_1::kmip_types::RNGAlgorithm::Unspecified,
-            Self::FIPS186_2 => kmip_2_1::kmip_types::RNGAlgorithm::FIPS186_2,
-            Self::DRBG => kmip_2_1::kmip_types::RNGAlgorithm::DRBG,
-            Self::NRBG => kmip_2_1::kmip_types::RNGAlgorithm::NRBG,
-            Self::ANSI_X931 => kmip_2_1::kmip_types::RNGAlgorithm::ANSI_X931,
-            Self::ANSI_X962 => kmip_2_1::kmip_types::RNGAlgorithm::ANSI_X962,
+impl From<RNGAlgorithm> for kmip_2_1::kmip_types::RNGAlgorithm {
+    fn from(val: RNGAlgorithm) -> Self {
+        match val {
+            RNGAlgorithm::Unspecified => Self::Unspecified,
+            RNGAlgorithm::FIPS186_2 => Self::FIPS186_2,
+            RNGAlgorithm::DRBG => Self::DRBG,
+            RNGAlgorithm::NRBG => Self::NRBG,
+            RNGAlgorithm::ANSI_X931 => Self::ANSI_X931,
+            RNGAlgorithm::ANSI_X962 => Self::ANSI_X962,
         }
     }
 }
@@ -816,14 +886,14 @@ pub enum DRBGAlgorithm {
     CTR = 0x5,
 }
 
-impl Into<kmip_2_1::kmip_types::DRBGAlgorithm> for DRBGAlgorithm {
-    fn into(self) -> kmip_2_1::kmip_types::DRBGAlgorithm {
-        match self {
-            Self::Unspecified => kmip_2_1::kmip_types::DRBGAlgorithm::Unspecified,
-            Self::DualEC => kmip_2_1::kmip_types::DRBGAlgorithm::DualEC,
-            Self::Hash => kmip_2_1::kmip_types::DRBGAlgorithm::Hash,
-            Self::HMAC => kmip_2_1::kmip_types::DRBGAlgorithm::HMAC,
-            Self::CTR => kmip_2_1::kmip_types::DRBGAlgorithm::CTR,
+impl From<DRBGAlgorithm> for kmip_2_1::kmip_types::DRBGAlgorithm {
+    fn from(val: DRBGAlgorithm) -> Self {
+        match val {
+            DRBGAlgorithm::Unspecified => Self::Unspecified,
+            DRBGAlgorithm::DualEC => Self::DualEC,
+            DRBGAlgorithm::Hash => Self::Hash,
+            DRBGAlgorithm::HMAC => Self::HMAC,
+            DRBGAlgorithm::CTR => Self::CTR,
         }
     }
 }
@@ -847,16 +917,16 @@ pub enum FIPS186Variation {
     KChangeNotice = 0x7,
 }
 
-impl Into<kmip_2_1::kmip_types::FIPS186Variation> for FIPS186Variation {
-    fn into(self) -> kmip_2_1::kmip_types::FIPS186Variation {
-        match self {
-            Self::Unspecified => kmip_2_1::kmip_types::FIPS186Variation::Unspecified,
-            Self::GPXOriginal => kmip_2_1::kmip_types::FIPS186Variation::GPXOriginal,
-            Self::GPXChangeNotice => kmip_2_1::kmip_types::FIPS186Variation::GPXChangeNotice,
-            Self::XOriginal => kmip_2_1::kmip_types::FIPS186Variation::XOriginal,
-            Self::XChangeNotice => kmip_2_1::kmip_types::FIPS186Variation::XChangeNotice,
-            Self::KOriginal => kmip_2_1::kmip_types::FIPS186Variation::KOriginal,
-            Self::KChangeNotice => kmip_2_1::kmip_types::FIPS186Variation::KChangeNotice,
+impl From<FIPS186Variation> for kmip_2_1::kmip_types::FIPS186Variation {
+    fn from(val: FIPS186Variation) -> Self {
+        match val {
+            FIPS186Variation::Unspecified => Self::Unspecified,
+            FIPS186Variation::GPXOriginal => Self::GPXOriginal,
+            FIPS186Variation::GPXChangeNotice => Self::GPXChangeNotice,
+            FIPS186Variation::XOriginal => Self::XOriginal,
+            FIPS186Variation::XChangeNotice => Self::XChangeNotice,
+            FIPS186Variation::KOriginal => Self::KOriginal,
+            FIPS186Variation::KChangeNotice => Self::KChangeNotice,
         }
     }
 }
@@ -945,6 +1015,14 @@ pub enum MaskGenerator {
     MGF1 = 0x1,
 }
 
+impl From<MaskGenerator> for kmip_2_1::kmip_types::MaskGenerator {
+    fn from(val: MaskGenerator) -> Self {
+        match val {
+            MaskGenerator::MGF1 => Self::MFG1,
+        }
+    }
+}
+
 /// KMIP 1.4 Storage Status Mask Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum StorageStatusMask {
@@ -954,26 +1032,6 @@ pub enum StorageStatusMask {
 }
 
 /// KMIP 1.4 Cryptographic Usage Mask Flags
-pub const CRYPTOGRAPHIC_USAGE_MASK_SIGN: u32 = 0x1;
-pub const CRYPTOGRAPHIC_USAGE_MASK_VERIFY: u32 = 0x2;
-pub const CRYPTOGRAPHIC_USAGE_MASK_ENCRYPT: u32 = 0x4;
-pub const CRYPTOGRAPHIC_USAGE_MASK_DECRYPT: u32 = 0x8;
-pub const CRYPTOGRAPHIC_USAGE_MASK_WRAP_KEY: u32 = 0x10;
-pub const CRYPTOGRAPHIC_USAGE_MASK_UNWRAP_KEY: u32 = 0x20;
-pub const CRYPTOGRAPHIC_USAGE_MASK_EXPORT: u32 = 0x40;
-pub const CRYPTOGRAPHIC_USAGE_MASK_MAC_GENERATE: u32 = 0x80;
-pub const CRYPTOGRAPHIC_USAGE_MASK_MAC_VERIFY: u32 = 0x100;
-pub const CRYPTOGRAPHIC_USAGE_MASK_DERIVE_KEY: u32 = 0x200;
-pub const CRYPTOGRAPHIC_USAGE_MASK_CONTENT_COMMITMENT: u32 = 0x400;
-pub const CRYPTOGRAPHIC_USAGE_MASK_KEY_AGREEMENT: u32 = 0x800;
-pub const CRYPTOGRAPHIC_USAGE_MASK_CERTIFICATE_SIGN: u32 = 0x1000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_CRL_SIGN: u32 = 0x2000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_GENERATE_CRYPTOGRAM: u32 = 0x4000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_VALIDATE_CRYPTOGRAM: u32 = 0x8000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_TRANSLATE_ENCRYPT: u32 = 0x10000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_TRANSLATE_DECRYPT: u32 = 0x20000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_TRANSLATE_WRAP: u32 = 0x40000;
-pub const CRYPTOGRAPHIC_USAGE_MASK_TRANSLATE_UNWRAP: u32 = 0x80000;
 
 /// KMIP 1.4 Recommended Curve Enumeration
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
@@ -1016,45 +1074,45 @@ pub enum RecommendedCurve {
     BRAINPOOLP512T1 = 0x24,
 }
 
-impl Into<kmip_2_1::kmip_types::RecommendedCurve> for RecommendedCurve {
-    fn into(self) -> kmip_2_1::kmip_types::RecommendedCurve {
-        match self {
-            Self::P192 => kmip_2_1::kmip_types::RecommendedCurve::P192,
-            Self::K163 => kmip_2_1::kmip_types::RecommendedCurve::K163,
-            Self::B163 => kmip_2_1::kmip_types::RecommendedCurve::B163,
-            Self::P224 => kmip_2_1::kmip_types::RecommendedCurve::P224,
-            Self::K233 => kmip_2_1::kmip_types::RecommendedCurve::K233,
-            Self::B233 => kmip_2_1::kmip_types::RecommendedCurve::B233,
-            Self::P256 => kmip_2_1::kmip_types::RecommendedCurve::P256,
-            Self::K283 => kmip_2_1::kmip_types::RecommendedCurve::K283,
-            Self::B283 => kmip_2_1::kmip_types::RecommendedCurve::B283,
-            Self::P384 => kmip_2_1::kmip_types::RecommendedCurve::P384,
-            Self::K409 => kmip_2_1::kmip_types::RecommendedCurve::K409,
-            Self::B409 => kmip_2_1::kmip_types::RecommendedCurve::B409,
-            Self::P521 => kmip_2_1::kmip_types::RecommendedCurve::P521,
-            Self::K571 => kmip_2_1::kmip_types::RecommendedCurve::K571,
-            Self::B571 => kmip_2_1::kmip_types::RecommendedCurve::B571,
-            Self::SECP112R1 => kmip_2_1::kmip_types::RecommendedCurve::SECP112R1,
-            Self::SECP112R2 => kmip_2_1::kmip_types::RecommendedCurve::SECP112R2,
-            Self::SECP128R1 => kmip_2_1::kmip_types::RecommendedCurve::SECP128R1,
-            Self::SECP128R2 => kmip_2_1::kmip_types::RecommendedCurve::SECP128R2,
-            Self::SECP160R1 => kmip_2_1::kmip_types::RecommendedCurve::SECP160R1,
-            Self::SECP160K1 => kmip_2_1::kmip_types::RecommendedCurve::SECP160K1,
-            Self::SECP256K1 => kmip_2_1::kmip_types::RecommendedCurve::SECP256K1,
-            Self::BRAINPOOLP160R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160R1,
-            Self::BRAINPOOLP160T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160T1,
-            Self::BRAINPOOLP192R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192R1,
-            Self::BRAINPOOLP192T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192T1,
-            Self::BRAINPOOLP224R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224R1,
-            Self::BRAINPOOLP224T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224T1,
-            Self::BRAINPOOLP256R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256R1,
-            Self::BRAINPOOLP256T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256T1,
-            Self::BRAINPOOLP320R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320R1,
-            Self::BRAINPOOLP320T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320T1,
-            Self::BRAINPOOLP384R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384R1,
-            Self::BRAINPOOLP384T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384T1,
-            Self::BRAINPOOLP512R1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512R1,
-            Self::BRAINPOOLP512T1 => kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512T1,
+impl From<RecommendedCurve> for kmip_2_1::kmip_types::RecommendedCurve {
+    fn from(val: RecommendedCurve) -> Self {
+        match val {
+            RecommendedCurve::P192 => Self::P192,
+            RecommendedCurve::K163 => Self::K163,
+            RecommendedCurve::B163 => Self::B163,
+            RecommendedCurve::P224 => Self::P224,
+            RecommendedCurve::K233 => Self::K233,
+            RecommendedCurve::B233 => Self::B233,
+            RecommendedCurve::P256 => Self::P256,
+            RecommendedCurve::K283 => Self::K283,
+            RecommendedCurve::B283 => Self::B283,
+            RecommendedCurve::P384 => Self::P384,
+            RecommendedCurve::K409 => Self::K409,
+            RecommendedCurve::B409 => Self::B409,
+            RecommendedCurve::P521 => Self::P521,
+            RecommendedCurve::K571 => Self::K571,
+            RecommendedCurve::B571 => Self::B571,
+            RecommendedCurve::SECP112R1 => Self::SECP112R1,
+            RecommendedCurve::SECP112R2 => Self::SECP112R2,
+            RecommendedCurve::SECP128R1 => Self::SECP128R1,
+            RecommendedCurve::SECP128R2 => Self::SECP128R2,
+            RecommendedCurve::SECP160R1 => Self::SECP160R1,
+            RecommendedCurve::SECP160K1 => Self::SECP160K1,
+            RecommendedCurve::SECP256K1 => Self::SECP256K1,
+            RecommendedCurve::BRAINPOOLP160R1 => Self::BRAINPOOLP160R1,
+            RecommendedCurve::BRAINPOOLP160T1 => Self::BRAINPOOLP160T1,
+            RecommendedCurve::BRAINPOOLP192R1 => Self::BRAINPOOLP192R1,
+            RecommendedCurve::BRAINPOOLP192T1 => Self::BRAINPOOLP192T1,
+            RecommendedCurve::BRAINPOOLP224R1 => Self::BRAINPOOLP224R1,
+            RecommendedCurve::BRAINPOOLP224T1 => Self::BRAINPOOLP224T1,
+            RecommendedCurve::BRAINPOOLP256R1 => Self::BRAINPOOLP256R1,
+            RecommendedCurve::BRAINPOOLP256T1 => Self::BRAINPOOLP256T1,
+            RecommendedCurve::BRAINPOOLP320R1 => Self::BRAINPOOLP320R1,
+            RecommendedCurve::BRAINPOOLP320T1 => Self::BRAINPOOLP320T1,
+            RecommendedCurve::BRAINPOOLP384R1 => Self::BRAINPOOLP384R1,
+            RecommendedCurve::BRAINPOOLP384T1 => Self::BRAINPOOLP384T1,
+            RecommendedCurve::BRAINPOOLP512R1 => Self::BRAINPOOLP512R1,
+            RecommendedCurve::BRAINPOOLP512T1 => Self::BRAINPOOLP512T1,
         }
     }
 }
@@ -1080,47 +1138,25 @@ pub enum DigitalSignatureAlgorithm {
     ECDSAWithSHA512 = 0x10,
 }
 
-impl Into<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatureAlgorithm {
-    fn into(self) -> kmip_2_1::kmip_types::DigitalSignatureAlgorithm {
-        match self {
-            Self::MD2WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::MD2WithRSAEncryption
-            }
-            Self::MD5WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::MD5WithRSAEncryption
-            }
-            Self::SHA1WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA1WithRSAEncryption
-            }
-            Self::SHA224WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA224WithRSAEncryption
-            }
-            Self::SHA256WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-            }
-            Self::SHA384WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-            }
-            Self::SHA512WithRSAEncryption => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-            }
-            Self::RSASSAPSS => kmip_2_1::kmip_types::DigitalSignatureAlgorithm::RSASSAPSS,
-            Self::DSAWithSHA1 => kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA1,
-            Self::DSAWithSHA224 => kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA224,
-            Self::DSAWithSHA256 => kmip_2_1::kmip_types::DigitalSignatureAlgorithm::DSAWithSHA256,
-            Self::ECDSAWithSHA1 => kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA1,
-            Self::ECDSAWithSHA224 => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA224
-            }
-            Self::ECDSAWithSHA256 => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA256
-            }
-            Self::ECDSAWithSHA384 => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA384
-            }
-            Self::ECDSAWithSHA512 => {
-                kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA512
-            }
+impl From<DigitalSignatureAlgorithm> for kmip_2_1::kmip_types::DigitalSignatureAlgorithm {
+    fn from(val: DigitalSignatureAlgorithm) -> Self {
+        match val {
+            DigitalSignatureAlgorithm::MD2WithRSAEncryption => Self::MD2WithRSAEncryption,
+            DigitalSignatureAlgorithm::MD5WithRSAEncryption => Self::MD5WithRSAEncryption,
+            DigitalSignatureAlgorithm::SHA1WithRSAEncryption => Self::SHA1WithRSAEncryption,
+            DigitalSignatureAlgorithm::SHA224WithRSAEncryption => Self::SHA224WithRSAEncryption,
+            DigitalSignatureAlgorithm::SHA256WithRSAEncryption => Self::SHA256WithRSAEncryption,
+            DigitalSignatureAlgorithm::SHA384WithRSAEncryption => Self::SHA384WithRSAEncryption,
+            DigitalSignatureAlgorithm::SHA512WithRSAEncryption => Self::SHA512WithRSAEncryption,
+            DigitalSignatureAlgorithm::RSASSAPSS => Self::RSASSAPSS,
+            DigitalSignatureAlgorithm::DSAWithSHA1 => Self::DSAWithSHA1,
+            DigitalSignatureAlgorithm::DSAWithSHA224 => Self::DSAWithSHA224,
+            DigitalSignatureAlgorithm::DSAWithSHA256 => Self::DSAWithSHA256,
+            DigitalSignatureAlgorithm::ECDSAWithSHA1 => Self::ECDSAWithSHA1,
+            DigitalSignatureAlgorithm::ECDSAWithSHA224 => Self::ECDSAWithSHA224,
+            DigitalSignatureAlgorithm::ECDSAWithSHA256 => Self::ECDSAWithSHA256,
+            DigitalSignatureAlgorithm::ECDSAWithSHA384 => Self::ECDSAWithSHA384,
+            DigitalSignatureAlgorithm::ECDSAWithSHA512 => Self::ECDSAWithSHA512,
         }
     }
 }
@@ -1129,7 +1165,14 @@ impl Into<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatureA
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, Clone, PartialEq, Eq, Hash)]
 pub enum OpaqueDataType {
     Unknown = 0x1,
-    PKCS12 = 0x2,
+}
+
+impl From<OpaqueDataType> for kmip_2_1::kmip_types::OpaqueDataType {
+    fn from(val: OpaqueDataType) -> Self {
+        match val {
+            OpaqueDataType::Unknown => Self::Unknown,
+        }
+    }
 }
 
 /// KMIP 1.4 Name structure containing a name type and value
@@ -1140,11 +1183,11 @@ pub struct Name {
     pub name_type: NameType,
 }
 
-impl Into<kmip_2_1::kmip_types::Name> for Name {
-    fn into(self) -> kmip_2_1::kmip_types::Name {
-        kmip_2_1::kmip_types::Name {
-            name_value: self.name_value,
-            name_type: self.name_type.into(),
+impl From<Name> for kmip_2_1::kmip_types::Name {
+    fn from(val: Name) -> Self {
+        Self {
+            name_value: val.name_value,
+            name_type: val.name_type.into(),
         }
     }
 }
@@ -1159,11 +1202,11 @@ pub struct CryptographicDomainParameters {
     pub recommended_curve: Option<RecommendedCurve>,
 }
 
-impl Into<kmip_2_1::kmip_types::CryptographicDomainParameters> for CryptographicDomainParameters {
-    fn into(self) -> kmip_2_1::kmip_types::CryptographicDomainParameters {
-        kmip_2_1::kmip_types::CryptographicDomainParameters {
-            qlength: self.qlength,
-            recommended_curve: self.recommended_curve.map(|c| c.into()),
+impl From<CryptographicDomainParameters> for kmip_2_1::kmip_types::CryptographicDomainParameters {
+    fn from(val: CryptographicDomainParameters) -> Self {
+        Self {
+            qlength: val.qlength,
+            recommended_curve: val.recommended_curve.map(Into::into),
         }
     }
 }
@@ -1176,11 +1219,11 @@ pub struct X509CertificateIdentifier {
     pub cxertificate_serial_number: Vec<u8>,
 }
 
-impl Into<kmip_2_1::kmip_types::X509CertificateIdentifier> for X509CertificateIdentifier {
-    fn into(self) -> kmip_2_1::kmip_types::X509CertificateIdentifier {
-        kmip_2_1::kmip_types::X509CertificateIdentifier {
-            issuer_distinguished_name: self.issuer_distinguished_name,
-            cxertificate_serial_number: self.cxertificate_serial_number,
+impl From<X509CertificateIdentifier> for kmip_2_1::kmip_types::X509CertificateIdentifier {
+    fn from(val: X509CertificateIdentifier) -> Self {
+        Self {
+            issuer_distinguished_name: val.issuer_distinguished_name,
+            cxertificate_serial_number: val.cxertificate_serial_number,
         }
     }
 }
@@ -1252,9 +1295,9 @@ bitflags::bitflags! {
     }
 }
 
-impl Into<kmip_2_1::kmip_types::CryptographicUsageMask> for CryptographicUsageMask {
-    fn into(self) -> kmip_2_1::kmip_types::CryptographicUsageMask {
-        kmip_2_1::kmip_types::CryptographicUsageMask(self.0)
+impl From<CryptographicUsageMask> for kmip_2_1::kmip_types::CryptographicUsageMask {
+    fn from(val: CryptographicUsageMask) -> Self {
+        Self(val.0)
     }
 }
 
@@ -1267,12 +1310,12 @@ pub struct UsageLimits {
     pub usage_limits_unit: UsageLimitsUnit,
 }
 
-impl Into<kmip_2_1::kmip_types::UsageLimits> for UsageLimits {
-    fn into(self) -> kmip_2_1::kmip_types::UsageLimits {
-        kmip_2_1::kmip_types::UsageLimits {
-            usage_limits_unit: self.usage_limits_unit.into(),
-            usage_limits_count: self.usage_limits_count,
-            usage_limits_total: self.usage_limits_total,
+impl From<UsageLimits> for kmip_2_1::kmip_types::UsageLimits {
+    fn from(val: UsageLimits) -> Self {
+        Self {
+            usage_limits_unit: val.usage_limits_unit.into(),
+            usage_limits_count: val.usage_limits_count,
+            usage_limits_total: val.usage_limits_total,
         }
     }
 }
@@ -1286,11 +1329,11 @@ pub struct RevocationReason {
     pub revocation_message: Option<String>,
 }
 
-impl Into<kmip_2_1::kmip_types::RevocationReason> for RevocationReason {
-    fn into(self) -> kmip_2_1::kmip_types::RevocationReason {
-        kmip_2_1::kmip_types::RevocationReason {
-            revocation_reason_code: self.revocation_reason_code.into(),
-            revocation_message: self.revocation_message,
+impl From<RevocationReason> for kmip_2_1::kmip_types::RevocationReason {
+    fn from(val: RevocationReason) -> Self {
+        Self {
+            revocation_reason_code: val.revocation_reason_code.into(),
+            revocation_message: val.revocation_message,
         }
     }
 }
@@ -1304,11 +1347,11 @@ pub struct ApplicationSpecificInformation {
     pub application_data: Option<String>,
 }
 
-impl Into<kmip_2_1::kmip_types::ApplicationSpecificInformation> for ApplicationSpecificInformation {
-    fn into(self) -> kmip_2_1::kmip_types::ApplicationSpecificInformation {
-        kmip_2_1::kmip_types::ApplicationSpecificInformation {
-            application_namespace: self.application_namespace,
-            application_data: self.application_data,
+impl From<ApplicationSpecificInformation> for kmip_2_1::kmip_types::ApplicationSpecificInformation {
+    fn from(val: ApplicationSpecificInformation) -> Self {
+        Self {
+            application_namespace: val.application_namespace,
+            application_data: val.application_data,
         }
     }
 }
@@ -1321,11 +1364,11 @@ pub struct AlternativeName {
     pub alternative_name_type: AlternativeNameType,
 }
 
-impl Into<kmip_2_1::kmip_types::AlternativeName> for AlternativeName {
-    fn into(self) -> kmip_2_1::kmip_types::AlternativeName {
-        kmip_2_1::kmip_types::AlternativeName {
-            alternative_name_value: self.alternative_name_value,
-            alternative_name_type: self.alternative_name_type.into(),
+impl From<AlternativeName> for kmip_2_1::kmip_types::AlternativeName {
+    fn from(val: AlternativeName) -> Self {
+        Self {
+            alternative_name_value: val.alternative_name_value,
+            alternative_name_type: val.alternative_name_type.into(),
         }
     }
 }
@@ -1351,17 +1394,17 @@ pub struct RandomNumberGenerator {
     pub prediction_resistance: Option<bool>,
 }
 
-impl Into<kmip_2_1::kmip_types::RandomNumberGenerator> for RandomNumberGenerator {
-    fn into(self) -> kmip_2_1::kmip_types::RandomNumberGenerator {
-        kmip_2_1::kmip_types::RandomNumberGenerator {
-            rng_algorithm: self.rng_algorithm.into(),
-            cryptographic_algorithm: self.cryptographic_algorithm.map(|c| c.into()),
-            cryptographic_length: self.cryptographic_length,
-            hashing_algorithm: self.hashing_algorithm.map(|h| h.into()),
-            drbg_algorithm: self.drbg_algorithm.map(|d| d.into()),
-            recommended_curve: self.recommended_curve.map(|r| r.into()),
-            fips186_variation: self.fips186_variation.map(|f| f.into()),
-            prediction_resistance: self.prediction_resistance,
+impl From<RandomNumberGenerator> for kmip_2_1::kmip_types::RandomNumberGenerator {
+    fn from(val: RandomNumberGenerator) -> Self {
+        Self {
+            rng_algorithm: val.rng_algorithm.into(),
+            cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
+            cryptographic_length: val.cryptographic_length,
+            hashing_algorithm: val.hashing_algorithm.map(Into::into),
+            drbg_algorithm: val.drbg_algorithm.map(Into::into),
+            recommended_curve: val.recommended_curve.map(Into::into),
+            fips186_variation: val.fips186_variation.map(Into::into),
+            prediction_resistance: val.prediction_resistance,
         }
     }
 }
@@ -1370,19 +1413,19 @@ impl Into<kmip_2_1::kmip_types::RandomNumberGenerator> for RandomNumberGenerator
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct Link {
     pub link_type: LinkType,
-    pub linked_object_identifier: LinkedObjectIdentifier,
+    pub linked_object_identifier: UniqueIdentifier,
 }
 
-impl Into<kmip_2_1::kmip_types::Link> for Link {
-    fn into(self) -> kmip_2_1::kmip_types::Link {
-        kmip_2_1::kmip_types::Link {
-            link_type: self.link_type.into(),
-            linked_object_identifier: self.linked_object_identifier,
+impl From<Link> for kmip_2_1::kmip_types::Link {
+    fn from(val: Link) -> Self {
+        Self {
+            link_type: val.link_type.into(),
+            linked_object_identifier: val.linked_object_identifier.into(),
         }
     }
 }
 
-/// LinkedObjectIdentifier defines the format of the object reference in a link.
+/// `LinkedObjectIdentifier` defines the format of the object reference in a link.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum LinkedObjectIdentifier {

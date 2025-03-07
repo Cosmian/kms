@@ -56,7 +56,7 @@ fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
-        key_value: aes_key_value(key_value),
+        key_value: Some(aes_key_value(key_value)),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(key_value.len() as i32 * 8),
         key_wrapping_data: None,
@@ -434,7 +434,7 @@ fn test_import_private_key() {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue {
+            key_value: Some(KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
@@ -444,7 +444,7 @@ fn test_import_private_key() {
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     ..Attributes::default()
                 }),
-            },
+            }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
             key_wrapping_data: None,
@@ -707,8 +707,8 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     match object_ {
         Object::SymmetricKey(SymmetricKey { key_block }) => {
             assert_eq!(
-                get_key_block().key_value.key_material,
-                key_block.key_value.key_material
+                get_key_block().key_value.map(|kv| kv.key_material),
+                key_block.key_value.map(|kv| kv.key_material)
             );
         }
         _ => panic!("wrong object type"),
@@ -729,7 +729,7 @@ fn get_key_block() -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
-        key_value: KeyValue {
+        key_value: Some(KeyValue {
             key_material: KeyMaterial::TransparentSymmetricKey {
                 key: Zeroizing::from(
                     hex::decode(
@@ -740,7 +740,7 @@ fn get_key_block() -> KeyBlock {
             },
             //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Attributes::default()),
-        },
+        }),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
         key_wrapping_data: None,

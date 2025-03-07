@@ -98,6 +98,7 @@ pub struct Attributes {
 
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
+    #[allow(clippy::struct_field_names)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_attributes: Option<CertificateAttributes>,
 
@@ -441,6 +442,7 @@ pub struct Attributes {
     /// created by the server with Vendor Identification "y" are not created
     /// (provided during object creation), set, added, adjusted, modified or
     /// deleted by the client.
+    #[allow(clippy::struct_field_names)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_attributes: Option<Vec<VendorAttribute>>,
 
