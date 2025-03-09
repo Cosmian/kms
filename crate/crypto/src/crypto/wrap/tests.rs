@@ -1,6 +1,7 @@
 #[cfg(feature = "fips")]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::KeyWrappingData,
     kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
     requests::create_symmetric_key_kmip_object,
@@ -40,8 +41,10 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     rand_bytes(&mut sym_wrapping_key_bytes)?;
     let sym_wrapping_key = create_symmetric_key_kmip_object(
         sym_wrapping_key_bytes.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     // the key to wrap
@@ -49,8 +52,10 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     rand_bytes(&mut sym_key_to_wrap_bytes)?;
     let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
         sym_key_to_wrap_bytes.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let algorithm = Some(CryptographicAlgorithm::EC);
@@ -168,8 +173,10 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     rand_bytes(&mut symmetric_key)?;
     let wrap_key = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let plaintext = b"plaintext";

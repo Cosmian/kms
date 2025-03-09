@@ -98,22 +98,23 @@ pub(crate) async fn import(
 /// If the user specified tags, we will use these and remove them from the request,
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
-fn recover_tags(request_attributes: &Attributes, object: &Object) -> KResult<HashSet<String>> {
+fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
     // extract the tags from the request attributes
-    let tags = request_attributes.get_tags();
+    let mut tags = request_attributes.get_tags();
     if !tags.is_empty() {
-        Attributes::check_user_tags(&tags)?;
-        return Ok(tags);
+        //remove system tags starting with '_'
+        tags.retain(|t| !t.starts_with('_'));
+        return tags;
     }
     // try extracting the tags form the object attributes
     if let Ok(key_block) = object.key_block() {
         if let Some(key_value) = key_block.key_value.as_ref() {
             if let Some(attributes) = &key_value.attributes {
-                return Ok(attributes.get_tags())
+                return attributes.get_tags()
             }
         }
     }
-    Ok(HashSet::new())
+    HashSet::new()
 }
 
 pub(crate) async fn process_symmetric_key(
@@ -139,7 +140,7 @@ pub(crate) async fn process_symmetric_key(
     }
 
     // Tag the object as a symmetric key
-    let mut tags = recover_tags(&request.attributes, &object)?;
+    let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_kk".to_owned());
 
     // request attributes will hold the final attributes of the object
@@ -185,7 +186,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Tag the object as a certificate
-    let mut tags = recover_tags(&request.attributes, &request.object)?;
+    let mut tags = recover_tags(&request.attributes, &request.object);
     tags.insert("_cert".to_owned());
 
     // The specification says that this should be DER bytes
@@ -262,7 +263,7 @@ async fn process_public_key(
     }
 
     // Tag the object as a public key
-    let mut tags = recover_tags(&request.attributes, &object)?;
+    let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_pk".to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
@@ -293,8 +294,6 @@ async fn process_public_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
-            // Object attributes are set to the new key format, recover them
-            attributes.merge(object.key_block()?.attributes()?, true);
         }
     }
 
@@ -356,7 +355,7 @@ async fn process_private_key(
     }
 
     // Tag the object as a private key
-    let mut tags = recover_tags(&request.attributes, &object)?;
+    let mut tags = recover_tags(&request.attributes, &object);
     tags.insert("_sk".to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
@@ -373,13 +372,6 @@ async fn process_private_key(
         attributes.merge(object_attributes, false);
     }
 
-    #[cfg(not(feature = "fips"))]
-    // In non-FIPS mode, if no CryptographicUsageMask has been specified,
-    // default to Unrestricted.
-    if attributes.cryptographic_usage_mask.is_none() {
-        attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
-    }
-
     // If the key is not wrapped and not a Covercrypt Key, try to parse it as an openssl object and
     // import it as a PKCS8
     // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
@@ -394,8 +386,6 @@ async fn process_private_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
-            // Object attributes are set to the new key format, recover them
-            attributes.merge(object.key_block()?.attributes()?, true);
         }
     }
 
@@ -431,45 +421,6 @@ async fn process_private_key(
         )],
     ))
 }
-
-// /// Convert an openssl private key to a KMIP private key
-// /// and return the uid, the object and the tags
-// /// The user tags are optional and will be updated if present
-// /// The request attributes will be updated with the imported links
-// /// The `sk_uid` is the unique identifier of the private key
-// /// If it is empty, a new one will be generated
-// fn private_key_from_openssl(
-//     sk: &PKey<Private>,
-//     user_tags: Option<HashSet<String>>,
-//     request_attributes: &mut Attributes,
-//     sk_uid: &str,
-// ) -> KResult<(String, Object, Option<HashSet<String>>)> {
-//     // convert the private key to PKCS#8
-//     let mut sk = openssl_private_key_to_kmip(
-//         sk,
-//         KeyFormatType::PKCS8,
-//         request_attributes.cryptographic_usage_mask,
-//     )?;
-
-//     let sk_uid = if sk_uid.is_empty() {
-//         Uuid::new_v4().to_string()
-//     } else {
-//         sk_uid.to_owned()
-//     };
-
-//     let sk_key_block = sk.key_block_mut()?;
-
-//     // add links in the request attributes to the object attributes
-//     if let Some(key_value) = sk_key_block.key_value.as_mut() {
-//         let kv_attributes = key_value.attributes.get_or_insert(Attributes::default());
-//         upsert_links_in_attributes(kv_attributes, request_attributes);
-//     }
-
-//     let mut sk_tags = user_tags.unwrap_or_default();
-//     sk_tags.insert("_sk".to_owned());
-
-//     Ok((sk_uid, sk, sk_tags))
-// }
 
 fn single_operation(
     tags: HashSet<String>,

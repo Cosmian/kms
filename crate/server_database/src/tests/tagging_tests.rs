@@ -27,8 +27,13 @@ pub(crate) async fn tags<DB: ObjectsStore + PermissionsStore>(
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     // create a symmetric key
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     // insert into DB
 

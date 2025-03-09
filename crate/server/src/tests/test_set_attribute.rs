@@ -30,7 +30,7 @@ use cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attribute,
+    kmip_attributes::{Attribute, Attributes},
     kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
     kmip_types::{
         AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag,
@@ -91,8 +91,10 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     rng.fill_bytes(&mut symmetric_key);
     let sym_key_object = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
     )?;
     let uid = Uuid::new_v4().to_string();
 

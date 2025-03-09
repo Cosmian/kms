@@ -7,7 +7,6 @@ use base64::{
 };
 use cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes,
     kmip_objects::Object,
     kmip_operations::Create,
     kmip_types::{CryptographicAlgorithm, KeyFormatType},
@@ -17,7 +16,7 @@ use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LE
 use cosmian_kms_interfaces::{EncryptionOracle, SessionParams};
 use cosmian_kms_server_database::CachedUnwrappedObject;
 use openssl::rand::rand_bytes;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -114,18 +113,6 @@ impl KMS {
             )
         })?;
 
-        // recover tags
-        let mut tags = attributes.get_tags();
-        Attributes::check_user_tags(&tags)?;
-        //update the tags
-        tags.insert("_kk".to_owned());
-
-        // recover uid
-        let uid = attributes
-            .unique_identifier
-            .as_ref()
-            .map(ToString::to_string);
-
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::ChaCha20
@@ -148,12 +135,14 @@ impl KMS {
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v);
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rand_bytes(&mut symmetric_key)?;
-                    let object = create_symmetric_key_kmip_object(
-                        &symmetric_key,
-                        *cryptographic_algorithm,
-                        attributes.sensitive,
-                    )?;
-
+                    let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
+                    let attributes = object.attributes()?;
+                    info!("Created symmetric key: {:?}", attributes);
+                    let tags = attributes.get_tags();
+                    let uid = attributes
+                        .unique_identifier
+                        .as_ref()
+                        .map(ToString::to_string);
                     //return the object and the tags
                     Ok((uid, object, tags))
                 }
@@ -169,7 +158,7 @@ impl KMS {
 
     /// Create a private key and the corresponding system tags
     /// The tags will contain the user tags and the following:
-    ///  - "_sk"
+    ///  - "_uk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
@@ -190,18 +179,6 @@ impl KMS {
             )
         })?;
 
-        // recover tags
-        let mut tags = attributes.get_tags();
-        Attributes::check_user_tags(&tags)?;
-        //update the tags
-        tags.insert("_uk".to_owned());
-
-        // recover uid
-        let uid = attributes
-            .unique_identifier
-            .as_ref()
-            .map(std::string::ToString::to_string);
-
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {
                 let object = create_user_decryption_key(
@@ -214,6 +191,12 @@ impl KMS {
                     privileged_users,
                 )
                 .await?;
+                let attributes = object.attributes()?;
+                let tags = attributes.get_tags();
+                let uid = attributes
+                    .unique_identifier
+                    .as_ref()
+                    .map(ToString::to_string);
                 Ok((uid, object, tags))
             }
             other => Err(KmsError::NotSupported(format!(

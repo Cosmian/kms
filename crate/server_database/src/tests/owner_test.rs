@@ -1,13 +1,14 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_crypto_core::{
-    CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
+    CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
-    KmipOperation,
+    kmip_attributes::Attributes,
     kmip_types::{CryptographicAlgorithm, StateEnumeration},
     requests::create_symmetric_key_kmip_object,
+    KmipOperation,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -26,8 +27,13 @@ pub(crate) async fn owner<DB: ObjectsStore + PermissionsStore>(
     let user_id_2 = "user_id_2@example.org";
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
     let uid = Uuid::new_v4().to_string();
 
     db.create(
