@@ -670,6 +670,139 @@ impl Attributes {
     }
 }
 
+impl Attributes {
+    /// Merge the attributes from `other` into `self`.
+    /// If an attribute is present in both `self` and `other`, and *overwrite* is set,
+    /// the value from `other` is used else the value from `self` is used.
+    pub fn merge(&mut self, other: &Self, overwrite: bool) {
+        // Define a helper macro to merge Option<T> fields
+        macro_rules! merge_option_field {
+            ($field:ident) => {
+                if (overwrite && other.$field.is_some()) || self.$field.is_none() {
+                    if other.$field.is_some() {
+                        self.$field = other.$field.clone();
+                    }
+                }
+            };
+        }
+
+        // Apply the macro to each Option<T> field
+        merge_option_field!(activation_date);
+        merge_option_field!(alternative_name);
+        merge_option_field!(always_sensitive);
+        merge_option_field!(application_specific_information);
+        merge_option_field!(archive_date);
+        merge_option_field!(attribute_index);
+        merge_option_field!(certificate_attributes);
+        merge_option_field!(certificate_type);
+        merge_option_field!(certificate_length);
+        merge_option_field!(comment);
+        merge_option_field!(compromise_date);
+        merge_option_field!(compromise_occurrence_date);
+        merge_option_field!(contact_information);
+        merge_option_field!(critical);
+        merge_option_field!(cryptographic_algorithm);
+        merge_option_field!(cryptographic_domain_parameters);
+        merge_option_field!(cryptographic_length);
+        merge_option_field!(cryptographic_parameters);
+        merge_option_field!(cryptographic_usage_mask);
+        merge_option_field!(deactivation_date);
+        merge_option_field!(description);
+        merge_option_field!(destroy_date);
+        merge_option_field!(digital_signature_algorithm);
+        merge_option_field!(extractable);
+        merge_option_field!(fresh);
+        merge_option_field!(initial_date);
+        merge_option_field!(key_format_type);
+        merge_option_field!(key_value_location);
+        merge_option_field!(key_value_present);
+        merge_option_field!(last_change_date);
+        merge_option_field!(lease_time);
+        merge_option_field!(nist_key_type);
+        merge_option_field!(object_group);
+        merge_option_field!(object_group_member);
+        merge_option_field!(object_type);
+        merge_option_field!(opaque_data_type);
+        merge_option_field!(original_creation_date);
+        merge_option_field!(pkcs_12_friendly_name);
+        merge_option_field!(process_start_date);
+        merge_option_field!(protect_stop_date);
+        merge_option_field!(protection_level);
+        merge_option_field!(protection_period);
+        merge_option_field!(protection_storage_masks);
+        merge_option_field!(quantum_safe);
+        merge_option_field!(random_number_generator);
+        merge_option_field!(revocation_reason);
+        merge_option_field!(rotate_date);
+        merge_option_field!(rotate_generation);
+        merge_option_field!(rotate_interval);
+        merge_option_field!(rotate_latest);
+        merge_option_field!(rotate_name);
+        merge_option_field!(rotate_offset);
+        merge_option_field!(short_unique_identifier);
+        merge_option_field!(state);
+        merge_option_field!(unique_identifier);
+        merge_option_field!(usage_limits);
+        merge_option_field!(x_509_certificate_identifier);
+        merge_option_field!(x_509_certificate_issuer);
+        merge_option_field!(x_509_certificate_subject);
+
+        // Handle boolean fields
+        if overwrite {
+            self.sensitive = other.sensitive;
+        }
+
+        // Handle Vec fields specially
+        // For name
+        if let Some(other_names) = &other.name {
+            if self.name.is_none() || overwrite {
+                self.name = Some(other_names.clone());
+            } else {
+                // Merge names without duplicates
+                let self_names = self.name.get_or_insert_with(Vec::new);
+                for name in other_names {
+                    if !self_names.contains(name) {
+                        self_names.push(name.clone());
+                    }
+                }
+            }
+        }
+
+        // For link
+        if let Some(other_links) = &other.link {
+            if self.link.is_none() || overwrite {
+                self.link = Some(other_links.clone());
+            } else {
+                // Merge links without duplicates by link_type
+                let self_links = self.link.get_or_insert_with(Vec::new);
+                for link in other_links {
+                    if !self_links.iter().any(|l| l.link_type == link.link_type) {
+                        self_links.push(link.clone());
+                    }
+                }
+            }
+        }
+
+        // For vendor_attributes
+        if let Some(other_vas) = &other.vendor_attributes {
+            if self.vendor_attributes.is_none() || overwrite {
+                self.vendor_attributes = Some(other_vas.clone());
+            } else {
+                // Merge vendor attributes without duplicates by vendor_identification and attribute_name
+                let self_vas = self.vendor_attributes.get_or_insert_with(Vec::new);
+                for va in other_vas {
+                    if !self_vas.iter().any(|v| {
+                        v.vendor_identification == va.vendor_identification
+                            && v.attribute_name == va.attribute_name
+                    }) {
+                        self_vas.push(va.clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Structure used in various operations to provide the New Attribute value in the request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]

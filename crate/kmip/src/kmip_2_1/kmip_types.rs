@@ -1428,17 +1428,12 @@ pub enum BlockCipherMode {
     CMAC = 0x0000_0007,
     CCM = 0x0000_0008,
     GCM = 0x0000_0009,
-    #[serde(rename = "CBC-MAC")]
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
     AESKeyWrapPadding = 0x0000_000C,
-    #[serde(rename = "X9.102 AESKW")]
     X9102AESKW = 0x0000_000E,
-    #[serde(rename = "X9.102 TDKW")]
     X9102TDKW = 0x0000_000F,
-    #[serde(rename = "X9.102 AKW1")]
     X9102AKW1 = 0x0000_0010,
-    #[serde(rename = "X9.102 AKW2")]
     X9102AKW2 = 0x0000_0011,
     AEAD = 0x0000_0012,
     // Extensions - 8XXXXXXX
@@ -1458,13 +1453,9 @@ pub enum PaddingMethod {
     PKCS5 = 0x3,
     SSL3 = 0x4,
     Zeros = 0x5,
-    #[serde(rename = "ANSI X9.23")]
     ANSI_X923 = 0x6,
-    #[serde(rename = "ISO 10126")]
     ISO10126 = 0x7,
-    #[serde(rename = "PKCS1 v1.5")]
     PKCS1v15 = 0x8,
-    #[serde(rename = "X9.31")]
     X931 = 0x9,
     PSS = 0xA,
 }
@@ -1477,31 +1468,19 @@ pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
     MD5 = 0x0000_0003,
-    #[serde(rename = "SHA-1")]
     SHA1 = 0x0000_0004,
-    #[serde(rename = "SHA-224")]
     SHA224 = 0x0000_0005,
-    #[serde(rename = "SHA-256")]
     SHA256 = 0x0000_0006,
-    #[serde(rename = "SHA-384")]
     SHA384 = 0x0000_0007,
-    #[serde(rename = "SHA-512")]
     SHA512 = 0x0000_0008,
-    #[serde(rename = "RIPEMD-160")]
     RIPEMD160 = 0x0000_0009,
     Tiger = 0x0000_000A,
     Whirlpool = 0x0000_000B,
-    #[serde(rename = "SHA-512/224")]
     SHA512224 = 0x0000_000C,
-    #[serde(rename = "SHA-512/256")]
     SHA512256 = 0x0000_000D,
-    #[serde(rename = "SHA3-224")]
     SHA3224 = 0x0000_000E,
-    #[serde(rename = "SHA3-256")]
     SHA3256 = 0x0000_000F,
-    #[serde(rename = "SHA3-384")]
     SHA3384 = 0x0000_0010,
-    #[serde(rename = "SHA3-512")]
     SHA3512 = 0x0000_0011,
 }
 

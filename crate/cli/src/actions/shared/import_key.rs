@@ -173,14 +173,12 @@ impl ImportKeyAction {
             .clone();
 
         if let Some(issuer_certificate_id) = &self.certificate_id {
-            //let attributes = import_attributes.get_or_insert(Attributes::default());
             import_attributes.set_link(
                 LinkType::CertificateLink,
                 LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
             );
         };
         if let Some(private_key_id) = &self.private_key_id {
-            //let attributes = import_attributes.get_or_insert(Attributes::default());
             import_attributes.set_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.clone()),

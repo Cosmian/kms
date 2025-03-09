@@ -591,6 +591,7 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.client.server_url);
         let mut request = self.client.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
+
         if self.print_json {
             println!(
                 "\nKMIP Request ==>\n{}",
