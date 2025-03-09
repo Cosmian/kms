@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -16,27 +17,43 @@ use crate::{
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
-    cryptographic_algorithm: CryptographicAlgorithm,
-    sensitive: bool,
+    create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
+    let mut tags = create_attributes.get_tags();
+    tags.insert("_kk".to_owned());
+    // The cryptographic algorithm must be specified
+    let cryptographic_algorithm = create_attributes.cryptographic_algorithm.ok_or_else(|| {
+        KmipError::NotSupported(
+            "the cryptographic algorithm must be specified for symmetric key creation".to_owned(),
+        )
+    })?;
+    // Generate a new UID if none is provided.
+    let uid = match &create_attributes
+        .unique_identifier
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_default()
+    {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid.to_owned(),
+    };
     // this length is in bits
     let cryptographic_length = Some(i32::try_from(key_bytes.len())? * 8);
-
-    let attributes = Attributes {
-        object_type: Some(ObjectType::SymmetricKey),
-        cryptographic_algorithm: Some(cryptographic_algorithm),
-        cryptographic_length,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
-        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        sensitive,
-        ..Attributes::default()
-    };
+    let mut attributes = create_attributes.clone();
+    attributes.object_type = Some(ObjectType::SymmetricKey);
+    attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
+    attributes.cryptographic_length = cryptographic_length;
+    attributes.cryptographic_usage_mask = Some(
+        CryptographicUsageMask::Encrypt
+            | CryptographicUsageMask::Decrypt
+            | CryptographicUsageMask::WrapKey
+            | CryptographicUsageMask::UnwrapKey
+            | CryptographicUsageMask::KeyAgreement,
+    );
+    attributes.key_format_type = Some(KeyFormatType::TransparentSymmetricKey);
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
+    // set the tags in the attributes
+    attributes.set_tags(tags)?;
 
     // The default format for a symmetric key is Raw
     //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:

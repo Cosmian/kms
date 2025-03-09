@@ -1479,6 +1479,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.11",
  "tracing",
+ "uuid",
  "x509-parser",
  "zeroize",
 ]

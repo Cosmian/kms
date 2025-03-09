@@ -27,8 +27,13 @@ pub(crate) async fn json_access<DB: ObjectsStore + PermissionsStore>(
 
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     let uid = Uuid::new_v4().to_string();
 

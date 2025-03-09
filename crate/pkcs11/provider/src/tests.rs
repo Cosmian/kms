@@ -1,4 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, PrivateKey},
     kmip_types::{CryptographicAlgorithm, KeyFormatType},
@@ -56,7 +57,13 @@ fn initialize_backend() -> Result<CkmsBackend, Pkcs11Error> {
 }
 
 async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
-    let vol1 = create_symmetric_key_kmip_object(&[1, 2, 3, 4], CryptographicAlgorithm::AES, false)?;
+    let vol1 = create_symmetric_key_kmip_object(
+        &[1, 2, 3, 4],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
     debug!("vol1: {}", vol1);
     let _vol1_id = import_object(
         kms_rest_client,
@@ -69,7 +76,13 @@ async fn create_keys(kms_rest_client: &KmsClient) -> Result<(), Pkcs11Error> {
     )
     .await?;
 
-    let vol2 = create_symmetric_key_kmip_object(&[4, 5, 6, 7], CryptographicAlgorithm::AES, false)?;
+    let vol2 = create_symmetric_key_kmip_object(
+        &[4, 5, 6, 7],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
     let _vol2_id = import_object(
         kms_rest_client,
         Some("vol2".to_owned()),

@@ -2,9 +2,11 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 use predicates::prelude::*;
 use tempfile::TempDir;
+use tracing::info;
 
 use crate::{
     error::{result::CliResult, CliError},
@@ -193,6 +195,7 @@ pub(crate) async fn remove(
 
 #[tokio::test]
 async fn test_edit_policy() -> CliResult<()> {
+    log_init(Some("info,cosmian_kms_server=trace,cosmian_cli=debug"));
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -255,6 +258,8 @@ async fn test_edit_policy() -> CliResult<()> {
         Some("myid"),
     )?;
 
+    info!("Adding new attribute Department::Sales");
+
     // Adding new attribute "Department::Sales"
     add(
         &ctx.owner_client_conf_path,
@@ -262,6 +267,8 @@ async fn test_edit_policy() -> CliResult<()> {
         "Department::Sales",
     )
     .await?;
+
+    info!("Encrypting message for the new attribute");
 
     // Encrypt message for the new attribute
     encrypt(

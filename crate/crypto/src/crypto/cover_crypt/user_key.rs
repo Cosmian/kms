@@ -11,10 +11,11 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType, PrivateKey},
     kmip_types::{
         CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier,
+        LinkedObjectIdentifier, UniqueIdentifier,
     },
 };
 use tracing::trace;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -104,7 +105,7 @@ impl UserDecryptionKeysHandler {
     pub fn create_user_decryption_key_object(
         &self,
         access_policy_str: &str,
-        attributes: Option<&Attributes>,
+        create_attributes: &Attributes,
         master_private_key_id: &str,
     ) -> Result<Object, CryptoError> {
         //
@@ -122,10 +123,30 @@ impl UserDecryptionKeysHandler {
         })?;
         let user_decryption_key_len = user_decryption_key_bytes.len();
 
-        let mut attributes = attributes.cloned().unwrap_or_default();
+        // Tag the object as a private key
+        let mut tags = create_attributes.get_tags();
+        tags.insert("_uk".to_owned());
+
+        // Set the unique identifier, if not provided, generate a new one
+        let uid = match create_attributes
+            .unique_identifier
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default()
+        {
+            uid if uid.is_empty() => Uuid::new_v4().to_string(),
+            uid => uid,
+        };
+
+        let mut attributes = create_attributes.clone();
         attributes.object_type = Some(ObjectType::PrivateKey);
+        attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::CoverCrypt);
         // Covercrypt keys are set to have unrestricted usage.
         attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+        // set the tags in the attributes
+        attributes.set_tags(tags.clone())?;
+        // set the unique identifier
+        attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;

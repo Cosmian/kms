@@ -13,7 +13,7 @@ use cosmian_logger::log_init;
 use kms_test_server::{start_default_test_kms_server, TestsContext};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
@@ -253,8 +253,7 @@ fn check_certificate_added_extensions(cert_x509_der: &[u8]) {
     let exts_with_x509_parser = cert_x509.extensions();
 
     for ext in exts_with_x509_parser {
-        info!("\next: {ext:?}");
-        info!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+        trace!("\next: {ext:?}");
     }
 
     // BasicConstraints

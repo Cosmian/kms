@@ -4,7 +4,7 @@ use cloudproof::reexport::{
 };
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
-    kmip_types::{CryptographicAlgorithm, RevocationReason},
+    kmip_types::{CryptographicAlgorithm, RevocationReason, RevocationReasonCode},
     requests::{
         build_revoke_key_request, decrypt_request, encrypt_request, symmetric_key_create_request,
     },
@@ -650,7 +650,10 @@ impl KmsClient {
     ) -> PyResult<&PyAny> {
         let request = build_revoke_key_request(
             &key_identifier.0,
-            RevocationReason::TextString(revocation_reason.to_string()),
+            RevocationReason {
+                revocation_reason_code: RevocationReasonCode::Unspecified,
+                revocation_message: Some(revocation_reason.to_owned()),
+            },
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 

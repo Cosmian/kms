@@ -591,6 +591,7 @@ pub(crate) async fn test_export_x25519() -> CliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_sensitive_sym() -> CliResult<()> {
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

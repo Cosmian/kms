@@ -39,7 +39,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     action: RekeyEditAction,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ReKeyKeyPairResponse> {
-    trace!("Internal rekey key pair CoverCrypt");
+    trace!("Internal rekey key pair CoverCrypt: {action:?}");
 
     let (msk_uid, mpk_uid) = match action {
         RekeyEditAction::RekeyAccessPolicy(ap) => {

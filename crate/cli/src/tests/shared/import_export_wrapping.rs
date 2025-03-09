@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
 use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::Object,
         kmip_types::{
             CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
@@ -18,7 +21,7 @@ use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pa
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use super::ExportKeyParams;
 use crate::{
@@ -44,8 +47,13 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key =
-        create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let wrap_key = create_symmetric_key_kmip_object(
+        &wrap_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key
@@ -104,7 +112,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_logger::log_init(Some("info"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -199,7 +207,8 @@ fn test_import_export_wrap_private_key(
     let tmp_path = tmp_dir.path();
 
     // Export the private key without wrapping
-    let private_key_file = tmp_path.join("master_private.key");
+    // let private_key_file = tmp_path.join("master_private.key");
+    let private_key_file = PathBuf::from("/tmp/master_private.key");
     let export_params = ExportKeyParams {
         cli_conf_path: cli_conf_path.to_string(),
         sub_command: sub_command.to_string(),
@@ -246,7 +255,10 @@ fn test_import_export_wrap_private_key(
                 .is_none()
         );
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
+        assert_eq!(
+            wrapped_private_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
+        );
     }
 
     // test the unwrapping on import
@@ -270,19 +282,19 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
-        assert!(
+        assert_eq!(
             re_exported_key
                 .key_block()?
                 .key_value
                 .as_ref()
                 .expect("The key value of the re-exported key should be present")
+                .key_material,
+            private_key
+                .key_block()?
+                .key_value
+                .as_ref()
+                .expect("The key value of the original key should be present")
                 .key_material
-                == private_key
-                    .key_block()?
-                    .key_value
-                    .as_ref()
-                    .expect("The key value of the original key should be present")
-                    .key_material
         );
         assert_eq!(
             re_exported_key
@@ -319,8 +331,17 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
-        assert!(
-            exported_unwrapped_key.key_block()?.key_value == private_key.key_block()?.key_value
+        info!(
+            "exported_unwrapped_key: {}",
+            serde_json::to_string_pretty(&exported_unwrapped_key).unwrap()
+        );
+        info!(
+            "private_key: {}",
+            serde_json::to_string_pretty(&private_key).unwrap()
+        );
+        assert_eq!(
+            exported_unwrapped_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
         );
         assert!(exported_unwrapped_key.key_wrapping_data().is_none());
     }
