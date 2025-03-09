@@ -5,7 +5,8 @@ use cosmian_crypto_core::{
     CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
-    kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+    kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+    requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
 use uuid::Uuid;
@@ -27,8 +28,13 @@ pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
     // Create a first symmetric key with tag "tag1"
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     let uid1 = Uuid::new_v4().to_string();
 
@@ -45,8 +51,13 @@ pub(crate) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
     // Create a first symmetric key with tag "tag1" and tag "tag2"
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key =
-        create_symmetric_key_kmip_object(&symmetric_key_bytes, CryptographicAlgorithm::AES, false)?;
+    let symmetric_key = create_symmetric_key_kmip_object(
+        &symmetric_key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        },
+    )?;
 
     let uid2 = Uuid::new_v4().to_string();
 

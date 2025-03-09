@@ -120,7 +120,8 @@ mod tests {
         CsRng,
     };
     use cosmian_kmip::kmip_2_1::{
-        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
     };
     use cosmian_logger::log_init;
     use tempfile::TempDir;
@@ -146,8 +147,10 @@ mod tests {
         // create a symmetric key
         let symmetric_key = create_symmetric_key_kmip_object(
             &symmetric_key_bytes,
-            CryptographicAlgorithm::AES,
-            false,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Attributes::default()
+            },
         )?;
 
         // insert into DB

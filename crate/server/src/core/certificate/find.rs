@@ -5,7 +5,6 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation,
 };
 use cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams};
-use log::info;
 use tracing::trace;
 
 use crate::{
@@ -114,11 +113,6 @@ pub(crate) async fn retrieve_certificate_for_private_key(
         "Retrieving certificate for private key: {}",
         private_key.id()
     );
-    info!(
-        "Retrieving certificate for private key: {:?}",
-        private_key.object()
-    );
-    info!("Private KEY ATTRS: {:?}", private_key.attributes());
     // recover the Certificate Link inside the Private Key
     let certificate_id = private_key
         .attributes()

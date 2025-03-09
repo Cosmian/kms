@@ -11,6 +11,7 @@ use cosmian_crypto_core::{
 };
 use cosmian_kmip::{
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_types::{CryptographicAlgorithm, StateEnumeration},
         requests::create_symmetric_key_kmip_object,
         KmipOperation,
@@ -65,8 +66,13 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
 
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let object =
-        create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES, false)?;
+    let object = create_symmetric_key_kmip_object(
+        &symmetric_key,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
 
     // check that the object is not there
     assert!(o_db.object_get(uid).await?.is_none());

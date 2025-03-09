@@ -5,6 +5,7 @@ use cosmian_crypto_core::{
     CsRng,
 };
 use cosmian_kmip::kmip_2_1::{
+    kmip_attributes::Attributes,
     kmip_types::{
         CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     },
@@ -33,8 +34,10 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_1 = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid_1 = Uuid::new_v4().to_string();
@@ -43,8 +46,10 @@ pub(crate) async fn tx_and_list<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_2 = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid_2 = Uuid::new_v4().to_string();
@@ -109,8 +114,10 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_1 = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid_1 = Uuid::new_v4().to_string();
@@ -119,8 +126,10 @@ pub(crate) async fn atomic<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_2 = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid_2 = Uuid::new_v4().to_string();
@@ -225,8 +234,10 @@ pub(crate) async fn upsert<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let mut symmetric_key = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid = Uuid::new_v4().to_string();
@@ -312,8 +323,10 @@ pub(crate) async fn crud<DB: ObjectsStore>(
     rng.fill_bytes(&mut symmetric_key);
     let mut symmetric_key = create_symmetric_key_kmip_object(
         symmetric_key.as_slice(),
-        CryptographicAlgorithm::AES,
-        false,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
     )?;
 
     let uid = Uuid::new_v4().to_string();

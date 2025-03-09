@@ -74,6 +74,7 @@ pub(crate) async fn rekey_keypair(
                 owm.attributes().sensitive,
             ))
             .await
+            .context("Rekey keypair: Covercrypt rekey failed")
         } else if let Some(other) = attributes.cryptographic_algorithm {
             kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {other:?} is not yet supported"
