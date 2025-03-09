@@ -33,7 +33,7 @@ use crate::{
     core::{
         KMS,
         certificate::{retrieve_certificate_for_private_key, retrieve_private_key_for_certificate},
-        operations::import::upsert_imported_links_in_attributes,
+        operations::import::upsert_links_in_attributes,
         retrieve_object_utils::retrieve_object_for_operation,
         wrapping::wrap_key,
     },
@@ -317,7 +317,7 @@ async fn post_process_active_private_key(
 
     // Make a copy of the existing attributes
 
-    upsert_imported_links_in_attributes(
+    upsert_links_in_attributes(
         &mut attributes,
         key_block
             .key_value
@@ -460,7 +460,7 @@ async fn process_public_key(
         .await
     }
 
-    upsert_imported_links_in_attributes(
+    upsert_links_in_attributes(
         &mut attributes,
         key_block
             .key_value
