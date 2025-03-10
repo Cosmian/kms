@@ -163,7 +163,7 @@ jobs:
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
 
             # Configure the PKCS#11 connection on the KMS server
-            sudo telnet localhost 3001
+            sudo telnet 0.0.0.0 3001
             sudo cp Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /lib directory
             sudo mkdir -p /etc/utimaco
             sudo chmod 755 /etc/utimaco
