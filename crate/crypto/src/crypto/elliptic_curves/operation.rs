@@ -234,7 +234,7 @@ pub fn to_ec_private_key(
                             public_key_uid.to_owned(),
                         ),
                     }]),
-                    sensitive,
+                    sensitive: Some(sensitive),
                     ..Attributes::default()
                 }),
             }),

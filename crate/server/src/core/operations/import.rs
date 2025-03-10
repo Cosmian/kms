@@ -110,7 +110,7 @@ fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<Str
     if let Ok(key_block) = object.key_block() {
         if let Some(key_value) = key_block.key_value.as_ref() {
             if let Some(attributes) = &key_value.attributes {
-                return attributes.get_tags()
+                return attributes.get_tags();
             }
         }
     }
@@ -163,6 +163,10 @@ pub(crate) async fn process_symmetric_key(
     if let Ok(object_attributes) = object.key_block()?.attributes() {
         attributes.merge(object_attributes, false);
     }
+    // make sure we have a CryptographicAlgorithm set; default to AES
+    if attributes.cryptographic_algorithm == None {
+        attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES)
+    };
 
     // Replace updated attributes in object structure.
     if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {
@@ -276,7 +280,7 @@ async fn process_public_key(
     let mut attributes = request.attributes;
     // merge the object attributes with the request attributes without overwriting
     // this will recover exiting links for instance
-    if let Ok(object_attributes) = object.key_block()?.attributes() {
+    if let Ok(object_attributes) = object.attributes() {
         attributes.merge(object_attributes, false);
     }
 
@@ -294,6 +298,8 @@ async fn process_public_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
+            // Merge the correct cryptographic attributes in the attributes
+            attributes.merge(object.attributes()?, true);
         }
     }
 
@@ -307,11 +313,6 @@ async fn process_public_key(
     attributes.set_tags(tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
-    // merge the object attributes with the request attributes without overwriting
-    // this will recover exiting links for instance
-    if let Ok(object_attributes) = object.key_block()?.attributes() {
-        attributes.merge(object_attributes, false);
-    }
 
     // Replace updated attributes in object structure.
     if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {
@@ -351,7 +352,7 @@ async fn process_private_key(
             object,
             request.attributes,
             replace_existing,
-        )
+        );
     }
 
     // Tag the object as a private key
@@ -386,6 +387,8 @@ async fn process_private_key(
                 KeyFormatType::PKCS8,
                 attributes.cryptographic_usage_mask,
             )?;
+            // Merge the correct cryptographic attributes in the attributes
+            attributes.merge(object.attributes()?, true);
         }
     }
 
@@ -399,11 +402,6 @@ async fn process_private_key(
     attributes.set_tags(tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
-    // merge the object attributes with the request attributes without overwriting
-    // this will recover exiting links for instance
-    if let Ok(object_attributes) = object.key_block()?.attributes() {
-        attributes.merge(object_attributes, false);
-    }
 
     // Replace updated attributes in object structure.
     if let Some(key_value) = object.key_block_mut()?.key_value.as_mut() {

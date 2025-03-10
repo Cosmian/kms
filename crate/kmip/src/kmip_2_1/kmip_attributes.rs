@@ -402,8 +402,8 @@ pub struct Attributes {
     /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
     // wrapped by another key. The server SHALL set the value to False if the value is not provided by the
     // client.
-    #[serde(default)]
-    pub sensitive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensitive: Option<bool>,
 
     /// The Short Unique Identifier attribute is used for compact identification of objects.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -739,6 +739,7 @@ impl Attributes {
         merge_option_field!(rotate_latest);
         merge_option_field!(rotate_name);
         merge_option_field!(rotate_offset);
+        merge_option_field!(sensitive);
         merge_option_field!(short_unique_identifier);
         merge_option_field!(state);
         merge_option_field!(unique_identifier);
@@ -746,11 +747,6 @@ impl Attributes {
         merge_option_field!(x_509_certificate_identifier);
         merge_option_field!(x_509_certificate_issuer);
         merge_option_field!(x_509_certificate_subject);
-
-        // Handle boolean fields
-        if overwrite {
-            self.sensitive = other.sensitive;
-        }
 
         // Handle Vec fields specially
         // For name

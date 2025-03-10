@@ -141,21 +141,22 @@ pub(crate) fn generate_key_pair_and_tags(
     sk_tags.insert("_sk".to_owned());
     let mut pk_tags = tags;
     pk_tags.insert("_pk".to_owned());
+
     // determine if the key is sensitive
     let sensitive = request
         .private_key_attributes
         .as_ref()
-        .is_some_and(|attr| attr.sensitive)
-        || common_attributes.sensitive;
-    // Grab whatever attributes were supplied on the create request.
-    let any_attributes = Some(&common_attributes)
-        .or(request.private_key_attributes.as_ref())
-        .or(request.public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "Attributes must be provided in a CreateKeyPair request".to_owned(),
-            )
-        })?;
+        .is_some_and(|attr| attr.sensitive == Some(true))
+        || common_attributes.sensitive == Some(true);
+
+    // Grab whatever attributes were supplied on the  create request.
+    if let Some(private_key_attributes) = &request.private_key_attributes {
+        common_attributes.merge(private_key_attributes, false);
+    }
+    if let Some(public_key_attributes) = &request.public_key_attributes {
+        common_attributes.merge(public_key_attributes, false);
+    }
+
     // Cryptographic Usage Masks
     let private_key_mask = request
         .private_key_attributes
@@ -166,7 +167,7 @@ pub(crate) fn generate_key_pair_and_tags(
         .as_ref()
         .and_then(|attr| attr.cryptographic_usage_mask);
     // Check that the cryptographic algorithm is specified.
-    let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
+    let cryptographic_algorithm = common_attributes.cryptographic_algorithm.ok_or_else(|| {
         KmsError::InvalidRequest(
             "the cryptographic algorithm must be specified for key pair creation".to_owned(),
         )
@@ -177,7 +178,7 @@ pub(crate) fn generate_key_pair_and_tags(
         CryptographicAlgorithm::EC
         | CryptographicAlgorithm::ECDH
         | CryptographicAlgorithm::ECDSA => {
-            let domain_parameters = any_attributes
+            let domain_parameters = common_attributes
                 .cryptographic_domain_parameters
                 .unwrap_or_default();
             let curve = domain_parameters.recommended_curve.unwrap_or_default();
@@ -193,7 +194,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     private_key_uid,
                     public_key_uid,
                     curve,
-                    any_attributes.cryptographic_algorithm,
+                    common_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
                     sensitive,
@@ -205,7 +206,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     private_key_uid,
                     public_key_uid,
                     curve,
-                    any_attributes.cryptographic_algorithm,
+                    common_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
                     sensitive,
@@ -214,7 +215,7 @@ pub(crate) fn generate_key_pair_and_tags(
                 RecommendedCurve::CURVE25519 => create_x25519_key_pair(
                     private_key_uid,
                     public_key_uid,
-                    any_attributes.cryptographic_algorithm,
+                    common_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
                     sensitive,
@@ -223,7 +224,7 @@ pub(crate) fn generate_key_pair_and_tags(
                 RecommendedCurve::CURVE448 => create_x448_key_pair(
                     private_key_uid,
                     public_key_uid,
-                    any_attributes.cryptographic_algorithm,
+                    common_attributes.cryptographic_algorithm,
                     private_key_mask,
                     public_key_mask,
                     sensitive,
@@ -244,7 +245,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     create_ed25519_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        any_attributes.cryptographic_algorithm,
+                        common_attributes.cryptographic_algorithm,
                         private_key_mask,
                         public_key_mask,
                         sensitive,
@@ -276,7 +277,7 @@ pub(crate) fn generate_key_pair_and_tags(
                     create_ed448_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        any_attributes.cryptographic_algorithm,
+                        common_attributes.cryptographic_algorithm,
                         private_key_mask,
                         public_key_mask,
                         sensitive,
@@ -299,7 +300,7 @@ pub(crate) fn generate_key_pair_and_tags(
         }
         CryptographicAlgorithm::RSA => {
             let key_size_in_bits = u32::try_from(
-                any_attributes
+                common_attributes
                     .cryptographic_length
                     .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_owned()))?,
             )?;
@@ -309,7 +310,7 @@ pub(crate) fn generate_key_pair_and_tags(
                 key_size_in_bits,
                 public_key_uid,
                 private_key_uid,
-                any_attributes.cryptographic_algorithm,
+                common_attributes.cryptographic_algorithm,
                 private_key_mask,
                 public_key_mask,
                 sensitive,
@@ -318,7 +319,7 @@ pub(crate) fn generate_key_pair_and_tags(
         CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
             private_key_uid,
             public_key_uid,
-            any_attributes.cryptographic_algorithm,
+            common_attributes.cryptographic_algorithm,
             private_key_mask,
             public_key_mask,
             sensitive,
@@ -326,7 +327,7 @@ pub(crate) fn generate_key_pair_and_tags(
         CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
             private_key_uid,
             public_key_uid,
-            any_attributes.cryptographic_algorithm,
+            common_attributes.cryptographic_algorithm,
             private_key_mask,
             public_key_mask,
             sensitive,
