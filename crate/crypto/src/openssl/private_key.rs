@@ -302,7 +302,7 @@ pub fn openssl_private_key_to_kmip(
         }
         KeyFormatType::TransparentECPrivateKey => {
             let (recommended_curve, cryptographic_algorithm, d) = match private_key.id() {
-                // This is likely a curve 25519 or 448 key (i.e. a non standardized curve)
+                // This is likely curve 25519 or 448 key (i.e. a non standardized curve)
                 Id::EC => {
                     let ec_key = private_key
                         .ec_key()
@@ -832,7 +832,7 @@ mod tests {
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 256;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
@@ -857,7 +857,7 @@ mod tests {
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 384;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP384R1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
@@ -882,7 +882,7 @@ mod tests {
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let key_size = 521;
-        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP521R1).unwrap();
+        let ec_group = EcGroup::from_curve_name(Nid::SECP521R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();

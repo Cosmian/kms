@@ -66,7 +66,7 @@ pub(crate) async fn export_get(
             .await?;
 
     // The object cannot be exported if it is sensitive and is not wrapped on export,
-    if owm.attributes().sensitive && request.key_wrapping_specification.is_none() {
+    if owm.attributes().sensitive == Some(true) && request.key_wrapping_specification.is_none() {
         return Err(KmsError::InvalidRequest(
             "this object is marked sensitive and cannot be exported".to_owned(),
         ))
