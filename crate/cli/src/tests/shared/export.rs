@@ -15,6 +15,7 @@ use cosmian_kms_client::{
     },
     pad_be_bytes,
 };
+use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 #[cfg(not(feature = "fips"))]
 use kms_test_server::TestsContext;
@@ -244,7 +245,7 @@ pub(crate) async fn test_export_wrapped() -> CliResult<()> {
         .cryptographic_parameters;
     assert_eq!(cryptographic_parameters, None);
 
-    // Wrapping with symmetric key should be by default with rfc5649
+    // Wrapping with a symmetric key should be by default with rfc5649
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
         sub_command: "rsa".to_owned(),
@@ -377,7 +378,7 @@ pub(crate) async fn test_export_covercrypt() -> CliResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
-    // generate a new master key pair
+    // generate a new master-key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
@@ -436,7 +437,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CliResult<()> {
     .err()
     .unwrap();
 
-    // generate a new master key pair
+    // generate a new master-key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
@@ -708,13 +709,14 @@ pub(crate) async fn test_sensitive_rsa_key() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
+    log_init(Some("info,cosmian_kms_server=debug"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
 
-    // generate a new master key pair
+    // generate a new master-key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
         "--policy-specifications",
@@ -723,7 +725,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
         true,
     )?;
 
-    // Master private key should not be exportable
+    // Master-private key should not be exportable
     assert!(
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -736,10 +738,11 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
                 .to_owned(),
             ..Default::default()
         })
-        .is_err()
+        .is_err(),
+        "Master-private key should not be exportable"
     );
 
-    // Master public key should not be exportable
+    // Master-public key should be exportable
     assert!(
         export_key(ExportKeyParams {
             cli_conf_path: ctx.owner_client_conf_path.clone(),
@@ -752,7 +755,8 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
                 .to_owned(),
             ..Default::default()
         })
-        .is_ok()
+        .is_ok(),
+        "Master-public key should be exportable"
     );
 
     let user_key_id = create_user_decryption_key(
@@ -771,7 +775,8 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             ..Default::default()
         })
-        .is_err()
+        .is_err(),
+        "User-private key should not be exportable"
     );
 
     Ok(())

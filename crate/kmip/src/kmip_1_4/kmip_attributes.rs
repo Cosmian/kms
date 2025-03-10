@@ -234,8 +234,8 @@ pub struct Attributes {
     pub comment: Option<String>,
 
     /// The Sensitive attribute indicates whether the object is sensitive.
-    #[serde(default)]
-    pub sensitive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensitive: Option<bool>,
 
     /// The Always Sensitive attribute indicates whether the object has always
     /// been sensitive.

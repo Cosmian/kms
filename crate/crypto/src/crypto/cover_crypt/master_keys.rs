@@ -34,16 +34,16 @@ pub fn create_master_keypair(
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let any_attributes = common_attributes
-        .as_ref()
-        .or(private_key_attributes.as_ref())
-        .or(public_key_attributes.as_ref())
-        .ok_or_else(|| {
-            CryptoError::Kmip("Attributes must be provided in a CreateKeyPair request".to_owned())
-        })?;
+    let mut any_attributes = common_attributes.clone().unwrap_or_default();
+    if let Some(private_key_attributes) = private_key_attributes {
+        any_attributes.merge(private_key_attributes, false);
+    }
+    if let Some(public_key_attributes) = public_key_attributes {
+        any_attributes.merge(public_key_attributes, false);
+    }
 
     // verify that we can recover the policy
-    let policy = policy_from_attributes(any_attributes)?;
+    let policy = policy_from_attributes(&any_attributes)?;
 
     // Now generate a master key using the CoverCrypt Engine
     let (sk, pk) = cover_crypt
@@ -52,9 +52,10 @@ pub fn create_master_keypair(
 
     // Private Key generation
     // First generate fresh attributes with that policy
-    let private_key_attributes = private_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
+    let mut private_key_attributes = private_key_attributes.clone().unwrap_or_default();
+    if let Some(common_attributes) = common_attributes {
+        private_key_attributes.merge(&common_attributes, false);
+    }
     let sk_bytes = sk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master private key: {e}"
@@ -69,9 +70,10 @@ pub fn create_master_keypair(
 
     // Public Key generation
     // First generate fresh attributes with that policy
-    let public_key_attributes = public_key_attributes
-        .as_ref()
-        .or(common_attributes.as_ref());
+    let mut public_key_attributes = public_key_attributes.clone().unwrap_or_default();
+    if let Some(common_attributes) = common_attributes {
+        public_key_attributes.merge(&common_attributes, false);
+    }
     let pk_bytes = pk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master public key: {e}"
@@ -90,10 +92,9 @@ pub fn create_master_keypair(
 fn create_master_private_key_object(
     key: &[u8],
     policy: &Policy,
-    attributes: Option<&Attributes>,
+    mut attributes: Attributes,
     master_public_key_uid: &str,
 ) -> Result<Object, CryptoError> {
-    let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // Covercrypt keys are set to have unrestricted usage.
@@ -130,11 +131,9 @@ fn create_master_private_key_object(
 fn create_master_public_key_object(
     key: &[u8],
     policy: &Policy,
-    attributes: Option<&Attributes>,
+    mut attributes: Attributes,
     master_private_key_uid: &str,
 ) -> Result<Object, CryptoError> {
-    let mut attributes = attributes.cloned().unwrap_or_default();
-    attributes.sensitive = false;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // Covercrypt keys are set to have unrestricted usage.
@@ -148,6 +147,8 @@ fn create_master_public_key_object(
             master_private_key_uid.to_owned(),
         ),
     }]);
+    // This is a public key, make sure it is not sensitive
+    attributes.sensitive = Some(false);
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
@@ -204,7 +205,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
         policy,
-        Some(msk_obj.1.attributes()?),
+        msk_obj.1.attributes()?.clone(),
         &mpk_obj.0,
     )?;
     let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
@@ -215,7 +216,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
         policy,
-        Some(mpk_obj.1.attributes()?),
+        mpk_obj.1.attributes()?.clone(),
         &msk_obj.0,
     )?;
 

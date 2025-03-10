@@ -137,23 +137,12 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
 #[test]
 fn test_backend() -> Result<(), Pkcs11Error> {
     log_init(option_env!("RUST_LOG"));
+    // log_init(Some("debug"));
     let backend = initialize_backend()?;
-
-    //TODO fix this test
-    // // data objects
-    // let data_objects = backend.find_all_data_objects()?;
-    // assert_eq!(data_objects.len(), 2);
-    // let mut labels = data_objects
-    //     .iter()
-    //     .map(|dao| dao.label())
-    //     .collect::<Vec<String>>();
-    // labels.sort();
-    // assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
 
     // RSA certificate
     let certificates = backend.find_all_certificates()?;
     assert_eq!(certificates.len(), 1);
-    // assert_eq!(certificates[0].label(), "luks_volume");
 
     // RSA private key
     let private_keys = backend.find_all_private_keys()?;

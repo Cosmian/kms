@@ -29,7 +29,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive,
+        sensitive: Some(sensitive),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -60,7 +60,7 @@ pub fn build_create_covercrypt_user_decryption_key_request<
             ),
         }]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
-        sensitive,
+        sensitive: Some(sensitive),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
