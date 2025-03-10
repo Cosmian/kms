@@ -154,6 +154,7 @@ jobs:
             sudo dpkg --add-architecture i386
             sudo apt-get update && sudo apt-get install libc6:i386 libstdc++6:i386
 
+
             # Download the simulator
             # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
             wget "http://35.187.181.78/SecurityServerEvaluation-6.0.0.0.tar.gz"
@@ -163,8 +164,8 @@ jobs:
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
 
             # Configure the PKCS#11 connection on the KMS server
-            sudo ufw allow 3001/tcp
-            sudo ufw reload
+            sudo apt install telnetd -y
+            sudo systemctl status inetd
             sudo telnet 0.0.0.0 3001
             sudo cp Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /lib directory
             sudo mkdir -p /etc/utimaco
