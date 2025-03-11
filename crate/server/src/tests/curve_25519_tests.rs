@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
-    kmip_messages::{Message, MessageBatchItem, MessageHeader},
+    kmip_messages::{RequestMessage, MessageBatchItem, RequestMessageHeader},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
@@ -209,8 +209,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
-    let request = Message {
-        header: MessageHeader {
+    let request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
@@ -233,10 +233,10 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     };
 
     let response = kms.message(request, owner, None).await?;
-    assert_eq!(response.header.batch_count, 2);
+    assert_eq!(response.response_header.batch_count, 2);
 
-    let request = Message {
-        header: MessageHeader {
+    let request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -274,14 +274,14 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     };
 
     let response = kms.message(request, owner, None).await?;
-    assert_eq!(response.header.batch_count, 4);
-    assert_eq!(response.items.len(), 4);
+    assert_eq!(response.response_header.batch_count, 4);
+    assert_eq!(response.batch_item.len(), 4);
 
     assert_eq!(
-        response.items[0].result_status,
+        response.batch_item[0].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[0].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[0].response_payload else {
         panic!("not a create key pair response payload");
     };
 
@@ -293,26 +293,26 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
     #[cfg(not(feature = "fips"))]
     assert_eq!(
-        response.items[1].result_status,
+        response.batch_item[1].result_status,
         ResultStatusEnumeration::Success
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[1].response_payload else {
         panic!("not a create key pair response payload");
     };
 
-    assert!(response.items[2].response_payload.is_none());
+    assert!(response.batch_item[2].response_payload.is_none());
     assert_eq!(
-        response.items[2].result_status,
+        response.batch_item[2].result_status,
         ResultStatusEnumeration::OperationFailed
     );
     assert_eq!(
-        response.items[2].result_reason,
+        response.batch_item[2].result_reason,
         Some(ErrorReason::Operation_Not_Supported)
     );
     assert_eq!(
-        response.items[2].result_message,
+        response.batch_item[2].result_message,
         Some(
             "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
                 .to_owned()
@@ -327,12 +327,12 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
     #[cfg(not(feature = "fips"))]
     assert_eq!(
-        response.items[3].result_status,
+        response.batch_item[3].result_status,
         ResultStatusEnumeration::Success
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[3].response_payload else {
         panic!("not a create key pair response payload");
     };
 

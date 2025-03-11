@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_operations::{Decrypt, Encrypt, ErrorReason, Locate, Mac, Operation},
+    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage},
+    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
         OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
@@ -182,9 +182,8 @@ async fn test_kmip_messages() -> KResult<()> {
             ..Default::default()
         })),
     ];
-
-    let message_request = Message {
-        header: MessageHeader {
+    let message_request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -199,34 +198,34 @@ async fn test_kmip_messages() -> KResult<()> {
     };
 
     let response = kms.message(message_request, owner, None).await?;
-    assert_eq!(response.header.batch_count, 3);
-    assert_eq!(response.items.len(), 3);
+    assert_eq!(response.response_header.batch_count, 3);
+    assert_eq!(response.batch_item.len(), 3);
 
     // 1. Create keypair
     assert_eq!(
-        response.items[0].operation,
+        response.batch_item[0].operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
     assert_eq!(
-        response.items[0].result_status,
+        response.batch_item[0].result_status,
         ResultStatusEnumeration::Success
     );
     let Some(Operation::CreateKeyPairResponse(create_keypair_response)) =
-        &response.items[0].response_payload
+        &response.batch_item[0].response_payload
     else {
         panic!("not a create key pair response payload");
     };
 
     // 2. Locate
     assert_eq!(
-        response.items[1].operation,
+        response.batch_item[1].operation,
         Some(OperationEnumeration::Locate)
     );
     assert_eq!(
-        response.items[1].result_status,
+        response.batch_item[1].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::LocateResponse(locate_response)) = &response.items[1].response_payload
+    let Some(Operation::LocateResponse(locate_response)) = &response.batch_item[1].response_payload
     else {
         panic!("not a locate response payload");
     };
@@ -240,21 +239,21 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // 3. Decrypt (that failed)
     assert_eq!(
-        response.items[2].operation,
+        response.batch_item[2].operation,
         Some(OperationEnumeration::Decrypt)
     );
     assert_eq!(
-        response.items[2].result_status,
+        response.batch_item[2].result_status,
         ResultStatusEnumeration::OperationFailed
     );
     assert_eq!(
-        response.items[2].result_message,
+        response.batch_item[2].result_message,
         Some("Decrypt: failed to retrieve the key: id_12345".to_owned())
     );
     assert_eq!(
-        response.items[2].result_reason,
+        response.batch_item[2].result_reason,
         Some(ErrorReason::Item_Not_Found)
     );
-    assert!(response.items[2].response_payload.is_none());
+    assert!(response.batch_item[2].response_payload.is_none());
     Ok(())
 }

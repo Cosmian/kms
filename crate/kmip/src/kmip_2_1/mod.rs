@@ -10,6 +10,7 @@ pub mod kmip_objects;
 pub mod kmip_operations;
 pub mod kmip_types;
 pub mod requests;
+pub use kmip_messages::{RequestMessage, ResponseMessage};
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
