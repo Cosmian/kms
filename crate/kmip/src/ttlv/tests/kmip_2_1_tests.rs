@@ -1287,6 +1287,56 @@ fn test_serialization_link() -> KmipResult<()> {
 }
 
 #[test]
+fn integer_deserialization_test() -> KmipResult<()> {
+    log_init(None);
+    let integer_str = r#"
+    {
+        "tag": "IntegerNumber",
+        "type": "Integer",
+        "value": 123456789
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(integer_str)?;
+    assert_eq!(ttlv.value, TTLValue::Integer(123456789));
+
+    let integer_str = r#"
+    {
+        "tag": "IntegerHex",
+        "type": "Integer",
+        "value": "0x075bcd15"
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(integer_str)?;
+    assert_eq!(ttlv.value, TTLValue::Integer(123456789));
+    Ok(())
+}
+
+#[test]
+fn long_integer_deserialization_test() -> KmipResult<()> {
+    log_init(None);
+    let integer_str = r#"
+    {
+        "tag": "IntegerNumber",
+        "type": "LongInteger",
+        "value": 123456789
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(integer_str)?;
+    assert_eq!(ttlv.value, TTLValue::LongInteger(123456789));
+
+    let integer_str = r#"
+    {
+        "tag": "IntegerHex",
+        "type": "LongInteger",
+        "value": "0x00000000075bcd15"
+    }
+    "#;
+    let ttlv: TTLV = serde_json::from_str(integer_str)?;
+    assert_eq!(ttlv.value, TTLValue::LongInteger(123456789));
+    Ok(())
+}
+
+#[test]
 fn normative_request_message_test() {
     log_init(Some("trace"));
     let ttlv_string = r#"
