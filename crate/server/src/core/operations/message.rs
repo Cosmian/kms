@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_kmip::{
     kmip_2_1::{
         kmip_messages::{
-            Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader,
+            RequestMessage, ResponseMessage, ResponseMessageBatchItem, ResponseMessageHeader,
         },
         kmip_operations::ErrorReason,
         kmip_types::ResultStatusEnumeration,
@@ -28,10 +28,10 @@ use crate::{
 /// Each item may fail but a response is still sent back.
 pub(crate) async fn message(
     kms: &KMS,
-    request: Message,
+    request: RequestMessage,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
-) -> KResult<MessageResponse> {
+) -> KResult<ResponseMessage> {
     trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::new();
@@ -62,7 +62,7 @@ pub(crate) async fn message(
                 ),
             };
 
-        response_items.push(MessageResponseBatchItem {
+        response_items.push(ResponseMessageBatchItem {
             operation: Some(item_request.operation),
             unique_batch_item_id: item_request.unique_batch_item_id,
             result_status,
@@ -74,18 +74,18 @@ pub(crate) async fn message(
         });
     }
 
-    let response_message = MessageResponse {
-        header: MessageResponseHeader {
+    let response_message = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: request.header.protocol_version,
             batch_count: u32::try_from(response_items.len())?,
             client_correlation_value: None,
             server_correlation_value: None,
             attestation_type: None,
-            timestamp: u64::try_from(chrono::Utc::now().timestamp())?,
+            time_stamp: chrono::Utc::now().timestamp(),
             nonce: None,
             server_hashed_password: None,
         },
-        items: response_items,
+        batch_item: response_items,
     };
 
     Ok(response_message)

@@ -3,7 +3,7 @@
 use cosmian_kms_client::{
     kmip_2_1::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
     reexport::cosmian_kmip::kmip_2_1::{
-        kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+        kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage},
         kmip_operations::Operation,
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
@@ -331,7 +331,7 @@ pub(crate) async fn message_encrypt(
     plaintext: &[u8],
     num_plaintexts: usize,
     cryptographic_parameters: &CryptographicParameters,
-) -> MessageResponse {
+) -> ResponseMessage {
     // Create the kmip query
     let encrypt_request = encrypt_request(
         pk,
@@ -345,8 +345,8 @@ pub(crate) async fn message_encrypt(
     .unwrap();
 
     // Create the kmip query
-    let message_request = Message {
-        header: MessageHeader {
+    let message_request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -368,7 +368,7 @@ pub(crate) async fn message_decrypt(
     ciphertext: &[u8],
     num_ciphertexts: usize,
     cryptographic_parameters: &CryptographicParameters,
-) -> MessageResponse {
+) -> ResponseMessage {
     // Create the kmip query
     let decrypt_request = decrypt_request(
         sk,
@@ -380,8 +380,8 @@ pub(crate) async fn message_decrypt(
     );
 
     // Create the kmip query
-    let message_request = Message {
-        header: MessageHeader {
+    let message_request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,

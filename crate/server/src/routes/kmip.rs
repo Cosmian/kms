@@ -6,7 +6,7 @@ use actix_web::{
     HttpRequest,
 };
 use cosmian_kmip::{
-    kmip_2_1::kmip_messages::Message,
+    kmip_2_1::kmip_messages::RequestMessage,
     ttlv::{kmip_ttlv_deserializer::from_ttlv, kmip_ttlv_serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_interfaces::SessionParams;
@@ -50,7 +50,7 @@ async fn handle_ttlv(
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "Message" {
-        let req = from_ttlv::<Message>(ttlv)?;
+        let req = from_ttlv::<RequestMessage>(ttlv)?;
         let resp = kms.message(req, user, database_params).await?;
         Ok(to_ttlv(&resp)?)
     } else {

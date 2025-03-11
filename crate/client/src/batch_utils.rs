@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageBatchItem, MessageHeader},
+    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage},
     kmip_operations::Operation,
     kmip_types::ProtocolVersion,
 };
@@ -17,8 +17,8 @@ pub(crate) async fn batch_operations(
     kms_rest_client: &KmsClient,
     operations: Vec<Operation>,
 ) -> Result<Vec<Operation>, KmsClientError> {
-    let request = Message {
-        header: MessageHeader {
+    let request = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -31,7 +31,7 @@ pub(crate) async fn batch_operations(
     };
     let response = kms_rest_client.message(request).await?;
     response
-        .items
+        .batch_item
         .into_iter()
         .map(|item| {
             if let Some(payload) = item.response_payload {

@@ -9,7 +9,7 @@ use cosmian_kmip::kmip_2_1::kmip_operations::{
 };
 use cosmian_kmip::{
     kmip_2_1::{
-        kmip_messages::{Message, MessageResponse},
+        kmip_messages::{RequestMessage, ResponseMessage},
         kmip_operations::{
             DeleteAttribute, DeleteAttributeResponse, ReKey, ReKeyResponse, SetAttribute,
             SetAttributeResponse,
@@ -440,8 +440,8 @@ impl KmsClient {
     /// The field contents are also determined by whether the message is a request or a response.
     /// The message payload is determined by the specific operation being requested
     /// or to which is being replied.
-    pub async fn message(&self, request: Message) -> Result<MessageResponse, KmsClientError> {
-        self.post_ttlv::<Message, MessageResponse>(&request).await
+    pub async fn message(&self, request: RequestMessage) -> Result<ResponseMessage, KmsClientError> {
+        self.post_ttlv::<RequestMessage, ResponseMessage>(&request).await
     }
 
     /// This operation requests the server to create a new database.

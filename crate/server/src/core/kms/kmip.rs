@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageResponse},
+    kmip_messages::{RequestMessage, ResponseMessage},
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
@@ -434,10 +434,10 @@ impl KMS {
 
     pub(crate) async fn message(
         &self,
-        request: Message,
+        request: RequestMessage,
         user: &str,
         params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MessageResponse> {
+    ) -> KResult<ResponseMessage> {
         // This is a large future, hence pinning
         Box::pin(operations::message(self, request, user, params)).await
     }
