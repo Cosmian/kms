@@ -155,9 +155,10 @@ jobs:
             sudo mkdir -pm755 /etc/apt/keyrings
             wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
             sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
+            sudo apt update
             sudo apt install --install-recommends winehq-stable
             sudo apt-get update && sudo apt-get install libc6:i386 libstdc++6:i386
-            
+
             # Download the simulator
             # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
             wget "http://35.187.181.78/SecurityServerEvaluation-6.0.0.0.tar.gz"
