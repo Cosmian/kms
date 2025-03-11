@@ -1543,7 +1543,7 @@ pub struct Revoke {
     /// compromise' and SHALL NOT be specified for other Revocation Reason
     /// enumerations.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compromise_occurrence_date: Option<u64>, // epoch millis
+    pub compromise_occurrence_date: Option<i64>, // epoch millis
 }
 
 impl Display for Revoke {
