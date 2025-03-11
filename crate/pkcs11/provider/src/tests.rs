@@ -136,8 +136,8 @@ async fn load_p12() -> Result<String, Pkcs11Error> {
 
 #[test]
 fn test_backend() -> Result<(), Pkcs11Error> {
-    log_init(option_env!("RUST_LOG"));
-    // log_init(Some("debug"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("debug"));
     let backend = initialize_backend()?;
 
     // RSA certificate
