@@ -46,10 +46,10 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 params.clone(),
                 msk_uid,
-                |msk, _mpk| {
+                |msk, mpk| {
                     let ap = deserialize_access_policy(&access_policy)?;
                     trace!("rekey_keypair_cover_crypt: access_policy: {access_policy}");
-                    cover_crypt.rekey(msk, &ap)?;
+                    *mpk = cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
             ))
@@ -87,13 +87,13 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 params.clone(),
                 msk_uid,
-                |msk, _mpk| {
+                |msk, mpk| {
                     drop(
                         attrs
                             .iter()
                             .try_for_each(|attr| msk.access_structure.del_attribute(attr)),
                     );
-                    cover_crypt.update_msk(msk)?;
+                    *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
             ))
@@ -110,13 +110,13 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 params,
                 msk_uid,
-                |msk, _mpk| {
+                |msk, mpk| {
                     drop(
                         attrs
                             .iter()
                             .try_for_each(|attr| msk.access_structure.disable_attribute(attr)),
                     );
-                    cover_crypt.update_msk(msk)?;
+                    *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
             ))
@@ -131,7 +131,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 params,
                 msk_uid,
-                |msk, _mpk| {
+                |msk, mpk| {
                     drop(
                         pairs_attr_name
                             .iter()
@@ -140,7 +140,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                                     .rename_attribute(ap_attributes, new_name.clone())
                             }),
                     );
-                    cover_crypt.update_msk(msk)?;
+                    *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
             ))
@@ -154,14 +154,14 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 params,
                 msk_uid,
-                |msk, _mpk| {
+                |msk, mpk| {
                     drop(attrs_properties.iter().try_for_each(
                         |(attr, encryption_hint, _after)| {
                             msk.access_structure
                                 .add_attribute(attr.clone(), *encryption_hint, None)
                         },
                     ));
-                    cover_crypt.update_msk(msk)?;
+                    *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
             ))
