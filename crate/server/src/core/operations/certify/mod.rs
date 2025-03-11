@@ -43,7 +43,7 @@ use crate::{
                 issuer::Issuer,
                 subject::{KeyPairData, Subject},
             },
-            create_key_pair::generate_key_pair_and_tags,
+            create_key_pair::generate_key_pair,
         },
         retrieve_object_utils::{retrieve_object_for_operation, user_has_permission},
     },
@@ -404,7 +404,7 @@ async fn get_subject(
         public_key_attributes: public_attributes,
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
-    let (key_pair, sk_tags, pk_tags) = generate_key_pair_and_tags(
+    let key_pair = generate_key_pair(
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
@@ -416,10 +416,10 @@ async fn get_subject(
         KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
-            private_key_tags: sk_tags,
+            private_key_tags: key_pair.private_key().attributes()?.get_tags(),
             public_key_id: pk_uid,
             public_key_object: key_pair.public_key().to_owned(),
-            public_key_tags: pk_tags,
+            public_key_tags: key_pair.public_key().attributes()?.get_tags(),
         },
         subject_name,
     ))

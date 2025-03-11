@@ -58,28 +58,34 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
         },
     )?;
 
-    let algorithm = Some(CryptographicAlgorithm::EC);
-    let private_key_mask_wp = Some(CryptographicUsageMask::UnwrapKey);
-    let public_key_mask_wp = Some(CryptographicUsageMask::WrapKey);
+    let algorithm = CryptographicAlgorithm::EC;
+    let private_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::UnwrapKey),
+        ..Attributes::default()
+    };
+    let public_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::WrapKey),
+        ..Attributes::default()
+    };
 
-    let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
-    let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+    // let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
+    // let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
 
     let wrapping_key_pair = create_x25519_key_pair(
         "wrapping_private_key_uid",
         "wrapping_public_key_uid",
-        algorithm,
-        private_key_mask_wp,
-        public_key_mask_wp,
-        false,
+        &algorithm,
+        Attributes::default(),
+        Some(private_key_attributes.clone()),
+        Some(public_key_attributes.clone()),
     )?;
     let mut key_pair_to_wrap = create_x25519_key_pair(
         "private_key_to_wrap_uid",
         "public_key_to_wrap_uid",
-        algorithm,
-        private_key_mask,
-        public_key_mask,
-        false,
+        &algorithm,
+        Attributes::default(),
+        Some(private_key_attributes),
+        Some(public_key_attributes),
     )?;
 
     // wrap the symmetric key with a symmetric key
@@ -188,17 +194,23 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
-    let algorithm = Some(CryptographicAlgorithm::EC);
-    let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
-    let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+    let algorithm = CryptographicAlgorithm::EC;
+    let private_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        ..Attributes::default()
+    };
+    let public_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        ..Attributes::default()
+    };
 
     let wrap_key_pair = create_x25519_key_pair(
         "sk_uid",
         "pk_uid",
-        algorithm,
-        private_key_mask,
-        public_key_mask,
-        false,
+        &algorithm,
+        Attributes::default(),
+        Some(private_key_attributes),
+        Some(public_key_attributes),
     )
     .unwrap();
 
