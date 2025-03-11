@@ -439,8 +439,8 @@ impl Serialize for ResponseMessage {
             }
         }
         let mut st = serializer.serialize_struct("Message", 2)?;
-        st.serialize_field("Header", &self.response_header)?;
-        st.serialize_field("Items", &self.batch_item)?;
+        st.serialize_field("ResponseHeader", &self.response_header)?;
+        st.serialize_field("BatchItem", &self.batch_item)?;
         st.end()
     }
 }
