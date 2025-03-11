@@ -710,7 +710,7 @@ pub(crate) async fn test_sensitive_rsa_key() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
-    log_init(Some("info,cosmian_kms_server=debug"));
+    log_init(option_env!("RUST_LOG"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

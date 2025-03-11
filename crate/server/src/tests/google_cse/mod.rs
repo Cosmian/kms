@@ -181,8 +181,7 @@ fn test_ossl_sign_verify() -> KResult<()> {
 
 #[tokio::test]
 async fn test_cse_status() -> KResult<()> {
-    log_init(None);
-    // log_init(Some("debug,cosmian_kms_server=trace"));
+    log_init(option_env!("RUST_LOG"));
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 

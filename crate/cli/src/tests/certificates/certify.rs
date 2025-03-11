@@ -419,8 +419,7 @@ async fn test_certify_a_csr_without_extensions() -> CliResult<()> {
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> CliResult<()> {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
     // Create a test server
     let ctx = start_default_test_kms_server().await;
     // import signers

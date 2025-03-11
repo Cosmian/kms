@@ -230,7 +230,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
                     user_decryption_key_identifier_1.to_owned(),
                 )),
                 revocation_reason: RevocationReason {
-                    revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                    revocation_reason_code: RevocationReasonCode::Superseded,
                     revocation_message: Some("Revocation test".to_owned()),
                 },
                 compromise_occurrence_date: None,

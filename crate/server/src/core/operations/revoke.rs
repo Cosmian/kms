@@ -71,7 +71,7 @@ pub(crate) async fn revoke_operation(
 pub(crate) async fn recursively_revoke_key(
     unique_identifier: &UniqueIdentifier,
     revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<u64>,
+    compromise_occurrence_date: Option<i64>,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
@@ -266,7 +266,7 @@ pub(crate) async fn recursively_revoke_key(
 async fn revoke_key_core(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<u64>,
+    compromise_occurrence_date: Option<i64>,
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {

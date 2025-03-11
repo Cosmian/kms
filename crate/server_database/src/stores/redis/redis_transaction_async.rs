@@ -114,7 +114,7 @@ mod tests {
     #[actix_web::test]
     #[serial]
     pub async fn test_async_transaction() -> KResult<()> {
-        cosmian_logger::log_init(Some("test_permissions_db=info"));
+        cosmian_logger::log_init(option_env!("RUST_LOG"));
         trace!("test_permissions_db");
 
         let client = redis::Client::open(REDIS_URL)?;

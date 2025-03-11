@@ -195,7 +195,7 @@ pub(crate) async fn remove(
 
 #[tokio::test]
 async fn test_edit_policy() -> CliResult<()> {
-    log_init(Some("info,cosmian_kms_server=trace,cosmian_cli=debug"));
+    log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server().await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;

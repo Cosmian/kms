@@ -68,7 +68,7 @@ pub(crate) fn locate(
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_locate_cover_crypt() -> CliResult<()> {
-    log_init(Some("info"));
+    log_init(option_env!("RUST_LOG"));
     // init the test server
 
     use tracing::trace;
