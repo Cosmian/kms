@@ -9,17 +9,19 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask, KeyFormatType,
-            Link, LinkType, LinkedObjectIdentifier,
+            Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
     SafeBigUint,
 };
 use num_bigint_dig::BigUint;
 use openssl::{pkey::Private, rsa::Rsa};
-use tracing::trace;
+use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-use crate::{crypto::KeyPair, crypto_bail, error::CryptoError, CryptoResultHelper};
+#[cfg(feature = "fips")]
+use crate::crypto_bail;
+use crate::{crypto::KeyPair, error::CryptoError, CryptoResultHelper};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -199,14 +201,18 @@ pub fn to_rsa_private_key(
 }
 
 pub fn create_rsa_key_pair(
-    key_size_in_bits: u32,
-    public_key_uid: &str,
     private_key_uid: &str,
-    algorithm: Option<CryptographicAlgorithm>,
-    private_key_mask: Option<CryptographicUsageMask>,
-    public_key_mask: Option<CryptographicUsageMask>,
-    sensitive: bool,
+    public_key_uid: &str,
+    mut common_attributes: Attributes,
+    private_key_attributes: Option<Attributes>,
+    public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
+    let key_size_in_bits = u32::try_from(
+        common_attributes
+            .cryptographic_length
+            .ok_or_else(|| CryptoError::Default("Invalid RSA key size".to_owned()))?,
+    )?;
+    debug!("RSA key pair generation: size in bits: {key_size_in_bits}");
     #[cfg(feature = "fips")]
     if key_size_in_bits < FIPS_MIN_RSA_MODULUS_LENGTH {
         crypto_bail!(
@@ -215,148 +221,218 @@ pub fn create_rsa_key_pair(
         )
     }
 
-    if algorithm != Some(CryptographicAlgorithm::RSA) {
-        crypto_bail!("Creation of RSA keys require RSA CryptographicAlgorithm value.")
-    }
-
+    let private_key_mask = private_key_attributes
+        .as_ref()
+        .and_then(|attr| attr.cryptographic_usage_mask);
+    let public_key_mask = public_key_attributes
+        .as_ref()
+        .and_then(|attr| attr.cryptographic_usage_mask);
     #[cfg(feature = "fips")]
     check_rsa_mask_compliance(private_key_mask, public_key_mask)?;
 
+    // recover tags and clean them up from the common attributes
+    let tags = common_attributes.remove_tags().unwrap_or_default();
+    Attributes::check_user_tags(&tags)?;
+
+    // Generate the RSA Key Pair with openssl
     let rsa_private = Rsa::generate(key_size_in_bits)?;
-    let private_key = to_rsa_private_key(
+
+    // Generate the KMIP RSA Private Key
+    let mut private_key_attributes = private_key_attributes.unwrap_or_default();
+    private_key_attributes.merge(&common_attributes, false);
+    // KMIP Object generation
+    let mut private_key = to_rsa_private_key(
         &rsa_private,
         key_size_in_bits,
         public_key_uid,
         private_key_mask,
-        sensitive,
+        private_key_attributes.sensitive.unwrap_or_default(),
     )?;
-    let public_key = to_rsa_public_key(
+    // Merge the created object attributes
+    private_key_attributes.merge(private_key.attributes()?, true);
+    // Set the private key UID
+    private_key_attributes.unique_identifier =
+        Some(UniqueIdentifier::TextString(private_key_uid.to_owned()));
+    // Add the tags
+    let mut sk_tags = tags.clone();
+    sk_tags.insert("_sk".to_owned());
+    private_key_attributes.set_tags(sk_tags)?;
+    // and set them on the object
+    private_key
+        .key_block_mut()?
+        .key_value
+        .as_mut()
+        .ok_or_else(|| CryptoError::Default("RSA: key value not found in private key".to_owned()))?
+        .attributes = Some(private_key_attributes);
+
+    // Generate the KMIP RSA Public Key
+    let mut public_key_attributes = public_key_attributes.unwrap_or_default();
+    public_key_attributes.merge(&common_attributes, false);
+    // KMIP Object generation
+    let mut public_key = to_rsa_public_key(
         &rsa_private,
         key_size_in_bits,
         private_key_uid,
         public_key_mask,
     )?;
+    // Merge the created object attributes
+    public_key_attributes.merge(public_key.attributes()?, true);
+    // Set the public key UID
+    public_key_attributes.unique_identifier =
+        Some(UniqueIdentifier::TextString(public_key_uid.to_owned()));
+    // Add the tags
+    let mut pk_tags = tags;
+    pk_tags.insert("_pk".to_owned());
+    public_key_attributes.set_tags(pk_tags)?;
+    // and set them on the object
+    public_key
+        .key_block_mut()?
+        .key_value
+        .as_mut()
+        .ok_or_else(|| CryptoError::Default("RSA: key value not found in public key".to_owned()))?
+        .attributes = Some(public_key_attributes);
 
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[allow(clippy::unwrap_used)]
-#[test]
 #[cfg(feature = "fips")]
-fn test_create_rsa_incorrect_mask() {
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
-
-    let private_key_mask = Some(CryptographicUsageMask::Sign);
-    let public_key_mask = Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
-
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey01",
-        "privkey01",
-        Some(CryptographicAlgorithm::RSA),
-        private_key_mask,
-        public_key_mask,
-        false,
-    );
-
-    assert!(res.is_err());
-
-    let private_key_mask = Some(CryptographicUsageMask::Decrypt | CryptographicUsageMask::CRLSign);
-    let public_key_mask = Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::Verify);
-
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey02",
-        "privkey02",
-        Some(CryptographicAlgorithm::RSA),
-        private_key_mask,
-        public_key_mask,
-        false,
-    );
-
-    assert!(res.is_err());
-}
-
+#[cfg(test)]
 #[allow(clippy::unwrap_used)]
-#[test]
-#[cfg(feature = "fips")]
-fn test_create_rsa_incorrect_mask_unrestricted() {
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+mod tests {
+    use cosmian_kmip::kmip_2_1::{kmip_attributes::Attributes, kmip_types::CryptographicUsageMask};
 
-    let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
-    let public_key_mask = Some(CryptographicUsageMask::Verify);
+    use crate::crypto::rsa::operation::create_rsa_key_pair;
 
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey01",
-        "privkey01",
-        Some(CryptographicAlgorithm::RSA),
-        private_key_mask,
-        public_key_mask,
-        false,
-    );
+    #[test]
+    fn test_create_rsa_incorrect_mask() {
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-    assert!(res.is_err());
+        let common_attributes = Attributes {
+            cryptographic_length: Some(2048),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+            ),
+            ..Attributes::default()
+        };
 
-    let private_key_mask = Some(CryptographicUsageMask::Sign);
-    let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+        let res = create_rsa_key_pair(
+            "privkey01",
+            "pubkey01",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
 
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey02",
-        "privkey02",
-        Some(CryptographicAlgorithm::RSA),
-        private_key_mask,
-        public_key_mask,
-        false,
-    );
+        assert!(res.is_err());
 
-    assert!(res.is_err());
-}
+        let common_attributes = Attributes {
+            cryptographic_length: Some(2048),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Decrypt | CryptographicUsageMask::CRLSign,
+            ),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Verify,
+            ),
+            ..Attributes::default()
+        };
 
-#[allow(clippy::unwrap_used)]
-#[test]
-#[cfg(feature = "fips")]
-fn test_create_rsa_fips_mask() {
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+        let res = create_rsa_key_pair(
+            "privkey02",
+            "pubkey02",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
 
-    let algorithm = Some(CryptographicAlgorithm::RSA);
+        assert!(res.is_err());
+    }
 
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey01",
-        "privkey01",
-        algorithm,
-        Some(FIPS_PRIVATE_RSA_MASK),
-        Some(FIPS_PUBLIC_RSA_MASK),
-        false,
-    );
+    #[test]
+    fn test_create_rsa_incorrect_mask_unrestricted() {
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-    res.unwrap();
-}
+        let common_attributes = Attributes {
+            cryptographic_length: Some(2048),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+            ..Attributes::default()
+        };
 
-#[allow(clippy::unwrap_used)]
-#[test]
-#[cfg(feature = "fips")]
-fn test_create_rsa_incorrect_algorithm() {
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+        let res = create_rsa_key_pair(
+            "privkey01",
+            "pubkey01",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
 
-    let private_key_mask = Some(CryptographicUsageMask::Sign);
-    let public_key_mask = Some(CryptographicUsageMask::Verify);
+        assert!(res.is_err());
 
-    let res = create_rsa_key_pair(
-        2048,
-        "pubkey01",
-        "privkey01",
-        Some(CryptographicAlgorithm::AES),
-        private_key_mask,
-        public_key_mask,
-        false,
-    );
+        let common_attributes = Attributes {
+            cryptographic_length: Some(2048),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+            ..Attributes::default()
+        };
 
-    assert!(res.is_err());
+        let res = create_rsa_key_pair(
+            "privkey02",
+            "pubkey02",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_create_rsa_fips_mask() {
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let common_attributes = Attributes {
+            cryptographic_length: Some(2048),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes::default();
+        let public_key_attributes = Attributes::default();
+
+        let res = create_rsa_key_pair(
+            "privkey01",
+            "pubkey01",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
+
+        res.unwrap();
+    }
 }

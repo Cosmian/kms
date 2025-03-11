@@ -15,6 +15,7 @@ use cosmian_kms_client::{
     },
     pad_be_bytes,
 };
+#[cfg(not(feature = "fips"))]
 use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server;
 #[cfg(not(feature = "fips"))]

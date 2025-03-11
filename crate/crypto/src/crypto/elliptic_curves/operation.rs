@@ -749,8 +749,8 @@ mod tests {
             "pk_uid",
             &algorithm,
             Attributes::default(),
-            Some(private_key_attributes.clone()),
-            Some(public_key_attributes.clone()),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         )
         .expect("failed to create x25519 key pair in test_x448_conversions");
 
@@ -1175,45 +1175,63 @@ mod tests {
         Provider::load(None, "fips").unwrap();
 
         let algorithm = CryptographicAlgorithm::Ed25519;
-        let private_key_mask = CryptographicUsageMask::Sign;
-        let public_key_mask = CryptographicUsageMask::Verify;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+            ..Attributes::default()
+        };
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
 
-        let private_key_mask = CryptographicUsageMask::Sign;
-        let public_key_mask = CryptographicUsageMask::Verify;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+            ..Attributes::default()
+        };
 
         let res = create_approved_ecc_key_pair(
             "pubkey02",
             "privkey02",
             RecommendedCurve::P256,
-            None,
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
 
         let algorithm = CryptographicAlgorithm::Ed25519;
-        let private_key_mask = CryptographicUsageMask::Sign;
-        let public_key_mask = CryptographicUsageMask::Verify;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+            ..Attributes::default()
+        };
         let res = create_ed448_key_pair(
             "pubkey01",
             "privkey01",
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
@@ -1227,20 +1245,30 @@ mod tests {
 
         // ECDH algorithm should not have Sign and Verify masks;
         let algorithm = CryptographicAlgorithm::ECDH;
-        let private_key_mask = CryptographicUsageMask::Sign
-            | CryptographicUsageMask::KeyAgreement
-            | CryptographicUsageMask::DeriveKey;
-        let public_key_mask = CryptographicUsageMask::Verify
-            | CryptographicUsageMask::KeyAgreement
-            | CryptographicUsageMask::DeriveKey;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign
+                    | CryptographicUsageMask::KeyAgreement
+                    | CryptographicUsageMask::DeriveKey,
+            ),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Verify
+                    | CryptographicUsageMask::KeyAgreement
+                    | CryptographicUsageMask::DeriveKey,
+            ),
+            ..Attributes::default()
+        };
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
@@ -1254,16 +1282,25 @@ mod tests {
 
         // ECDSA algorithm should not have KeyAgreement mask;
         let algorithm = CryptographicAlgorithm::ECDSA;
-        let private_key_mask = CryptographicUsageMask::Sign;
-        let public_key_mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement,
+            ),
+            ..Attributes::default()
+        };
+
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
@@ -1276,16 +1313,24 @@ mod tests {
         Provider::load(None, "fips").unwrap();
 
         let algorithm = CryptographicAlgorithm::ECDSA;
-        let private_key_mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
-        let public_key_mask = CryptographicUsageMask::Verify;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+            ),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
+            ..Attributes::default()
+        };
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());
@@ -1298,16 +1343,22 @@ mod tests {
         Provider::load(None, "fips").unwrap();
 
         let algorithm = CryptographicAlgorithm::ECDSA;
-        let private_key_mask = CryptographicUsageMask::Sign;
-        let public_key_mask = CryptographicUsageMask::Sign;
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
+            ..Attributes::default()
+        };
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
-            Some(algorithm),
-            Some(private_key_mask),
-            Some(public_key_mask),
-            false,
+            &algorithm,
+            Attributes::default(),
+            Some(private_key_attributes),
+            Some(public_key_attributes),
         );
 
         assert!(res.is_err());

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
@@ -21,7 +19,7 @@ use cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pa
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use kms_test_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 use super::ExportKeyParams;
 use crate::{
@@ -112,7 +110,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CliResult<()> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
-    cosmian_logger::log_init(Some("info"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -121,13 +119,21 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CliResult<()> {
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
+    let private_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::UnwrapKey),
+        ..Attributes::default()
+    };
+    let public_key_attributes = Attributes {
+        cryptographic_usage_mask: Some(CryptographicUsageMask::WrapKey),
+        ..Attributes::default()
+    };
     let wrap_key_pair = create_x25519_key_pair(
         wrap_private_key_uid,
         wrap_public_key_uid,
-        Some(CryptographicAlgorithm::EC),
-        Some(CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey),
-        Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey),
-        false,
+        &CryptographicAlgorithm::EC,
+        Attributes::default(),
+        Some(private_key_attributes),
+        Some(public_key_attributes),
     )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
@@ -207,8 +213,7 @@ fn test_import_export_wrap_private_key(
     let tmp_path = tmp_dir.path();
 
     // Export the private key without wrapping
-    // let private_key_file = tmp_path.join("master_private.key");
-    let private_key_file = PathBuf::from("/tmp/master_private.key");
+    let private_key_file = tmp_path.join("master_private.key");
     let export_params = ExportKeyParams {
         cli_conf_path: cli_conf_path.to_string(),
         sub_command: sub_command.to_string(),
@@ -313,6 +318,7 @@ fn test_import_export_wrap_private_key(
     {
         // import the wrapped key, un wrapping it on import
         let wrapped_key_id = import_key(ImportKeyParams {
+            key_id: Some(private_key_id.to_string()),
             cli_conf_path: cli_conf_path.to_string(),
             sub_command: sub_command.to_string(),
             key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
@@ -331,14 +337,6 @@ fn test_import_export_wrap_private_key(
             ..Default::default()
         })?;
         let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
-        info!(
-            "exported_unwrapped_key: {}",
-            serde_json::to_string_pretty(&exported_unwrapped_key).unwrap()
-        );
-        info!(
-            "private_key: {}",
-            serde_json::to_string_pretty(&private_key).unwrap()
-        );
         assert_eq!(
             exported_unwrapped_key.key_block()?.key_value,
             private_key.key_block()?.key_value

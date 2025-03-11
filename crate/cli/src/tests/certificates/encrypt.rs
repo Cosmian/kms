@@ -265,7 +265,16 @@ async fn import_encrypt_decrypt(
     )?;
 
     debug!("\n\nExport Private key wrapping with X509 certificate");
-    let private_key_wrapped = "/tmp/wrapped_private_key_exported.json".to_owned();
+    let private_key_wrapped = tmp_path
+        .join("wrapped_private_key_exported.json")
+        .to_str()
+        .ok_or_else(|| {
+            CliError::Default(format!(
+                "Failed to convert path to string: {:?}",
+                tmp_path.join("wrapped_private_key_exported.json")
+            ))
+        })?
+        .to_owned();
 
     export_key(ExportKeyParams {
         cli_conf_path: ctx.owner_client_conf_path.clone(),
