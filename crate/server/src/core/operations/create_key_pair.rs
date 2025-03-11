@@ -297,7 +297,7 @@ pub(crate) fn generate_key_pair(
             &Covercrypt::default(),
             private_key_uid,
             public_key_uid,
-            &Some(common_attributes),
+            common_attributes,
             &request.private_key_attributes,
             &request.public_key_attributes,
         )

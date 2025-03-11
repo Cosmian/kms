@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_types::{
         CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-        LinkedObjectIdentifier,
+        LinkedObjectIdentifier, UniqueIdentifier,
     },
 };
 use zeroize::Zeroizing;
@@ -30,20 +30,23 @@ pub fn create_master_keypair(
     cover_crypt: &Covercrypt,
     private_key_uid: &str,
     public_key_uid: &str,
-    common_attributes: &Option<Attributes>,
+    mut common_attributes: Attributes,
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let mut any_attributes = common_attributes.clone().unwrap_or_default();
+    // Recover the policy
+    let mut merged_attributes = common_attributes.clone();
     if let Some(private_key_attributes) = private_key_attributes {
-        any_attributes.merge(private_key_attributes, false);
+        merged_attributes.merge(private_key_attributes, false);
     }
     if let Some(public_key_attributes) = public_key_attributes {
-        any_attributes.merge(public_key_attributes, false);
+        merged_attributes.merge(public_key_attributes, false);
     }
+    let policy = policy_from_attributes(&merged_attributes)?;
 
-    // verify that we can recover the policy
-    let policy = policy_from_attributes(&any_attributes)?;
+    // recover tags and clean them up from the common attributes
+    let tags = common_attributes.remove_tags().unwrap_or_default();
+    Attributes::check_user_tags(&tags)?;
 
     // Now generate a master key using the CoverCrypt Engine
     let (sk, pk) = cover_crypt
@@ -53,38 +56,66 @@ pub fn create_master_keypair(
     // Private Key generation
     // First generate fresh attributes with that policy
     let mut private_key_attributes = private_key_attributes.clone().unwrap_or_default();
-    if let Some(common_attributes) = common_attributes {
-        private_key_attributes.merge(&common_attributes, false);
-    }
+    private_key_attributes.merge(&common_attributes, false);
     let sk_bytes = sk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master private key: {e}"
         ))
     })?;
-    let private_key = create_master_private_key_object(
+    let mut private_key = create_master_private_key_object(
         &sk_bytes,
         &policy,
-        private_key_attributes,
+        private_key_attributes.clone(),
         public_key_uid,
     )?;
+    // Merge the created object attributes
+    private_key_attributes.merge(private_key.attributes()?, true);
+    // Set the private key UID
+    private_key_attributes.unique_identifier =
+        Some(UniqueIdentifier::TextString(private_key_uid.to_owned()));
+    // Add the tags
+    let mut sk_tags = tags.clone();
+    sk_tags.insert("_sk".to_owned());
+    private_key_attributes.set_tags(sk_tags)?;
+    // and set them on the object
+    private_key
+        .key_block_mut()?
+        .key_value
+        .as_mut()
+        .ok_or_else(|| CryptoError::Default("Key value not found in private key".to_owned()))?
+        .attributes = Some(private_key_attributes);
 
     // Public Key generation
     // First generate fresh attributes with that policy
     let mut public_key_attributes = public_key_attributes.clone().unwrap_or_default();
-    if let Some(common_attributes) = common_attributes {
-        public_key_attributes.merge(&common_attributes, false);
-    }
+    public_key_attributes.merge(&common_attributes, false);
     let pk_bytes = pk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
             "cover crypt: failed serializing the master public key: {e}"
         ))
     })?;
-    let public_key = create_master_public_key_object(
+    let mut public_key = create_master_public_key_object(
         &pk_bytes,
         &policy,
-        public_key_attributes,
+        public_key_attributes.clone(),
         private_key_uid,
     )?;
+    // Merge the created object attributes
+    public_key_attributes.merge(public_key.attributes()?, true);
+    // Set the public key UID
+    public_key_attributes.unique_identifier =
+        Some(UniqueIdentifier::TextString(public_key_uid.to_owned()));
+    // Add the tags
+    let mut pk_tags = tags;
+    pk_tags.insert("_pk".to_owned());
+    public_key_attributes.set_tags(pk_tags)?;
+    // and set them on the object
+    public_key
+        .key_block_mut()?
+        .key_value
+        .as_mut()
+        .ok_or_else(|| CryptoError::Default("Key value not found in public key".to_owned()))?
+        .attributes = Some(public_key_attributes);
 
     Ok(KeyPair((private_key, public_key)))
 }
