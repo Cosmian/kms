@@ -2,6 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+#[cfg(not(feature = "fips"))]
 use cosmian_logger::log_init;
 use kms_test_server::start_default_test_kms_server_with_cert_auth;
 
