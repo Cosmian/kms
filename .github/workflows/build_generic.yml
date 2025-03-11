@@ -167,9 +167,7 @@ jobs:
             find .
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
             winetricks allfonts
-            Xvfb :0 -screen 0 1024x768x16 &
-            DISPLAY=:0.0 wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi /quiet /nogui
-
+            xvfb-run wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
