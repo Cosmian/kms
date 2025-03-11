@@ -249,6 +249,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 }
 
 #[tokio::test]
+#[allow(clippy::large_futures)]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
     cosmian_logger::log_init(None);
 

@@ -13,7 +13,7 @@ name = "cosmian_kms"
 
 [dependencies]
 cosmian_cover_crypt = { workspace = true }
-cosmian_crypto_core = { workspace = true }
+# cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["pyo3"] }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_crypto = { path = "../crypto" }

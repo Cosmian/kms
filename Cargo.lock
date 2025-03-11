@@ -1388,7 +1388,6 @@ dependencies = [
  "hex",
  "num-bigint-dig",
  "openssl",
- "pyo3",
  "rust-ini",
  "serde",
  "serde_json",

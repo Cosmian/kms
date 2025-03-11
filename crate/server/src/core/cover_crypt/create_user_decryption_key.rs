@@ -1,20 +1,22 @@
 use std::sync::Arc;
 
 use cosmian_cover_crypt::api::Covercrypt;
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, Get},
+    kmip_operations::{Create, CreateKeyPair, Get, Import},
     kmip_types::{Attributes, KeyFormatType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_crypto::crypto::{
     cover_crypt::{
         attributes::{access_policy_from_attributes, access_structure_from_attributes},
+        master_keys::create_master_private_key_object,
         user_key::UserDecryptionKeysHandler,
     },
     KeyPair,
 };
 use cosmian_kms_interfaces::SessionParams;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::KMS;
 use crate::{error::KmsError, kms_bail, result::KResult};
@@ -43,7 +45,7 @@ async fn create_user_decryption_key_(
     kms: &KMS,
     cover_crypt: Covercrypt,
     create_attributes: &Attributes,
-    _user: &str,
+    user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Object> {
     // Recover the access policy
@@ -64,7 +66,7 @@ async fn create_user_decryption_key_(
     // retrieve from tags or use passed identifier
     for owm in kms
         .database
-        .retrieve_objects(&msk_uid_or_tags, params)
+        .retrieve_objects(&msk_uid_or_tags, params.clone())
         .await?
         .values()
     {
@@ -99,9 +101,47 @@ async fn create_user_decryption_key_(
             ));
         }
 
-        return UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
+        let mut usk_handler =
+            UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?;
+        let usk: Object = usk_handler
             .create_user_decryption_key_object(&access_policy, Some(create_attributes), owm.id())
-            .map_err(Into::into)
+            .map_err(KmsError::from)?;
+
+        // Update the master private key
+        let updated_master_private_key_bytes = usk_handler.master_private_key.serialize()?;
+        trace!(
+            "create_user_decryption_key_: updated_master_private_key_bytes len: {}",
+            updated_master_private_key_bytes.len()
+        );
+        let msk_attributes = master_private_key.attributes()?;
+        let public_key_link =
+            msk_attributes.get_link(cosmian_kmip::kmip_2_1::kmip_types::LinkType::PublicKeyLink);
+        let Some(mpk_link) = public_key_link else {
+            kms_bail!(KmsError::InconsistentOperation(
+                "The server can't create a decryption key: the master private key has no public \
+                 key link"
+                    .to_owned()
+            ))
+        };
+
+        let new_msk_object = create_master_private_key_object(
+            &updated_master_private_key_bytes,
+            Some(msk_attributes),
+            &mpk_link.to_string(),
+            &usk_handler.master_private_key.access_structure,
+        )?;
+
+        let import_request = Import {
+            unique_identifier: UniqueIdentifier::TextString(msk_uid_or_tags),
+            object_type: ObjectType::PrivateKey,
+            replace_existing: Some(true),
+            key_wrap_type: None,
+            attributes: master_private_key.attributes()?.clone(),
+            object: new_msk_object,
+        };
+        let _import_response = kms.import(import_request, user, params.clone()).await?;
+
+        return Ok(usk);
     }
 
     Err(KmsError::InvalidRequest(format!(

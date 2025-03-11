@@ -1,3 +1,4 @@
+#![allow(clippy::large_futures)]
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{

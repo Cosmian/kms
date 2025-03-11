@@ -157,6 +157,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::large_futures)]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = Arc::new(KMS::instantiate(ServerParams::try_from(https_clap_config())?).await?);
 

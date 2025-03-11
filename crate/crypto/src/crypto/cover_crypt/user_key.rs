@@ -51,7 +51,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
 /// and the master key information for efficiency
 pub struct UserDecryptionKeysHandler {
     cover_crypt: Covercrypt,
-    master_private_key: MasterSecretKey,
+    pub master_private_key: MasterSecretKey,
 }
 
 impl UserDecryptionKeysHandler {

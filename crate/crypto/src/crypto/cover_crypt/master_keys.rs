@@ -70,7 +70,7 @@ pub fn create_master_keypair(
     Ok(KeyPair((private_key, public_key)))
 }
 
-fn create_master_private_key_object(
+pub fn create_master_private_key_object(
     key: &[u8],
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
