@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage, ResponseMessage},
+    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage},
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };

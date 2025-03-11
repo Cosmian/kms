@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage},
+    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader},
     kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
