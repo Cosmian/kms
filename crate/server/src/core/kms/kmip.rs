@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{Message, MessageResponse},
+    kmip_messages::{RequestMessage, ResponseMessage},
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,

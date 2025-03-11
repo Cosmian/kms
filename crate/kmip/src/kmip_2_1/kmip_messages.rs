@@ -37,14 +37,14 @@ use crate::{KmipError, error::result::KmipResult};
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
-pub struct Message {
+pub struct RequestMessage {
     /// Header of the request
-    pub header: MessageHeader,
+    pub header: RequestMessageHeader,
     /// Batch items of the request
     pub items: Vec<MessageBatchItem>,
 }
 
-impl Display for Message {
+impl Display for RequestMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut temp_str = format!("Message header: {:?}, ", self.header);
         for (i, item) in self.items.iter().enumerate() {
@@ -57,7 +57,7 @@ impl Display for Message {
     }
 }
 
-impl Serialize for Message {
+impl Serialize for RequestMessage {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -97,15 +97,18 @@ impl Serialize for Message {
 /// Contains fields whose presence is determined by the protocol features used.
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
-pub struct MessageHeader {
+pub struct RequestMessageHeader {
+    /// The KMIP protocol version used in this message
     pub protocol_version: ProtocolVersion,
+
     /// This is an OPTIONAL field contained in a request message,
     /// and is used to indicate the maximum size of a response, in bytes,
     /// that the requester SHALL be able to handle.
     ///
     /// It SHOULD only be sent in requests that possibly return large replies.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub maximum_response_size: Option<u32>,
+    pub maximum_response_size: Option<i32>,
+
     /// The Client Correlation Value is a string that MAY be added to messages by clients
     /// to provide additional information to the server. It need not be unique.
     /// The server SHOULD log this information.
@@ -114,6 +117,7 @@ pub struct MessageHeader {
     /// For server to client operations, the Client Correlation Value is provided in the response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_correlation_value: Option<String>,
+
     /// The Server Correlation Value SHOULD be provided by the server and
     /// SHOULD be globally unique, and SHOULD be logged by the server with each request.
     ///
@@ -121,32 +125,40 @@ pub struct MessageHeader {
     /// For server to client operations, the Server Correlation Value is provided in the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_correlation_value: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asynchronous_indicator: Option<AsynchronousIndicator>,
+
     /// Indicates whether the client is able to create
     /// an Attestation Credential Object.
     ///
     /// If not present, the value `false` is assumed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_capable_indicator: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_type: Option<Vec<AttestationType>>,
+
     /// Used to authenticate the requester
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authentication: Option<Vec<Credential>>,
+
     /// If omitted, then `Stop` is assumed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_error_continuation_option: Option<BatchErrorContinuationOption>,
+
     /// If omitted, then `true` is assumed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_order_option: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>, // epoch millis
+    pub time_stamp: Option<u64>, // epoch millis
+
     /// This field contains the number of Batch Items in a message and is REQUIRED.
     ///
     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
     /// The Message Payload, which follows the Message Header, contains one or more batch items.
-    pub batch_count: u32,
+    pub batch_count: i32,
 }
 
 /// Batch item for a message request
@@ -156,17 +168,21 @@ pub struct MessageHeader {
 pub struct MessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
+
     /// Indicates that the Data output of the operation should not
     /// be returned to the client
     pub ephemeral: Option<bool>,
+
     /// This is an OPTIONAL field contained in a request,
     /// and is used for correlation between requests and responses.
     ///
     /// If a request has a Unique Batch Item ID, then responses to
     /// that request SHALL have the same Unique Batch Item ID.
-    pub unique_batch_item_id: Option<u32>,
+    pub unique_batch_item_id: Option<String>,
+
     /// The KMIP request, which depends on the KMIP Operation
     pub request_payload: Operation,
+
     pub message_extension: Option<Vec<MessageExtension>>,
 }
 
@@ -262,7 +278,7 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
             {
                 let mut operation: Option<OperationEnumeration> = None;
                 let mut ephemeral: Option<bool> = None;
-                let mut unique_batch_item_id: Option<u32> = None;
+                let mut unique_batch_item_id: Option<String> = None;
                 let mut request_payload: Option<Operation> = None;
                 let mut message_extension: Option<Vec<MessageExtension>> = None;
 
@@ -383,120 +399,83 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
     }
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
-pub struct MessageResponse {
+pub struct ResponseMessage {
     /// Header of the response
-    pub header: MessageResponseHeader,
+    pub response_header: ResponseMessageHeader,
     /// Batch items of the response
-    pub items: Vec<MessageResponseBatchItem>,
+    pub batch_item: Vec<ResponseMessageBatchItem>,
 }
 
-impl Serialize for MessageResponse {
+impl Serialize for ResponseMessage {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let header_batch_count = usize::try_from(self.header.batch_count)
+        let header_batch_count = usize::try_from(self.response_header.batch_count)
             .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
 
         // check batch item count
-        if header_batch_count != self.items.len() {
+        if header_batch_count != self.batch_item.len() {
             return Err(ser::Error::custom(format!(
-                "MessageResponse::serialize: mismatch number of batch items between header (`{}`) \
-                 and items list (`{}`)",
-                self.header.batch_count,
-                self.items.len()
+                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                self.response_header.batch_count,
+                self.batch_item.len()
             )))
         }
         // check version of protocol version defined in the header is
         // equal or greater than the protocol version of each item's payload.
-        for item in &self.items {
+        for item in &self.batch_item {
             if let Some(response_payload) = &item.response_payload {
-                if self.header.protocol_version > response_payload.protocol_version() {
+                if self.response_header.protocol_version > response_payload.protocol_version() {
                     return Err(ser::Error::custom(format!(
                         "item's protocol version is greater (`{}`) than header's protocol version \
                          (`{}`)",
-                        self.header.protocol_version,
+                        self.response_header.protocol_version,
                         response_payload.protocol_version()
                     )))
                 }
             }
         }
         let mut st = serializer.serialize_struct("Message", 2)?;
-        st.serialize_field("Header", &self.header)?;
-        st.serialize_field("Items", &self.items)?;
+        st.serialize_field("Header", &self.response_header)?;
+        st.serialize_field("Items", &self.batch_item)?;
         st.end()
     }
 }
 
-impl MessageResponse {
-    pub fn extract_items_data(&self) -> KmipResult<Vec<Vec<u8>>> {
-        self.items
-            .iter()
-            .map(|item| {
-                item.response_payload
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmipError::Default("Missing operation in Message Response".to_owned())
-                    })
-                    .and_then(|response_payload| match response_payload {
-                        Operation::DecryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .map(|data| data.to_vec())
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Decrypt Response".to_owned())
-                            }),
-                        Operation::EncryptResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Encrypt Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::HashResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Hash Response".to_owned())
-                            })
-                            .cloned(),
-                        Operation::MacResponse(response) => response
-                            .data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                KmipError::Default("Missing data in Mac Response".to_owned())
-                            })
-                            .cloned(),
-                        unexpected_operation => Err(KmipError::Default(format!(
-                            "Unexpected operation in Message Response: {unexpected_operation}"
-                        ))),
-                    })
-            })
-            .collect()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// The `ResponseHeader` contains protocol version information and other
+/// metadata about the response.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
-pub struct MessageResponseHeader {
+pub struct ResponseMessageHeader {
+    /// The KMIP protocol version used in this response
     pub protocol_version: ProtocolVersion,
-    pub timestamp: u64, // epoch millis
+
+    /// The time stamp when the response was created
+    pub time_stamp: i64,
+
+    /// The nonce provided by the server if the operation is asynchronous
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<Nonce>,
-    /// Mandatory only if Hashed Password credential was used
-    ///
-    /// Hash(Timestamp || S1 || Hash(S2)), where S1, S2 and
-    /// the Hash algorithm are defined in the Hashed Password credential.
+
+    /// Server extensions that may be specified for the response
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_hashed_password: Option<String>,
+    pub server_hashed_password: Option<Vec<u8>>,
+
+    /// REQUIRED in Attestation Required error message if client set Attestation Capable Indicator to True in the request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_type: Option<Vec<AttestationType>>,
+
+    /// The client's KMIP version used for sending this request (echoed back)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_correlation_value: Option<String>,
+
+    /// The asynchronous correlation value for the request (echoed back)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_correlation_value: Option<String>,
+
     /// This field contains the number of Batch Items in a message and is REQUIRED.
     ///
     /// If only a single operation is being requested, then the batch count SHALL be set to 1.
@@ -507,12 +486,12 @@ pub struct MessageResponseHeader {
 /// Default implementation for a message response header
 ///
 /// The timestamp is automatically set to now (UTC time)
-impl Default for MessageResponseHeader {
+impl Default for ResponseMessageHeader {
     #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
     fn default() -> Self {
         Self {
-            timestamp: OffsetDateTime::now_utc().unix_timestamp() as u64,
             protocol_version: ProtocolVersion::default(),
+            time_stamp: OffsetDateTime::now_utc().unix_timestamp(),
             nonce: None,
             server_hashed_password: None,
             attestation_type: None,
@@ -524,24 +503,29 @@ impl Default for MessageResponseHeader {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct MessageResponseBatchItem {
+pub struct ResponseMessageBatchItem {
     /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
+
     /// Required if present in request Batch Item
-    pub unique_batch_item_id: Option<u32>,
+    pub unique_batch_item_id: Option<String>,
+
     /// Indicates the success or failure of a request
     pub result_status: ResultStatusEnumeration,
+
     /// Indicates a reason for failure or a modifier for a
     /// partially successful operation and SHALL be present in
     /// responses that return a Result Status of Failure.
     ///
     /// Required if `result_status` is `Failure`
     pub result_reason: Option<ErrorReason>,
+
     /// Contains a more descriptive error message,
     /// which MAY be provided to an end user or used for logging/auditing purposes.
     ///
     /// Required if `result_status` is NOT `Pending` or `Success`
     pub result_message: Option<String>,
+
     /// Returned in the immediate response to an operation that is pending and
     /// that requires asynchronous polling. Note: the server decides which
     /// operations are performed synchronously or asynchronously.
@@ -550,17 +534,19 @@ pub struct MessageResponseBatchItem {
     /// Poll or Cancel operations that pertain to the original operation.
     ///
     /// Required if `result_status` is `Pending`
-    pub asynchronous_correlation_value: Option<Vec<u8>>,
+    pub asynchronous_correlation_value: Option<String>,
+
     /// The KMIP response, which depends on the KMIP Operation
     ///
     /// Mandatory if a success, `None` in case of failure.
     ///
     /// Content depends on Operation.
     pub response_payload: Option<Operation>,
+
     pub message_extension: Option<MessageExtension>,
 }
 
-impl MessageResponseBatchItem {
+impl ResponseMessageBatchItem {
     #[must_use]
     pub const fn new(result_status: ResultStatusEnumeration) -> Self {
         Self {
@@ -593,7 +579,7 @@ impl MessageResponseBatchItem {
     }
 }
 
-impl Serialize for MessageResponseBatchItem {
+impl Serialize for ResponseMessageBatchItem {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -668,7 +654,7 @@ impl Serialize for MessageResponseBatchItem {
     }
 }
 
-impl<'de> Deserialize<'de> for MessageResponseBatchItem {
+impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -689,7 +675,7 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
         struct MessageResponseBatchItemVisitor;
 
         impl<'de> Visitor<'de> for MessageResponseBatchItemVisitor {
-            type Value = MessageResponseBatchItem;
+            type Value = ResponseMessageBatchItem;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("struct MessageResponseBatchItem")
@@ -700,11 +686,11 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                 V: MapAccess<'de>,
             {
                 let mut operation: Option<OperationEnumeration> = None;
-                let mut unique_batch_item_id: Option<u32> = None;
+                let mut unique_batch_item_id: Option<String> = None;
                 let mut result_status: Option<ResultStatusEnumeration> = None;
                 let mut result_reason: Option<ErrorReason> = None;
                 let mut result_message: Option<String> = None;
-                let mut asynchronous_correlation_value: Option<Vec<u8>> = None;
+                let mut asynchronous_correlation_value: Option<String> = None;
                 let mut response_payload: Option<Operation> = None;
                 let mut message_extension: Option<MessageExtension> = None;
 
@@ -849,7 +835,7 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                     _ => (),
                 }
 
-                Ok(MessageResponseBatchItem {
+                Ok(ResponseMessageBatchItem {
                     operation,
                     unique_batch_item_id,
                     result_status,

@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
+    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage, ResponseMessage},
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
@@ -16,8 +16,8 @@ async fn integration_tests_bulk() -> KResult<()> {
     // Parse the json access_structure file
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
-    let request_message = Message {
-        header: MessageHeader {
+    let request_message = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -43,32 +43,32 @@ async fn integration_tests_bulk() -> KResult<()> {
         ],
     };
 
-    let response: MessageResponse = test_utils::post(&app, &request_message).await?;
-    assert_eq!(response.items.len(), 2);
+    let response: ResponseMessage = test_utils::post(&app, &request_message).await?;
+    assert_eq!(response.batch_item.len(), 2);
 
     // 1. Create keypair
     assert_eq!(
-        response.items[0].operation,
+        response.batch_item[0].operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
     assert_eq!(
-        response.items[0].result_status,
+        response.batch_item[0].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[0].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[0].response_payload else {
         panic!("not a create key pair response payload");
     };
 
     // 2. Create keypair
     assert_eq!(
-        response.items[1].operation,
+        response.batch_item[1].operation,
         Some(OperationEnumeration::CreateKeyPair)
     );
     assert_eq!(
-        response.items[1].result_status,
+        response.batch_item[1].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.batch_item[1].response_payload else {
         panic!("not a create key pair response payload");
     };
 

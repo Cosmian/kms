@@ -10,8 +10,8 @@ use crate::{
         kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
-            Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
-            MessageResponseHeader,
+            MessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage,
+            ResponseMessageBatchItem, ResponseMessageHeader,
         },
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
@@ -748,8 +748,8 @@ fn get_key_block() -> KeyBlock {
 pub(crate) fn test_message_request() {
     log_init(None);
 
-    let req = Message {
-        header: MessageHeader {
+    let req = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 2,
@@ -772,7 +772,7 @@ pub(crate) fn test_message_request() {
             }]),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
-            timestamp: Some(1_950_940_403),
+            time_stamp: Some(1_950_940_403),
         },
         items: vec![MessageBatchItem {
             operation: OperationEnumeration::Encrypt,
@@ -790,7 +790,7 @@ pub(crate) fn test_message_request() {
         }],
     };
     let ttlv = to_ttlv(&req).unwrap();
-    let req_: Message = from_ttlv(ttlv).unwrap();
+    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
     assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
     let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
         panic!(
@@ -806,8 +806,8 @@ pub(crate) fn test_message_request() {
 pub(crate) fn test_message_response() {
     log_init(None);
 
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -816,17 +816,17 @@ pub(crate) fn test_message_response() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
             }),
-            server_hashed_password: Some("5e8953ab".to_owned()),
+            server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
-        items: vec![
-            MessageResponseBatchItem {
+        batch_item: vec![
+            ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
-                unique_batch_item_id: Some(1234),
+                unique_batch_item_id: Some("1234".to_owned()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
                     unique_identifiers: Some(vec![UniqueIdentifier::TextString(
@@ -841,11 +841,11 @@ pub(crate) fn test_message_response() {
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
                 result_message: None,
-                asynchronous_correlation_value: Some(vec![42_u8, 5]),
+                asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
             },
-            MessageResponseBatchItem {
+            ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
-                unique_batch_item_id: Some(1235),
+                unique_batch_item_id: Some("1235".to_owned()),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
                     data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
@@ -859,25 +859,31 @@ pub(crate) fn test_message_response() {
                 result_status: ResultStatusEnumeration::OperationUndone,
                 result_reason: Some(ErrorReason::Response_Too_Large),
                 result_message: Some("oversized data".to_owned()),
-                asynchronous_correlation_value: Some(vec![43_u8, 6]),
+                asynchronous_correlation_value: Some("43_u8, 6".to_owned()),
             },
         ],
     };
     let ttlv = to_ttlv(&res).unwrap();
-    let res_: MessageResponse = from_ttlv(ttlv).unwrap();
-    assert_eq!(res_.items.len(), 2);
-    assert_eq!(res_.items[0].operation, Some(OperationEnumeration::Locate));
+    let res_: ResponseMessage = from_ttlv(ttlv).unwrap();
+    assert_eq!(res_.batch_item.len(), 2);
     assert_eq!(
-        res_.items[0].result_status,
+        res_.batch_item[0].operation,
+        Some(OperationEnumeration::Locate)
+    );
+    assert_eq!(
+        res_.batch_item[0].result_status,
         ResultStatusEnumeration::OperationPending
     );
-    assert_eq!(res_.items[1].operation, Some(OperationEnumeration::Decrypt));
     assert_eq!(
-        res_.items[1].result_status,
+        res_.batch_item[1].operation,
+        Some(OperationEnumeration::Decrypt)
+    );
+    assert_eq!(
+        res_.batch_item[1].result_status,
         ResultStatusEnumeration::OperationUndone
     );
 
-    let Some(Operation::DecryptResponse(decrypt)) = &res_.items[1].response_payload else {
+    let Some(Operation::DecryptResponse(decrypt)) = &res_.batch_item[1].response_payload else {
         panic!("not a decrypt operation's response payload");
     };
     assert_eq!(
@@ -896,8 +902,8 @@ pub(crate) fn test_message_enforce_enum() {
     log_init(None);
 
     // check Message request serializer reinforcement
-    let req = Message {
-        header: MessageHeader {
+    let req = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -920,8 +926,8 @@ pub(crate) fn test_message_enforce_enum() {
         "operation enum (`Create`) doesn't correspond to request payload (`Locate`)".to_owned()
     );
 
-    let req = Message {
-        header: MessageHeader {
+    let req = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -938,8 +944,8 @@ pub(crate) fn test_message_enforce_enum() {
         "mismatch number of batch items between header (`15`) and items list (`1`)".to_owned()
     );
 
-    let req = Message {
-        header: MessageHeader {
+    let req = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 3,
                 protocol_version_minor: 0,
@@ -955,8 +961,8 @@ pub(crate) fn test_message_enforce_enum() {
             .to_owned()
     );
 
-    let req = Message {
-        header: MessageHeader {
+    let req = RequestMessage {
+        header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -983,17 +989,17 @@ pub(crate) fn test_message_enforce_enum() {
     );
 
     // check Message response serializer reinforcement
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        items: vec![MessageResponseBatchItem {
+        batch_item: vec![ResponseMessageBatchItem {
             operation: Some(OperationEnumeration::Decrypt),
             unique_batch_item_id: None,
             // mismatch operation regarding the enum
@@ -1012,17 +1018,17 @@ pub(crate) fn test_message_enforce_enum() {
             .to_owned()
     );
 
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        items: vec![MessageResponseBatchItem {
+        batch_item: vec![ResponseMessageBatchItem {
             operation: Some(OperationEnumeration::Decrypt),
             unique_batch_item_id: None,
             // mismatch operation regarding the enum
@@ -1031,7 +1037,7 @@ pub(crate) fn test_message_enforce_enum() {
             result_status: ResultStatusEnumeration::OperationPending,
             result_reason: None,
             result_message: None,
-            asynchronous_correlation_value: Some(vec![0, 0, 1]),
+            asynchronous_correlation_value: Some("0, 0, 1".to_owned()),
         }],
     };
     assert_eq!(
@@ -1039,18 +1045,18 @@ pub(crate) fn test_message_enforce_enum() {
         "operation enum (`Decrypt`) doesn't correspond to response payload (`Locate`)".to_owned()
     );
 
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
             // mismatch number of items
             batch_count: 22,
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        items: vec![MessageResponseBatchItem::new(
+        batch_item: vec![ResponseMessageBatchItem::new(
             ResultStatusEnumeration::OperationPending,
         )],
     };
@@ -1059,17 +1065,17 @@ pub(crate) fn test_message_enforce_enum() {
         "mismatch number of batch items between header (`22`) and items list (`1`)".to_owned()
     );
 
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 128,
                 protocol_version_minor: 128,
             },
             batch_count: 1,
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             ..Default::default()
         },
-        items: vec![MessageResponseBatchItem::new_with_response(
+        batch_item: vec![ResponseMessageBatchItem::new_with_response(
             ResultStatusEnumeration::OperationPending,
             Operation::Locate(Locate::default()),
         )],
@@ -1080,8 +1086,8 @@ pub(crate) fn test_message_enforce_enum() {
             .to_owned()
     );
 
-    let res = MessageResponse {
-        header: MessageResponseHeader {
+    let res = ResponseMessage {
+        response_header: ResponseMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -1090,16 +1096,16 @@ pub(crate) fn test_message_enforce_enum() {
             client_correlation_value: Some("client_123".to_owned()),
             server_correlation_value: Some("server_234".to_owned()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            timestamp: 1_697_201_574,
+            time_stamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
             }),
-            server_hashed_password: Some("5e8953ab".to_owned()),
+            server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
-        items: vec![MessageResponseBatchItem {
+        batch_item: vec![ResponseMessageBatchItem {
             operation: Some(OperationEnumeration::Locate),
-            unique_batch_item_id: Some(1234),
+            unique_batch_item_id: Some("1234".to_owned()),
             // in a message response, we can't have `Operation::Locate`,
             // we could only have an `Operation::LocateResponse`
             response_payload: Some(Operation::Locate(Locate::default())),
@@ -1111,7 +1117,7 @@ pub(crate) fn test_message_enforce_enum() {
             result_status: ResultStatusEnumeration::OperationPending,
             result_reason: None,
             result_message: None,
-            asynchronous_correlation_value: Some(vec![42_u8, 5]),
+            asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
         }],
     };
     assert_eq!(
