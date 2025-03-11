@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip_2_1::{
-    kmip_messages::{MessageBatchItem, RequestMessageHeader, RequestMessage},
+    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader},
     kmip_operations::Operation,
     kmip_types::ProtocolVersion,
 };
@@ -24,7 +24,7 @@ pub(crate) async fn batch_operations(
                 protocol_version_minor: 0,
             },
             maximum_response_size: Some(9999),
-            batch_count: operations.len() as u32,
+            batch_count: operations.len() as i32,
             ..Default::default()
         },
         items: operations.into_iter().map(MessageBatchItem::new).collect(),
