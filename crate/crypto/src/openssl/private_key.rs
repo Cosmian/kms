@@ -302,7 +302,7 @@ pub fn openssl_private_key_to_kmip(
         }
         KeyFormatType::TransparentECPrivateKey => {
             let (recommended_curve, cryptographic_algorithm, d) = match private_key.id() {
-                // This is likely curve 25519 or 448 key (i.e. a non standardized curve)
+                // This is a likely curve 25519 or 448 keys (i.e., a non-standardized curve)
                 Id::EC => {
                     let ec_key = private_key
                         .ec_key()
@@ -479,7 +479,7 @@ pub fn openssl_private_key_to_kmip(
     Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
-#[allow(clippy::unwrap_used, clippy::panic, clippy::as_conversions)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "fips")]
@@ -719,7 +719,7 @@ mod tests {
         let mut privkey_vec = d.to_bytes_be();
 
         // privkey size on curve.
-        let bytes_key_size = 1 + ((key_size as usize - 1) / 8);
+        let bytes_key_size = 1 + ((usize::try_from(key_size).unwrap() - 1) / 8);
 
         pad_be_bytes(&mut privkey_vec, bytes_key_size);
         if id == Id::EC {

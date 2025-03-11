@@ -507,8 +507,9 @@ fn test_some_attributes() {
         },
         #[serde(rename_all = "PascalCase")]
         NoAttr { whatever: i32 },
-        log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,hyper=info,reqwest=info"));
+    }
+
+    log_init(option_env!("RUST_LOG"));
 
     let value = Wrapper::Attr {
         attrs: Attributes {
