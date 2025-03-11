@@ -13,7 +13,7 @@ use crate::{
 pub(crate) async fn revoke_user_decryption_keys(
     master_secret_key_id: &str,
     revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<u64>,
+    compromise_occurrence_date: Option<i64>,
     kms: &KMS,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>, // keys that should be skipped
