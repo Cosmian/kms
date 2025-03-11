@@ -58,7 +58,10 @@ impl CovercryptDecryption {
     ) -> CryptoResult<(CleartextHeader, Zeroizing<Vec<u8>>)> {
         trace!("CovercryptDecryption: decrypt: ad: {ad:?}");
         let mut de = Deserializer::new(encrypted_bytes);
-        trace!("encrypted_bytes len: {}", encrypted_bytes.len());
+        trace!(
+            "CovercryptDecryption: encrypted_bytes len: {}",
+            encrypted_bytes.len()
+        );
 
         let encrypted_header = EncryptedHeader::read(&mut de)?;
         trace!("encrypted_header parsed");
@@ -156,10 +159,14 @@ impl CovercryptDecryption {
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
 
-            let encrypted_header = EncryptedHeader::deserialize(chunk_data).map_err(|e| {
-                CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
-            })?;
-
+            let (encrypted_header, encrypted_block) = {
+                let mut de_chunk = Deserializer::new(chunk_data);
+                let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
+                    CryptoError::Kmip(format!("Bad or corrupted bulk encrypted data: {e}"))
+                })?;
+                let encrypted_block = de_chunk.finalize();
+                (encrypted_header, encrypted_block)
+            };
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, ad)
                 .map_err(|e| CryptoError::Kmip(e.to_string()))?
@@ -167,18 +174,36 @@ impl CovercryptDecryption {
 
             cleartext_header = header;
 
+            let key = match ad {
+                Some(ad_bytes) => SymmetricKey::derive(&cleartext_header.secret, ad_bytes)?,
+                None => SymmetricKey::derive(&cleartext_header.secret, &[])?,
+            };
+
+            // Split nonce and ciphertext
+            let nonce_slice = encrypted_block
+                .get(..Aes256Gcm::NONCE_LENGTH)
+                .ok_or_else(|| {
+                    CryptoError::Default("encrypted block too short for nonce".to_owned())
+                })?;
+            let ciphertext = encrypted_block
+                .get(Aes256Gcm::NONCE_LENGTH..)
+                .ok_or_else(|| {
+                    CryptoError::Default("encrypted block too short for payload".to_owned())
+                })?;
+
+            let cleartext = Aes256Gcm::new(&key)
+                .decrypt(&Nonce::try_from_slice(nonce_slice)?, ciphertext, ad)
+                .map_err(Error::CryptoCoreError)
+                .map(Zeroizing::new)?;
+
             debug!(
                 "Decrypted bulk data with user key {} of len (CT/Enc): {}/{}",
                 self.user_decryption_key_uid,
-                cleartext_header.length(),
+                cleartext.len(),
                 encrypted_bytes.len(),
             );
 
-            ser.write_vec(
-                &cleartext_header.metadata.clone().ok_or_else(|| {
-                    CryptoError::Default("unable to recover header 162".to_owned())
-                })?,
-            )?;
+            ser.write_vec(&cleartext)?;
         }
 
         Ok((cleartext_header, ser.finalize()))
