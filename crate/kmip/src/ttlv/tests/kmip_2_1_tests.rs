@@ -1285,3 +1285,29 @@ fn test_serialization_link() -> KmipResult<()> {
 
     Ok(())
 }
+
+#[test]
+fn normative_request_message_test() {
+    log_init(Some("trace"));
+    let ttlv_string = r#"
+{"tag":"RequestMessage", "value":[
+  {"tag":"RequestHeader", "value":[
+    {"tag":"ProtocolVersion", "value":[
+      {"tag":"ProtocolVersionMajor", "type":"Integer", "value":"0x00000001"},
+      {"tag":"ProtocolVersionMinor", "type":"Integer", "value":"0x00000004"}
+    ]},
+    {"tag":"MaximumResponseSize", "type":"Integer", "value":"0x00000100"},
+    {"tag":"BatchCount", "type":"Integer", "value":"0x00000001"}
+  ]},
+  {"tag":"BatchItem", "value":[
+    {"tag":"Operation", "type":"Enumeration", "value":"Query"},
+    {"tag":"RequestPayload", "value":[
+      {"tag":"QueryFunction", "type":"Enumeration","value":"QueryOperations"},
+      {"tag":"QueryFunction", "type":"Enumeration", "value":"QueryObjects"}
+    ]}
+  ]}
+]}    
+    "#;
+    let ttlv: TTLV = serde_json::from_str(ttlv_string).unwrap();
+    println!("ttlv: {:#?}", ttlv);
+}

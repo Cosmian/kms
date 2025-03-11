@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
-    kmip_messages::{RequestMessage, MessageBatchItem, RequestMessageHeader},
+    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
