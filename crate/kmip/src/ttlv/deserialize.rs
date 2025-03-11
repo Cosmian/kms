@@ -4,6 +4,7 @@ use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize,
 };
+use serde_json::Value;
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
 use tracing::trace;
 
@@ -63,44 +64,18 @@ impl<'de> Deserialize<'de> for TTLV {
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
-                                "Integer" => TTLValue::Integer(map.next_value()?),
-                                "LongInteger" => {
-                                    let hex: String = map.next_value()?;
-                                    if hex.get(0..2).ok_or_else(|| {
-                                        de::Error::custom(
-                                            "visit_map: indexing slicing failed for LongInteger \
-                                             0..2"
-                                                .to_owned(),
-                                        )
-                                    })? != "0x"
-                                    {
-                                        return Err(de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {hex} (should \
-                                             start with 0x)"
-                                        )))
-                                    }
-                                    let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
-                                        de::Error::custom(
-                                            "visit_map: indexing slicing failed for LongInteger \
-                                             2.."
-                                            .to_owned(),
-                                        )
-                                    })?)
-                                    .map_err(|e| {
+                                "Integer" => {
+                                    let i_64 = deserialize_integer(map.next_value()?)?;
+                                    let i_32 = i_64.try_into().map_err(|e| {
                                         de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {hex} (not a hex \
-                                             string). Error: {e}",
+                                            "Invalid value for i32: {i_64}. Error: {e}",
                                         ))
                                     })?;
-                                    let v: i64 = i64::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|e| {
-                                            de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {hex}. Error: \
-                                                 {e}",
-                                            ))
-                                        })?,
-                                    );
-                                    TTLValue::LongInteger(v)
+                                    TTLValue::Integer(i_32)
+                                }
+                                "LongInteger" => {
+                                    let i_64 = deserialize_integer(map.next_value()?)?;
+                                    TTLValue::LongInteger(i_64)
                                 }
                                 "BigInteger" => {
                                     let hex: String = map.next_value()?;
@@ -197,6 +172,51 @@ impl<'de> Deserialize<'de> for TTLV {
         const FIELDS: &[&str] = &["tag", "value"];
         deserializer.deserialize_struct("TTLV", FIELDS, TTLVVisitor)
     }
+}
+
+fn deserialize_integer<E>(v: Value) -> Result<i64, E>
+where
+    E: de::Error,
+{
+    let mut hex: Option<String> = None;
+    if v.is_string() {
+        let s = v.as_str().map(|s| s.to_owned()).ok_or_else(|| {
+            de::Error::custom(format!("deserialize_interger: failde parsing string {v}"))
+        })?;
+        if s.get(0..2) != Some("0x") {
+            return Err(de::Error::custom(format!(
+                "Invalid value for integer hex String: {s} (should start with 0x)"
+            )))
+        }
+        hex = Some(s.get(2..).map(|s| s.to_owned()).ok_or_else(|| {
+            de::Error::custom(format!(
+                "visit_map: indexing slicing failed for Integer 2..: {v}"
+            ))
+        })?)
+    }
+
+    if let Some(mut hex) = hex {
+        if hex.len() == 8 {
+            hex = "00000000".to_owned() + &hex;
+        } else if hex.len() != 16 {
+            return Err(de::Error::custom(format!(
+                "Invalid value for hex String: {hex}",
+            )))
+        }
+        let bytes = hex::decode(hex.clone()).map_err(|e| {
+            de::Error::custom(format!(
+                "Invalid value for i64 hex String: {v} (not a hex string). Error: {e}",
+            ))
+        })?;
+        let v = i64::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
+            de::Error::custom(format!(
+                "Invalid value for i64 hex String: {hex}. Error: {e}",
+            ))
+        })?);
+        return Ok(v)
+    }
+    v.as_i64()
+        .ok_or_else(|| de::Error::custom(format!("visit_map: not a valid i64 integer: {v}")))
 }
 
 #[derive(Debug, Copy, Clone)]
