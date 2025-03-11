@@ -164,8 +164,8 @@ pub(crate) async fn process_symmetric_key(
         attributes.merge(object_attributes, false);
     }
     // make sure we have a CryptographicAlgorithm set; default to AES
-    if attributes.cryptographic_algorithm == None {
-        attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES)
+    if attributes.cryptographic_algorithm.is_none() {
+        attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
     };
 
     // Replace updated attributes in object structure.
