@@ -116,10 +116,6 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                             value: 0,
                         }),
                     },
-                    TTLV {
-                        tag: "Sensitive".to_owned(),
-                        value: TTLValue::Boolean(false),
-                    },
                 ]),
             },
         ]),
