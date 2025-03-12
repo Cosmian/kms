@@ -1,5 +1,7 @@
-use cloudproof::reexport::crypto_core::bytes_ser_de::Deserializer;
-use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, MasterSecretKey};
+use std::collections::HashMap;
+
+use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
+use cosmian_crypto_core::bytes_ser_de::Deserializer;
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{CryptographicAlgorithm, RevocationReason},
@@ -19,7 +21,10 @@ use cosmian_kms_crypto::crypto::cover_crypt::{
         build_import_public_key_request, build_rekey_keypair_request,
     },
 };
-use pyo3::{exceptions::PyException, prelude::*};
+use pyo3::{
+    exceptions::{PyException, PyTypeError},
+    prelude::*,
+};
 
 use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 
@@ -60,6 +65,46 @@ impl FromPyObject<'_> for ToUniqueIdentifier {
             ))
         }
     }
+}
+
+pub(crate) fn access_structure_from_str(access_structure_str: &str) -> PyResult<AccessStructure> {
+    let access_structure_json: HashMap<String, Vec<String>> =
+        serde_json::from_str(access_structure_str).map_err(|e| {
+            PyException::new_err(format!(
+                "failed parsing the access structure from the string: {e}"
+            ))
+        })?;
+
+    let mut access_structure = AccessStructure::new();
+    for (dimension, attributes) in &access_structure_json {
+        if dimension.contains("::<") {
+            let trim_key_name = dimension.trim_end_matches("::<");
+            access_structure
+                .add_hierarchy(trim_key_name.to_owned())
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+        } else {
+            access_structure
+                .add_anarchy(dimension.clone())
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+        }
+
+        for name in attributes.iter().rev() {
+            let attribute = QualifiedAttribute {
+                dimension: dimension.trim_end_matches("::<").to_owned(),
+                name: name.trim_end_matches("::+").to_owned(),
+            };
+            let encryption_hint = if name.contains("::+") {
+                EncryptionHint::Hybridized
+            } else {
+                EncryptionHint::Classic
+            };
+            access_structure
+                .add_attribute(attribute, encryption_hint, None)
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+        }
+    }
+
+    Ok(access_structure)
 }
 
 #[pyclass(subclass)]
@@ -130,12 +175,17 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
+        access_structure: &str,
         sensitive: bool,
         tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        // Parse the json policy
+        let access_structure = access_structure_from_str(access_structure)?;
+
         // Create the kmip query
         let request = build_create_covercrypt_master_keypair_request(
+            &access_structure,
             tags.unwrap_or_default(),
             sensitive,
         )
@@ -179,7 +229,6 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_public_key_id: &str,
-        msk: &MasterSecretKey,
         tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
@@ -191,7 +240,6 @@ impl KmsClient {
             unique_identifier,
             replace_existing,
             link_master_public_key_id,
-            &msk,
             is_wrapped.unwrap_or(false),
             wrapping_password,
             tags.unwrap_or_default(),
@@ -225,7 +273,6 @@ impl KmsClient {
         &'p self,
         public_key: &[u8],
         replace_existing: bool,
-        msk: &MasterSecretKey,
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
         tags: Option<Vec<String>>,
@@ -235,7 +282,6 @@ impl KmsClient {
             public_key,
             unique_identifier,
             replace_existing,
-            &msk,
             link_master_private_key_id,
             tags.unwrap_or_default(),
         )
@@ -316,17 +362,16 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn remove_cover_crypt_attribute<'p>(
         &'p self,
-        ap: String,
+        attribute: &str,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
-
+        let attr = QualifiedAttribute::try_from(attribute)
+            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::DeleteAttribute(vec![ap_attributes]),
+            &RekeyEditAction::DeleteAttribute(vec![attr]),
             py
         )
     }
@@ -342,17 +387,16 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn disable_cover_crypt_attribute<'p>(
         &'p self,
-        ap: String,
+        attribute: &str,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::to_dnf(&parsed_ap).as_slice()[0][0].to_string();
-
+        let attr = QualifiedAttribute::try_from(attribute)
+            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::DisableAttribute(vec![ap_attributes]),
+            &RekeyEditAction::DisableAttribute(vec![attr]),
             py
         )
     }
@@ -368,20 +412,17 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn add_cover_crypt_attribute<'p>(
         &'p self,
-        ap: String,
         attribute: &str,
         is_hybridized: bool,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let parsed_ap = AccessPolicy::parse(&ap)?;
-
+        let attr = QualifiedAttribute::try_from(attribute)
+            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::AddAttribute(
-                vec![(QualifiedAttribute::from(attribute), EncryptionHint::new(is_hybridized), None)]
-            ),
+            &RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized), None)]),
             py
         )
     }
@@ -397,18 +438,17 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rename_cover_crypt_attribute<'p>(
         &'p self,
-        ap: String,
+        attribute: &str,
         new_name: &str,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let parsed_ap = AccessPolicy::parse(&ap)?;
-        let ap_attributes = AccessPolicy::default();
-
+        let attr = QualifiedAttribute::try_from(attribute)
+            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            &RekeyEditAction::RenameAttribute(vec![(ap_attributes, new_name.to_string())]),
+            &RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
             py
         )
     }

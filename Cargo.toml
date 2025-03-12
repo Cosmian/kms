@@ -10,7 +10,7 @@ members = [
   "crate/hsm/base_hsm",
   "crate/interfaces",
   "crate/kmip",
-  # "crate/pyo3",
+  "crate/pyo3",
   "crate/pkcs11/module",
   "crate/pkcs11/provider",
   "crate/pkcs11/sys",

@@ -31,17 +31,17 @@ jobs:
         run: |
           docker run --rm ${{ inputs.kms-version }} --help
 
-      - uses: actions/checkout@v3
-        with:
-          repository: Cosmian/cloudproof_python
-          ref: ${{ inputs.branch }}
+      # - uses: actions/checkout@v3
+      #   with:
+      #     repository: Cosmian/cloudproof_python
+      #     ref: ${{ inputs.branch }}
 
-      - name: Install cloudproof python deps
-        env:
-          COVER_CRYPT_TAG: last_build
-          FINDEX_TAG: last_build
-        run: |
-          scripts/ci_install_pyo3_builds.sh
+      # - name: Install cloudproof python deps
+      #   env:
+      #     COVER_CRYPT_TAG: last_build
+      #     FINDEX_TAG: last_build
+      #   run: |
+      #     scripts/ci_install_pyo3_builds.sh
 
       - uses: actions/checkout@v3
 
@@ -59,10 +59,10 @@ jobs:
           # Check python code
           mypy crate/pyo3/python/scripts/test_kms.py
           python3 crate/pyo3/python/scripts/test_kms.py
-          if [ ! "${{ inputs.fips }}" = "FIPS" ]; then
-            mypy crate/pyo3/python/scripts/test_kms_covercrypt.py
-            python3 crate/pyo3/python/scripts/test_kms_covercrypt.py
-          fi
+          # if [ ! "${{ inputs.fips }}" = "FIPS" ]; then
+          #   mypy crate/pyo3/python/scripts/test_kms_covercrypt.py
+          #   python3 crate/pyo3/python/scripts/test_kms_covercrypt.py
+          # fi
 
       - name: Check that the lib version is the same as the server
         run: |

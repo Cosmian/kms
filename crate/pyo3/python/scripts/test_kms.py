@@ -1,13 +1,6 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from cosmian_cover_crypt import (
-    MasterPublicKey,
-    MasterSecretKey,
-    Policy,
-    PolicyAxis,
-    UserSecretKey,
-)
 from cosmian_kms import KmsClient
 
 
