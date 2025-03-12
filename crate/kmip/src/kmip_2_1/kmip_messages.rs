@@ -86,7 +86,7 @@ impl Serialize for RequestMessage {
                 )));
             }
         }
-        let mut st = serializer.serialize_struct("ReauestMessage", 2)?;
+        let mut st = serializer.serialize_struct("RequestMessage", 2)?;
         st.serialize_field("RequestHeader", &self.request_header)?;
         st.serialize_field("BatchItem", &self.batch_item)?;
         st.end()
