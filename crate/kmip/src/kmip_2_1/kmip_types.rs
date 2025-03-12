@@ -140,14 +140,14 @@ pub enum KeyFormatType {
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
     PKCS10 = 0x17,
-    #[cfg(not(feature = "fips"))]
     /// This mode is to support legacy, but common, PKCS#12 formats that use
     /// `PBE_WITHSHA1AND40BITRC2_CBC` for the encryption algorithm of certificate,
     /// `PBE_WITHSHA1AND3_KEY_TRIPLEDES_CBC` for the encryption algorithm of the key
-    /// and SHA-1 for the MAC.
+    /// and SHA-1 for the `MAC`.
     /// This is not a standard PKCS#12 format but is used by some software
     /// such as Java `KeyStores`, Mac OS X Keychains, and some versions of OpenSSL (1x).
     /// Use PKCS12 instead for standard (newer) PKCS#12 format.
+    #[cfg(not(feature = "fips"))]
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
     // Available slot 0x8880_0003,
@@ -2629,4 +2629,114 @@ pub enum FIPS186Variation {
     KOriginal = 0x6,
     #[serde(rename = "k-Change Notice")]
     KChangeNotice = 0x7,
+}
+
+/// The `QueryFunction` is used to indicate what server information is being requested.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub enum QueryFunction {
+    QueryOperations,
+    QueryObjects,
+    QueryServerInformation,
+    QueryApplicationNamespaces,
+    QueryExtensionList,
+    QueryExtensionMap,
+    QueryAttestationTypes,
+    QueryRNGOptions,
+    QueryProfileInformation,
+    QueryValidationInformation,
+    QueryCapabilityInformation,
+    QueryClientRegistrationMethods,
+    QueryDefaults,
+    QueryProtectionStorageMasks,
+}
+
+/// Random Number Generation Mode enumeration
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "PascalCase")]
+pub enum RNGMode {
+    /// Shared Random Number Generator
+    Shared,
+
+    /// Per Operation Random Number Generator
+    PerOperation,
+
+    /// Combined Multiple Random Number Generators
+    Combined,
+
+    /// No Random Number Generator
+    None,
+}
+
+impl Display for RNGMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Shared => write!(f, "Shared"),
+            Self::PerOperation => write!(f, "PerOperation"),
+            Self::Combined => write!(f, "Combined"),
+            Self::None => write!(f, "None"),
+        }
+    }
+}
+
+/// Methods by which clients can register with a KMIP server.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ClientRegistrationMethod {
+    /// The client is not required to register.
+    Unspecified = 0x0000_0001,
+    /// The client must register using server-defined method.
+    ServerPreRegistered = 0x0000_0002,
+    /// The client registers by providing a password to the server.
+    ServerPreregisteredPadding = 0x0000_0003,
+    /// The server accepts clients with specific platform configurations.
+    ServerTrustedPlatformModule = 0x0000_0004,
+    /// The server validates the client based on attestation data.
+    ServerClientAttestation = 0x0000_0005,
+    /// Server-specific registration method.
+    ServerCustom = 0x0000_0006,
+}
+
+/// Supported profile identifiers in the KMIP specification.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+#[repr(i32)]
+pub enum ProfileName {
+    /// The KMIP baseline profile.
+    Baseline = 0x0000_0001,
+    /// The basic KMIP baseline with TLS profile.
+    BasicBaseline_TLS = 0x0000_0002,
+    /// The OMG (Object Management Group) Mobile Device Management protocol profile.
+    OmgMdm = 0x0000_0003,
+    /// Server-specific profile.
+    Custom = 0x0000_0004,
+    /// Advanced storage features profile.
+    Storage = 0x0000_0005,
+    /// Quantum safe algorithms and operations profile.
+    QuantumSafe = 0x0000_0006,
+    /// Profile with asymmetric key lifecycle operations.
+    AsymmetricKeyLifecycle = 0x0000_0007,
+    /// Profile for systems with limited resources.
+    ResourceLimited = 0x0000_0008,
+    /// Profile for systems using the `SQLite` database format.
+    SQLite = 0x0000_0009,
+}
+
+/// Types of validation authorities that can validate cryptographic objects.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ValidationAuthorityType {
+    /// Common Criteria Testing Laboratory authority.
+    CommonCriteriaTestingLaboratory = 0x0000_0001,
+    /// National Voluntary Laboratory Accreditation Program.
+    Nvlap = 0x0000_0002,
+    /// National Information Assurance Partnership.
+    Niap = 0x0000_0003,
+    /// Authority not matching any other defined type.
+    Unspecified = 0x0000_0004,
+    /// Federal Information Processing Standards authority.
+    FipsApprovedSecurityFunction = 0x0000_0005,
+    /// ISO/IEC 19790 compliant validation.
+    Iso19790Compliant = 0x0000_0006,
+    /// Federal Information Security Management Act authority.
+    Fisma = 0x0000_0007,
 }

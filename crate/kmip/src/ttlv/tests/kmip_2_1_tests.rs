@@ -16,13 +16,13 @@ use crate::{
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
         kmip_operations::{
             Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-            LocateResponse, Operation, SetAttribute,
+            LocateResponse, Operation, Query, SetAttribute,
         },
         kmip_types::{
             AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
             CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-            ResultStatusEnumeration, UniqueIdentifier,
+            QueryFunction, ResultStatusEnumeration, UniqueIdentifier,
         },
     },
     ttlv::{
@@ -1392,17 +1392,19 @@ fn normative_message_request() {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItem {
-            operation: OperationEnumeration::Create,
+            operation: OperationEnumeration::Query,
             ephemeral: None,
             unique_batch_item_id: None,
-            request_payload: Operation::Create(Create {
-                object_type: ObjectType::SymmetricKey,
-                attributes: Attributes::default(),
-                protection_storage_masks: None,
+            request_payload: Operation::Query(Query {
+                query_function: Some(vec![
+                    QueryFunction::QueryOperations,
+                    QueryFunction::QueryObjects,
+                ]),
             }),
             message_extension: None,
         }],
     };
     let ttlv = to_ttlv(&request_message).unwrap();
+    info!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     let _request_message_: RequestMessage = from_ttlv(ttlv).unwrap();
 }

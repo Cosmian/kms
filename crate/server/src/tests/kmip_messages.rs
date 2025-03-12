@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader},
+    kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
     kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
@@ -173,10 +173,10 @@ async fn test_kmip_messages() -> KResult<()> {
         create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false)?;
 
     // prepare and send the single message
-    let items = vec![
-        MessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
-        MessageBatchItem::new(Operation::Locate(Locate::default())),
-        MessageBatchItem::new(Operation::Decrypt(Decrypt {
+    let batch_item = vec![
+        RequestMessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
+        RequestMessageBatchItem::new(Operation::Locate(Locate::default())),
+        RequestMessageBatchItem::new(Operation::Decrypt(Decrypt {
             unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
             data: Some(b"decrypted_data".to_vec()),
             ..Default::default()

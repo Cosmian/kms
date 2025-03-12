@@ -13,17 +13,15 @@ use serde::{
 };
 use strum::{EnumIter, VariantNames};
 
-use super::{kmip_attributes::Attributes, kmip_data_structures::KeyWrappingData};
-use crate::{
-    error::{KmipError, result::KmipResult},
-    kmip_2_1::{
-        kmip_data_structures::KeyBlock,
-        kmip_operations::ErrorReason,
-        kmip_types::{
-            CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
-        },
+use super::{
+    kmip_attributes::Attributes,
+    kmip_data_structures::{KeyBlock, KeyWrappingData},
+    kmip_operations::ErrorReason,
+    kmip_types::{
+        CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
     },
 };
+use crate::error::{result::KmipResult, KmipError};
 
 /// A Managed Cryptographic Object that is a digital certificate.
 /// It is a DER-encoded X.509 public key certificate.

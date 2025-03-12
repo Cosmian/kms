@@ -35,7 +35,7 @@ pub(crate) async fn message(
     trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::new();
-    for item_request in request.items {
+    for item_request in request.batch_item {
         let operation = item_request.request_payload;
         // conversion for `dispatch` call convenience
         let ttlv = to_ttlv(&operation)?;

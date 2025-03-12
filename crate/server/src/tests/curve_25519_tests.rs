@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
-    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader},
+    kmip_messages::{RequestMessage, RequestMessageBatchItem, RequestMessageHeader},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
@@ -223,13 +223,13 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
                 false,
             )?)),
-            MessageBatchItem::new(Operation::Locate(
+            RequestMessageBatchItem::new(Operation::Locate(
                 cosmian_kmip::kmip_2_1::kmip_operations::Locate::default(),
             )),
         ],
@@ -249,25 +249,25 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVE25519,
                 false,
             )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
                 false,
             )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::SECP256K1,
                 false,
             )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
                 RecommendedCurve::CURVEED25519,
