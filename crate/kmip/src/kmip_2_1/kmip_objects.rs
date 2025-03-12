@@ -238,7 +238,7 @@ impl<'de> Deserialize<'de> for Object {
                 if let Some(key) = map.next_key::<String>()? {
                     if !Object::VARIANTS.contains(&key.as_str()) {
                         return Err(serde::de::Error::custom(format!(
-                            "Unknown Object to deeserialze: {key}. Known Objects are: {:?}",
+                            "Unknown Object to deserialize: {key}. Known Objects are: {:?}",
                             Object::VARIANTS
                         )));
                     }

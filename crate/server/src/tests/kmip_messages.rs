@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader},
+    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader},
     kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         BlockCipherMode, CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm,
@@ -183,7 +183,7 @@ async fn test_kmip_messages() -> KResult<()> {
         })),
     ];
     let message_request = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -194,7 +194,7 @@ async fn test_kmip_messages() -> KResult<()> {
             batch_count: 1,
             ..Default::default()
         },
-        items,
+        batch_item,
     };
 
     let response = kms.message(message_request, owner, None).await?;

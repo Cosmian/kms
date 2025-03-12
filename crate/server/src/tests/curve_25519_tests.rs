@@ -4,7 +4,7 @@ use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_attributes::Attributes,
-    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader},
+    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader},
     kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
@@ -210,7 +210,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
@@ -219,7 +219,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             batch_count: 2,
             ..Default::default()
         },
-        items: vec![
+        batch_item: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
@@ -236,7 +236,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     assert_eq!(response.response_header.batch_count, 2);
 
     let request = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -245,7 +245,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             batch_count: 4,
             ..Default::default()
         },
-        items: vec![
+        batch_item: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
                 None,
                 EMPTY_TAGS,
