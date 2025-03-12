@@ -404,26 +404,26 @@ impl ser::Serializer for &mut TTLVSerializer {
     }
 
     /// Serialize a sequence of items.
-    /// In TTLV a sequence is represented as a structure with a tag and a list of items
-    /// which are themselves TTLV structures with the same tag.
-    /// So we create a top structure with the tag of the sequence and an empty list of structures
-    ///  Then the method `serialize_element` will be called for each item in the sequence
-    /// and the item will be added to the list of structures.
-    /// Finally, the method `end` will be called to close the sequence.
+    /// To do this, we are going to create a special `Array` TTLV to which we add TTLV elements, in the
+    /// method `serialize_element`, that will be called for each item in the sequence.
+    /// Finally, the method `end` will be called to close the sequence and make the `Array` TTLV the current
+    /// element of the serializer.
     #[instrument(skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         trace!(
-            "serialize_seq of len: {len:?}. Current: {:?}",
-            &self.current
+            "serializing a sequence with tag {}, of len: {len:?}, in parent {:?}",
+            &self.current.tag,
+            &self.parents.last().map_or("???", |p| p.tag.as_str())
         );
-
-        // Push the struct on the parents stack, collecting the name
         let tag = self.current.tag.clone();
+        // create a new special Array parent
         self.parents.push(TTLV {
-            tag,
-            value: TTLValue::Structure(vec![]),
+            tag: tag.clone(),
+            value: TTLValue::Array(vec![]),
         });
+        // elements have the same tag as the `Array` parent
         self.current = TTLV::default();
+        self.current.tag = tag;
         Ok(self)
     }
 
@@ -490,12 +490,16 @@ impl ser::Serializer for &mut TTLVSerializer {
     // in which the keys are compile-time constant strings
     // and will be known at deserialization time
     // without looking at the serialized data,
-    // for example struct S { r: u8, g: u8, b: u8 }.
+    // for example, struct S { r: u8, g: u8, b: u8 }.
+    // The strategy is as follows:
+    // - create a new parent TTLV structure and push it into `parents`
+    // - serialize the fields of the struct, adding them to this new parent
+    // - when the struct is done, pop the parent from `parents` and add it to the last parent
     #[instrument(skip(self))]
     fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
         trace!(
-            "serialize_struct {name} of len: {len} . Current: {:?}",
-            &self.current
+            "Starting to serialize a struct: {name} of len: {len} in parent: {:?}",
+            &self.parents.last().map_or("???", |p| p.tag.as_str())
         );
         // Push the struct on the parent's stack, collecting the name
         // There are teo special cases:
@@ -516,6 +520,7 @@ impl ser::Serializer for &mut TTLVSerializer {
         } else {
             self.current.tag.clone()
         };
+        // create a new parent to which we will add the fields of the struct
         self.parents.push(TTLV {
             tag,
             value: TTLValue::Structure(vec![]),
@@ -567,31 +572,28 @@ impl SerializeSeq for &mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        trace!(
-            "Before serialize seq, parents {:?}, current {:?}",
-            self.parents,
-            self.current
-        );
+        trace!("Serializing a seq element with tag {}", self.current.tag,);
 
         // this will serialize the element and update the current value
         // of the serializer
         value.serialize(&mut **self)?;
 
-        // recover the parent; the parent was created in the serialize_seq
-        // method, so it should be there
+        // recover the parent which should be an `Array` TTLV;
         let parent: &mut TTLV = self
             .parents
             .last_mut()
             .ok_or_else(|| TtlvError::custom("'no parent for the element !".to_owned()))?;
 
-        // give this element the same tag as tag of the parent
-        self.current.tag.clone_from(&parent.tag);
-
-        // update the parent
+        // add the serialized element to the parent
         match &mut parent.value {
-            TTLValue::Structure(v) => {
+            TTLValue::Array(v) => {
+                // the next element in the array will have the same tage as the previous one
+                let tag = self.current.tag.clone();
+                // push the current element
                 v.push(self.current.clone());
+                // create a new element with the same tag
                 self.current = TTLV::default();
+                self.current.tag = tag;
             }
             v => {
                 return Err(TtlvError::custom(format!(
@@ -600,37 +602,24 @@ impl SerializeSeq for &mut TTLVSerializer {
             }
         }
         trace!(
-            "After serialize seq element {:?} #### {:?}",
-            self.parents,
-            self.current
+            "... added sequence element, the current sequence is: {:?}",
+            self.parents.last(),
         );
         Ok(())
     }
 
     // Close the sequence.
-    // #[instrument(skip(self))]
+    #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        //pop the parent and make it the current
-        // the parent is the structure that was created in the serialize_seq
-        // method and that was updated in the serialize_element method
         trace!(
-            "Before serialize seq end, parents {:?}, current {:?}",
-            self.parents,
-            self.current
+            "Finished serializing the sequence, making it the current element: {:?}",
+            self.parents.last(),
         );
-        self.current = match self.parents.pop() {
-            Some(p) => p,
-            None => {
-                return Err(TtlvError::custom(
-                    "'unexpected end of seq: no parent ".to_owned(),
-                ))
-            }
-        };
-        trace!(
-            "After serialize seq end {:?} #### {:?}",
-            self.parents,
-            self.current
-        );
+        let seq = self
+            .parents
+            .pop()
+            .ok_or_else(|| TtlvError::custom("'no parent for the sequence !".to_owned()))?;
+        self.current = seq;
         Ok(())
     }
 }
@@ -740,75 +729,79 @@ impl SerializeStruct for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
-    //#[instrument(skip(self, value))]
+    #[instrument(skip(self, value))]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: ?Sized + Serialize,
     {
-        enum Detected {
-            Other,
-            ByteString(Vec<u8>),
-            BigInt(BigInt),
-            // BigUint should go
-            BigUint(BigUint),
-        }
-        trait Detect {
-            fn detect(&self) -> Detected;
-        }
-        impl<T> Detect for T {
-            default fn detect(&self) -> Detected {
-                trace!("... value has other type {}", std::any::type_name::<T>());
-                Detected::Other
-            }
-        }
-        impl Detect for &Vec<u8> {
-            fn detect(&self) -> Detected {
-                Detected::ByteString((*self).clone())
-            }
-        }
-        impl Detect for &Zeroizing<Vec<u8>> {
-            fn detect(&self) -> Detected {
-                trace!("handling a byte string");
-                Detected::ByteString((*self).to_vec())
-            }
-        }
-        impl Detect for &BigInt {
-            fn detect(&self) -> Detected {
-                Detected::BigInt(self.to_owned().clone())
-            }
-        }
-        impl Detect for &BigUint {
-            fn detect(&self) -> Detected {
-                Detected::BigUint(self.to_owned().clone())
-            }
-        }
+        // enum Detected {
+        //     Other,
+        //     ByteString(Vec<u8>),
+        //     BigInt(BigInt),
+        //     // BigUint should go
+        //     BigUint(BigUint),
+        // }
+        // trait Detect {
+        //     fn detect(&self) -> Detected;
+        // }
+        // impl<T> Detect for T {
+        //     default fn detect(&self) -> Detected {
+        //         trace!("... value has other type {}", std::any::type_name::<T>());
+        //         Detected::Other
+        //     }
+        // }
+        // impl Detect for &Vec<u8> {
+        //     fn detect(&self) -> Detected {
+        //         Detected::ByteString((*self).clone())
+        //     }
+        // }
+        // impl Detect for &Zeroizing<Vec<u8>> {
+        //     fn detect(&self) -> Detected {
+        //         trace!("handling a byte string");
+        //         Detected::ByteString((*self).to_vec())
+        //     }
+        // }
+        // impl Detect for &BigInt {
+        //     fn detect(&self) -> Detected {
+        //         Detected::BigInt(self.to_owned().clone())
+        //     }
+        // }
+        // impl Detect for &BigUint {
+        //     fn detect(&self) -> Detected {
+        //         Detected::BigUint(self.to_owned().clone())
+        //     }
+        // }
 
         key.clone_into(&mut self.current.tag);
         trace!(
-            "Before serialize field {:?} #### {:?}",
-            self.parents,
-            self.current
+            "serializing a struct field with name: {key} in structure {:?}",
+            self.parents
+                .last()
+                .map_or("???", |parent| { parent.tag.as_str() }),
         );
 
-        match value.detect() {
-            Detected::Other => {
-                trace!("... detected other for {}", &self.current.tag);
-                value.serialize(&mut **self)?;
-            }
-            Detected::ByteString(byte_string) => {
-                trace!("... detected ByteString for {}", &self.current.tag);
-                self.current.value = TTLValue::ByteString(byte_string);
-            }
-            Detected::BigInt(big_int) => {
-                trace!("... detected BigInteger for {}", &self.current.tag);
-                self.current.value = TTLValue::BigInteger(big_int.into());
-            }
-            Detected::BigUint(big_int) => {
-                trace!("... detected BigUInteger for {}", &self.current.tag);
-                self.current.value = TTLValue::BigInteger(big_int.into());
-            }
-        }
+        value.serialize(&mut **self)?;
 
+        // match value.detect() {
+        //     Detected::Other => {
+        //         trace!("... detected other for {}", &self.current.tag);
+        //         value.serialize(&mut **self)?;
+        //     }
+        //     Detected::ByteString(byte_string) => {
+        //         trace!("... detected ByteString for {}", &self.current.tag);
+        //         self.current.value = TTLValue::ByteString(byte_string);
+        //     }
+        //     Detected::BigInt(big_int) => {
+        //         trace!("... detected BigInteger for {}", &self.current.tag);
+        //         self.current.value = TTLValue::BigInteger(big_int.into());
+        //     }
+        //     Detected::BigUint(big_int) => {
+        //         trace!("... detected BigUInteger for {}", &self.current.tag);
+        //         self.current.value = TTLValue::BigInteger(big_int.into());
+        //     }
+        // }
+
+        // add this new serialized field on the lat parent
         let parent: &mut TTLV = match self.parents.last_mut() {
             Some(p) => p,
             None => return Err(TtlvError::custom("'no parent for the field !".to_owned())),
@@ -816,7 +809,15 @@ impl SerializeStruct for &mut TTLVSerializer {
 
         match &mut parent.value {
             TTLValue::Structure(v) => {
-                v.push(self.current.clone());
+                // If the child is a TTLV::Array, it means it is a transparent struct
+                // so we add its children to the struct directly
+                if let TTLValue::Array(arr) = &self.current.value {
+                    for c in arr {
+                        v.push(c.to_owned());
+                    }
+                } else {
+                    v.push(self.current.clone());
+                }
                 self.current = TTLV::default();
             }
             v => {
@@ -826,26 +827,28 @@ impl SerializeStruct for &mut TTLVSerializer {
             }
         }
         trace!(
-            "After serialize field {:?} #### {:?}",
-            self.parents,
-            self.current
+            "... added a struct field: {key}, the parent struct is now: {:?}",
+            &parent,
         );
         Ok(())
     }
 
-    // #[instrument(skip(self))]
+    #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        //pop the parent
-        self.current = match self.parents.pop() {
-            Some(p) => p,
-            None => {
-                return Err(TtlvError::custom(
-                    "'unexpected end of struct fields: no parent ".to_owned(),
-                ))
-            }
-        };
         trace!(
-            "After serialize struct fields end {:?} #### {:?}",
+            "Finalizing the serialization of the struct: {:?}; making it the curent element ",
+            self.parents.last()
+        );
+
+        //pop the parent
+        let Some(struct_root) = self.parents.pop() else {
+            return Err(TtlvError::custom(
+                "'unexpected end of struct fields: no parent ".to_owned(),
+            ))
+        };
+        self.current = struct_root;
+        trace!(
+            "... the parents now are: {:?}, the current element: {:?}",
             self.parents,
             self.current
         );
