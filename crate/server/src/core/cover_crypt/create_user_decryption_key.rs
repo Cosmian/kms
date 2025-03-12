@@ -30,6 +30,7 @@ pub(crate) async fn create_user_decryption_key(
     create_request: &Create,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    sensitive: bool,
 ) -> KResult<Object> {
     create_user_decryption_key_(
         kmip_server,
@@ -37,6 +38,7 @@ pub(crate) async fn create_user_decryption_key(
         &create_request.attributes,
         owner,
         params,
+        sensitive,
     )
     .await
 }
@@ -47,6 +49,7 @@ async fn create_user_decryption_key_(
     create_attributes: &Attributes,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
+    sensitive: bool,
 ) -> KResult<Object> {
     // Recover the access policy
     let access_policy = access_policy_from_attributes(create_attributes)?;
@@ -129,6 +132,7 @@ async fn create_user_decryption_key_(
             Some(msk_attributes),
             &mpk_link.to_string(),
             &usk_handler.master_private_key.access_structure,
+            sensitive,
         )?;
 
         let import_request = Import {
@@ -158,6 +162,7 @@ pub(crate) async fn create_user_decryption_key_pair(
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
+    sensitive: bool,
 ) -> KResult<KeyPair> {
     // create user decryption key
     let private_key_attributes = create_key_pair_request
@@ -175,6 +180,7 @@ pub(crate) async fn create_user_decryption_key_pair(
         private_key_attributes,
         owner,
         params.clone(),
+        sensitive,
     )
     .await?;
 

@@ -17,7 +17,7 @@ async fn integration_tests_bulk() -> KResult<()> {
 
     // Parse the json access_structure file
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     let request_message = Message {

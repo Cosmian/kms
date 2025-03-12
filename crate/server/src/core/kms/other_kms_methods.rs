@@ -319,6 +319,7 @@ impl KMS {
                     create_request,
                     owner,
                     params,
+                    create_request.attributes.sensitive,
                 )
                 .await?;
                 Ok((uid, object, tags))

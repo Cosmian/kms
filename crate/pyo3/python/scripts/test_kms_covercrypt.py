@@ -277,12 +277,12 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
             self.priv_key_uid,
         )
 
-        # Add attribute "R&D"
+        # Add attribute "RnD"
         (
             new_pub_key_uid,
             new_priv_key_uid,
         ) = await self.client.add_cover_crypt_attribute(
-            'Department::R&D',
+            'Department::RnD',
             False,
             self.priv_key_uid,
         )
@@ -296,14 +296,14 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         # Encrypt for new and renamed attribute
         message = b'My secret data part 2'
         ciphertext = await self.client.cover_crypt_encryption(
-            '(Department::Finance || Department::R&D) && Security Level::Protected',
+            '(Department::Finance || Department::RnD) && Security Level::Protected',
             message,
             self.pub_key_uid,
         )
 
         # Generate user key
         rd_user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::R&D && Security Level::Protected',
+            'Department::RnD && Security Level::Protected',
             self.priv_key_uid,
             False,
         )
@@ -315,7 +315,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(bytes(plaintext), message)
 
-        # Decryption with R&D user
+        # Decryption with RnD user
         plaintext, _ = await self.client.cover_crypt_decryption(
             ciphertext,
             rd_user_key_uid,
@@ -362,7 +362,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
                 fin_user_key_uid,
             )
 
-        # R&D users can still decrypt its ciphertext
+        # RnD users can still decrypt its ciphertext
         plaintext, _ = await self.client.cover_crypt_decryption(
             ciphertext,
             rd_user_key_uid,

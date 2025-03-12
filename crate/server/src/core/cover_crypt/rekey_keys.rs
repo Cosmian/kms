@@ -37,6 +37,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
     owner: &str,
     action: RekeyEditAction,
     params: Option<Arc<dyn SessionParams>>,
+    sensitive: bool,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair Covercrypt");
     let (msk_uid, mpk_uid) = match action {
@@ -52,6 +53,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     *mpk = cover_crypt.rekey(msk, &ap)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -72,6 +74,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     cover_crypt.prune_master_secret_key(msk, &ap)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -96,6 +99,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -119,6 +123,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -143,6 +148,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -164,6 +170,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                     *mpk = cover_crypt.update_msk(msk)?;
                     Ok(())
                 },
+                sensitive,
             ))
             .await?;
             let (msk_obj, mpk_obj) = res;
@@ -186,6 +193,7 @@ pub(crate) async fn update_master_keys(
     params: Option<Arc<dyn SessionParams>>,
     msk_uid: String,
     mutator: impl Fn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
+    sensitive: bool,
 ) -> KResult<((String, Object), (String, Object))> {
     trace!("update_master_keys: msk_uid: {msk_uid}");
     let (msk_obj, mpk_obj) = get_master_keys(server, msk_uid, owner, params.clone()).await?;
@@ -195,7 +203,8 @@ pub(crate) async fn update_master_keys(
     trace!("update_master_keys: covercrypt_keys_from_kmip_objects OK");
     mutator(&mut msk, &mut mpk)?;
     trace!("update_master_keys: mutator OK");
-    let (msk_obj, mpk_obj) = kmip_objects_from_covercrypt_keys(&msk, &mpk, msk_obj, mpk_obj)?;
+    let (msk_obj, mpk_obj) =
+        kmip_objects_from_covercrypt_keys(&msk, &mpk, msk_obj, mpk_obj, sensitive)?;
     trace!("update_master_keys: kmip_objects_from_covercrypt_keys OK");
 
     import_rekeyed_master_keys(server, owner, params, msk_obj.clone(), mpk_obj.clone()).await?;

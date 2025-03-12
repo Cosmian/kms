@@ -164,7 +164,7 @@ For a specification file
         "Top Secret::+"
     ],
     "Department": [
-        "R&D",
+        "RnD",
         "HR",
         "MKG",
         "FIN"
@@ -226,7 +226,7 @@ The policy to hex-encode to the call will be:
           "encryption_hint": "Classic",
           "write_status": "EncryptDecrypt"
         },
-        "R&D": {
+        "RnD": {
           "rotation_values": [
             1
           ],

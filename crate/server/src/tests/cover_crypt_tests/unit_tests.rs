@@ -37,7 +37,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     // create Key Pair
@@ -225,7 +225,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     // create Key Pair
@@ -248,7 +248,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // encrypt a resource MKG + confidential
     let confidential_authentication_data = b"cc the uid confidential".to_vec();
     let confidential_mkg_data = b"Confidential MKG Data";
-    let confidential_mkg_policy_attributes = "Security Level::confidential && Department::MKG";
+    let confidential_mkg_policy_attributes = "Security Level::Confidential && Department::MKG";
     let er = kms
         .encrypt(
             encrypt_request(
@@ -291,9 +291,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
-    let secret_authentication_data = b"cc the uid secret".to_vec();
+    let secret_authentication_data = b"cc the uid Top Secret".to_vec();
     let secret_fin_data = b"Secret FIN data";
-    let secret_fin_policy_attributes = "Level::secret && Department::FIN";
+    let secret_fin_policy_attributes = "Security Level::Top Secret && Department::FIN";
     let er = kms
         .encrypt(
             encrypt_request(
@@ -335,8 +335,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .await;
     assert!(er.is_err());
 
-    // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy = "(Department::MKG || Department::FIN) && Level::secret";
+    // Create a user decryption key MKG | FIN + Top Secret
+    let secret_mkg_fin_access_policy =
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
             build_create_covercrypt_user_decryption_key_request(
@@ -354,7 +355,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .as_str()
         .context("There should be a unique identifier in the response")?;
 
-    // decrypt resource MKG + confidential
+    // decrypt resource MKG + Confidential
     let dr = kms
         .decrypt(
             decrypt_request(
@@ -450,7 +451,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     // Create CC master key pair
@@ -489,7 +490,8 @@ async fn test_abe_json_access() -> KResult<()> {
     assert_eq!(locate_response.located_items.unwrap(), 0);
 
     // Create a decryption key
-    let secret_mkg_fin_access_policy = "(Department::MKG|| Department::FIN) && Level::secret";
+    let secret_mkg_fin_access_policy =
+        "(Department::MKG|| Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
             build_create_covercrypt_user_decryption_key_request(
@@ -529,7 +531,7 @@ async fn test_import_decrypt() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(ServerParams::try_from(clap_config)?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     // create Key Pair
@@ -548,10 +550,10 @@ async fn test_import_decrypt() -> KResult<()> {
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
-    // encrypt a resource MKG + confidential
-    let confidential_authentication_data = b"cc the uid confidential".to_vec();
+    // encrypt a resource MKG + Confidential
+    let confidential_authentication_data = b"cc the uid Confidential".to_vec();
     let confidential_mkg_data = b"Confidential MKG Data";
-    let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
+    let confidential_mkg_policy_attributes = "Security Level::Confidential && Department::MKG";
     let er = kms
         .encrypt(
             encrypt_request(
@@ -575,8 +577,9 @@ async fn test_import_decrypt() -> KResult<()> {
     );
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
-    // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy = "(Department::MKG|| Department::FIN) && Level::secret";
+    // Create a user decryption key MKG | FIN + Top Secret
+    let secret_mkg_fin_access_policy =
+        "(Department::MKG|| Department::FIN) && Security Level::Top Secret";
     let cr = kms
         .create(
             build_create_covercrypt_user_decryption_key_request(
@@ -622,7 +625,7 @@ async fn test_import_decrypt() -> KResult<()> {
     kms.import(request, owner, None)
         .await
         .context(&custom_sk_uid)?;
-    // decrypt resource MKG + confidential
+    // decrypt resource MKG + Confidential
     let dr = kms
         .decrypt(
             decrypt_request(
@@ -663,7 +666,7 @@ async fn test_import_decrypt() -> KResult<()> {
     kms.import(request, owner, None)
         .await
         .context(&custom_sk_uid)?;
-    // decrypt resource MKG + confidential
+    // decrypt resource MKG + Confidential
     let dr = kms
         .decrypt(
             decrypt_request(

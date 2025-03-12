@@ -34,7 +34,7 @@ use crate::{
 ///            "Top Secret::+"
 ///        ],
 ///        "Department": [
-///            "R&D",
+///            "RnD",
 ///            "HR",
 ///            "MKG",
 ///            "FIN"

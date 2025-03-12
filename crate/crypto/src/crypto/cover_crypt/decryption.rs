@@ -72,10 +72,7 @@ impl CovercryptDecryption {
                 Error::OperationNotPermitted("insufficient rights to open encapsulation".to_owned())
             })?;
 
-        let key = match ad {
-            Some(ad_bytes) => SymmetricKey::derive(&plaintext_header.secret, ad_bytes)?,
-            None => SymmetricKey::derive(&plaintext_header.secret, &[])?,
-        };
+        let key = SymmetricKey::derive(&plaintext_header.secret, ad.unwrap_or_default())?;
 
         // Read the left over bytes, MUST be: `nonce || ciphertext``
         let encrypted_block = de.finalize();

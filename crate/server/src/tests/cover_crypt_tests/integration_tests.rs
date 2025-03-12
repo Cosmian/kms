@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
+use cosmian_cover_crypt::{AccessPolicy, EncryptionHint, QualifiedAttribute};
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
     kmip_operations::{
@@ -28,7 +28,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     cosmian_logger::log_init(None);
     let app = test_utils::test_app(None).await;
     let access_structure = access_structure_from_str(
-        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["R&D","HR","MKG","FIN"]}"#,
+        r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#,
     )?;
 
     // create Key Pair
@@ -49,7 +49,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Encrypt
     let authentication_data = b"cc the uid".to_vec();
     let data = b"Confidential MKG Data";
-    let encryption_policy = "Level::Confidential && Department::MKG";
+    let encryption_policy = "Security Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
 
     let request = encrypt_request(
@@ -71,7 +71,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .expect("There should be encrypted data");
 
     // Create a user decryption key
-    let access_policy = "(Department::MKG || Department::FIN) && Level::Top Secret";
+    let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
@@ -110,7 +110,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Encrypt
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
-    let encryption_policy = "Level::Confidential && Department::MKG";
+    let encryption_policy = "Security Level::Confidential && Department::MKG";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -130,7 +130,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Create a user decryption key
-    let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
+    let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
@@ -145,7 +145,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Create another user decryption key
-    let access_policy = "Department::MKG && Level::Confidential";
+    let access_policy = "Department::MKG && Security Level::Confidential";
     let request = build_create_covercrypt_user_decryption_key_request(
         access_policy,
         private_key_unique_identifier,
@@ -238,7 +238,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // ReEncrypt with same ABE attribute (which has been previously rekeyed)
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
-    let encryption_policy = "Level::Confidential && Department::MKG";
+    let encryption_policy = "Security Level::Confidential && Department::MKG";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -310,12 +310,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
 
-    let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
+    let encryption_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
 
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         &RekeyEditAction::AddAttribute(vec![(
-            QualifiedAttribute::new("Security Level", "Low"),
+            QualifiedAttribute::new("Department", "IT"),
             EncryptionHint::Classic,
             None,
         )]),
@@ -357,7 +357,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Encrypt for renamed attribute
     let data = b"hr data";
-    let encryption_policy = "Level::Confidential && Department::HumanResources";
+    let encryption_policy = "Security Level::Confidential && Department::HumanResources";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -378,7 +378,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Disable ABE Attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "FIN"))]),
+        &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "MKG"))]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -387,7 +387,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Encrypt with disabled ABE attribute will fail
     let authentication_data = b"cc the uid".to_vec();
     let data = b"Will fail";
-    let encryption_policy = "Level::Confidential && Department::MKG";
+    let encryption_policy = "Security Level::Confidential && Department::MKG";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -408,7 +408,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Delete attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        &RekeyEditAction::DeleteAttribute(vec![(QualifiedAttribute::new("Department", "HR"))]),
+        &RekeyEditAction::DeleteAttribute(vec![
+            (QualifiedAttribute::new("Department", "HumanResources")),
+        ]),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -416,7 +418,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Encrypt for removed attribute will fail
     let data = b"New hr data";
-    let encryption_policy = "Level::Confidential && Department::HumanResources";
+    let encryption_policy = "Security Level::Confidential && Department::HumanResources";
 
     let request = encrypt_request(
         public_key_unique_identifier,
@@ -445,5 +447,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
             .context("There should be a user decryption key unique identifier as a string")?
     );
 
+    Ok(())
+}
+
+#[test]
+fn test_access_policy_parsing() -> KResult<()> {
+    let access_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
+    let _ap = AccessPolicy::parse(access_policy)?;
     Ok(())
 }

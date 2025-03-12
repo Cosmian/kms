@@ -25,7 +25,7 @@ use crate::{
 ///            "Top Secret::+"
 ///        ],
 ///        "Department": [
-///            "R&D",
+///            "RnD",
 ///            "HR",
 ///            "MKG",
 ///            "FIN"
@@ -36,7 +36,7 @@ use crate::{
 ///  - the policy is defined with 2 policy axes: `Security Level` and `Department`
 ///  - the `Security Level` axis is hierarchical as indicated by the `::<` suffix,
 ///  - the `Security Level` axis has 3 possible values: `Protected`, `Confidential`, and `Top Secret`,
-///  - the `Department` axis has 4 possible values: `R&D`, `HR`, `MKG`, and `FIN`,
+///  - the `Department` axis has 4 possible values: `RnD`, `HR`, `MKG`, and `FIN`,
 ///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
 ///  - all other partitions will use classic cryptography.
 ///

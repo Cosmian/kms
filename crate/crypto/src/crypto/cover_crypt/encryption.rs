@@ -151,7 +151,9 @@ impl EncryptionSystem for CoverCryptEncryption {
             .encryption_policy
             .as_deref()
             .ok_or_else(|| CryptoError::Kmip("encryption policy missing".to_owned()))?;
-
+        trace!(
+            "CoverCryptEncryption: encrypt: encryption_policy_string: {encryption_policy_string}",
+        );
         // Generate a symmetric key and encrypt the header
         let (secret, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,

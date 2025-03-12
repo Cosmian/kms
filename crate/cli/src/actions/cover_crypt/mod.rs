@@ -3,7 +3,8 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{
     actions::cover_crypt::{
-        decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands, policy::PolicyCommands,
+        access_structure::PolicyCommands, decrypt::DecryptAction, encrypt::EncryptAction,
+        keys::KeysCommands,
     },
     error::result::CliResult,
 };
@@ -12,7 +13,6 @@ pub(crate) mod access_structure;
 pub(crate) mod decrypt;
 pub(crate) mod encrypt;
 pub(crate) mod keys;
-pub(crate) mod policy;
 
 /// Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]

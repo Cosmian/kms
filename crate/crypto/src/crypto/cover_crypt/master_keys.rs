@@ -39,6 +39,7 @@ pub fn create_master_keypair(
     common_attributes: &Option<Attributes>,
     private_key_attributes: &Option<Attributes>,
     public_key_attributes: &Option<Attributes>,
+    sensitive: bool,
 ) -> Result<KeyPair, CryptoError> {
     let access_structure =
         access_structure_from_attributes(&common_attributes.clone().unwrap_or_default())?;
@@ -60,13 +61,18 @@ pub fn create_master_keypair(
         private_key_attributes,
         public_key_uid,
         &msk.access_structure,
+        sensitive,
     )?;
 
     // Public Key generation
     // First generate fresh attributes with that policy
     let public_key_attributes = public_key_attributes.as_ref();
-    let public_key =
-        create_master_public_key_object(&mpk.serialize()?, public_key_attributes, private_key_uid)?;
+    let public_key = create_master_public_key_object(
+        &mpk.serialize()?,
+        public_key_attributes,
+        private_key_uid,
+        sensitive,
+    )?;
     Ok(KeyPair((private_key, public_key)))
 }
 
@@ -75,6 +81,7 @@ pub fn create_master_private_key_object(
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
     access_structure: &AccessStructure,
+    sensitive: bool,
 ) -> Result<Object, CryptoError> {
     debug!("create_master_private_key_object: key len: {}", key.len());
     let mut attributes = attributes.cloned().unwrap_or_default();
@@ -91,6 +98,7 @@ pub fn create_master_private_key_object(
             master_public_key_uid.to_owned(),
         ),
     }]);
+    attributes.sensitive = sensitive;
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
 
     Ok(Object::PrivateKey {
@@ -116,6 +124,7 @@ fn create_master_public_key_object(
     key: &[u8],
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
+    sensitive: bool,
 ) -> Result<Object, CryptoError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.sensitive = false;
@@ -130,6 +139,7 @@ fn create_master_public_key_object(
             master_private_key_uid.to_owned(),
         ),
     }]);
+    attributes.sensitive = sensitive;
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);
     Ok(Object::PublicKey {
         key_block: KeyBlock {
@@ -180,6 +190,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     mpk: &MasterPublicKey,
     msk_obj: KmipKeyUidObject,
     mpk_obj: KmipKeyUidObject,
+    sensitive: bool,
 ) -> Result<(KmipKeyUidObject, KmipKeyUidObject), CryptoError> {
     let updated_master_private_key_bytes = &msk.serialize()?;
     trace!(
@@ -191,6 +202,7 @@ pub fn kmip_objects_from_covercrypt_keys(
         Some(msk_obj.1.attributes()?),
         &mpk_obj.0,
         &msk.access_structure,
+        sensitive,
     )?;
     let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
         CryptoError::Kmip(format!(
@@ -201,6 +213,7 @@ pub fn kmip_objects_from_covercrypt_keys(
         updated_master_public_key_bytes,
         Some(mpk_obj.1.attributes()?),
         &msk_obj.0,
+        sensitive,
     )?;
 
     Ok((

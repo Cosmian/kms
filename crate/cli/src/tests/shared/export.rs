@@ -751,7 +751,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CliResult<()> {
                 .to_owned(),
             ..Default::default()
         })
-        .is_ok()
+        .is_err()
     );
 
     let user_key_id = create_user_decryption_key(

@@ -75,6 +75,7 @@ pub(crate) async fn rekey_keypair(
                 user,
                 action,
                 params,
+                owm.attributes().sensitive,
             ))
             .await
         } else if let Some(other) = attributes.cryptographic_algorithm {
