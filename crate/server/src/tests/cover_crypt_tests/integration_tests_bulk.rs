@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::EMPTY_TAGS,
-    kmip_messages::{MessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage},
+    kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage},
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
@@ -17,7 +17,7 @@ async fn integration_tests_bulk() -> KResult<()> {
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     let request_message = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -25,7 +25,7 @@ async fn integration_tests_bulk() -> KResult<()> {
             batch_count: 2,
             ..Default::default()
         },
-        items: vec![
+        batch_item: vec![
             MessageBatchItem::new(Operation::CreateKeyPair(
                 build_create_covercrypt_master_keypair_request(
                     access_structure,

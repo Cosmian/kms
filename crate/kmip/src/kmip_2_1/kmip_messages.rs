@@ -25,6 +25,7 @@ use serde::{
     ser::{self, SerializeStruct},
 };
 use time::OffsetDateTime;
+use tracing::info;
 
 use super::{
     kmip_operations::{Direction, ErrorReason, Operation},
@@ -39,15 +40,15 @@ use crate::{KmipError, error::result::KmipResult};
 #[serde(rename_all = "PascalCase")]
 pub struct RequestMessage {
     /// Header of the request
-    pub header: RequestMessageHeader,
+    pub request_header: RequestMessageHeader,
     /// Batch items of the request
-    pub items: Vec<MessageBatchItem>,
+    pub batch_item: Vec<RequestMessageBatchItem>,
 }
 
 impl Display for RequestMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut temp_str = format!("Message header: {:?}, ", self.header);
-        for (i, item) in self.items.iter().enumerate() {
+        let mut temp_str = format!("Message header: {:?}, ", self.request_header);
+        for (i, item) in self.batch_item.iter().enumerate() {
             if i > 0 {
                 temp_str.push_str(", ");
             }
@@ -62,10 +63,10 @@ impl Serialize for RequestMessage {
     where
         S: serde::Serializer,
     {
-        let header_batch_count = usize::try_from(self.header.batch_count)
+        let header_batch_count = usize::try_from(self.request_header.batch_count)
             .map_err(|err| ser::Error::custom(format!("failed to convert batch count: {err:?}")))?;
         // check batch item count
-        if header_batch_count != self.items.len() {
+        if header_batch_count != self.batch_item.len() {
             return Err(ser::Error::custom(format!(
                 "Message::serialize: mismatch number of batch items between header (`{}`) and \
                  items list (`{}`)",
@@ -75,19 +76,19 @@ impl Serialize for RequestMessage {
         }
         // check version of protocol version defined in the header is
         // equal or greater than the protocol version of each item's payload.
-        for item in &self.items {
-            if self.header.protocol_version > item.request_payload.protocol_version() {
+        for item in &self.batch_item {
+            if self.request_header.protocol_version > item.request_payload.protocol_version() {
                 return Err(ser::Error::custom(format!(
                     "item's protocol version is greater (`{}`) than header's protocol version \
                      (`{}`)",
-                    self.header.protocol_version,
+                    self.request_header.protocol_version,
                     item.request_payload.protocol_version()
-                )))
+                )));
             }
         }
         let mut st = serializer.serialize_struct("Message", 2)?;
-        st.serialize_field("Header", &self.header)?;
-        st.serialize_field("Items", &self.items)?;
+        st.serialize_field("RequestHeader", &self.request_header)?;
+        st.serialize_field("BatchItem", &self.batch_item)?;
         st.end()
     }
 }
@@ -165,7 +166,7 @@ pub struct RequestMessageHeader {
 ///
 /// `request_payload` depends on the request
 #[derive(PartialEq, Eq)]
-pub struct MessageBatchItem {
+pub struct RequestMessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
 
@@ -186,7 +187,7 @@ pub struct MessageBatchItem {
     pub message_extension: Option<Vec<MessageExtension>>,
 }
 
-impl fmt::Display for MessageBatchItem {
+impl Display for RequestMessageBatchItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -200,7 +201,7 @@ impl fmt::Display for MessageBatchItem {
         )
     }
 }
-impl MessageBatchItem {
+impl RequestMessageBatchItem {
     #[must_use]
     pub const fn new(request: Operation) -> Self {
         Self {
@@ -213,7 +214,7 @@ impl MessageBatchItem {
     }
 }
 
-impl Serialize for MessageBatchItem {
+impl Serialize for RequestMessageBatchItem {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -223,13 +224,13 @@ impl Serialize for MessageBatchItem {
                 "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
                 self.operation,
                 self.request_payload.operation_enum()
-            )))
+            )));
         }
         if self.request_payload.direction() != Direction::Request {
             return Err(ser::Error::custom(format!(
                 "request payload operation is not a request type operation (`{:?}`)",
                 self.request_payload.direction()
-            )))
+            )));
         }
 
         let mut st = serializer.serialize_struct("MessageBatchItem", 5)?;
@@ -248,28 +249,28 @@ impl Serialize for MessageBatchItem {
     }
 }
 
-impl<'de> Deserialize<'de> for MessageBatchItem {
+impl<'de> Deserialize<'de> for RequestMessageBatchItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        #[derive(Deserialize)]
+        #[derive(Deserialize, Debug)]
         #[serde(field_identifier)]
         enum Field {
             Operation,
             Ephemeral,
-            UniqueBatchItemId,
+            UniqueBatchItemID,
             RequestPayload,
             MessageExtension,
         }
 
-        struct MessageBatchItemVisitor;
+        struct RequestMessageBatchItemVisitor;
 
-        impl<'de> Visitor<'de> for MessageBatchItemVisitor {
-            type Value = MessageBatchItem;
+        impl<'de> Visitor<'de> for RequestMessageBatchItemVisitor {
+            type Value = RequestMessageBatchItem;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct MessageBatchItem")
+                formatter.write_str("struct RequestMessageBatchItem")
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
@@ -282,35 +283,45 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                 let mut request_payload: Option<Operation> = None;
                 let mut message_extension: Option<Vec<MessageExtension>> = None;
 
+                let next_key = map.next_key::<String>()?;
+                info!(
+                    "RequestMessageBatchItem deserializing first field: {next_key:?}",
+                    next_key = next_key
+                );
+
                 while let Some(key) = map.next_key()? {
+                    info!(
+                        "RequestMessageBatchItem deserializing field: {key:?}",
+                        key = key
+                    );
                     match key {
                         Field::Operation => {
                             if operation.is_some() {
-                                return Err(de::Error::duplicate_field("operation"))
+                                return Err(de::Error::duplicate_field("Operation"));
                             }
                             operation = Some(map.next_value()?);
                         }
                         Field::Ephemeral => {
                             if ephemeral.is_some() {
-                                return Err(de::Error::duplicate_field("ephemeral"))
+                                return Err(de::Error::duplicate_field("Ephemeral"));
                             }
                             ephemeral = Some(map.next_value()?);
                         }
-                        Field::UniqueBatchItemId => {
+                        Field::UniqueBatchItemID => {
                             if unique_batch_item_id.is_some() {
-                                return Err(de::Error::duplicate_field("unique_batch_item_id"))
+                                return Err(de::Error::duplicate_field("UniqueBatchItemID"));
                             }
                             unique_batch_item_id = Some(map.next_value()?);
                         }
                         Field::MessageExtension => {
                             if message_extension.is_some() {
-                                return Err(de::Error::duplicate_field("message_extension"))
+                                return Err(de::Error::duplicate_field("MessageExtension"));
                             }
                             message_extension = Some(map.next_value()?);
                         }
                         Field::RequestPayload => {
                             if request_payload.is_some() {
-                                return Err(de::Error::duplicate_field("request_payload"))
+                                return Err(de::Error::duplicate_field("RequestPayload"));
                             }
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order
@@ -363,7 +374,7 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                         }
                     }
                 }
-                let operation = operation.ok_or_else(|| de::Error::missing_field("operation"))?;
+                let operation = operation.ok_or_else(|| de::Error::missing_field("Operation"))?;
                 tracing::trace!("MessageBatchItem operation: {operation:?}");
 
                 let request_payload =
@@ -375,10 +386,10 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                         "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
                         operation,
                         request_payload.operation_enum()
-                    )))
+                    )));
                 }
 
-                Ok(MessageBatchItem {
+                Ok(RequestMessageBatchItem {
                     operation,
                     ephemeral,
                     unique_batch_item_id,
@@ -391,11 +402,15 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
         const FIELDS: &[&str] = &[
             "operation",
             "ephemeral",
-            "unique_batch_item_id",
-            "request_payload",
-            "message_extension",
+            "UniqueBatchItemID",
+            "RequestPayload",
+            "MessageExtension",
         ];
-        deserializer.deserialize_struct("MessageBatchItem", FIELDS, MessageBatchItemVisitor)
+        deserializer.deserialize_struct(
+            "RequestMessageBatchItem",
+            FIELDS,
+            RequestMessageBatchItemVisitor,
+        )
     }
 }
 
@@ -422,7 +437,7 @@ impl Serialize for ResponseMessage {
                 "mismatch number of batch items between header (`{}`) and items list (`{}`)",
                 self.response_header.batch_count,
                 self.batch_item.len()
-            )))
+            )));
         }
         // check version of protocol version defined in the header is
         // equal or greater than the protocol version of each item's payload.
@@ -434,7 +449,7 @@ impl Serialize for ResponseMessage {
                          (`{}`)",
                         self.response_header.protocol_version,
                         response_payload.protocol_version()
-                    )))
+                    )));
                 }
             }
         }
@@ -618,14 +633,14 @@ impl Serialize for ResponseMessageBatchItem {
                         "operation enum (`{}`) doesn't correspond to response payload (`{}`)",
                         operation,
                         response_payload.operation_enum()
-                    )))
+                    )));
                 }
 
                 if response_payload.direction() != Direction::Response {
                     return Err(ser::Error::custom(format!(
                         "response payload operation is not a response type operation (`{:?}`)",
                         response_payload.direction()
-                    )))
+                    )));
                 }
             }
 
@@ -698,37 +713,37 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                     match key {
                         Field::Operation => {
                             if operation.is_some() {
-                                return Err(de::Error::duplicate_field("operation"))
+                                return Err(de::Error::duplicate_field("operation"));
                             }
                             operation = Some(map.next_value()?);
                         }
                         Field::UniqueBatchItemId => {
                             if unique_batch_item_id.is_some() {
-                                return Err(de::Error::duplicate_field("unique_batch_item_id"))
+                                return Err(de::Error::duplicate_field("unique_batch_item_id"));
                             }
                             unique_batch_item_id = Some(map.next_value()?);
                         }
                         Field::MessageExtension => {
                             if message_extension.is_some() {
-                                return Err(de::Error::duplicate_field("message_extension"))
+                                return Err(de::Error::duplicate_field("message_extension"));
                             }
                             message_extension = Some(map.next_value()?);
                         }
                         Field::ResultStatus => {
                             if result_status.is_some() {
-                                return Err(de::Error::duplicate_field("result_status"))
+                                return Err(de::Error::duplicate_field("result_status"));
                             }
                             result_status = Some(map.next_value()?);
                         }
                         Field::ResultReason => {
                             if result_reason.is_some() {
-                                return Err(de::Error::duplicate_field("result_reason"))
+                                return Err(de::Error::duplicate_field("result_reason"));
                             }
                             result_reason = Some(map.next_value()?);
                         }
                         Field::ResultMessage => {
                             if result_message.is_some() {
-                                return Err(de::Error::duplicate_field("result_message"))
+                                return Err(de::Error::duplicate_field("result_message"));
                             }
                             result_message = Some(map.next_value()?);
                         }
@@ -736,13 +751,13 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                             if asynchronous_correlation_value.is_some() {
                                 return Err(de::Error::duplicate_field(
                                     "asynchronous_correlation_value",
-                                ))
+                                ));
                             }
                             asynchronous_correlation_value = Some(map.next_value()?);
                         }
                         Field::ResponsePayload => {
                             if response_payload.is_some() {
-                                return Err(de::Error::duplicate_field("response_payload"))
+                                return Err(de::Error::duplicate_field("response_payload"));
                             }
                             // we must have parsed the `operation` field before
                             // TODO: handle the case where the keys are not in right order

@@ -76,7 +76,7 @@ pub(crate) async fn message(
 
     let response_message = ResponseMessage {
         response_header: ResponseMessageHeader {
-            protocol_version: request.header.protocol_version,
+            protocol_version: request.request_header.protocol_version,
             batch_count: u32::try_from(response_items.len())?,
             client_correlation_value: None,
             server_correlation_value: None,
