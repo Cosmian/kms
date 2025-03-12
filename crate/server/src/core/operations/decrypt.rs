@@ -139,7 +139,7 @@ pub(crate) async fn decrypt(
         if let Object::PrivateKey { .. } = owm.object() {
             // is it a Covercrypt secret key?
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // does it have an access policy that allows decryption?
+                // does it have an access access structure that allows decryption?
                 if attributes::access_policy_from_attributes(&attributes).is_err() {
                     continue
                 }

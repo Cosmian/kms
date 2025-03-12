@@ -26,10 +26,10 @@ use crate::{
 ///
 /// - `RekeyAccessPolicy`: Generate new keys for the given access policy.
 /// - `PruneAccessPolicy`: Remove old keys associated to an access policy.
-/// - `RemoveAttribute`: Remove attributes from the policy.
-/// - `DisableAttribute`: Disable attributes in the policy.
-/// - `AddAttribute`: Add new attributes to the policy.
-/// - `RenameAttribute`: Rename attributes in the policy.
+/// - `RemoveAttribute`: Remove attributes from the access structure.
+/// - `DisableAttribute`: Disable attributes in the access structure.
+/// - `AddAttribute`: Add new attributes to the access structure.
+/// - `RenameAttribute`: Rename attributes in the access structure.
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,

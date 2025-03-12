@@ -75,7 +75,7 @@ hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8.6"
-log = { version = "0.4.8", default-features = false }
+log = { version = "0.4.25", default-features = false }
 lru = "0.12.5"
 num_cpus = "1.16"
 num-format = "0.4"

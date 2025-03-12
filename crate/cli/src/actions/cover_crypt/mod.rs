@@ -3,7 +3,7 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{
     actions::cover_crypt::{
-        access_structure::PolicyCommands, decrypt::DecryptAction, encrypt::EncryptAction,
+        access_structure::AccessStructureCommands, decrypt::DecryptAction, encrypt::EncryptAction,
         keys::KeysCommands,
     },
     error::result::CliResult,
@@ -20,7 +20,7 @@ pub enum CovercryptCommands {
     #[command(subcommand)]
     Keys(KeysCommands),
     #[command(subcommand)]
-    Policy(PolicyCommands),
+    AccessStructure(AccessStructureCommands),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
 }
@@ -38,7 +38,7 @@ impl CovercryptCommands {
     ///
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
-            Self::Policy(command) => command.process(kms_rest_client).await?,
+            Self::AccessStructure(command) => command.process(kms_rest_client).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,

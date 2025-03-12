@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// Locate all the user decryption keys associated with the master private key
-/// and for the given policy attributes
+/// and for the given access structure attributes
 pub(crate) async fn locate_user_decryption_keys(
     kmip_server: &KMS,
     master_private_key_uid: &str,
@@ -27,7 +27,7 @@ pub(crate) async fn locate_user_decryption_keys(
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<Vec<String>>> {
-    // Convert the policy attributes to vendor attributes
+    // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
         Some(att) => Some(vec![attributes_as_vendor_attribute(&att)?]),
         None => None,

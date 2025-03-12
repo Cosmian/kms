@@ -57,9 +57,9 @@ pub(crate) fn access_structure_from_json_file(
     Ok(access_structure)
 }
 
-/// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
+/// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]
-pub enum PolicyCommands {
+pub enum AccessStructureCommands {
     View(ViewAction),
     AddAttribute(AddAttributeAction),
     RemoveAttribute(RemoveAttributeAction),
@@ -67,7 +67,7 @@ pub enum PolicyCommands {
     RenameAttribute(RenameAttributeAction),
 }
 
-impl PolicyCommands {
+impl AccessStructureCommands {
     pub async fn process(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         match self {
             Self::View(action) => action.run(kms_rest_client).await?,
@@ -80,10 +80,10 @@ impl PolicyCommands {
         Ok(())
     }
 }
-/// View the policy of an existing public or private master key.
+/// View the access structure of an existing public or private master key.
 ///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
-///  - Use the `--key-file` switch to extract the policy from a Key exported as TTLV.
+///  - Use the `--key-id` switch to extract the access structure from a key stored in the KMS.
+///  - Use the `--key-file` switch to extract the access structure from a Key exported as TTLV.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct ViewAction {
@@ -95,7 +95,7 @@ pub struct ViewAction {
     #[clap(long = "key-file", short = 'f')]
     key_file: Option<PathBuf>,
 
-    /// Show all the policy details rather than just the specifications
+    /// Show all the access structure details rather than just the specifications
     #[clap(
         required = false,
         long = "detailed",
@@ -141,7 +141,7 @@ impl ViewAction {
     }
 }
 
-/// Add an attribute to the policy of an existing private master key.
+/// Add an attribute to the access structure of an existing private master key.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct AddAttributeAction {
@@ -205,7 +205,7 @@ impl AddAttributeAction {
     }
 }
 
-/// Rename an attribute in the policy of an existing private master key.
+/// Rename an attribute in the access structure of an existing private master key.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct RenameAttributeAction {
@@ -252,7 +252,7 @@ impl RenameAttributeAction {
         kms_rest_client
             .rekey_keypair(rekey_query)
             .await
-            .with_context(|| "failed renaming an attribute in the master keys' policy")?;
+            .with_context(|| "failed renaming an attribute in the master keys' access structure")?;
 
         let stdout = format!(
             "Attribute {} was successfully renamed to {}.",
@@ -264,7 +264,7 @@ impl RenameAttributeAction {
     }
 }
 
-/// Disable an attribute from the policy of an existing private master key.
+/// Disable an attribute from the access structure of an existing private master key.
 /// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
@@ -319,10 +319,10 @@ impl DisableAttributeAction {
     }
 }
 
-/// Remove an attribute from the policy of an existing private master key.
+/// Remove an attribute from the access structure of an existing private master key.
 /// Permanently removes the ability to use this attribute in both encryptions and decryptions.
 ///
-/// Note that messages whose encryption policy does not contain any other attributes
+/// Note that messages whose encryption access structure does not contain any other attributes
 /// belonging to the dimension of the deleted attribute will be lost.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
