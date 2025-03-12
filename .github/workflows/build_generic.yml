@@ -166,6 +166,7 @@ jobs:
             tar -xvf SecurityServerEvaluation-6.0.0.0.tar.gz
             find .
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
+            WINEPREFIX="$HOME/prefix32" WINEARCH=win32 wine wineboot
             winetricks allfonts
             xvfb-run wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi
 
