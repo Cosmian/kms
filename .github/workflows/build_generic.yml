@@ -156,7 +156,7 @@ jobs:
             wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
             sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
             sudo apt update
-            sudo apt install --install-recommends winehq-stable xvfb winetricks
+            sudo apt install --install-recommends winehq-stable xvfb
             sudo apt-get update && sudo apt-get install libc6:i386 libstdc++6:i386
 
             # Download the simulator
@@ -166,10 +166,8 @@ jobs:
             tar -xvf SecurityServerEvaluation-6.0.0.0.tar.gz
             find .
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
-            #winetricks allfonts
-            Xvfb :99 &
-            export DISPLAY=:99
-            WINEPREFIX="$HOME/prefix32" WINEARCH=win32 wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi /quiet
+            env `WINEPREFIX="/home/$(whoami)/.wine" WINEARCH="win32" wine "wineboot"`
+            xvfb-run -a -l wine u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
