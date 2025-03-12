@@ -8,7 +8,6 @@ use cosmian_kmip::kmip_2_1::{
         LinkedObjectIdentifier,
     },
 };
-use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
@@ -25,11 +24,6 @@ use crate::{
 /// Group a key UID with its KMIP Object
 pub type KmipKeyUidObject = (String, Object);
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PolicySpecs {
-    pub security_level: Vec<String>,
-    pub department: Vec<String>,
-}
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
@@ -55,7 +49,10 @@ pub fn create_master_keypair(
     let mpk = cover_crypt.update_msk(&mut msk)?;
 
     // First generate fresh attributes with that policy
-    let private_key_attributes = private_key_attributes.as_ref();
+    let private_key_attributes = private_key_attributes
+        .as_ref()
+        .or(common_attributes.as_ref());
+
     let private_key = create_master_private_key_object(
         &msk.serialize()?,
         private_key_attributes,
@@ -66,7 +63,9 @@ pub fn create_master_keypair(
 
     // Public Key generation
     // First generate fresh attributes with that policy
-    let public_key_attributes = public_key_attributes.as_ref();
+    let public_key_attributes = public_key_attributes
+        .as_ref()
+        .or(common_attributes.as_ref());
     let public_key = create_master_public_key_object(
         &mpk.serialize()?,
         public_key_attributes,
@@ -83,7 +82,10 @@ pub fn create_master_private_key_object(
     access_structure: &AccessStructure,
     sensitive: bool,
 ) -> Result<Object, CryptoError> {
-    debug!("create_master_private_key_object: key len: {}", key.len());
+    debug!(
+        "create_master_private_key_object: key len: {}, attributes: {attributes:?}",
+        key.len()
+    );
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);

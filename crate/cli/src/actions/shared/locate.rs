@@ -75,16 +75,16 @@ pub struct LocateObjectsAction {
     /// * `OpaqueObject`
     /// * `PGPKey`
     /// * `CertificateRequest`
-    #[clap(long = "object-type", short = 'o',
+    #[clap(long, short = 'o',
         value_parser = ObjectTypeParser,verbatim_doc_comment)]
     object_type: Option<ObjectType>,
 
     /// Locate an object which has a link to this public key id.
-    #[clap(long = "public-key-id", short = 'p')]
+    #[clap(long, short = 'p')]
     public_key_id: Option<String>,
 
     /// Locate an object which has a link to this private key id.
-    #[clap(long = "private-key-id", short = 'k')]
+    #[clap(long, short = 'k')]
     private_key_id: Option<String>,
 
     /// Locate an object which has a link to this certificate key id.
