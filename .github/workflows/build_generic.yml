@@ -169,8 +169,7 @@ jobs:
             #winetricks allfonts
             Xvfb :99 &
             export DISPLAY=:99
-            WINEPREFIX="$HOME/prefix32" WINEARCH=win32 wine wineboot
-            wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi /quiet
+            WINEPREFIX="$HOME/prefix32" WINEARCH=win32 wine msiexec /i u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi /quiet
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
