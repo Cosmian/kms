@@ -65,7 +65,7 @@ impl<'de> Deserialize<'de> for TTLV {
                             value = Some(match typ.as_str() {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
                                 "Integer" => {
-                                    let i_64 = deserialize_integer(map.next_value()?)?;
+                                    let i_64 = deserialize_integer(&map.next_value()?)?;
                                     let i_32 = i_64.try_into().map_err(|e| {
                                         de::Error::custom(format!(
                                             "Invalid value for i32: {i_64}. Error: {e}",
@@ -74,7 +74,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     TTLValue::Integer(i_32)
                                 }
                                 "LongInteger" => {
-                                    let i_64 = deserialize_integer(map.next_value()?)?;
+                                    let i_64 = deserialize_integer(&map.next_value()?)?;
                                     TTLValue::LongInteger(i_64)
                                 }
                                 "BigInteger" => {
@@ -174,13 +174,12 @@ impl<'de> Deserialize<'de> for TTLV {
     }
 }
 
-fn deserialize_integer<E>(v: Value) -> Result<i64, E>
+fn deserialize_integer<E>(v: &Value) -> Result<i64, E>
 where
     E: de::Error,
 {
-    let mut hex: Option<String> = None;
-    if v.is_string() {
-        let s = v.as_str().map(|s| s.to_owned()).ok_or_else(|| {
+    let hex: Option<String> = if v.is_string() {
+        let s = v.as_str().map(ToOwned::to_owned).ok_or_else(|| {
             de::Error::custom(format!("deserialize_interger: failde parsing string {v}"))
         })?;
         if s.get(0..2) != Some("0x") {
@@ -188,12 +187,14 @@ where
                 "Invalid value for integer hex String: {s} (should start with 0x)"
             )))
         }
-        hex = Some(s.get(2..).map(|s| s.to_owned()).ok_or_else(|| {
+        Some(s.get(2..).map(ToOwned::to_owned).ok_or_else(|| {
             de::Error::custom(format!(
                 "visit_map: indexing slicing failed for Integer 2..: {v}"
             ))
         })?)
-    }
+    } else {
+        None
+    };
 
     if let Some(mut hex) = hex {
         if hex.len() == 8 {

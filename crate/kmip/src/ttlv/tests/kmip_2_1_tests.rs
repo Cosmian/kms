@@ -10,7 +10,7 @@ use crate::{
         kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_messages::{
-            MessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage,
+            RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
             ResponseMessageBatchItem, ResponseMessageHeader,
         },
         kmip_objects::{Object, ObjectType, PublicKey, SymmetricKey},
@@ -746,10 +746,10 @@ fn get_key_block() -> KeyBlock {
 
 #[test]
 pub(crate) fn test_message_request() {
-    log_init(None);
+    log_init(Some("trace"));
 
     let req = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 2,
@@ -774,7 +774,7 @@ pub(crate) fn test_message_request() {
             batch_order_option: Some(true),
             time_stamp: Some(1_950_940_403),
         },
-        items: vec![MessageBatchItem {
+        batch_item: vec![RequestMessageBatchItem {
             operation: OperationEnumeration::Encrypt,
             ephemeral: None,
             unique_batch_item_id: None,
@@ -791,11 +791,11 @@ pub(crate) fn test_message_request() {
     };
     let ttlv = to_ttlv(&req).unwrap();
     let req_: RequestMessage = from_ttlv(ttlv).unwrap();
-    assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
-    let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
+    assert_eq!(req_.batch_item[0].operation, OperationEnumeration::Encrypt);
+    let Operation::Encrypt(encrypt) = &req_.batch_item[0].request_payload else {
         panic!(
             "not an encrypt operation's request payload: {}",
-            req_.items[0]
+            req_.batch_item[0]
         );
     };
     assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
@@ -903,7 +903,7 @@ pub(crate) fn test_message_enforce_enum() {
 
     // check Message request serializer reinforcement
     let req = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -912,7 +912,7 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        items: vec![MessageBatchItem {
+        batch_item: vec![RequestMessageBatchItem {
             operation: OperationEnumeration::Create,
             ephemeral: None,
             unique_batch_item_id: None,
@@ -927,7 +927,7 @@ pub(crate) fn test_message_enforce_enum() {
     );
 
     let req = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -937,7 +937,9 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 15,
             ..Default::default()
         },
-        items: vec![MessageBatchItem::new(Operation::Locate(Locate::default()))],
+        batch_item: vec![RequestMessageBatchItem::new(Operation::Locate(
+            Locate::default(),
+        ))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -945,7 +947,7 @@ pub(crate) fn test_message_enforce_enum() {
     );
 
     let req = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 3,
                 protocol_version_minor: 0,
@@ -953,7 +955,9 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        items: vec![MessageBatchItem::new(Operation::Locate(Locate::default()))],
+        batch_item: vec![RequestMessageBatchItem::new(Operation::Locate(
+            Locate::default(),
+        ))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -962,7 +966,7 @@ pub(crate) fn test_message_enforce_enum() {
     );
 
     let req = RequestMessage {
-        header: RequestMessageHeader {
+        request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -970,7 +974,7 @@ pub(crate) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        items: vec![MessageBatchItem {
+        batch_item: vec![RequestMessageBatchItem {
             operation: OperationEnumeration::Decrypt,
             ephemeral: None,
             unique_batch_item_id: None,
@@ -1297,7 +1301,9 @@ fn integer_deserialization_test() -> KmipResult<()> {
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(integer_str)?;
-    assert_eq!(ttlv.value, TTLValue::Integer(123456789));
+    if ttlv.value != TTLValue::Integer(123_456_789) {
+        return Err(KmipError::Default("Expected Integer(123456789)".to_owned()));
+    }
 
     let integer_str = r#"
     {
@@ -1307,7 +1313,9 @@ fn integer_deserialization_test() -> KmipResult<()> {
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(integer_str)?;
-    assert_eq!(ttlv.value, TTLValue::Integer(123456789));
+    if ttlv.value != TTLValue::Integer(123_456_789) {
+        return Err(KmipError::Default("Expected Integer(123456789)".to_owned()));
+    }
     Ok(())
 }
 
@@ -1322,7 +1330,11 @@ fn long_integer_deserialization_test() -> KmipResult<()> {
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(integer_str)?;
-    assert_eq!(ttlv.value, TTLValue::LongInteger(123456789));
+    if ttlv.value != TTLValue::LongInteger(123_456_789) {
+        return Err(KmipError::Default(
+            "Expected LongInteger(123456789)".to_owned(),
+        ));
+    }
 
     let integer_str = r#"
     {
@@ -1332,7 +1344,11 @@ fn long_integer_deserialization_test() -> KmipResult<()> {
     }
     "#;
     let ttlv: TTLV = serde_json::from_str(integer_str)?;
-    assert_eq!(ttlv.value, TTLValue::LongInteger(123456789));
+    if ttlv.value != TTLValue::LongInteger(123_456_789) {
+        return Err(KmipError::Default(
+            "Expected LongInteger(123456789)".to_owned(),
+        ));
+    }
     Ok(())
 }
 
@@ -1359,5 +1375,34 @@ fn normative_request_message_test() {
 ]}    
     "#;
     let ttlv: TTLV = serde_json::from_str(ttlv_string).unwrap();
-    println!("ttlv: {:#?}", ttlv);
+    let _req: RequestMessage = from_ttlv(ttlv).unwrap();
+}
+
+#[test]
+fn normative_message_request() {
+    log_init(Some("trace"));
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            maximum_response_size: Some(256),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItem {
+            operation: OperationEnumeration::Create,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Create(Create {
+                object_type: ObjectType::SymmetricKey,
+                attributes: Attributes::default(),
+                protection_storage_masks: None,
+            }),
+            message_extension: None,
+        }],
+    };
+    let ttlv = to_ttlv(&request_message).unwrap();
+    let _request_message_: RequestMessage = from_ttlv(ttlv).unwrap();
 }
