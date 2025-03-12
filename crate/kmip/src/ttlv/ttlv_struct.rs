@@ -21,6 +21,10 @@ pub enum TTLValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(OffsetDateTime),
+    // This value does not exist in the KMIP standard but is used to represent
+    // an array of TTLVs in the Rust implementation. Arrays are transparent in
+    // the KMIP standard and are represented by the sequence of inner TTLVs.
+    Array(Vec<TTLV>),
 }
 
 impl Default for TTLValue {

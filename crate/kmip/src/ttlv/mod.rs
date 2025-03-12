@@ -1,8 +1,7 @@
-pub mod kmip_ttlv_deserializer;
-// pub mod deserializer_old;
 pub mod error;
 mod kmip_big_int;
 mod kmip_big_int_deserializer;
+pub mod kmip_ttlv_deserializer;
 pub mod kmip_ttlv_serializer;
 pub mod ttlv_bytes_deserializer;
 pub mod ttlv_bytes_serializer;

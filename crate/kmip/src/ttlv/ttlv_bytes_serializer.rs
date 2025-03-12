@@ -122,6 +122,7 @@ where
                     .map_err(|_e| TtlvError::from(format!("Timestamp too large: {value}")))?;
                 self.writer.write_all(&t.to_be_bytes())?;
             }
+            TTLValue::Array(_) => todo!("Array serialization not implemented"),
         }
         Ok(())
     }
