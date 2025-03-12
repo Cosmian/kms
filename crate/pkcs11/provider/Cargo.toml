@@ -14,6 +14,9 @@ crate-type = ["rlib", "dylib"]
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_kmip/fips", "cosmian_kms_client/fips"]
+
 [dependencies]
 cosmian_config_utils = { workspace = true }
 cosmian_kmip = { path = "../../kmip" }
