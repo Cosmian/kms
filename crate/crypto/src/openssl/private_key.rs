@@ -224,7 +224,7 @@ fn ec_private_key_from_scalar(
 /// Convert an openssl private key to a KMIP private Key (`Object::PrivateKey`) of the given `KeyFormatType`
 pub fn openssl_private_key_to_kmip(
     private_key: &PKey<Private>,
-    key_format_type: KeyFormatType,
+    mut key_format_type: KeyFormatType,
     cryptographic_usage_mask: Option<CryptographicUsageMask>,
 ) -> Result<Object, CryptoError> {
     let cryptographic_length = Some(i32::try_from(private_key.bits())?);
@@ -240,11 +240,11 @@ pub fn openssl_private_key_to_kmip(
     // Legacy PKCS12 is the same as PKCS12 for the private key,
     // which will be exported as PKCS#8
     #[cfg(not(feature = "fips"))]
-    let key_format_type = if key_format_type == KeyFormatType::Pkcs12Legacy {
-        KeyFormatType::PKCS12
-    } else {
-        key_format_type
-    };
+    {
+        if key_format_type == KeyFormatType::Pkcs12Legacy {
+            key_format_type = KeyFormatType::PKCS12;
+        }
+    }
 
     let key_block = match key_format_type {
         KeyFormatType::TransparentRSAPrivateKey => {

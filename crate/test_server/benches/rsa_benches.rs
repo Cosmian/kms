@@ -3,7 +3,9 @@
 use cosmian_kms_client::{
     kmip_2_1::requests::{create_rsa_key_pair_request, decrypt_request, encrypt_request},
     reexport::cosmian_kmip::kmip_2_1::{
-        kmip_messages::{RequestMessageBatchItem, RequestMessage, RequestMessageHeader, ResponseMessage},
+        kmip_messages::{
+            RequestMessage, RequestMessageBatchItem, RequestMessageHeader, ResponseMessage,
+        },
         kmip_operations::Operation,
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, PaddingMethod,
@@ -351,7 +353,7 @@ pub(crate) async fn message_encrypt(
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
-            batch_count: num_plaintexts as u32,
+            batch_count: num_plaintexts as i32,
             ..Default::default()
         },
         batch_item: (0..num_plaintexts)
@@ -386,7 +388,7 @@ pub(crate) async fn message_decrypt(
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
-            batch_count: num_ciphertexts as u32,
+            batch_count: num_ciphertexts as i32,
             ..Default::default()
         },
         batch_item: (0..num_ciphertexts)
