@@ -155,9 +155,8 @@ jobs:
             sudo mkdir -pm755 /etc/apt/keyrings
             wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
             sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
-            sudo apt update
-            sudo apt install --install-recommends winehq-stable xvfb
-            sudo apt-get update && sudo apt-get install libc6:i386 libstdc++6:i386 vulkan-tools vulkan-validationlayers libvulkan1 libvulkan-dev mesa-vulkan-drivers
+            sudo apt update && sudo apt-get install --install-recommends winehq-stable xvfb
+            sudo apt-get install libc6:i386 libstdc++6:i386 vulkan-tools vulkan-validationlayers libvulkan1 libvulkan-dev mesa-vulkan-drivers
 
             # Download the simulator
             # wget "https://support.hsm.utimaco.com/documents/20182/1924884/SecurityServerEvaluation-6.0.0.0.tar"
@@ -166,8 +165,7 @@ jobs:
             tar -xvf SecurityServerEvaluation-6.0.0.0.tar.gz
             find .
             rm SecurityServerEvaluation-6.0.0.0.tar.gz
-            env `WINEPREFIX="/home/$(whoami)/.wine" WINEARCH="win32" wine "wineboot"`
-            xvfb-run -a -l wine u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi
+            wine start ./u.trust_anchor_integration_eval_bundle-6.0.0.0/SecurityServer-6.0.0.0.msi
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
