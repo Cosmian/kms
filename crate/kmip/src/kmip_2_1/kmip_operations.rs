@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Display},
+    fmt::{self, Debug, Display, Formatter},
     ops::Not,
 };
 
@@ -9,13 +9,16 @@ use zeroize::Zeroizing;
 
 use super::{
     kmip_attributes::{Attribute, Attributes},
-    kmip_data_structures::KeyWrappingSpecification,
+    kmip_data_structures::{
+        CapabilityInformation, DefaultsInformation, ExtensionInformation, KeyWrappingSpecification,
+        ServerInformation, ValidationInformation,
+    },
     kmip_objects::{Object, ObjectType},
     kmip_types::{
-        AttributeReference, CertificateRequestType, CryptographicParameters, KeyCompressionType,
-        KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
-        ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
-        UniqueIdentifier, ValidityIndicator,
+        AttestationType, AttributeReference, CertificateRequestType, ClientRegistrationMethod,
+        CryptographicParameters, KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember,
+        OperationEnumeration, ProfileName, ProtectionStorageMasks, ProtocolVersion, QueryFunction,
+        RNGMode, RevocationReason, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
     },
 };
 
@@ -132,8 +135,8 @@ pub enum Operation {
     ImportResponse(ImportResponse),
     Locate(Locate),
     LocateResponse(LocateResponse),
-    Mac(Mac),
-    MacResponse(MacResponse),
+    Query(Query),
+    QueryResponse(QueryResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
     ReKey(ReKey),
@@ -147,7 +150,7 @@ pub enum Operation {
 }
 
 impl Display for Operation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Import(import) => write!(f, "Import({import})"),
             Self::ImportResponse(import_response) => {
@@ -229,7 +232,15 @@ impl Display for Operation {
             Self::ValidateResponse(validate_response) => {
                 write!(f, "ValidateResponse({validate_response})")
             }
+            Self::Query(query) => write!(f, "Query({query})"),
+            Self::QueryResponse(query_response) => write!(f, "QueryResponse({query_response})"),
         }
+    }
+}
+
+impl Debug for Operation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
@@ -250,7 +261,7 @@ impl Operation {
             | Self::GetAttributes(_)
             | Self::Hash(_)
             | Self::Locate(_)
-            | Self::Mac(_)
+            | Self::Query(_)
             | Self::Revoke(_)
             | Self::ReKey(_)
             | Self::ReKeyKeyPair(_)
@@ -274,7 +285,8 @@ impl Operation {
             | Self::RevokeResponse(_)
             | Self::ReKeyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
-            | Self::SetAttributeResponse(_)
+            | Self::DestroyResponse(_)
+            | Self::QueryResponse(_)
             | Self::ValidateResponse(_) => Direction::Response,
         }
     }
@@ -301,7 +313,7 @@ impl Operation {
             }
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
-            Self::Mac(_) | Self::MacResponse(_) => OperationEnumeration::MAC,
+            Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::Rekey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
@@ -1959,4 +1971,108 @@ impl Display for ValidateResponse {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatusResponse {
     pub kacls_url: String,
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct Query {
+    /// Determines what information about the server is being queried.
+    /// If omitted, then the server SHALL return all information that the
+    /// client is allowed to see.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_function: Option<Vec<QueryFunction>>,
+}
+
+impl Display for Query {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Query {{ query_functions: {:?} }}", self.query_function)
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct QueryResponse {
+    /// List of operations supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operations: Option<Vec<Operation>>,
+
+    /// List of object types that the server supports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_types: Option<Vec<ObjectType>>,
+
+    /// List of vendor extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor_identification: Option<String>,
+
+    /// List of namespaces supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application_namespaces: Option<Vec<String>>,
+
+    /// Detailed information about the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_information: Option<ServerInformation>,
+
+    /// List of extensions supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_information: Option<Vec<ExtensionInformation>>,
+
+    /// List of attestation types supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_types: Option<Vec<AttestationType>>,
+
+    /// List of Random Number Generator modes supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rng_mode: Option<Vec<RNGMode>>,
+
+    /// List of profiles supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profiles_supported: Option<Vec<ProfileName>>,
+
+    /// List of supported validation authorities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_information: Option<ValidationInformation>,
+
+    /// List of supported capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_information: Option<Vec<CapabilityInformation>>,
+
+    /// List of supported client registration methods.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_registration_methods: Option<Vec<ClientRegistrationMethod>>,
+
+    /// List of default profiles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defaults_information: Option<DefaultsInformation>,
+
+    /// Protection Storage Masks supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+impl Display for QueryResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "QueryResponse {{ operations: {:?}, object_types: {:?}, vendor_identification: {:?}, \
+             application_namespaces: {:?}, server_information: {:?}, extension_information: {:?}, \
+             attestation_types: {:?}, rng_mode: {:?}, profiles_supported: {:?}, \
+             validation_information: {:?}, capability_information: {:?}, \
+             client_registration_methods: {:?}, defaults_information: {:?}, \
+             protection_storage_masks: {:?} }}",
+            self.operations,
+            self.object_types,
+            self.vendor_identification,
+            self.application_namespaces,
+            self.server_information,
+            self.extension_information,
+            self.attestation_types,
+            self.rng_mode,
+            self.profiles_supported,
+            self.validation_information,
+            self.capability_information,
+            self.client_registration_methods,
+            self.defaults_information,
+            self.protection_storage_masks
+        )
+    }
 }

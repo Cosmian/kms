@@ -1,5 +1,6 @@
 use std::{
     clone::Clone,
+    fmt,
     fmt::{Display, Formatter},
 };
 
@@ -11,19 +12,18 @@ use serde::{
 };
 use zeroize::Zeroizing;
 
-use super::kmip_types::{LinkType, LinkedObjectIdentifier};
-use crate::{
-    error::KmipError,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_operations::ErrorReason,
-        kmip_types::{
-            CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyCompressionType,
-            KeyFormatType, MacSignatureKeyInformation, RecommendedCurve, WrappingMethod,
-        },
+use super::{
+    kmip_attributes::Attributes,
+    kmip_objects::ObjectType,
+    kmip_operations::ErrorReason,
+    kmip_types::{
+        ClientRegistrationMethod, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
+        KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        MacSignatureKeyInformation, ProfileName, ProtocolVersion, RNGMode, RecommendedCurve,
+        ValidationAuthorityType, WrappingMethod,
     },
-    pad_be_bytes, SafeBigUint,
 };
+use crate::{error::KmipError, pad_be_bytes, SafeBigUint};
 
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
@@ -983,5 +983,174 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             "q_string",
         ];
         deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor)
+    }
+}
+
+/// Contains detailed information about the server.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ServerInformation {
+    /// The server version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
+
+    /// The KMIP specification version supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kmip_version: Option<Vec<ProtocolVersion>>,
+}
+
+/// Information about a specific extension supported by the server.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ExtensionInformation {
+    /// The extension name.
+    pub extension_name: String,
+
+    /// The extension tag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_tag: Option<i32>,
+
+    /// Flag indicating deprecated status.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_deprecated: Option<bool>,
+}
+
+/// Contains information about validation.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ValidationInformation {
+    /// The validation authority.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_authority_type: Option<ValidationAuthorityType>,
+
+    /// The validation authority country.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_authority_country: Option<String>,
+
+    /// The validation authority URI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_authority_uri: Option<Vec<String>>,
+
+    /// The validation version major.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_version_major: Option<i32>,
+
+    /// The validation version minor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_version_minor: Option<i32>,
+}
+
+/// The Object Defaults structure is used to specify default values for various
+/// attributes during the creation of a Managed Object. Multiple Object Defaults
+/// may exist for a given client, with different combinations of Cryptographic
+/// Parameters and Template Attributes.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ObjectDefaults {
+    /// Specifies the object type that these defaults apply to.
+    pub object_type: ObjectType,
+
+    /// Default attributes for the specified object type that should be applied
+    /// during object creation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+}
+
+impl Display for ObjectDefaults {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ObjectDefaults {{ object_type: {:?}, attributes: {:?} }}",
+            self.object_type, self.attributes
+        )
+    }
+}
+
+/// The Defaults Information structure is used by the server to maintain client-defined
+/// defaults and is returned to the client as the result of a Query operation.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct DefaultsInformation {
+    /// The set of object defaults defined by the client or server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_defaults: Option<Vec<ObjectDefaults>>,
+}
+
+impl Display for DefaultsInformation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DefaultsInformation {{ object_defaults: {:?} }}",
+            self.object_defaults
+        )
+    }
+}
+
+/// The `CapabilityInformation` structure provides information about the capabilities
+/// of the server, such as supported operations, objects, and algorithms.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct CapabilityInformation {
+    /// Specifies a particular KMIP profile supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streaming_capability: Option<bool>,
+
+    /// Indicates whether the server supports asynchronous operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asynchronous_capability: Option<bool>,
+
+    /// Indicates whether the server supports attestation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_capability: Option<bool>,
+
+    /// Indicates whether the server supports batching of operations in a single request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_capability: Option<bool>,
+
+    /// Indicates whether the server supports unwrapping of wrapped keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unwrap_mode: Option<bool>,
+
+    /// Indicates whether the server supports destroying of keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destroy_action: Option<bool>,
+
+    /// Indicates whether the server supports certify of keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certify: Option<bool>,
+
+    /// Indicates whether the server supports getting usage allocation for keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_key_pair: Option<bool>,
+
+    /// Indicates whether the server supports deletion of private keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub register: Option<bool>,
+
+    /// Indicates whether the server supports rekey of keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rekey: Option<bool>,
+
+    /// List of the profiles supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_names: Option<Vec<ProfileName>>,
+
+    /// Modes of Random Number Generation supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rng_mode: Option<Vec<RNGMode>>,
+
+    /// Client registration methods supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_registration_methods: Option<Vec<ClientRegistrationMethod>>,
+}
+
+impl Display for CapabilityInformation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CapabilityInformation {{ streaming_capability: {:?}, asynchronous_capability: {:?}, \
+             ... }}",
+            self.streaming_capability, self.asynchronous_capability
+        )
     }
 }
