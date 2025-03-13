@@ -152,7 +152,7 @@ jobs:
     if: inputs.distribution == 'ubuntu-24.04'
     services:
       hsm:
-        image: ubuntu-24.04
+        image: ubuntu
         ports:
           - 3001:3001
 
