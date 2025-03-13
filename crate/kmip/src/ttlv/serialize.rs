@@ -38,12 +38,6 @@ impl Serialize for TTLV {
         }
 
         match &self.value {
-            // See kmip_ttlv_serializer.rs for the explanation of why this is an error
-            // In short, when a structure is built, the array elements are flattened as struct elements, so
-            // no element ever has the value of an array.
-            TTLValue::Array(arr) => Err(ser::Error::custom(format!(
-                "Should never have to serialize a TTLV Array: {arr:?}"
-            ))),
             TTLValue::Structure(v) => _serialize_struct(serializer, &self.tag, "Structure", v),
             TTLValue::Integer(v) => _serialize_struct(serializer, &self.tag, "Integer", v),
             TTLValue::LongInteger(v) => _serialize_struct(

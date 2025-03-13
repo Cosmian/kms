@@ -1375,6 +1375,7 @@ fn normative_request_message_test() {
 ]}    
     "#;
     let ttlv: TTLV = serde_json::from_str(ttlv_string).unwrap();
+    println!("ttlv: {:#?}", &ttlv);
     let _req: RequestMessage = from_ttlv(ttlv).unwrap();
 }
 

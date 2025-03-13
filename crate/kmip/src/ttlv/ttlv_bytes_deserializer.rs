@@ -143,13 +143,6 @@ fn item_size(ttlv: &TTLV) -> Result<usize, TtlvError> {
             }
             struct_size
         }
-        TTLValue::Array(items) => {
-            let mut array_size = 0;
-            for item in items {
-                array_size += item_size(item)?;
-            }
-            array_size
-        }
         TTLValue::Integer(_) | TTLValue::Enumeration(_) | TTLValue::Interval(_) => 4,
         TTLValue::LongInteger(_)
         | TTLValue::DateTimeExtended(_)
