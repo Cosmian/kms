@@ -149,6 +149,7 @@ jobs:
 
   hsm-test:
     name: KMS HSM tests
+    needs: kms-build
     if: inputs.distribution == 'ubuntu-24.04'
     services:
       hsm:
