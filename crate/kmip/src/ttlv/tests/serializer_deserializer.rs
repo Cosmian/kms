@@ -87,6 +87,7 @@ fn test_ser_big_int() {
 
         // serialize
         let value = serde_json::to_value(&ttlv).unwrap();
+        println!("{}", serde_json::to_string_pretty(&value).unwrap());
         assert!(value.is_object());
         assert_eq!(value["tag"], "Test");
         assert_eq!(value["value"][0]["tag"], "BigIntNeg");
@@ -153,6 +154,36 @@ fn test_ser_big_uint() {
 }
 
 #[test]
+// Note::serializing direct arrays is not supported in the spec
+fn test_direct_array() {
+    #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+    #[serde(rename_all = "PascalCase")]
+    struct Element {
+        elem: i32,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    let array = vec![Element { elem: 1 }, Element { elem: 2 }];
+
+    // Serializer
+    let ttlv = to_ttlv(&array).unwrap();
+    let expected = r#"TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "[ARRAY]", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
+    let ttlv_s = format!("{ttlv:?}");
+    assert_eq!(ttlv_s, expected);
+
+    //Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+
+    //Deserialize
+    let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    //Deserializer
+    let rec: Vec<Element> = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(array, rec);
+}
+
+#[test]
 fn test_ser_array() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
@@ -177,19 +208,20 @@ fn test_ser_array() {
     let ttlv = to_ttlv(&test).unwrap();
     info!("TTLV: {ttlv:?}");
     println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
-    // let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }]) }"#;
-    // let ttlv_s = format!("{ttlv:?}");
-    // assert_eq!(ttlv_s, expected);
-    //
-    // //Serialize
-    // let json = serde_json::to_string_pretty(&ttlv).unwrap();
-    // //Deserialize
-    // let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
-    // assert_eq!(ttlv, re_ttlv);
-    //
-    // //Deserializer
-    // let rec: Test = from_ttlv(re_ttlv).unwrap();
-    // assert_eq!(test.string_seq, rec.string_seq);
+    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
+    let ttlv_s = format!("{ttlv:?}");
+    assert_eq!(ttlv_s, expected);
+
+    //Serialize
+    let json = serde_json::to_string_pretty(&ttlv).unwrap();
+
+    //Deserialize
+    let re_ttlv = serde_json::from_str::<TTLV>(&json).unwrap();
+    assert_eq!(ttlv, re_ttlv);
+
+    //Deserializer
+    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test.string_seq, rec.string_seq);
 }
 
 #[test]

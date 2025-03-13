@@ -188,6 +188,8 @@ fn test_enumerations_deserialize() {
     }
     "#;
     let rec: TTLV = serde_json::from_str(json_string).unwrap();
+    let json_string = serde_json::to_string_pretty(&rec).unwrap();
+    let rec: TTLV = serde_json::from_str(&json_string).unwrap();
     assert_eq!(
         rec.value,
         TTLValue::Structure(vec![
@@ -213,5 +215,52 @@ fn test_enumerations_deserialize() {
                 }),
             },
         ])
+    );
+}
+
+#[test]
+fn test_arrays() {
+    let json_string = r#"
+    {
+        "tag": "Test",
+        "type": "Structure",
+        "value": [
+            {
+                "tag": "AnArray",
+                "type": "Structure",
+                "value": [
+                    {
+                        "tag": "AnInt",
+                        "type": "Integer",
+                        "value": 42
+                    },
+                    {
+                        "tag": "AnInt",
+                        "type": "Integer",
+                        "value": -42
+                    }
+                ]
+            }
+        ]
+    }
+    "#;
+    let rec: TTLV = serde_json::from_str(json_string).unwrap();
+    let json_string = serde_json::to_string_pretty(&rec).unwrap();
+    let rec: TTLV = serde_json::from_str(&json_string).unwrap();
+    assert_eq!(
+        rec.value,
+        TTLValue::Structure(vec![TTLV {
+            tag: "AnArray".to_owned(),
+            value: TTLValue::Structure(vec![
+                TTLV {
+                    tag: "AnInt".to_owned(),
+                    value: TTLValue::Integer(42),
+                },
+                TTLV {
+                    tag: "AnInt".to_owned(),
+                    value: TTLValue::Integer(-42),
+                },
+            ]),
+        }])
     );
 }
