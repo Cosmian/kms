@@ -65,7 +65,7 @@ if [ "$DEBUG_OR_RELEASE" = "release" ]; then
   crates=("crate/kmip" "crate/client")
   for crate in "${crates[@]}"; do
     cd "$crate"
-    PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo hack test --feature-powerset --all-targets
+    cargo hack test --feature-powerset --all-targets
     cd "$ROOT_FOLDER"
   done
 fi

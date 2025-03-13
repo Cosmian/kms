@@ -1,3 +1,0 @@
-cover-crypt>=14.0
-maturin==1.4
-mypy>=1.8

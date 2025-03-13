@@ -13,7 +13,6 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = ["cosmian_kmip/fips"]
 
@@ -33,7 +32,6 @@ num-bigint-dig = { workspace = true, features = [
   "zeroize",
 ] }
 openssl = { workspace = true }
-pyo3 = { workspace = true, optional = true }
 rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -43,4 +41,4 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
-ignored = ["rust-ini", "pyo3"]
+ignored = ["rust-ini"]
