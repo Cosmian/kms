@@ -148,7 +148,7 @@ jobs:
           ./$KMS_PATH/cosmian_kms --info
 
       - name: Utimaco HSM tests
-        if: inputs.distribution == 'ubuntu-20.04'
+        if: inputs.distribution == 'ubuntu-24.04'
         run: |
             set -ex
             sudo dpkg --add-architecture i386
@@ -160,8 +160,8 @@ jobs:
             tar -xvf hsm-simulator.tar.xz
             find .
             rm hsm-simulator.tar.xz
-            ./hsm-simulator/sim5_linux/bin/bl_sim5
-
+            ./hsm-simulator/sim5_linux/bin/cs_sim.sh
+            
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
             sudo cp ./hsm-simulator/libcs_pkcs11_R3.so /lib directory
