@@ -73,7 +73,7 @@ impl TTLVSerializer {
     pub fn current_mut(&mut self) -> Result<&mut TTLV> {
         self.stack
             .peek_mut()
-            .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))
+            .ok_or_else(|| TtlvError::custom("no TTLV found on stack".to_owned()))
     }
 
     pub fn current_mut_structure(&mut self) -> Result<&mut Vec<TTLV>> {
@@ -81,15 +81,6 @@ impl TTLVSerializer {
             TTLValue::Structure(ref mut v) => Ok(v),
             _ => Err(TtlvError::custom(
                 "the current element is not a TTLV structure".to_owned(),
-            )),
-        }
-    }
-
-    pub fn current_mut_array(&mut self) -> Result<&mut Vec<TTLV>> {
-        match self.current_mut()?.value {
-            TTLValue::Array(ref mut v) => Ok(v),
-            _ => Err(TtlvError::custom(
-                "the current element is not a TTLV Array".to_owned(),
             )),
         }
     }
@@ -116,7 +107,8 @@ where
     value.serialize(&mut serializer)?;
     Ok(serializer
         .stack
-        .pop()
+        .peek()
+        .cloned()
         .ok_or_else(|| TtlvError::custom("no TTLV value found".to_owned()))?)
 }
 
@@ -475,23 +467,27 @@ impl ser::Serializer for &mut TTLVSerializer {
     /// element of the serializer.
     #[instrument(skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+        // A receiver has been added on the stack, which will be flattened
+        // when returned, since TTLV flattens arrays to the parent structure
         match self.stack.peek_mut() {
-            Some(parent) => {
-                trace!("serialize_seq of len: {len:?} in parent: {:?}", parent);
-                parent.value = TTLValue::Array(Vec::with_capacity(len.unwrap_or(0)));
+            Some(receiver) => {
+                receiver.value = TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0)));
+                trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
             }
             None => {
                 trace!(
-                    "serialize_seq, no parent found, creating a new one with tag: {}",
+                    "serialize_seq, no parent found. This is a direct vec![] serialization. \
+                     Creating a new one with tag: {}",
                     self.current_tag()
                 );
                 // create a new structure parent to which we will add the fields of the struct
+                let tag = "[ARRAY]".to_owned();
                 self.stack.push(TTLV {
-                    tag: "[ARRAY]".to_owned(),
-                    value: TTLValue::Array(Vec::with_capacity(len.unwrap_or(0))),
+                    tag: tag.clone(),
+                    value: TTLValue::Structure(Vec::with_capacity(len.unwrap_or(0))),
                 });
             }
-        }
+        };
         Ok(self)
     }
 
@@ -619,7 +615,7 @@ impl ser::Serializer for &mut TTLVSerializer {
 // method and followed by zero or more calls to serialize individual elements of
 // the compound type and one call to end the compound type.
 
-// This impl is SerializeSeq so these methods are called after `serialize_seq`
+// This impl is `SerializeSeq` so these methods are called after `serialize_seq`
 // is called on the Serializer.
 impl SerializeSeq for &mut TTLVSerializer {
     // Must match the `Error` type of the serializer.
@@ -633,7 +629,7 @@ impl SerializeSeq for &mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let tag = self.current_tag();
+        let tag = self.stack.peek().map_or("", |parent| parent.tag.as_str());
         trace!(
             "Seq Element: serializing a seq element with tag {}, stack is: {:?}",
             tag,
@@ -652,11 +648,14 @@ impl SerializeSeq for &mut TTLVSerializer {
             .pop()
             .ok_or_else(|| TtlvError::custom("no TTLV found".to_owned()))?;
         // add the TTLV element to the parent
-        self.current_mut_array()?.push(current_element);
+        let receiving_parent_vec = self.current_mut_structure().map_err(|e| {
+            TtlvError::custom(format!("error getting the current TTLV structure: {}", e))
+        })?;
+        receiving_parent_vec.push(current_element);
 
         trace!(
-            "... Seq element added, the current sequence is: {:?}",
-            self.stack.peek(),
+            "... Seq element added, the current parent value is: {:?}",
+            receiving_parent_vec,
         );
         Ok(())
     }
@@ -664,13 +663,16 @@ impl SerializeSeq for &mut TTLVSerializer {
     // Close the sequence.
     #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        trace!("Finished serializing the sequence, stack: {:?}", self.stack);
+        trace!(
+            "Finished serializing the sequence, the parent is: {:?}",
+            self.stack.peek()
+        );
         Ok(())
     }
 }
 
 // Same thing as seq but for tuples.
-impl<'a> SerializeTuple for &'a mut TTLVSerializer {
+impl SerializeTuple for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -679,16 +681,16 @@ impl<'a> SerializeTuple for &'a mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&'a mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
+        <&mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok> {
-        <&'a mut TTLVSerializer as SerializeSeq>::end(self)
+        <&mut TTLVSerializer as SerializeSeq>::end(self)
     }
 }
 
 // Same thing but for tuple structs.
-impl<'a> ser::SerializeTupleStruct for &'a mut TTLVSerializer {
+impl ser::SerializeTupleStruct for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -697,11 +699,11 @@ impl<'a> ser::SerializeTupleStruct for &'a mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&'a mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
+        <&mut TTLVSerializer as SerializeSeq>::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok> {
-        <&'a mut TTLVSerializer as SerializeSeq>::end(self)
+        <&mut TTLVSerializer as SerializeSeq>::end(self)
     }
 }
 
@@ -857,12 +859,25 @@ impl SerializeStruct for &mut TTLVSerializer {
             }
         };
 
-        let v = self.current_mut_structure()?;
-        v.push(current_element);
+        // Fet the structure
+        let struct_elems = self.current_mut_structure()?;
+
+        // test if the current element is an array
+        if let TTLValue::Structure(ref v) = current_element.value {
+            let is_array = v.iter().all(|child| child.tag == key);
+            if is_array {
+                struct_elems.extend_from_slice(v);
+            } else {
+                struct_elems.push(current_element);
+            }
+        } else {
+            // if the current element is not an array, we need to add it to the parent
+            struct_elems.push(current_element);
+        }
 
         trace!(
             "... added a struct field: {key}, the parent struct is now: {:?}",
-            &v,
+            &struct_elems,
         );
         Ok(())
     }
@@ -876,7 +891,7 @@ impl SerializeStruct for &mut TTLVSerializer {
 
 // For example the `E::S` in `enum E { S { r: u8, g: u8, b: u8 } }`
 // same as Struct therefore same as seqs
-impl<'a> SerializeStructVariant for &'a mut TTLVSerializer {
+impl SerializeStructVariant for &mut TTLVSerializer {
     type Error = TtlvError;
     type Ok = ();
 
@@ -885,11 +900,11 @@ impl<'a> SerializeStructVariant for &'a mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
-        <&'a mut TTLVSerializer as ser::SerializeStruct>::serialize_field(self, key, value)
+        <&mut TTLVSerializer as SerializeStruct>::serialize_field(self, key, value)
     }
 
     // #[instrument(skip(self))]
     fn end(self) -> Result<Self::Ok> {
-        <&'a mut TTLVSerializer as ser::SerializeStruct>::end(self)
+        <&mut TTLVSerializer as SerializeStruct>::end(self)
     }
 }

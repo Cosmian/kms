@@ -6,7 +6,7 @@ use serde::{
 };
 use serde_json::Value;
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
-use tracing::{info, instrument, trace};
+use tracing::{instrument, trace};
 
 use super::{kmip_big_int::KmipBigInt, TTLV};
 use crate::ttlv::{KmipEnumerationVariant, TTLValue};
@@ -50,7 +50,7 @@ impl<'de> Deserialize<'de> for TTLV {
                     tag: array
                         .first()
                         .map_or_else(|| "Unknown".to_owned(), |v| v.tag.clone()),
-                    value: TTLValue::Array(array),
+                    value: TTLValue::Structure(array),
                 })
             }
 
@@ -83,21 +83,7 @@ impl<'de> Deserialize<'de> for TTLV {
                             }
                             let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
                             value = Some(match typ.as_str() {
-                                "Structure" => {
-                                    // Aggregate the flattened arrays inside the chidren into  TTLValue::Array
-                                    let children = aggregate_arrays(map.next_value()?)?;
-                                    // Is this structure and array itself?
-                                    let struct_tag = tag.clone().unwrap_or_default();
-                                    info!("Structure tag: {struct_tag}, children: {children:?}");
-                                    let not_array =
-                                        children.iter().any(|child| child.tag != struct_tag);
-                                    if not_array {
-                                        TTLValue::Structure(children)
-                                    } else {
-                                        TTLValue::Array(children)
-                                    }
-                                }
-
+                                "Structure" => TTLValue::Structure(map.next_value()?),
                                 "Integer" => {
                                     let i_64 = deserialize_integer(&map.next_value()?)?;
                                     let i_32 = i_64.try_into().map_err(|e| {
@@ -252,64 +238,6 @@ where
     }
     v.as_i64()
         .ok_or_else(|| de::Error::custom(format!("visit_map: not a valid i64 integer: {v}")))
-}
-
-/// Aggregate arrays of TTLV into a single TTLValue::Array.
-/// Arrays are flattened in TTLV representations.
-/// This function "de-flattens" them  to facilitate serialization and deserialization to KMIP.
-fn aggregate_arrays<E>(v: Vec<TTLV>) -> Result<Vec<TTLV>, E>
-where
-    E: de::Error,
-{
-    let mut result = Vec::new();
-    // grab the first element
-    let Some(mut previous) = v.first().cloned() else {
-        // v is empty
-        return Ok(v);
-    };
-    let mut accumulating = false;
-    for item in v[1..].iter() {
-        if item.tag == previous.tag {
-            if accumulating {
-                // we are already accumulating
-                // add this item to the previous
-                if let TTLValue::Array(ref mut arr) = previous.value {
-                    arr.push(item.clone());
-                } else {
-                    // this should not happen
-                    return Err(de::Error::custom(format!(
-                        "aggregator: not a valid TTLValue::Array: {previous:?}. This should not \"
-                         happen"
-                    )))
-                }
-            } else {
-                // we are not accumulating yet
-                // start accumulating
-                accumulating = true;
-                // transform previous into an array
-                previous = TTLV {
-                    tag: previous.tag.clone(),
-                    value: TTLValue::Array(vec![previous.clone(), item.clone()]),
-                };
-            }
-        } else {
-            if accumulating {
-                // we are done accumulating
-                // add the previous item to the result
-                accumulating = false;
-                result.push(previous.clone());
-                previous = item.clone();
-            } else {
-                // we are not accumulating
-                // just add the item to the result
-                result.push(previous);
-                previous = item.clone();
-            }
-        }
-    }
-    // add the last item
-    result.push(previous.clone());
-    Ok(result)
 }
 
 #[derive(Debug, Copy, Clone)]
