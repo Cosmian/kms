@@ -148,7 +148,7 @@ jobs:
           ./$KMS_PATH/cosmian_kms --info
 
       - name: Utimaco HSM tests
-        if: inputs.distribution == 'ubuntu-24.04'
+        if: inputs.distribution == 'ubuntu-20.04'
         run: |
             set -ex
             sudo dpkg --add-architecture i386
