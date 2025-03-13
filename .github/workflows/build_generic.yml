@@ -160,14 +160,14 @@ jobs:
             tar -xvf hsm-simulator.tar.xz
             find .
             rm hsm-simulator.tar.xz
-            .hsm-simulator/bl_sim5
+            ./hsm-simulator/sim5_linux/bin/bl_sim5
 
             # Configure the PKCS#11 connection on the KMS server
             sudo telnet localhost 3001
-            sudo cp hsm-simulator/libcs_pkcs11_R3.so /lib directory
+            sudo cp ./hsm-simulator/libcs_pkcs11_R3.so /lib directory
             sudo mkdir -p /etc/utimaco
             sudo chmod 755 /etc/utimaco
-            sudo cp hsm-simulator/cs_pkcs11_R3.cfg /etc/utimaco/
+            sudo cp ./hsm-simulator/cs_pkcs11_R3.cfg /etc/utimaco/
             sudo echo -e "...\nLogpath = /tmp\n...\nLogging = 3\n...\nDevice = 3001@localhost \n..." > /etc/utimaco/cs_pkcs11_R3.cfg
             export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
