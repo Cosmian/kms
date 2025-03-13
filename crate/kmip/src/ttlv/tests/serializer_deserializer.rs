@@ -196,7 +196,8 @@ fn test_ser_array() {
         string_seq: Vec<String>,
         struct_seq: Vec<Element>,
     }
-    log_init(option_env!("RUST_LOG"));
+    // log_init(option_env!("RUST_LOG"));
+    log_init(Some("trace"));
 
     let test = Test {
         string_seq: vec!["a".to_owned(), "b".to_owned()],
@@ -205,7 +206,7 @@ fn test_ser_array() {
 
     // Serializer
     let ttlv = to_ttlv(&test).unwrap();
-    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: Array([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }]) }, TTLV { tag: "StructSeq", value: Array([TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }]) }"#;
+    let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "StringSeq", value: TextString("a") }, TTLV { tag: "StringSeq", value: TextString("b") }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(1) }]) }, TTLV { tag: "StructSeq", value: Structure([TTLV { tag: "Elem", value: Integer(2) }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 
@@ -217,6 +218,7 @@ fn test_ser_array() {
     assert_eq!(json, serde_json::to_string_pretty(&re_ttlv).unwrap());
     assert_eq!(ttlv, re_ttlv);
 
+    println!("TTLV: {ttlv:#?}");
     //Deserializer
     let rec: Test = from_ttlv(re_ttlv).unwrap();
     assert_eq!(test, rec);

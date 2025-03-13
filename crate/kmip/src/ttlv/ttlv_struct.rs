@@ -21,10 +21,6 @@ pub enum TTLValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(OffsetDateTime),
-    // Arrays are flattened in TTLV representations
-    // They do not exist as a value. We use this Variant to
-    // facilitate serialization and deserialization to KMIP
-    Array(Vec<TTLV>),
 }
 
 impl Default for TTLValue {
@@ -49,7 +45,6 @@ impl PartialEq for TTLValue {
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
                 l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
-            (Self::Array(l0), Self::Array(r0)) => l0 == r0,
             (_, _) => false,
         }
     }

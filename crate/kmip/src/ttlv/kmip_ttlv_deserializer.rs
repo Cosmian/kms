@@ -89,22 +89,34 @@ impl TtlvDeserializer {
     where
         K: DeserializeSeed<'de>,
     {
-        let TTLValue::Structure(child_array) = &self.current.value else {
-            return Ok(None)
+        let children = match &self.current.value {
+            TTLValue::Structure(children) => {
+                // if the TTLV value is an Array, we will deserialize it using the StructureWalker
+                // which will iterate over the children of the structure as it were a map of properties to values
+                children
+            }
+            _ => return Err(TtlvError::from("Expected Structure or Array value in TTLV")),
         };
-        trace!(
-            "get_child_deserializer: map access state: {:?}, index: {}, current: {:?}",
-            self.map_state,
-            self.child_index,
-            self.current
-        );
-        if self.child_index >= child_array.len() {
+        if self.child_index >= children.len() {
+            // if the child index is out of bounds, we are done with this child
+            // reset the child index to 0
+            trace!(
+                "get_child_deserializer: map access state: {:?}, index: {}, no more children",
+                self.map_state,
+                self.child_index
+            );
             self.child_index = 0;
             return Ok(None);
         }
-        let child = child_array
+        let child = children
             .get(self.child_index)
             .ok_or_else(|| TtlvError::from("Index out of bounds when accessing child array"))?;
+        trace!(
+            "get_child_deserializer: map access state: {:?}, index: {}, child: {:?}",
+            self.map_state,
+            self.child_index,
+            child
+        );
         let mut deserializer = Self {
             current: child.clone(),
             child_index: 0,
@@ -159,13 +171,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         // - or not in a map at all, and we are also interested in the value
 
         match &self.current.value {
-            TTLValue::Array(_array) => {
-                // if the TTLV value is an Array, the deserializer is attempting to deserialize the children
-                // by iterating over the children which hold the values of the sequence/array
-                // Reset the child index to 0 to start from the beginning
-                self.child_index = 0;
-                visitor.visit_seq(self)
-            }
             TTLValue::BigInteger(bi) => {
                 // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
                 // by converting the BigInt to u32
@@ -555,7 +560,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 let seq_access = KmipBigIntDeserializer::instantiate(&bi)?;
                 visitor.visit_seq(seq_access)
             }
-            TTLValue::Structure(_) | TTLValue::ByteString(_) | TTLValue::Array(_) => {
+            TTLValue::Structure(_) | TTLValue::ByteString(_) => {
                 // if the TTLV value is a Structure, ByteString or Array, the deserializer is attempting to deserialize the children
                 // by iterating over the children which hold the values of the sequence/array.
                 // Reset the child index to 0 to start from the beginning
@@ -716,7 +721,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     where
         V: Visitor<'de>,
     {
-        trace!("deserialize_identifier: state:  {:?}", self.current);
+        trace!("deserialize_identifier: current:  {:?}", self.current);
 
         match &self.current.value {
             TTLValue::Enumeration(e) => {
@@ -791,7 +796,7 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer {
         );
 
         match &self.current.value {
-            TTLValue::Structure(child_array) | TTLValue::Array(child_array) => {
+            TTLValue::Structure(child_array) => {
                 // if the TTLV value is a Structure or Array, the deserializer is attempting to deserialize the children
                 // by iterating over the children which hold the values of the sequence/array
                 if self.child_index >= child_array.len() {
@@ -859,7 +864,11 @@ impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
     where
         V: DeserializeSeed<'de>,
     {
-        trace!("next_value_seed: state:  {:?}", self.de.current);
+        trace!(
+            "next_value_seed:index: {}, current: {:?}",
+            self.de.child_index,
+            self.de.current
+        );
         // get the child deserializer for a child at the current index
         let v = self
             .de
