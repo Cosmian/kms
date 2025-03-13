@@ -65,8 +65,8 @@ clap = { version = "4.5.27", default-features = false }
 cloudproof = "3.0"
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 cosmian_config_utils = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "expose-QA" }
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "develop" }
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "release/v15.0.0" }
+cosmian_crypto_core = "10.0.1"
 cosmian_http_client = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 cosmian_logger = { git = "https://www.github.com/Cosmian/http_client_server", tag = "0.1.0" }
 der = { version = "0.7", default-features = false }
