@@ -147,22 +147,32 @@ jobs:
           chmod u+x /usr/local/openssl/lib/ossl-modules/*.dylib
           ./$KMS_PATH/cosmian_kms --info
 
-      - name: Utimaco HSM tests
-        if: inputs.distribution == 'ubuntu-24.04'
+  hsm-test:
+    name: KMS HSM tests
+    if: inputs.distribution == 'ubuntu-24.04'
+    services:
+      hsm:
+        image: ubuntu-24.04
+        ports:
+          - 3001:3001
+
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download hsm simulator
         run: |
             set -ex
             sudo dpkg --add-architecture i386
             sudo apt update && sudo apt-get install libc6:i386 libstdc++6:i386
 
-            # Download the simulator
             wget "https://package.cosmian.com/ci/hsm-simulator.tar.xz"
             echo -n Extracting compressed archive...
             tar -xvf hsm-simulator.tar.xz
             find .
             rm hsm-simulator.tar.xz
             ./hsm-simulator/sim5_linux/bin/cs_sim.sh
-            
-            # Configure the PKCS#11 connection on the KMS server
+
+      - name: Configure the PKCS#11 connection on the KMS server
+        run: |
             sudo telnet localhost 3001
             sudo cp ./hsm-simulator/libcs_pkcs11_R3.so /lib directory
             sudo mkdir -p /etc/utimaco
@@ -171,8 +181,8 @@ jobs:
             sudo echo -e "...\nLogpath = /tmp\n...\nLogging = 3\n...\nDevice = 3001@localhost \n..." > /etc/utimaco/cs_pkcs11_R3.cfg
             export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
-            # Test the PKCS#11 configuration using ./p11tool2 Slot=0 GetSlotInfo
+      - name: Test the PKCS#11 configuration using ./p11tool2 Slot=0 GetSlotInfo
+        run: |
             cd hsm-simulator/Administration
             ./p11tool2 Slot=0 GetSlotInfo
-
             cargo test -p utimaco_pkcs11_loader --features utimaco
