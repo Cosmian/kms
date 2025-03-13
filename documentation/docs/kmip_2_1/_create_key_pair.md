@@ -249,7 +249,7 @@ The access structure to hex-encode to the call will be:
 Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
 
 ```shell
-cosmian kms cc keys create-master-key-pair -s policy_specifications.json
+cosmian kms cc keys create-master-key-pair -s access_structure_specifications.json
 ```
 
 === "Request"

@@ -149,7 +149,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
 /// The encoding of the `ECPoint` structure is expected to be in the octet form
 /// (as defined in RFC5480 and used in certificates and TLS records):
 /// only the content octets are present, the OCTET STRING tag and length are not included.
-/// The encoding/decoding conforms with Sec. 2.3.3/2.3.4 of the SECG Security Level 1 ("Elliptic Curve Cryptography") standard.
+/// The encoding/decoding conforms with Sec. 2.3.3/2.3.4 of the SECG SEC 1 ("Elliptic Curve Cryptography") standard.
 fn ec_public_key_from_point_encoding(
     point_encoding: &[u8],
     curve_nid: Nid,

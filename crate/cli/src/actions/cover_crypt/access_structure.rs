@@ -180,7 +180,7 @@ impl AddAttributeAction {
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::AddAttribute(vec![(
-                QualifiedAttribute::from((self.attribute.as_str(), "")),
+                QualifiedAttribute::try_from(self.attribute.as_str())?,
                 enc_hint,
                 None,
             )]),
@@ -243,7 +243,7 @@ impl RenameAttributeAction {
         let rekey_query = build_rekey_keypair_request(
             &id,
             &RekeyEditAction::RenameAttribute(vec![(
-                QualifiedAttribute::from((self.attribute.as_str(), "")),
+                QualifiedAttribute::try_from(self.attribute.as_str())?,
                 self.new_name.clone(),
             )]),
         )?;
@@ -297,10 +297,9 @@ impl DisableAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from((
+            &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::try_from(
                 self.attribute.as_str(),
-                "",
-            ))]),
+            )?]),
         )?;
 
         // Query the KMS with your kmip data
@@ -355,7 +354,9 @@ impl RemoveAttributeAction {
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
             &id,
-            &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::new("dimension", "name")]),
+            &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::try_from(
+                self.attribute.as_str(),
+            )?]),
         )?;
 
         // Query the KMS with your kmip data

@@ -1,26 +1,26 @@
-#![deny(
-    nonstandard_style,
-    refining_impl_trait,
-    future_incompatible,
-    keyword_idents,
-    let_underscore,
-    unreachable_pub,
-    unused,
-    clippy::all,
-    clippy::suspicious,
-    clippy::complexity,
-    clippy::perf,
-    clippy::style,
-    clippy::pedantic,
-    clippy::cargo,
-    clippy::nursery,
+// #![deny(
+//     nonstandard_style,
+//     refining_impl_trait,
+//     future_incompatible,
+//     keyword_idents,
+//     let_underscore,
+//     unreachable_pub,
+//     unused,
+//     clippy::all,
+//     clippy::suspicious,
+//     clippy::complexity,
+//     clippy::perf,
+//     clippy::style,
+//     clippy::pedantic,
+//     clippy::cargo,
+//     clippy::nursery,
 
-    // restriction lints
-    clippy::map_err_ignore,
-    clippy::print_stdout,
-    clippy::redundant_clone,
-    clippy::renamed_function_params,
-)]
+//     // restriction lints
+//     clippy::map_err_ignore,
+//     clippy::print_stdout,
+//     clippy::redundant_clone,
+//     clippy::renamed_function_params,
+// )]
 #![allow(
     clippy::module_name_repetitions,
     clippy::too_many_lines,

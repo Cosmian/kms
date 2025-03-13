@@ -64,8 +64,8 @@ pub(crate) async fn test_create_master_key_pair() -> CliResult<()> {
     let ctx = start_default_test_kms_server().await;
     create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--access-structure-filepath",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;

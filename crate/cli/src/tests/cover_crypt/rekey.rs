@@ -86,8 +86,8 @@ async fn test_rekey_error() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--access-structure-filepath",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;
@@ -164,7 +164,7 @@ async fn test_rekey_error() -> CliResult<()> {
 #[allow(clippy::similar_names)]
 fn test_cc() -> CliResult<()> {
     let access_structure = access_structure_from_json_file(&PathBuf::from(
-        "../../test_data/policy_specifications.json",
+        "../../test_data/access_structure_specifications.json",
     ))?;
 
     let cover_crypt = Covercrypt::default();
@@ -218,7 +218,7 @@ async fn test_enc_dec_rekey() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
+        "--access-structure-filepath",
         "../../test_data/access_structure.json",
         &[],
         false,
@@ -286,8 +286,8 @@ async fn test_rekey_prune() -> CliResult<()> {
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
         &ctx.owner_client_conf_path,
-        "--policy-specifications",
-        "../../test_data/policy_specifications.json",
+        "--access-structure-filepath",
+        "../../test_data/access_structure_specifications.json",
         &[],
         false,
     )?;

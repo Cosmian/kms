@@ -43,7 +43,7 @@ lazy_static::lazy_static! {
 /// The request MAY also contain a date for which all certificates in the
 /// certificate chain are REQUIRED to be valid.
 ///
-/// The method or access structure by which validation is conducted is a decision of the
+/// The method or policy by which validation is conducted is a decision of the
 /// server and is outside of the scope of this protocol. Likewise, the order in
 /// which the supplied certificate chain is validated and the specification of
 /// trust anchors used to terminate validation are also controlled by the server.

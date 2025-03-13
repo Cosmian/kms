@@ -46,8 +46,8 @@ use crate::{
 pub struct CreateMasterKeyPairAction {
     /// The JSON policy specifications file to use to generate the keys.
     /// See the inline doc of the `create-master-key-pair` command for details.
-    #[clap(long = "policy-specifications", short = 's', group = "policy")]
-    policy_specifications_file: PathBuf,
+    #[clap(long, short = 's', group = "policy")]
+    access_structure_filepath: PathBuf,
 
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
@@ -62,7 +62,7 @@ pub struct CreateMasterKeyPairAction {
 impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsClient) -> CliResult<()> {
         // Parse the json access structure file
-        let access_structure = access_structure_from_json_file(&self.policy_specifications_file)?;
+        let access_structure = access_structure_from_json_file(&self.access_structure_filepath)?;
         debug!("client: access_structure: {access_structure:?}");
         let create_key_pair = build_create_covercrypt_master_keypair_request(
             &access_structure,

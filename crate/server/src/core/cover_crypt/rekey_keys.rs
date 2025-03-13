@@ -195,21 +195,12 @@ pub(crate) async fn update_master_keys(
     mutator: impl Fn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
     sensitive: bool,
 ) -> KResult<((String, Object), (String, Object))> {
-    trace!("update_master_keys: msk_uid: {msk_uid}");
     let (msk_obj, mpk_obj) = get_master_keys(server, msk_uid, owner, params.clone()).await?;
-    trace!("update_master_keys: get_master_keys OK");
-
     let (mut msk, mut mpk) = covercrypt_keys_from_kmip_objects(&msk_obj.1, &mpk_obj.1)?;
-    trace!("update_master_keys: covercrypt_keys_from_kmip_objects OK");
     mutator(&mut msk, &mut mpk)?;
-    trace!("update_master_keys: mutator OK");
     let (msk_obj, mpk_obj) =
         kmip_objects_from_covercrypt_keys(&msk, &mpk, msk_obj, mpk_obj, sensitive)?;
-    trace!("update_master_keys: kmip_objects_from_covercrypt_keys OK");
-
     import_rekeyed_master_keys(server, owner, params, msk_obj.clone(), mpk_obj.clone()).await?;
-    trace!("update_master_keys: import_rekeyed_master_keys OK");
-
     Ok((msk_obj, mpk_obj))
 }
 

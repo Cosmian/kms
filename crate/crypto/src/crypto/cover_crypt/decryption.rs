@@ -171,10 +171,7 @@ impl CovercryptDecryption {
 
             cleartext_header = header;
 
-            let key = match ad {
-                Some(ad_bytes) => SymmetricKey::derive(&cleartext_header.secret, ad_bytes)?,
-                None => SymmetricKey::derive(&cleartext_header.secret, &[])?,
-            };
+            let key = SymmetricKey::derive(&cleartext_header.secret, ad.unwrap_or_default())?;
 
             // Split nonce and ciphertext
             let nonce_slice = encrypted_block
