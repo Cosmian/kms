@@ -209,9 +209,6 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     visitor.visit_str(&e.name)
                 }
             }
-            TTLValue::Array(arr) => {
-                todo!("deserialize_any of Array: {:?}", arr);
-            }
         }
     }
 
